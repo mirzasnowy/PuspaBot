@@ -1,197 +1,200 @@
-# REUSE — Log reuse lintas fase Puspa
+# REUSE — Cross-phase reuse log for Puspa
 
-Aturan (berlaku semua fase, perintah Nero): pelajari POLA/IDE besar
-dari repo survei, lalu TULIS ULANG sebagai kode Puspa sendiri yang
-disesuaikan dengan arsitektur revisi 7 + istilah domain Indonesia.
-JANGAN PERNAH copas kode plek-ketiplek. JANGAN pakai kode berlisensi
-GPL, AGPL, SSPL, PolyForm, CC BY-NC, atau lisensi kustom non-OSI.
-JANGAN buat fork GitHub dari repo mana pun. Dependensi hanya via pip
-dengan lisensi kompatibel (MIT/Apache-2.0/BSD) — catat lisensinya di
-sini per fase.
+Rules (all phases, Nero's order): study the BIG PATTERNS/IDEAS
+from surveyed repos, then REWRITE them as Puspa's own code adapted
+to the revision 7 architecture + English domain terms. NEVER copy
+code verbatim. NEVER use code licensed GPL, AGPL, SSPL, PolyForm,
+CC BY-NC, or a custom non-OSI license. NEVER create a GitHub fork
+of any repo. Dependencies only via pip with a compatible license
+(MIT/Apache-2.0/BSD) — record the license here per phase.
 
-Survei acuan: `~/workspace/match-hunt/repo-reuse-puspa-2026-11-17.md`
-(81 repo) dan `~/workspace/match-hunt/chassis-tambahan-2026-11-17.md`
-(76 entri).
+> Note: the original rule above said "Indonesian domain terms". That
+> language policy is superseded by the English-only refactor ordered
+> by Nero on 18 Nov 2026: code identifiers, stored domain values, and
+> prose are all English now (see `docs/GLOSSARY.md`).
 
-## Fase 0 (selesai — ringkas, detail di STATUS.md Fase 0)
+Reference surveys: `~/workspace/match-hunt/repo-reuse-puspa-2026-11-17.md`
+(81 repos) and `~/workspace/match-hunt/chassis-tambahan-2026-11-17.md`
+(76 entries).
 
-- **nanobot** (HKUDS/nanobot, MIT): chassis agen — dipakai sebagai
-  dependency git pin (`nanobot-ai @ git+https://github.com/HKUDS/nanobot@e767174`),
-  BUKAN fork; wiring hanya lewat titik ekstensi resmi nanobot; NOL
-  baris kode nanobot diubah. Clone lokal hanya referensi baca.
-- Dependensi baru Fase 0: psycopg, argon2-cffi, cryptography, pytest
-  (+ dependensi nanobot).
+## Phase 0 (done — brief, details in docs/status-phase-0.md Phase 0)
 
-## Fase 1 (Persona + Memori + Onboarding)
+- **nanobot** (HKUDS/nanobot, MIT): agent chassis — used as a
+  git-pinned dependency (`nanobot-ai @ git+https://github.com/HKUDS/nanobot@e767174`),
+  NOT a fork; wiring only through nanobot's official extension points; ZERO
+  lines of nanobot code changed. The local clone is read-only reference.
+- New Phase 0 dependencies: psycopg, argon2-cffi, cryptography, pytest
+  (+ nanobot's dependencies).
 
-Tidak ada dependensi baru (semua dari venv Fase 0). Yang diadaptasi
-hanya POLA (ditulis ulang, bukan disalin):
+## Phase 1 (Persona + Memory + Onboarding)
 
-| Ide besar | Dari repo apa (lisensi) | Apa yang diadaptasi | Apa yang ditulis ulang dari nol |
+No new dependencies (all from the Phase 0 venv). Only PATTERNS were
+adapted (rewritten, not copied):
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
 | --- | --- | --- | --- |
-| Fakta memori ber-asal, scoped per user; fakta disimpulkan tidak langsung masuk profil | mem0ai/mem0 (Apache-2.0) | Gagasan asal fakta + Usulan sebagai penampung fakta disimpulkan | `puspa/memory/profile.py`: asal tiga nilai revisi 7 (`diucapkan_user`, `dikonfirmasi_user`, `disimpulkan`), status `usulan`/`berlaku`/`ditolak`/`diganti`, merge UNION deterministik, konflik tidak ditimpa diam-diam |
-| Fakta temporal (masa berlaku); prosedur = templat tanpa data pribadi | getzep/graphiti (Apache-2.0) | Gagasan `berlaku_dari`/`berlaku_sampai` + satu versi berlaku; prosedur tanpa nomor pelanggan | `profile.py` (versi fakta) + `puspa/memory/procedural.py` (siklus `percobaan`/`terverifikasi`/`rusak` revisi 7 §3.3) |
-| Memori berjenjang + sleep-time compute (rapikan memori saat idle) | letta-ai/letta (Apache-2.0) | Gagasan konsolidasi saat sepi + ringkasan menunjuk ke kejadian asal | `puspa/memory/consolidate.py`: ringkasan ekstraktif DETERMINISTIK (tanpa model, Rp0), promosi pola berhasil ke prosedural |
-| Persona sebagai data (character file: nama, sifat, gaya bicara) | elizaOS/eliza (MIT) | Gagasan gaya bicara sebagai data, bukan prompt keras | `puspa/persona/persona.py`: gaya sebagai fakta profil + contoh pesan (maks 20) + koreksi `dikonfirmasi_user` yang langsung berlaku; `render_reply` deterministik sementara |
-| Index vektor untuk pencarian memori | pgvector (PostgreSQL, lisensi PostgreSQL — bebas dipakai) | Gagasan index kemiripan vektor | Skema `episodik.embedding vector(384)` + index HNSW; embedding `HashEmbedding` ditulis sendiri (hash token, Rp0) — seam pengganti disiapkan untuk model embedding lokal/berbayar murah |
+| Sourced memory facts, scoped per user; inferred facts do not enter the profile directly | mem0ai/mem0 (Apache-2.0) | The idea of fact provenance + Proposals as the holding place for inferred facts | `puspa/memory/profile.py`: revision 7 three-valued provenance (`user_stated`, `user_confirmed`, `inferred`), statuses `proposed`/`active`/`rejected`/`replaced`, deterministic UNION merge, conflicts never silently overwritten |
+| Temporal facts (validity period); procedures = templates without personal data | getzep/graphiti (Apache-2.0) | The `valid_from`/`valid_until` idea + one active version; procedures without customer numbers | `profile.py` (fact versions) + `puspa/memory/procedural.py` (the `trial`/`verified`/`broken` cycle, revision 7 §3.3) |
+| Tiered memory + sleep-time compute (tidying memory while idle) | letta-ai/letta (Apache-2.0) | The idea of consolidating when quiet + summaries pointing to the source event | `puspa/memory/consolidate.py`: DETERMINISTIC extractive summaries (no model, Rp0), promotion of successful patterns to procedural |
+| Persona as data (character file: name, traits, speaking style) | elizaOS/eliza (MIT) | The idea of speaking style as data, not a hardcoded prompt | `puspa/persona/persona.py`: style as profile facts + message examples (max 20) + `user_confirmed` corrections that apply immediately; `render_reply` deterministic for now |
+| Vector index for memory search | pgvector (PostgreSQL, PostgreSQL license — free to use) | The idea of a vector-similarity index | Schema `episodic.embedding vector(384)` + HNSW index; the `HashEmbedding` embedding written by hand (token hash, Rp0) — a replacement seam prepared for a local/cheap paid embedding model |
 
-**Tidak dipakai di Fase 1 (dicatat supaya tidak diulang):**
-- mem0 sebagai LIBRARY (tidak diinstal): Puspa butuh asal tiga nilai
-  revisi 7 + Usulan + riwayat versi — perilaku mem0 tidak cocok
-  langsung; polanya saja yang dipakai.
-- Graphiti sebagai LIBRARY (butuh Neo4j/FalkorDB): terlalu berat
-  untuk MVP 11 pengguna; pola temporalnya saja yang dipakai di atas
+**Not used in Phase 1 (recorded so it isn't repeated):**
+- mem0 as a LIBRARY (not installed): Puspa needs revision 7 three-valued
+  provenance + Proposals + version history — mem0's behaviour does not fit
+  directly; only its pattern was used.
+- Graphiti as a LIBRARY (needs Neo4j/FalkorDB): too heavy
+  for an 11-user MVP; only its temporal pattern was used on top of
   Postgres + pgvector.
-- Letta sebagai SERVER (tidak dipakai): hanya pola sleep-time
-  compute-nya.
-- supermemory / cognee / openmemory: dibaca di survei, tidak ada pola
-  yang diambil di Fase 1 (supermemory dicatat sebagai alternatif
-  kalau mem0 terasa berat — tidak terjadi).
-- Zep Community Edition: sudah tidak dikembangkan sejak 2025 (catatan
-  survei) — tidak dipakai.
+- Letta as a SERVER (not used): only its sleep-time
+  compute pattern.
+- supermemory / cognee / openmemory: read in the survey, no pattern
+  taken in Phase 1 (supermemory recorded as an alternative
+  if mem0 felt heavy — it didn't happen).
+- Zep Community Edition: no longer developed since 2025 (survey
+  note) — not used.
 
-## Fase 3 (Wedge ganda + Moat)
+## Phase 3 (Dual wedge + Moat)
 
-Satu dependensi baru: `playwright==1.65.2` (MIT) — browser read-only
-§2.8 (paket terinstal; unduhan browser Chromium revisi 1255 gagal
-berulang dari CDN Playwright saat build — lihat STATUS_FASE3.md).
-Yang diadaptasi hanya POLA (ditulis ulang, bukan disalin):
+One new dependency: `playwright==1.65.2` (MIT) — read-only browser
+§2.8 (package installed; the Chromium browser revision 1255 download
+failed repeatedly from the Playwright CDN during the build — see docs/status-phase-3.md).
+Only PATTERNS were adapted (rewritten, not copied):
 
-| Ide besar | Dari repo apa (lisensi) | Apa yang diadaptasi | Apa yang ditulis ulang dari nol |
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
 | --- | --- | --- | --- |
-| Graf embedded: node + edge sebagai baris relasional, tanpa server graf terpisah | LadybugDB/ladybug (MIT) — fork hidup Kuzu | Gagasan graf embedded di dalam proses/host sendiri (node = produk kanonik, edge = tautan listing) | `puspa/graphs/identity.py`: skema Postgres (§7: produk_kanonik + tautan_listing + harga_seri), pencocokan bertingkat kunci model deterministik, status tautan revisi 7 (`otomatis`/`dikonfirmasi_user`/`ditolak_user`) |
-| Mesin yang menyimpan langkah kerja sebagai data yang bisa dipakai ulang | infiniflow/ragflow (Apache-2.0) | Gagasan langkah kerja sebagai data (bukan kode yang ditulis ulang tiap kali) + pemakaian ulang lintas agen | `puspa/graphs/service.py`: prosedur layanan sebagai templat berparameter tanpa data pribadi, siklus percobaan→terverifikasi→rusak, canary harian, versi + rollback — sebagai komponen MOAT, bukan produk dokumen (topik dokumen dilarang untuk ide baru; RAGFlow dipakai sebagai komponen memori/moat) |
-| Browser read-only untuk membaca halaman (bukan klik/isi form) | Playwright (MIT) | Gagasan browser otomatis sebagai pembaca read-only | `puspa/pricing/readers.py`: `PlaywrightReader` (fail-closed bila browser tidak tersedia) + `HttpReader` (httpx, parser generik JSON-LD/meta) — tanpa menyalin selector milik siapa pun |
+| Embedded graph: nodes + edges as relational rows, no separate graph server | LadybugDB/ladybug (MIT) — a living Kuzu fork | The idea of a graph embedded inside its own process/host (node = canonical product, edge = listing link) | `puspa/graphs/identity.py`: Postgres schema (§7: canonical_products + listing_links + price_series), tiered deterministic model-key matching, revision 7 link statuses (`automatic`/`user_confirmed`/`user_rejected`) |
+| An engine that stores work steps as reusable data | infiniflow/ragflow (Apache-2.0) | The idea of work steps as data (not code rewritten each time) + reuse across agents | `puspa/graphs/service.py`: service procedures as parameterised templates without personal data, the trial→verified→broken cycle, daily canary, versions + rollback — as a MOAT component, not a document product (documents are a banned topic for new ideas; RAGFlow is used as a memory/moat component) |
+| Read-only browser for reading pages (not clicking/filling forms) | Playwright (MIT) | The idea of an automated browser as a read-only reader | `puspa/pricing/readers.py`: `PlaywrightReader` (fail-closed if the browser is unavailable) + `HttpReader` (httpx, generic JSON-LD/meta parser) — without copying anyone's selectors |
 
-**Tidak dipakai di Fase 3 (dicatat supaya tidak diulang):**
-- LadybugDB sebagai LIBRARY (tidak diinstal): graf Puspa jalan di
-  atas Postgres + pgvector (§7) — polanya saja yang dipakai.
-- RAGFlow sebagai LIBRARY (tidak diinstal): terlalu berat untuk MVP
-  11 pengguna; pola penyimpanan langkah sebagai data saja yang
-  dipakai di atas Postgres + Buku Kerja.
-- Langflow (builder visual alur) → UX builder alur/modul adalah
-  FASE 4, bukan Fase 3 — tidak dibangun di sini.
-- Pipecat / LiveKit (voice) → modul Suara TIDAK ada di definisi
-  revisi 7; dicatat sebagai pasca-MVP, tidak dibangun.
-- LangGraph → TIDAK dipakai dan TIDAK diklaim di mana pun di Fase 3
-  (koreksi: kalimat survei "Puspa sudah memakai LangGraph untuk
-  orkestrasi" itu salah — nol import LangGraph di kode; orkestrasi =
-  AgentLoop nanobot + siklus tugas Puspa sendiri).
-- Shopee Open Platform / API resmi marketplace → JALUR RESMI yang
-  sesuai syarat layanan, tapi butuh akun partner + persetujuan —
-  bukan bagian MVP; menunggu keputusan Nero (keputusan 15).
+**Not used in Phase 3 (recorded so it isn't repeated):**
+- LadybugDB as a LIBRARY (not installed): Puspa's graph runs on
+  Postgres + pgvector (§7) — only its pattern was used.
+- RAGFlow as a LIBRARY (not installed): too heavy for an
+  11-user MVP; only its pattern of storing steps as data was
+  used on top of Postgres + the ledger.
+- Langflow (visual workflow builder) → the workflow/module builder UX is
+  PHASE 4, not Phase 3 — not built here.
+- Pipecat / LiveKit (voice) → the Voice module is NOT in the
+  revision 7 definition; recorded as post-MVP, not built.
+- LangGraph → NOT used and NOT claimed anywhere in Phase 3
+  (correction: the survey sentence "Puspa already uses LangGraph for
+  orchestration" is wrong — zero LangGraph imports in the code; orchestration =
+  nanobot's AgentLoop + Puspa's own task cycle).
+- Shopee Open Platform / official marketplace APIs → the OFFICIAL route
+  that complies with the terms of service, but it needs a partner account + approval —
+  not part of the MVP; awaiting Nero's decision (decision 15).
 
-## Fase 4 (Alur + Modul kustom)
+## Phase 4 (Custom workflows + modules)
 
-Tidak ada dependensi baru (semua dari venv Fase 0/2/3). Yang diadaptasi
-hanya POLA (ditulis ulang, bukan disalin):
+No new dependencies (all from the Phase 0/2/3 venvs). Only PATTERNS were
+adapted (rewritten, not copied):
 
-| Ide besar | Dari repo apa (lisensi) | Apa yang diadaptasi | Apa yang ditulis ulang dari nol |
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
 | --- | --- | --- | --- |
-| Builder visual: kanvas node → flow → API; flow sebagai JSON yang bisa dieksekusi | langflow-ai/langflow (MIT, 156.719 bintang) | Gagasan flow sebagai data deklaratif + penyusun dari blok + pratinjau sebelum aktif | `puspa/workflow/composer.py` (penyusun chat deterministik — hanya blok pustaka, bukan model), `puspa/workflow/blocks.py` (15 blok bersertifikat + batas MVP), `puspa/workflow/panel.py` (kartu langkah di panel Alur, BUKAN klon UI Langflow), `puspa/workflow/manifest.py` (manifes izin turunan + cek himpunan bagian), `puspa/modules/manifest.py` (gerbang manifes 5 lapis) — keamanan yang Langflow tidak punya (approval gate, token izin, uji kering) |
-| Otomasi berbasis pemicu (jadwal / ambang / jatuh tempo) | Home Assistant (Apache-2.0) | Gagasan otomasi berbasis pemicu terjadwal + aksi yang menunggu persetujuan | `puspa/workflow/triggers.py` (4 pemicu MVP; email/webhook ditolak) + `puspa/workflow/runner.py:tick_alur` (pemicu jadwal Fase 2 → jalan alur, pemicu terlewat dijalankan sekali + dilaporkan) |
-| Pola persetujuan + kedaluwarsa aksi terjadwal | agno-agi/agno — AgentOS (Apache-2.0, pola sudah dipakai Fase 2) | Gagasan antrean persetujuan sebagai gerbang sebelum aksi keluar | `puspa/workflow/approvals.py`: persetujuan terikat isi (hash) + kedaluwarsa 24 jam lalu DIBATALKAN (bukan dieksekusi terlambat) — aturan khusus §2.12, bukan bawaan agno |
+| Visual builder: node canvas → flow → API; flow as executable JSON | langflow-ai/langflow (MIT, 156,719 stars) | The idea of flow as declarative data + a composer built from blocks + preview before activation | `puspa/workflow/composer.py` (deterministic chat composer — library blocks only, not the model), `puspa/workflow/blocks.py` (15 certified blocks + MVP limits), `puspa/workflow/panel.py` (step cards in the Workflow panel, NOT a Langflow UI clone), `puspa/workflow/manifest.py` (derived permission manifest + subset check), `puspa/modules/manifest.py` (5-layer manifest gate) — security Langflow doesn't have (approval gate, permission token, dry run) |
+| Trigger-based automation (schedule / threshold / due date) | Home Assistant (Apache-2.0) | The idea of scheduled trigger-based automation + actions that wait for approval | `puspa/workflow/triggers.py` (4 MVP triggers; email/webhook rejected) + `puspa/workflow/runner.py:tick_workflow` (Phase 2 schedule trigger → workflow run; a missed trigger runs once + is reported) |
+| Approval + scheduled-action expiry pattern | agno-agi/agno — AgentOS (Apache-2.0, pattern already used in Phase 2) | The idea of an approval queue as a gate before outbound actions | `puspa/workflow/approvals.py`: content-bound approval (hash) + expiry after 24 hours then CANCELLED (not executed late) — a special §2.12 rule, not an agno default |
 
-**Tidak dipakai di Fase 4 (dicatat supaya tidak diulang):**
-- Langflow sebagai LIBRARY (tidak diinstal): builder Puspa butuh
-  blok bersertifikat + manifes izin turunan + approval gate —
-  perilaku Langflow (builder untuk developer, tanpa approval gate)
-  tidak cocok langsung; polanya saja yang dipakai.
-- n8n (Sustainable Use License — fair code, BUKAN OSI, masuk daftar
-  jebakan survei): TIDAK dipakai, polanya pun tidak diadaptasi.
-- Flowise (diarsipkan 13 Agustus 2026, end of life 31 Agustus 2026):
-  TIDAK dipakai — sudah mati; pelajarannya (jangan bergantung pada
-  satu vendor builder) yang dipakai: manifes Puspa format sendiri.
-- Pipecat / LiveKit (voice) → pasca-MVP, sengaja tidak dibangun.
-- LangGraph → TIDAK dipakai dan TIDAK diklaim di mana pun di Fase 4
-  (nol import LangGraph di kode; orkestrasi = siklus tugas Puspa +
-  runner alur sendiri).
+**Not used in Phase 4 (recorded so it isn't repeated):**
+- Langflow as a LIBRARY (not installed): Puspa's builder needs
+  certified blocks + a derived permission manifest + an approval gate —
+  Langflow's behaviour (a builder for developers, no approval gate)
+  does not fit directly; only its pattern was used.
+- n8n (Sustainable Use License — fair code, NOT OSI, on the
+  survey's trap list): NOT used, its pattern not adapted either.
+- Flowise (archived 13 August 2026, end of life 31 August 2026):
+  NOT used — already dead; the lesson (don't depend on a
+  single builder vendor) is what was used: Puspa's manifest is its own format.
+- Pipecat / LiveKit (voice) → post-MVP, deliberately not built.
+- LangGraph → NOT used and NOT claimed anywhere in Phase 4
+  (zero LangGraph imports in the code; orchestration = Puspa's task cycle +
+  its own workflow runner).
 
-## Glosarium istilah baru Fase 4 (bukan dari revisi 7)
+## Glossary of new Phase 4 terms (not from revision 7)
 
-- `eksekutor_fixture` — NAMA TEKNIS internal (eksekutor data uji:
-  cek tagihan dari DATA_UJI Fase 3, harga live ditahan gerbang ToS).
-  Istilah teknis standar ("fixture", "executor") — bukan istilah
-  domain baru.
-- `tick_alur` — NAMA TEKNIS internal (satu putaran penjadwal untuk
-  alur, §2.14). "Tick" istilah teknis standar.
-- `jalan_alur` — tabel jalan alur (§2.12: "tiap jalan alur adalah
-  tugas biasa"). Nama tabel teknis, bukan istilah domain.
-- `persetujuan_alur` — tabel antrean persetujuan alur (§2.12:
-  "aksi keluar masuk antrean persetujuan"). Nama tabel teknis.
-- `manifes_izin` — dari revisi 7 §2.12 ("manifes izin turunan").
-- Tidak ada istilah domain baru yang diperkenalkan ke definisi.
+- `executor_fixture` — internal TECHNICAL name (test-data executor:
+  bill checks from Phase 3 TEST_DATA, live prices held by the ToS gate).
+  Standard technical terms ("fixture", "executor") — not a new domain term.
+- `tick_workflow` — internal TECHNICAL name (one scheduler round for
+  workflows, §2.14). "Tick" is a standard technical term.
+- `workflow_runs` — the workflow-runs table (§2.12: "each workflow run is
+  an ordinary task"). A technical table name, not a domain term.
+- `workflow_approvals` — the workflow approval-queue table (§2.12:
+  "outbound actions enter the approval queue"). A technical table name.
+- `permission_manifest` — from revision 7 §2.12 ("derived permission manifest").
+- No new domain terms were introduced into the definition.
 
-## Glosarium istilah baru Fase 3 (bukan dari revisi 7)
+## Glossary of new Phase 3 terms (not from revision 7)
 
-- `SitusUji` — NAMA TEKNIS internal (situs uji lokal tagihan,
-  `puspa/billing/fixture.py`). Istilah teknis standar ("fixture") —
-  bukan istilah domain baru.
-- `baca_ulang` — callable Pemeriksa (§2.5: "membaca ulang sumber").
-  Nama teknis, bukan istilah domain.
-- `pola:<nama>` — layanan prosedur untuk pola sub-agen (§3.3:
-  "Pola sub-agen juga disimpan di sini"). Awalan teknis untuk
-  membedakan pola dari prosedur layanan; bukan istilah domain baru.
-- Tidak ada istilah domain baru yang diperkenalkan ke definisi.
+- `SitusTest` — internal TECHNICAL name (local bill test site,
+  `puspa/billing/fixture.py`). A standard technical term ("fixture") —
+  not a new domain term.
+- `reread` — the Verifier callable (§2.5: "rereading the source").
+  A technical name, not a domain term.
+- `pola:<name>` — service procedures for subagent patterns (§3.3:
+  "Subagent patterns are also stored here"). A technical prefix for
+  telling patterns apart from service procedures; not a new domain term.
+- No new domain terms were introduced into the definition.
 
-## Fase 2 (Runtime tim + PWA + Konektor + Penjadwal)
+## Phase 2 (Team runtime + PWA + Connectors + Scheduler)
 
-Satu dependensi baru: `fastapi==0.163.1` (MIT) — PWA. Yang
-diadaptasi hanya POLA (ditulis ulang, bukan disalin):
+One new dependency: `fastapi==0.163.1` (MIT) — PWA. Only
+PATTERNS were adapted (rewritten, not copied):
 
-| Ide besar | Dari repo apa (lisensi) | Apa yang diadaptasi | Apa yang ditulis ulang dari nol |
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
 | --- | --- | --- | --- |
-| Router model bertingkat (pilih provider/model per peran, BYO key, fallback) | LiteLLM / BerriAI/litellm (MIT) | Gagasan router + fallback antar provider + harga per model sebagai konfigurasi | `puspa/router/router.py`: peran revisi 7 (perencana/penyaji/pembaca/pencari/pemeriksa/vision), aturan keluarga berbeda untuk Pemeriksa, tarif Rp/1.000 token; dibangun DI ATAS factory BYOK Fase 0 (`demo/byok_provider.py`), bukan client baru |
-| Eksekusi durable, approval, scheduling, observability | agno-agi/agno — AgentOS (Apache-2.0) | Gagasan tugas sebagai unit durable yang bisa dilanjutkan dari log + antrean persetujuan + penjadwal sebagai pemicu tugas | `puspa/runtime/tasks.py` (siklus 5 tahap, antrean SKIP LOCKED), `puspa/scheduler/scheduler.py` (pemicu + idempotensi + terlewat), proyeksi `puspa/evidence/projections.py` |
-| Pengerasan sandbox (fail-closed, allowlist jaringan) | OpenHands (MIT) | Gagasan sandbox yang berhenti bila tidak tersedia + allowlist domain | Dipakai ulang Fase 0 (`puspa/sandbox/allowlist.py`); Fase 2 menegakkannya di konektor (baca konten hanya lewat `QuarantinedReader` + domain allowlist) — tidak ada kode sandbox baru |
-| UX agen: chat + daftar tugas + antrean approval | opencode (MIT) | Gagasan layar chat/task/approval sebagai satu alur kerja agen | `puspa/pwa/app.py` + `apps/pwa/templates/` (7 layar revisi 7, SSE dari proyeksi Buku Kerja, bukan WebSocket) |
-| Konektor + otomasi terjadwal (integrasi sebagai data, bukan kode) | Home Assistant (Apache-2.0) | Gagasan konektor per entitas dengan scope minimal + otomasi berbasis pemicu terjadwal | `puspa/connectors/google.py` (Gmail/Drive/Calendar di atas OAuth Fase 1) + `puspa/connectors/grants.py` (pemberian per agen) + `puspa/scheduler/` |
-| Pola cloud: RLS + auth + realtime | Supabase (Apache-2.0) | Gagasan isolasi baris per pengguna + langganan perubahan | RLS Fase 2 (`infra/schema_fase2.sql`, kebijakan `current_setting('app.current_user_id')`) + SSE (`/sse`) sebagai ganti realtime — Supabase sebagai LIBRARY tidak dipakai |
+| Tiered model router (pick provider/model per role, BYO key, fallback) | LiteLLM / BerriAI/litellm (MIT) | The idea of a router + fallback across providers + per-model price as configuration | `puspa/router/router.py`: revision 7 roles (planner/presenter/reader/searcher/verifier/vision), a different-family rule for the Verifier, Rp/1,000-token rates; built ON TOP of the Phase 0 BYOK factory (`demo/byok_provider.py`), not a new client |
+| Durable execution, approval, scheduling, observability | agno-agi/agno — AgentOS (Apache-2.0) | The idea of a task as a durable unit resumable from the log + an approval queue + the scheduler as a task trigger | `puspa/runtime/tasks.py` (5-stage cycle, SKIP LOCKED queue), `puspa/scheduler/scheduler.py` (triggers + idempotency + missed), projections in `puspa/evidence/projections.py` |
+| Sandbox hardening (fail-closed, network allowlist) | OpenHands (MIT) | The idea of a sandbox that stops when unavailable + a domain allowlist | Phase 0 reused (`puspa/sandbox/allowlist.py`); Phase 2 enforces it in connectors (content read only via `QuarantinedReader` + domain allowlist) — no new sandbox code |
+| Agent UX: chat + task list + approval queue | opencode (MIT) | The idea of chat/task/approval screens as one agent workflow | `puspa/pwa/app.py` + `apps/pwa/templates/` (7 revision 7 screens, SSE from ledger projections, not WebSocket) |
+| Connectors + scheduled automation (integrations as data, not code) | Home Assistant (Apache-2.0) | The idea of per-entity connectors with minimal scope + scheduled trigger-based automation | `puspa/connectors/google.py` (Gmail/Drive/Calendar on top of Phase 1 OAuth) + `puspa/connectors/grants.py` (per-agent grants) + `puspa/scheduler/` |
+| Cloud pattern: RLS + auth + realtime | Supabase (Apache-2.0) | The idea of per-user row isolation + change subscriptions | Phase 2 RLS (`infra/schema_runtime.sql`, `current_setting('app.current_user_id')` policies) + SSE (`/sse`) instead of realtime — Supabase as a LIBRARY is not used |
 
-**Tidak dipakai di Fase 2 (dicatat supaya tidak diulang):**
-- LiteLLM sebagai LIBRARY (tidak diinstal): router Puspa butuh
-  peran revisi 7 + aturan keluarga Pemeriksa + tarif Rupiah —
-  perilaku LiteLLM tidak cocok langsung; polanya saja yang dipakai.
-- agno/AgentOS sebagai LIBRARY (tidak diinstal): terlalu berat
-  untuk MVP 11 pengguna; pola durable + approval + scheduling-nya
-  saja yang dipakai di atas Postgres + Buku Kerja.
-- Langflow (builder visual alur) → UX builder alur/modul adalah
-  FASE 4, bukan Fase 2 — tidak dibangun di sini.
-- Pipecat / LiveKit (voice) → modul Suara TIDAK ada di definisi
-  revisi 7; dicatat sebagai pasca-MVP, tidak dibangun.
-- Supabase sebagai LIBRARY (tidak dipakai): hanya polanya
+**Not used in Phase 2 (recorded so it isn't repeated):**
+- LiteLLM as a LIBRARY (not installed): Puspa's router needs
+  revision 7 roles + the Verifier family rule + Rupiah rates —
+  LiteLLM's behaviour does not fit directly; only its pattern was used.
+- agno/AgentOS as a LIBRARY (not installed): too heavy
+  for an 11-user MVP; only its durable + approval + scheduling patterns
+  were used on top of Postgres + the ledger.
+- Langflow (visual workflow builder) → the workflow/module builder UX is
+  PHASE 4, not Phase 2 — not built here.
+- Pipecat / LiveKit (voice) → the Voice module is NOT in the
+  revision 7 definition; recorded as post-MVP, not built.
+- Supabase as a LIBRARY (not used): only its pattern
   (RLS + SSE).
-- OpenHands sebagai LIBRARY (tidak dipakai): hanya pola
-  pengerasan sandbox-nya; sandbox Fase 0 dipakai ulang.
+- OpenHands as a LIBRARY (not used): only its
+  sandbox-hardening pattern; the Phase 0 sandbox is reused.
 
-## Glosarium istilah baru Fase 2 (bukan dari revisi 7)
+## Glossary of new Phase 2 terms (not from revision 7)
 
-- `Pemicu` / `pemicu_jalan` — dari revisi 7 §2.14 (tabel pemicu +
-  kunci idempotensi). Nama tabel teknis, bukan istilah domain.
-- `CassettePlayer` — NAMA TEKNIS internal (pemutar kaset, §2.11).
-  Istilah teknis standar ("cassette" = kaset uji) — bukan istilah
-  domain baru.
-- `BudgetTracker` — NAMA TEKNIS internal (pelacak anggaran §2.4).
-- `SubagentPool` — NAMA TEKNIS internal (kolam sub-agen §2.2).
-- `EvidenceRecord` — NAMA TEKNIS internal (rekaman bukti §2.5).
-- Tidak ada istilah domain baru yang diperkenalkan ke definisi.
+- `triggers` / `trigger_runs` — from revision 7 §2.14 (trigger table +
+  idempotency key). Technical table names, not domain terms.
+- `CassettePlayer` — internal TECHNICAL name (cassette player, §2.11).
+  Standard technical terms ("cassette" = test cassette) — not a
+  new domain term.
+- `BudgetTracker` — internal TECHNICAL name (budget tracker §2.4).
+- `SubagentPool` — internal TECHNICAL name (subagent pool §2.2).
+- `EvidenceRecord` — internal TECHNICAL name (evidence record §2.5).
+- No new domain terms were introduced into the definition.
 
-## Glosarium istilah baru Fase 1 (bukan dari revisi 7)
+## Glossary of new Phase 1 terms (not from revision 7)
 
-Sesuai perintah Nero 21:53 WIB: jangan buat istilah baru yang tidak
-ada di revisi 7 dan bukan istilah teknis standar; kalau butuh, catat
-di sini.
+Per Nero's order 21:53 WIB: don't create new terms that aren't in
+revision 7 and aren't standard technical terms; if one is needed, record
+it here.
 
-- `HashEmbedding` — NAMA TEKNIS internal (bukan istilah domain):
-  embedding deterministik dari hash token. Istilah teknis standar
-  ("hash", "embedding") — bukan istilah domain baru.
-- `StubNotifier` — NAMA TEKNIS internal: pemberi notif pengganti
-  sampai Web Push Fase 2 ada. Bukan istilah domain.
-- `Usulan` — dari revisi 7 §2.7 (fakta disimpulkan "muncul di Usulan").
-- `contoh_gaya` — tabel untuk contoh pesan persona (§2.16: "tempel
-  10 sampai 20 pesan contoh"). Nama tabel teknis, bukan istilah domain.
-- `pemberian_irisan` — tabel audit pemberian irisan (§2.7: "pemberian
-  irisan dicatat di Buku Kerja"). Nama tabel teknis.
-- `ringkasan` — hasil konsolidasi (§2.7: "job meringkas episodik
-  lama"). Kata umum Indonesia.
-- Tidak ada istilah domain baru yang diperkenalkan ke definisi.
+- `HashEmbedding` — internal TECHNICAL name (not a domain term):
+  deterministic embedding from token hashes. Standard technical terms
+  ("hash", "embedding") — not a new domain term.
+- `StubNotifier` — internal TECHNICAL name: a stand-in notifier
+  until Web Push arrives in Phase 2. Not a domain term.
+- `Proposals` — from revision 7 §2.7 (inferred facts "appear in Proposals").
+- `style_examples` — table for persona message examples (§2.16: "attach
+  10 to 20 example messages"). A technical table name, not a domain term.
+- `slice_grants` — audit table for slice grants (§2.7: "slice
+  grants are recorded in the ledger"). A technical table name.
+- `summaries` — consolidation output (§2.7: "job summarising old
+  episodic [memory]"). A common word.
+- No new domain terms were introduced into the definition.

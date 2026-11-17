@@ -1,36 +1,36 @@
-# KONTRAK BERSAMA — Fase 0 MVP Puspa
+# SHARED CONTRACT — Puspa MVP Phase 0
 
-Sumber kebenaran: `~/workspace/match-hunt/definisi-mvp-puspa-2026-11-17-revisi-7.md` (revisi 7, disetujui Nero 17 Nov 2026 ~17:42 WIB). Dokumen ini adalah kontrak antar-subagen agar antarmuka tidak melenceng. Kalau kontrak bertentangan dengan definisi, definisi yang menang; catat selisihnya di STATUS.md.
+Source of truth: `~/workspace/match-hunt/definisi-mvp-puspa-2026-11-17-revisi-7.md` (revision 7, approved by Nero 17 Nov 2026 ~17:42 WIB). This document is the contract between subagents so interfaces don't drift. If the contract conflicts with the definition, the definition wins; record the difference in docs/status-phase-0.md.
 
-## Lokasi dan tooling
+## Locations and tooling
 
-- Root build: `~/workspace/goals/hard-ai-engineering-portfolio-project/build/fase-0/`
-- Venv: `build/fase-0/.venv` (Python 3.12.3). Dependensi di `requirements.txt`: `psycopg[binary]`, `argon2-cffi`, `cryptography`, `pytest` + dependensi deklarasi nanobot (pydantic, pydantic-settings, loguru, pyyaml, json_repair, tiktoken, jinja2, regex, jsonschema, filelock, httpx, tzlocal, dsb) + nanobot sendiri sebagai dependency git pin (`nanobot-ai @ git+https://github.com/HKUDS/nanobot@e767174`, nama paket PyPI `nanobot-ai`, import tetap `nanobot`). Clone lokal `./nanobot` hanya referensi baca + fallback `sys.path` di `tests/conftest.py` kalau direktorinya memang ada.
-- Jalankan tes dari `build/fase-0` dengan `.venv/bin/python -m pytest tests -q`.
-- `nanobot/` adalah hasil clone, JANGAN diubah (NOL baris kode nanobot diubah di Fase 0). Remote: `origin` SUDAH DICABUT (fork mirzasnowy/nanobot diabaikan, jangan dipakai); yang tersisa `upstream` = https://github.com/HKUDS/nanobot sebagai referensi baca. Repo Puspa adalah repo STANDALONE **mirzasnowy/puspa-ai** (bukan fork, bukan org); org puspa-ai DITUNDA. Aturan tanpa-fork Nero berlaku untuk semua kode reuse (lihat STATUS.md).
-- JANGAN menyimpan secret, token, password, atau kunci di file, log, atau chat. Kunci dibuat saat runtime/tes. Master key vault hanya dari env `PUSPA_VAULT_MASTER_KEY`.
+- Build root: the repo root (previously `~/workspace/goals/hard-ai-engineering-portfolio-project/build/fase-0/`).
+- Venv: `.venv` at the repo root (Python 3.12.3). Dependencies in `requirements.txt`: `psycopg[binary]`, `argon2-cffi`, `cryptography`, `pytest` + nanobot's declared dependencies (pydantic, pydantic-settings, loguru, pyyaml, json_repair, tiktoken, jinja2, regex, jsonschema, filelock, httpx, tzlocal, etc.) + nanobot itself as a git-pinned dependency (`nanobot-ai @ git+https://github.com/HKUDS/nanobot@e767174`, PyPI package name `nanobot-ai`, import still `nanobot`). The local clone `./nanobot` is read-only reference + `sys.path` fallback in `tests/conftest.py` if the directory actually exists.
+- Run the tests from the repo root with `.venv/bin/python -m pytest tests -q`.
+- `nanobot/` is a clone result, DO NOT modify it (ZERO lines of nanobot code changed in Phase 0). Remote: `origin` has been REMOVED (the mirzasnowy/nanobot fork is ignored, do not use it); what remains is `upstream` = https://github.com/HKUDS/nanobot as read-only reference. The Puspa repo is the STANDALONE repo **mirzasnowy/puspa-ai** (not a fork, not an org); the puspa-ai org is POSTPONED. Nero's no-fork rule applies to all reused code (see docs/status-phase-0.md).
+- NEVER store secrets, tokens, passwords, or keys in files, logs, or chat. Keys are created at runtime / in tests. The vault master key comes only from env `PUSPA_VAULT_MASTER_KEY`.
 
-## Layout paket
+## Package layout
 
 ```
-build/fase-0/
-  nanobot/            # clone HKUDS/nanobot, jangan diubah
+repo root/
+  nanobot/            # HKUDS/nanobot clone, do not modify
   puspa/
     __init__.py
-    ledger/           # Buku Kerja (2.3)
+    ledger/           # Ledger (2.3)
       __init__.py  schema.sql  ledger.py  errors.py
-    policy/           # Token izin, skill, gerbang, belanja (2.6)
-      __init__.py  tokens.py  skills.py  gate.py  spending.py
-    accounts/         # Akun dasar (2.13) + RLS (2.15) + akses lintas pengguna (2.6)
-      __init__.py  users.py  sessions.py  vault.py  rls.py  access.py
-      schema.sql  schema_agen.sql
-    quarantine/       # Pembaca terkarantina + injection (2.6)
+    policy/           # Permission tokens, skills, gate, spending (2.6)
+      __init__.py  tokens.py  skill_signing.py  gate.py  spending.py
+    accounts/         # Basic accounts (2.13) + RLS (2.15) + cross-user access (2.6)
+      __init__.py  users.py  user_sessions.py  vault.py  rls.py  access.py
+      schema.sql  schema_agent.sql
+    quarantine/       # Quarantined reader + injection (2.6)
       __init__.py  reader.py  injection.py
-    sandbox/          # Sandbox fail-closed (2.6)
+    sandbox/          # Fail-closed sandbox (2.6)
       __init__.py  runner.py  allowlist.py
-    chassis/          # Integrasi dengan nanobot sebagai chassis (2.6)
+    chassis/          # Integration with nanobot as chassis (2.6)
       __init__.py  context.py  tools.py  registry.py  hooks.py
-      skills.py  session.py  sandbox_tool.py  factory.py
+      skill_loader.py  agent_session.py  sandbox_tool.py  factory.py
   tests/
     conftest.py  test_ledger.py  test_ledger_event_types.py  test_policy.py
     test_gate.py  test_accounts.py  test_quarantine.py  test_sandbox.py
@@ -41,113 +41,114 @@ build/fase-0/
     mock_provider_server.py  MATRIKS_BYOK.md  LAPORAN_DEMO.md  NOTES.md
     mock_logs/  data/
   infra/
-    setup_db.sql
-  requirements.txt  pytest.ini  README.md  CONTRACTS.md  STATUS.md
-  NOTICE.md  nanobot-INVENTORY.md
+    schema_core.sql
+  requirements.txt  pytest.ini  README.md
+  docs/contracts.md  docs/status-phase-0.md
+  NOTICE.md  docs/nanobot-inventory.md
 ```
 
 ## Database (Postgres)
 
-- Server Postgres lokal. Test DB `puspa_test`. DSN dari env `PUSPA_TEST_DSN`, default `dbname=puspa_test user=root host=/var/run/postgresql` (peer auth, tanpa password).
-- Peran `root` dibuat dengan LOGIN; DB `puspa_test` milik `root`.
-- Semua tabel aplikasi punya kolom `user_id`, kecuali `pengguna` (PK-nya
-  `id`, tanpa kolom `user_id`) dan `kejadian` (memakai `agen_id` +
-  `tugas_id`; isolasi pengguna di `kejadian` lewat `agen_id` yang terikat
-  ke `user_id` pemilik agen — catat pemetaan ini di ledger.py).
+- Local Postgres server. Test DB `puspa_test`. DSN from env `PUSPA_TEST_DSN`, default `dbname=puspa_test user=root host=/var/run/postgresql` (peer auth, no password).
+- Role `root` created with LOGIN; DB `puspa_test` owned by `root`.
+- Every application table has a `user_id` column, except `users` (its PK is
+  `id`, with no `user_id` column) and `events` (which uses `agent_id` +
+  `task_id`; user isolation in `events` goes through `agent_id`, which is
+  bound to the owning agent's `user_id` — record this mapping in ledger.py).
 
-## Buku Kerja — `puspa/ledger` (definisi 2.3)
+## Ledger — `puspa/ledger` (definition 2.3)
 
-- Tabel `kejadian`, append-only. Kolom: `id UUID PK DEFAULT gen_random_uuid()`, `waktu TIMESTAMPTZ NOT NULL DEFAULT now()`, `tugas_id TEXT NOT NULL`, `agen_id TEXT NOT NULL`, `sub_agen_id TEXT`, `jenis TEXT NOT NULL CHECK (jenis IN (...31 jenis...))`, `isi JSONB NOT NULL DEFAULT '{}'`, `id_induk UUID REFERENCES kejadian(id)`, `hash_sebelumnya TEXT NOT NULL`, `hash TEXT NOT NULL UNIQUE`. Index: `(tugas_id, id)`, `jenis`, `waktu`.
-- Himpunan jenis tertutup (31, revisi 7: 22 lama + 9 baru): tugas_dibuat, rencana_dibuat, subagen_dibuat, handoff_diajukan, handoff_diterima, handoff_diserahkan, handoff_ditolak, handoff_kedaluwarsa, detak, tool_dipanggil, tool_selesai, bukti_dicatat, pemeriksaan_selesai, persetujuan_diminta, persetujuan_diberikan, persetujuan_ditolak, pesan_user, pesan_agen, anggaran_habis, tugas_selesai, tugas_gagal, tugas_dihentikan, alur_diajukan, alur_diaktifkan, alur_dijeda, pemicu_terpicu, pemicu_terlewat, modul_diajukan, modul_diaktifkan, laporan_salah, persetujuan_data.
-- Migrasi CHECK jenis (idempotent, di `puspa/ledger/schema.sql`): `CREATE TABLE IF NOT EXISTS` tidak mengubah constraint tabel yang sudah ada (mis. dibuat saat himpunan masih 22 jenis), jadi blok migrasi di akhir skema men-DROP constraint lama lalu ADD constraint baru dengan daftar 31 jenis revisi 7, dengan nama constraint yang sama (`kejadian_jenis_check`).
-- Izin DB: peran aplikasi hanya INSERT + SELECT pada `kejadian`. Tanpa UPDATE/DELETE (REVOKE).
+- Table `events`, append-only. Columns: `id UUID PK DEFAULT gen_random_uuid()`, `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`, `task_id TEXT NOT NULL`, `agent_id TEXT NOT NULL`, `subagent_id TEXT`, `type TEXT NOT NULL CHECK (type IN (...31 types...))`, `content JSONB NOT NULL DEFAULT '{}'`, `parent_id UUID REFERENCES events(id)`, `previous_hash TEXT NOT NULL`, `hash TEXT NOT NULL UNIQUE`. Indexes: `(task_id, id)`, `type`, `created_at`.
+- Closed type set (31, revision 7: 22 old + 9 new): task_created, plan_created, subagent_created, handoff_proposed, handoff_accepted, handoff_handed_over, handoff_rejected, handoff_expired, heartbeat, tool_called, tool_completed, evidence_recorded, verification_completed, approval_requested, approval_granted, approval_rejected, user_message, agent_message, budget_exhausted, task_completed, task_failed, task_stopped, workflow_proposed, workflow_activated, workflow_paused, trigger_fired, trigger_missed, module_proposed, module_activated, false_report, data_consent.
+- Type CHECK migration (idempotent, in `puspa/ledger/schema.sql`): `CREATE TABLE IF NOT EXISTS` does not change the constraint of a table that already exists (e.g. one created when the set still had 22 types), so the migration block at the end of the schema DROPs the old constraint and ADDs a new constraint with the revision 7 list of 31 types, under the same constraint name (`event_jenis_check`).
+- DB permissions: the application role has only INSERT + SELECT on `events`. No UPDATE/DELETE (REVOKE).
 - API:
-  - `Ledger(dsn)`; `create_schema()` — menjalankan `schema.sql` (CREATE TABLE IF NOT EXISTS + REVOKE).
-  - `append_event(*, tugas_id, agen_id, sub_agen_id=None, jenis, isi: dict, id_induk=None) -> dict` — validasi `jenis`; `hash_sebelumnya` = hash kejadian sebelumnya dalam `tugas_id` yang sama (urut `(waktu, id)`), atau string `"GENESIS"` untuk kejadian pertama; `hash = sha256(canonical_json({tugas_id, agen_id, sub_agen_id, jenis, isi, id_induk, hash_sebelumnya, waktu_iso}))`; `waktu` dari DB (`now()`), dibaca kembali setelah insert.
-  - `verify_chain(tugas_id) -> (bool, list[str])` — hitung ulang hash tiap kejadian berurutan; kembalikan (True, []) atau (False, [id kejadian yang putus]).
-  - `events(tugas_id, jenis=None) -> list[dict]`.
-- Tombstone (keputusan yang dicatat): hapus tugas TIDAK memakai UPDATE. Hapus = append `tugas_dihentikan` dengan `isi={"dihapus": true, ...}`; proyeksi menyembunyikan tugas itu. Alasan: append-only adalah invarian yang lebih kuat daripada "isi diganti" di definisi 2.3; kalau Nero tidak setuju, ini pertanyaan untuknya (lihat STATUS.md).
-- Penyimpangan urutan rantai (keputusan 5 STATUS.md, perlu konfirmasi Nero): kontrak di atas menulis rantai diurutkan `id`, tapi `id` memakai `gen_random_uuid()` sehingga tidak terurut waktu sisip — implementasi mengurutkan penyisipan `(waktu, id)`. Alternatif: id UUIDv7.
+  - `Ledger(dsn)`; `create_schema()` — runs `schema.sql` (CREATE TABLE IF NOT EXISTS + REVOKE).
+  - `append_event(*, task_id, agent_id, subagent_id=None, event_type, content: dict, parent_id=None) -> dict` — validates `event_type`; `previous_hash` = hash of the previous event in the same `task_id` (ordered by `(created_at, id)`), or the string `"GENESIS"` for the first event; `hash = sha256(canonical_json({task_id, agent_id, subagent_id, event_type, content, parent_id, previous_hash, time_iso}))`; `created_at` comes from the DB (`now()`), read back after insert.
+  - `verify_chain(task_id) -> (bool, list[str])` — recompute the hash of each event in sequence; return (True, []) or (False, [ids of the events where the chain breaks]).
+  - `events(task_id, event_type=None) -> list[dict]`.
+- Tombstone (recorded decision): deleting a task does NOT use UPDATE. Delete = append `task_stopped` with `content={"deleted": true, ...}`; projections hide that task. Reason: append-only is a stronger invariant than "content replaced" in definition 2.3; if Nero disagrees, this is a question for him (see docs/status-phase-0.md).
+- Chain-ordering deviation (decision 5 in docs/status-phase-0.md, needs Nero's confirmation): the contract above writes the chain as ordered by `id`, but `id` uses `gen_random_uuid()` so it is not ordered by insertion time — the implementation orders insertions by `(created_at, id)`. Alternative: UUIDv7 ids.
 
-## Token izin — `puspa/policy/tokens.py` (definisi 2.6)
+## Permission tokens — `puspa/policy/tokens.py` (definition 2.6)
 
-- Ed25519 (`cryptography`). Token = `base64url(payload_json_kanonis).base64url(signature)`; signature atas bytes payload kanonis. Kunci dibuat saat runtime/tes, tidak disimpan di file.
-- Payload: `user_id, agen_id, sub_agen_id (null untuk token agen), tools: [str], domains: [str], konektor: {nama: [scope]}, anggaran: {langkah_max, token_max, rupiah_max}, exp (unix), iat (unix), parent (hash token induk atau null)`.
-- `issue_token(payload, signing_key) -> str`; `verify_token(token, public_key) -> dict` (raise `TokenError` kalau signature salah, `exp` lewat, atau field hilang).
-- `is_subset(child, parent) -> bool`: `tools` ⊆, `domains` ⊆, tiap scope konektor ⊆, tiap anggaran ≤, `exp` ≤, `user_id` sama, `agen_id` sama; `sub_agen_id` hanya boleh terisi kalau parent adalah token agen.
-- `issue_child(parent_token, requested_payload, signing_key, public_key) -> str` — verifikasi parent, cek subset, tandatangani anak. Gagal → `TokenError`, tidak ada token yang keluar.
-- `revoke(token_id)` / `is_revoked(token_id)` — set pencabutan in-memory (persistensi fase 2). `revoke_all_for_tugas(tugas_id)` untuk Hentikan.
+- Ed25519 (`cryptography`). Token = `base64url(canonical_payload_json).base64url(signature)`; signature over the canonical payload bytes. Keys are created at runtime / in tests, never stored in files.
+- Payload: `user_id, agent_id, subagent_id (null for an agent token), tools: [str], domains: [str], connectors: {name: [scope]}, anggaran: {step_max, token_max, rupiah_max}, exp (unix), iat (unix), parent (hash of the parent token or null)`.
+- `issue_token(payload, signing_key) -> str`; `verify_token(token, public_key) -> dict` (raises `TokenError` if the signature is wrong, `exp` has passed, or a field is missing).
+- `is_subset(child, parent) -> bool`: `tools` ⊆, `domains` ⊆, each connector scope ⊆, each budget ≤, `exp` ≤, same `user_id`, same `agent_id`; `subagent_id` may only be filled if the parent is an agent token.
+- `issue_child(parent_token, requested_payload, signing_key, public_key) -> str` — verify the parent, check the subset, sign the child. On failure → `TokenError`, no token is issued.
+- `revoke(token_id)` / `is_revoked(token_id)` — in-memory revocation set (persistence in phase 2). `revoke_all_for_task(task_id)` for Stop.
 
-## Gerbang tunggal — `puspa/policy/gate.py` (definisi 2.6)
+## Single gate — `puspa/policy/gate.py` (definition 2.6)
 
-- `Gate(log=None, spending=None, public_key=None)` — `log` adalah callable pencatat kejadian (agar tidak circular import dengan ledger; tes boleh memakai stub pencatat). `public_key` (opsional di luar kontrak awal, lihat STATUS.md keputusan 6): bila token diberikan sebagai string, signature HARUS diverifikasi dengan `public_key` ini; tanpa `public_key`, token string ditolak. Token boleh juga diberikan sebagai payload dict yang sudah diverifikasi pemanggil.
-- `request_approval(*, user_id, agen_id, token, kind, isi: dict) -> ApprovalRequest` — `kind` ∈ {kirim, buat_event, siapkan_bayar, hapus}. Hitung `isi_hash = sha256(canonical_json(isi))`. Cek token mengizinkan kind + target. Catat `persetujuan_diminta` lewat `log` bila ada.
-- `approve(request_id, user_id)` — hanya pemilik user. Catat `persetujuan_diberikan`.
-- `execute(request_id, *, executor)` — cek ulang SEMUA: sudah disetujui, `isi_hash` masih sama dengan isi saat ini, token masih valid (belum `exp`, belum dicabut), batas belanja OK. Baru panggil `executor(isi)` tepat sekali (kunci idempotensi = `request_id`; sudah dieksekusi → kembalikan hasil yang sama tanpa memanggil lagi). Gagal cek mana pun → raise `GateDenied`, TIDAK ada eksekusi, catat `persetujuan_ditolak` dengan alasan.
-- `spending.py`: `SpendingLimit(user_id)` — default Rp0. `set_limit(user_id, rupiah)`; `spent_in_period(user_id)` (dari ledger bila tersedia, kalau tidak dari memori); `check(user_id, nominal) -> bool` (nominal + spent ≤ limit). Aturan MVP: persetujuan DAN batas adalah dua cek independen; limit default Rp0 berarti pembayaran apa pun tetap diblokir sampai user menaikkan limit di Pengaturan (API `set_limit` sudah ada; UI Pengaturan fase 2).
+- `Gate(log=None, spending=None, public_key=None)` — `log` is an event-recording callable (to avoid a circular import with the ledger; tests may use a recording stub). `public_key` (optional beyond the original contract, see docs/status-phase-0.md decision 6): if a token is given as a string, its signature MUST be verified with this `public_key`; without a `public_key`, a string token is rejected. A token may also be given as a payload dict already verified by the caller.
+- `request_approval(*, user_id, agent_id, token, kind, content: dict) -> ApprovalRequest` — `kind` ∈ {send, create_event, prepare_payment, delete}. Compute `content_hash = sha256(canonical_json(content))`. Check the token allows the kind + target. Record `approval_requested` via `log` if present.
+- `approve(request_id, user_id)` — only the owning user. Record `approval_granted`.
+- `execute(request_id, *, executor)` — re-check EVERYTHING: already approved, `content_hash` still matches the current content, token still valid (not `exp`, not revoked), spending limit OK. Only then call `executor(content)` exactly once (idempotency key = `request_id`; if already executed → return the same result without calling again). If any check fails → raise `GateDenied`, NO execution, record `approval_rejected` with the reason.
+- `spending.py`: `SpendingLimit(user_id)` — default Rp0. `set_limit(user_id, rupiah)`; `spent_in_period(user_id)` (from the ledger if available, otherwise from memory); `check(user_id, nominal) -> bool` (nominal + spent ≤ limit). MVP rule: approval AND limit are two independent checks; the default Rp0 limit means any payment stays blocked until the user raises the limit in Settings (the `set_limit` API already exists; Settings UI in phase 2).
 
-## Skill bertanda tangan — `puspa/policy/skills.py` (definisi 2.6)
+## Signed skills — `puspa/policy/skill_signing.py` (definition 2.6)
 
-- Skill = direktori berisi `SKILL.md` + `manifest.json` {name, version, tools[], domains[], konektor{}, author, signature}.
-- `sign_skill(dirpath, signing_key)` — tanda tangani manifest kanonis (tanpa field `signature`).
-- `verify_skill(dirpath, public_key) -> bool`; `load_skill(dirpath, public_key) -> dict` — raise `SkillRejected` kalau tidak ada signature, signature salah, atau tool di luar manifes saat dipakai.
-- `check_tool(skill, tool, public_key=None)` — **kontrak diperbaiki 17 Nov 2026 (celah ditutup, lihat STATUS.md keputusan 7):** `public_key` WAJIB (None -> `SkillRejected`, fail-closed). Untuk dirpath: baca manifes dari disk lalu verifikasi signature; untuk dict: verifikasi field `signature` terhadap manifes unsigned; baru setelah lolos, cek keanggotaan tool. Manifes yang diubah setelah ditandatangani DITOLAK. Aturan pemanggil: JANGAN pernah memanggil `check_tool` dengan manifes mentah tanpa `public_key`.
-- Kunci Puspa untuk skill bawaan dibuat saat runtime; kunci komunitas terdaftar terpisah (fase 6).
+- A skill = a directory containing `SKILL.md` + `manifest.json` {name, version, tools[], domains[], connectors{}, author, signature}.
+- `sign_skill(dirpath, signing_key)` — sign the canonical manifest (without the `signature` field).
+- `verify_skill(dirpath, public_key) -> bool`; `load_skill(dirpath, public_key) -> dict` — raise `SkillRejected` if there is no signature, the signature is wrong, or a tool outside the manifest is used.
+- `check_tool(skill, tool, public_key=None)` — **contract fixed 17 Nov 2026 (gap closed, see docs/status-phase-0.md decision 7):** `public_key` is REQUIRED (None -> `SkillRejected`, fail-closed). For a dirpath: read the manifest from disk then verify the signature; for a dict: verify the `signature` field against the unsigned manifest; only after that passes, check tool membership. A manifest changed after signing is REJECTED. Caller rule: NEVER call `check_tool` with a raw manifest without a `public_key`.
+- Puspa's keys for built-in skills are created at runtime; registered community keys are separate (phase 6).
 
-## Akun dasar — `puspa/accounts` (definisi 2.13)
+## Basic accounts — `puspa/accounts` (definition 2.13)
 
-- `users.py`: `create_user(email, password) -> user_id` (email lower/strip, unik; hash Argon2id via argon2-cffi, time_cost=2, memory_cost=65536, parallelism=1); `authenticate(email, password) -> user_id` (raise `AuthError` kalau salah); `delete_user(user_id)` — hapus baris pengguna + cabut semua sesi + hapus vault; kejadian di Buku Kerja TIDAK dihapus (audit append-only). CATATAN revisi 7: login kata sandi ini digantikan login Google di fase 1; sesi + vault dipakai ulang (STATUS.md keputusan 20).
-- `sessions.py`: `create_session(user_id, device_label) -> token` (`secrets.token_urlsafe(32)`, yang disimpan hanya sha256-nya); `validate_session(token) -> user_id` (memperbarui `terakhir_dilihat`); `owner_of_token(token) -> user_id` (lookup pemilik TANPA efek samping — dipakai `resolve_session_as`, supaya penolakan tidak mengubah `terakhir_dilihat` sesi orang lain); `revoke_session(token)`; `revoke_all_sessions(user_id)`; `list_sessions(user_id)`.
-- `vault.py`: kunci per pengguna = `derive_user_key(master_key, user_id)` — HKDF-SHA256(master_key, info=str(user_id)), length 32, salt=None — lalu Fernet. `put(user_id, name, value)`, `get(user_id, name)`, `delete(user_id, name)`, `list_names(user_id)`. Master key dari env `PUSPA_VAULT_MASTER_KEY` (base64 urlsafe 32 byte); kalau env tidak ada, raise — jangan buat kunci default. **Parameter `derive_user_key` DIBEKUKAN** (STATUS.md keputusan 16): mengubahnya membuat semua ciphertext lama tidak bisa didekripsi.
-- Tabel (`schema.sql`): `pengguna(id UUID PK, email TEXT UNIQUE, password_hash TEXT, dibuat TIMESTAMPTZ DEFAULT now())`, `sesi(id UUID PK, user_id UUID FK, token_hash TEXT UNIQUE, device_label TEXT, dibuat, terakhir_dilihat, dicabut BOOL DEFAULT false)`, `vault(user_id UUID, name TEXT, ciphertext TEXT, diubah TIMESTAMPTZ, PRIMARY KEY (user_id, name))`. Semua query berfilter `user_id`.
+- `users.py`: `create_user(email, password) -> user_id` (email lowercased/stripped, unique; Argon2id hash via argon2-cffi, time_cost=2, memory_cost=65536, parallelism=1); `authenticate(email, password) -> user_id` (raises `AuthError` if wrong); `delete_user(user_id)` — delete the user row + revoke all sessions + delete the vault; events in the ledger are NOT deleted (append-only audit). Revision 7 NOTE: this password login is replaced by Google login in phase 1; sessions + vault are reused (docs/status-phase-0.md decision 20).
+- `user_sessions.py`: `create_session(user_id, device_label) -> token` (`secrets.token_urlsafe(32)`, only its sha256 is stored); `validate_session(token) -> user_id` (updates `last_seen_at`); `owner_of_token(token) -> user_id` (owner lookup WITHOUT side effects — used by `resolve_session_as`, so that a rejection does not change someone else's session `last_seen_at`); `revoke_session(token)`; `revoke_all_sessions(user_id)`; `list_sessions(user_id)`.
+- `vault.py`: per-user key = `derive_user_key(master_key, user_id)` — HKDF-SHA256(master_key, info=str(user_id)), length 32, salt=None — then Fernet. `put(user_id, name, value)`, `get(user_id, name)`, `delete(user_id, name)`, `list_names(user_id)`. Master key from env `PUSPA_VAULT_MASTER_KEY` (base64 urlsafe 32 bytes); if the env is missing, raise — never create a default key. **`derive_user_key` parameters are FROZEN** (docs/status-phase-0.md decision 16): changing them makes all old ciphertext undecryptable.
+- Tables (`schema.sql`): `users(id UUID PK, email TEXT UNIQUE, password_hash TEXT, created_at TIMESTAMPTZ DEFAULT now())`, `sessions(id UUID PK, user_id UUID FK, token_hash TEXT UNIQUE, device_label TEXT, created_at, last_seen_at, revoked BOOL DEFAULT false)`, `vault(user_id UUID, name TEXT, ciphertext TEXT, updated_at TIMESTAMPTZ, PRIMARY KEY (user_id, name))`. All queries filter by `user_id`.
 
-## Row Level Security — `puspa/accounts/rls.py` + `schema.sql` (definisi 2.15)
+## Row Level Security — `puspa/accounts/rls.py` + `schema.sql` (definition 2.15)
 
-- RLS aktif di tabel `pengguna`, `sesi`, `vault` — TANPA `FORCE ROW LEVEL SECURITY` (STATUS.md keputusan 15): pemilik tabel/superuser melewati RLS (sifat Postgres); penegakan nyata hanya untuk koneksi sebagai peran `puspa_app` (NOLOGIN; koneksi jalan sebagai pemilik lalu `SET ROLE puspa_app` — bukti di `tests/test_rls.py`).
-- 6 policy (dihitung dari `schema.sql`): `pengguna` — SELECT milik sendiri, INSERT daftar-atau-milik-sendiri, UPDATE milik sendiri, DELETE milik sendiri; `sesi` — FOR ALL milik sendiri; `vault` — FOR ALL milik sendiri. Policy membaca `app.current_user_id` (`coalesce(current_setting(..., true), '')`).
-- Pengecualian INSERT registrasi: policy INSERT `pengguna` mengizinkan `app.current_user_id` kosong (sebelum sesi divalidasi, user_id belum diketahui). Login/registrasi/validasi sesi jalan sebagai pemilik tabel; setelah user_id diketahui, semua query berikutnya lewat helper RLS sebagai `puspa_app`.
-- Helper `rls.py` (satu-satunya tempat kode aplikasi memasang pengguna saat ini): `set_current_user(conn, user_id)` / `clear_current_user(conn)` / `current_user_id(conn)` / `require_current_user(conn)` (raise `RlsError` kalau belum dipasang — fail-closed) / `as_user(conn, user_id)` (context manager, `SET LOCAL` — nilai hilang sendiri saat transaksi berakhir). `user_id` divalidasi sebagai UUID sebelum dipasang.
-- Setup + pemulihan: `infra/setup_db.sql` (idempotent) membuat role `root` + `puspa_app` + DB `puspa_test` lalu menerapkan skema ledger + accounts. Postgres di VM ini tidak tahan restart — pulihkan dengan file itu (STATUS.md keputusan 14, README bagian "Setup database").
-- RLS tabel `kejadian` BELUM ada (fase 2): isolasi ledger saat ini lewat registry agen + `require_owner` di pembaca bermilik (lihat bagian Akses di bawah).
+- RLS active on tables `users`, `sessions`, `vault` — WITHOUT `FORCE ROW LEVEL SECURITY` (docs/status-phase-0.md decision 15): the table owner / superuser bypasses RLS (a Postgres property); real enforcement only applies to connections as the `puspa_app` role (NOLOGIN; connections run as the owner then `SET ROLE puspa_app` — evidence in `tests/test_rls.py`).
+- 6 policies (counted from `schema.sql`): `users` — SELECT own, INSERT register-or-own, UPDATE own, DELETE own; `sessions` — FOR ALL own; `vault` — FOR ALL own. Policies read `app.current_user_id` (`coalesce(current_setting(..., true), '')`).
+- Registration INSERT exception: the `users` INSERT policy allows an empty `app.current_user_id` (before a session is validated, the user_id is not yet known). Login / registration / session validation run as the table owner; once the user_id is known, all subsequent queries go through the RLS helper as `puspa_app`.
+- Helper `rls.py` (the only place application code sets the current user): `set_current_user(conn, user_id)` / `clear_current_user(conn)` / `current_user_id(conn)` / `require_current_user(conn)` (raises `RlsError` if not yet set — fail-closed) / `as_user(conn, user_id)` (context manager, `SET LOCAL` — the value disappears on its own when the transaction ends). `user_id` is validated as a UUID before being set.
+- Setup + recovery: `infra/schema_core.sql` (idempotent) creates roles `root` + `puspa_app` + DB `puspa_test` then applies the ledger + accounts schemas. Postgres on this VM does not survive restarts — recover with that file (docs/status-phase-0.md decision 14, README section "Database setup").
+- RLS on the `events` table does NOT exist yet (phase 2): ledger isolation currently goes through the agent registry + `require_owner` in the owned readers (see the Access section below).
 
-## Akses lintas pengguna — `puspa/accounts/access.py` (definisi 2.6, jalur serangan ke-8)
+## Cross-user access — `puspa/accounts/access.py` (definition 2.6, attack path 8)
 
-- `require_owner(requesting_user_id, owner_user_id)` — SATU-SATUNYA tempat pemeriksaan kepemilikan; setiap API baca WAJIB memanggilnya SEBELUM query isi / dekripsi. Fail-closed: tolak (`AccessDeniedError`) kalau salah satu id None/kosong/bukan-string, atau keduanya berbeda. TIDAK menyentuh database.
-- Fungsi baca bermilik (scoped readers) (pola sama: tentukan pemilik -> `require_owner` -> baru baca): `read_vault_entry(requesting_user_id, owner_user_id, name)` (ditolak SEBELUM dekripsi; pemilik benar + nama tidak ada -> `KeyError`); `resolve_session_as(requesting_user_id, token)` (token itu sendiri kredensial kepemilikan; memakai `owner_of_token` tanpa efek samping; token tidak dikenal/dicabut -> `SessionError`); `read_ledger_event(requesting_user_id, event_id)` (cek keberadaan dulu -> pemilik dari registry -> `require_owner` -> baru baca isi; agen tak terdaftar -> `AccessDeniedError`); `read_ledger_events_for_task(requesting_user_id, tugas_id)` (semua agen di tugas dicek dulu; satu saja milik orang lain -> seluruh tugas ditolak).
-- Registry agen (`schema_agen.sql`, tabel `agen`: `agen_id TEXT PK`, `user_id UUID FK -> pengguna(id) ON DELETE CASCADE`): `create_agent_schema()`, `register_agent(agen_id, user_id)` (idempotent ke pemilik sama; ke pemilik lain -> `AccessDeniedError`), `owner_of(agen_id)` (None kalau belum terdaftar = ditolak fail-closed). Tabel `agen` dibuat sesuai kebutuhan oleh `create_agent_schema()`, bukan oleh `infra/setup_db.sql`.
-- Alur/modul BELUM punya fungsi baca bermilik (tabelnya baru fase 4): saat tabelnya ada, pakai `require_owner` yang sama dengan `owner_user_id` dari baris alur/modul itu.
-- Uji: `tests/test_access.py` (23 tes) + 3 tes j8 di `tests/test_attacks.py` (total 26 tes jalur 8).
+- `require_owner(requesting_user_id, owner_user_id)` — the ONLY place ownership is checked; every read API MUST call it BEFORE querying content / decrypting. Fail-closed: reject (`AccessDeniedError`) if either id is None / empty / not a string, or if the two differ. Does NOT touch the database.
+- Owned read functions (scoped readers) (same pattern: determine the owner -> `require_owner` -> then read): `read_vault_entry(requesting_user_id, owner_user_id, name)` (rejected BEFORE decryption; correct owner + missing name -> `KeyError`); `resolve_session_as(requesting_user_id, token)` (the token itself is the ownership credential; uses side-effect-free `owner_of_token`; unknown/revoked token -> `SessionError`); `read_ledger_event(requesting_user_id, event_id)` (check existence first -> owner from the registry -> `require_owner` -> then read content; unregistered agent -> `AccessDeniedError`); `read_ledger_events_for_task(requesting_user_id, task_id)` (all agents in the task are checked first; a single one belonging to someone else -> the whole task is rejected).
+- Agent registry (`schema_agent.sql`, table `agents`: `agent_id TEXT PK`, `user_id UUID FK -> users(id) ON DELETE CASCADE`): `create_agent_schema()`, `register_agent(agent_id, user_id)` (idempotent to the same owner; to a different owner -> `AccessDeniedError`), `owner_of(agent_id)` (None if not yet registered = rejected fail-closed). The `agents` table is created on demand by `create_agent_schema()`, not by `infra/schema_core.sql`.
+- Workflows/modules do NOT yet have owned read functions (their tables only arrive in phase 4): when their tables exist, use the same `require_owner` with the `owner_user_id` from the workflow/module row.
+- Tests: `tests/test_access.py` (23 tests) + 3 path-8 tests in `tests/test_attacks.py` (26 path-8 tests total).
 
-## Pembaca terkarantina + injection — `puspa/quarantine` (definisi 2.6)
+## Quarantined reader + injection — `puspa/quarantine` (definition 2.6)
 
-- `reader.py`: `QuarantinedReader(allowed_domains)`; `read_text(source, text) -> dict` dengan skema ketat `{source, judul (maks 200 karakter, ditandai data), angka: [{nilai, satuan, konteks_maks_200}], potongan (maks 200 karakter)}`. TIDAK punya alat tulis/konektor. TIDAK mengembalikan teks mentah sebagai instruksi; semua teks bebas ditandai `data`. Fase 0: reader menerima teks yang sudah diambil; pengambilan jaringan ada di sandbox/runner.
-- `injection.py`: `scan(text) -> list[Finding{span, pola, tingkat}]` — deteksi pola instruksi (imperatif ID/EN: "kirim", "bayar", "abaikan instruksi", "kamu harus", "ignore previous", dll. + URL); `mark(text) -> str` — bungkus span mencurigakan sebagai `[DATA: ...]`. Ini lapis tambahan; pertahanan utama tetap karantina struktural.
+- `reader.py`: `QuarantinedReader(allowed_domains)`; `read_text(source, text) -> dict` with a strict schema `{source, title (max 200 characters, marked as data), number: [{value, unit, context_max_200}], excerpt (max 200 characters)}`. It has NO write tools / connectors. It does NOT return raw text as instructions; all free text is marked `data`. Phase 0: the reader accepts text already fetched; network fetching lives in sandbox/runner.
+- `injection.py`: `scan(text) -> list[Finding{span, pattern, level}]` — detects instruction patterns (ID/EN imperatives: "kirim", "bayar", "abaikan instruksi", "kamu harus", "ignore previous", etc. + URLs); `mark(text) -> str` — wraps suspicious spans as `[DATA: ...]`. This is an extra layer; the main defence remains structural quarantine.
 
-## Sandbox fail-closed — `puspa/sandbox` (definisi 2.6)
+## Fail-closed sandbox — `puspa/sandbox` (definition 2.6)
 
-- `runner.py`: `Sandbox(allowlist)`; `run(code: str, *, timeout_s=30) -> dict` — Docker-backed bila tersedia; bila Docker tidak tersedia, raise `SandboxUnavailable` (fail-closed; TIDAK PERNAH fallback ke eksekusi host). `check_available() -> bool`.
-- `allowlist.py`: allowlist default — API model, API konektor, domain marketplace (tokopedia.com, shopee.co.id, blibli.com), domain provider tagihan (pln.co.id + situs PDAM). Localhost hanya untuk test double lewat flag eksplisit `allow_test_localhost=True`, tidak pernah di jalur prod.
-- Instalasi Docker dicoba di fase ini; kalau gagal, catat sebagai blocker di STATUS.md dan tes menegaskan perilaku fail-closed.
+- `runner.py`: `Sandbox(allowlist)`; `run(code: str, *, timeout_s=30) -> dict` — Docker-backed when available; when Docker is unavailable, raise `SandboxUnavailable` (fail-closed; NEVER fall back to host execution). `check_available() -> bool`.
+- `allowlist.py`: default allowlist — model APIs, connector APIs, marketplace domains (tokopedia.com, shopee.co.id, blibli.com), bill-provider domains (pln.co.id + PDAM sites). Localhost only for test doubles via the explicit `allow_test_localhost=True` flag, never on the prod path.
+- Docker installation was attempted in this phase; if it fails, record it as a blocker in docs/status-phase-0.md and the tests assert fail-closed behaviour.
 
-## Integrasi chassis — `puspa/chassis` (definisi 2.6, 2.3, 2.13)
+## Chassis integration — `puspa/chassis` (definitions 2.6, 2.3, 2.13)
 
-Prinsip: NOL baris kode nanobot diubah. Semua kait memakai titik ekstensi resmi nanobot (parameter konstruktor `AgentLoop` / `Nanobot.run`, subclass `AgentHook` / `ToolRegistry` / `SkillsLoader` / `Tool`).
+Principle: ZERO lines of nanobot code changed. All hooks use nanobot's official extension points (`AgentLoop` / `Nanobot.run` constructor parameters, `AgentHook` / `ToolRegistry` / `SkillsLoader` / `Tool` subclasses).
 
-- `context.py`: `token_context(payload)` (ContextVar; hanya payload dict yang SUDAH diverifikasi — string mentah diabaikan), `resolve_token_payload()` (ContextVar dulu, lalu `RequestContext.attributes["puspa_token"]`), `bind_token(payload)` / `reset_token(token)`, `make_ledger_sink(ledger, tugas_id, agen_id)` -> callable `log(jenis, isi)` (best-effort: eksepsi tulis ditelan supaya turn tidak jatuh).
-- `tools.py`: `PuspaTool(Tool)` membungkus satu tool nanobot (mengikuti pola `_LegacyErrorPrefixTool` nanobot). Urutan `execute`: (1) token ada, kalau tidak -> tolak fail-closed; (2) nama tool ada di `payload["tools"]`, kalau tidak -> tolak; (3) kalau tool punya manifes skill terpasang, `check_tool(manifest, nama, public_key)` (signature wajib, lihat bagian Skill); (4) kalau tool memetakan ke kind aksi keluar (`KIND_TOOLS`: kirim/buat_event/siapkan_bayar/hapus) -> `Gate.request_approval`; tanpa gerbang -> tolak; kalau gerbang membuat permintaan, kembalikan `ToolResult.error("Menunggu persetujuan...")` TANPA eksekusi; (5) eksekusi tool asli; hasil string dipindai `puspa.quarantine.scan` — temuan dicatat di `tool_selesai` (deteksi saja; pemblokiran tugas Pemeriksa fase 2). Audit: `tool_dipanggil` + `tool_selesai` di setiap pemanggilan; isi TIDAK PERNAH memuat parameter tool (bisa berisi data sensitif).
-- `registry.py`: `PuspaRegistry(ToolRegistry)` — `register` membungkus semua tool sekali (anti-bungkus-ganda via `isinstance`); `prepare_call` override sebagai backstop (tool yang lolos tanpa bungkus tetap dicek tokennya; ditolak + dicatat `tool_dipanggil`/`tool_selesai` status ditolak). `get_definitions` TIDAK dicek (skema yang dilihat model bukan eksekusi).
-- `hooks.py`: `PuspaHook(AgentHook)` — observasi saja (hook nanobot tidak bisa mem-veto): `before_run` -> `tugas_dibuat`; `after_run` -> `tugas_selesai` + `pesan_agen` (final content, potong 2000 karakter); `on_error` -> `tugas_gagal`. `make_puspa_hook_factory(tugas_id, agen_id, log)` -> `AgentTurnHookFactory` untuk `build_agent_turn_hook`.
-- `skills.py`: `PuspaSkillsLoader(SkillsLoader)` override `_load_skill` — skill sumber `workspace`/`plugin` WAJIB lolos `verify_skill` (tanpa `public_key` -> semua ditolak); sumber `builtin` dipercaya sebagai bagian chassis. Gagal verifikasi -> `None` (skill tidak terlihat, mengikuti semantik nanobot).
-- `session.py`: `bind_turn(*, session_token, signing_key, public_key, agen_id, tools, domains=None, konektor=None, anggaran=None, exp_seconds=3600, tugas_id=None, dsn=None) -> (user_id, token_string, payload_dict)` — validasi sesi lalu terbitkan token izin agen (anggaran default {langkah_max 25, token_max 100000, rupiah_max 0}). `payload_from_token(token, public_key)` = `verify_token`.
-- `sandbox_tool.py`: `SandboxTool(Tool)` — nama `jalankan_kode`, parameter {code (wajib), timeout_s (default 30)}, `read_only=False`, `concurrency_safe=True`. Eksekusi didelegasikan ke `puspa.sandbox.Sandbox`; `SandboxUnavailable` -> `ToolResult.error` (tidak pernah eksekusi di host). Tool shell bawaan nanobot TIDAK masuk daftar token Puspa.
-- `factory.py`: `PuspaChassis` (dataclass config: tugas_id, agen_id, ledger, gate, public_key, sandbox, skill_manifests, log) + `build_registry(chassis)` (daftarkan `SandboxTool` dulu, sebelum `AgentLoop` dibuat) + `build_hook_factory(chassis)` + `assemble(chassis, config, bus=None)` -> `AgentLoop.from_config(config, bus=bus, tool_registry=registry, hooks=[...], hook_factories=[...])`.
-- Token sub-agen: TIDAK ADA slot token di `SubagentManager.spawn` nanobot; mekanismenya adalah ContextVar Puspa yang di-set di sekitar `spawn()` (terlihat di sub-agen karena `asyncio.create_task` menyalin konteks — diuji di `test_integration.py`).
+- `context.py`: `token_context(payload)` (ContextVar; only an ALREADY-verified payload dict — a raw string is ignored), `resolve_token_payload()` (ContextVar first, then `RequestContext.attributes["puspa_token"]`), `bind_token(payload)` / `reset_token(token)`, `make_ledger_sink(ledger, task_id, agent_id)` -> callable `log(event_type, content)` (best-effort: write exceptions are swallowed so the turn doesn't fall over).
+- `tools.py`: `PuspaTool(Tool)` wraps one nanobot tool (following nanobot's `_LegacyErrorPrefixTool` pattern). `execute` order: (1) token present, otherwise -> reject fail-closed; (2) tool name in `payload["tools"]`, otherwise -> reject; (3) if the tool has an attached skill manifest, `check_tool(manifest, name, public_key)` (signature required, see the Skills section); (4) if the tool maps to an outbound-action kind (`KIND_TOOLS`: send/create_event/prepare_payment/delete) -> `Gate.request_approval`; without a gate -> reject; if the gate creates a request, return `ToolResult.error("Menunggu persetujuan...")` WITHOUT executing; (5) execute the original tool; the string result is scanned with `puspa.quarantine.scan` — findings are recorded in `tool_completed` (detection only; blocking by the Verifier is a phase 2 task). Audit: `tool_called` + `tool_completed` on every call; content NEVER contains tool parameters (they may hold sensitive data).
+- `registry.py`: `PuspaRegistry(ToolRegistry)` — `register` wraps every tool once (anti-double-wrap via `isinstance`); the `prepare_call` override is a backstop (a tool that slipped through unwrapped still gets its token checked; rejected + recorded as `tool_called`/`tool_completed` with rejected status). `get_definitions` is NOT checked (the schema the model sees is not execution).
+- `hooks.py`: `PuspaHook(AgentHook)` — observation only (nanobot hooks cannot veto): `before_run` -> `task_created`; `after_run` -> `task_completed` + `agent_message` (final content, truncated to 2000 characters); `on_error` -> `task_failed`. `make_puspa_hook_factory(task_id, agent_id, log)` -> `AgentTurnHookFactory` for `build_agent_turn_hook`.
+- `skill_loader.py`: `PuspaSkillsLoader(SkillsLoader)` overrides `_load_skill` — skills from `workspace`/`plugin` sources MUST pass `verify_skill` (without a `public_key` -> all rejected); `builtin` sources are trusted as part of the chassis. Failed verification -> `None` (the skill is invisible, following nanobot semantics).
+- `agent_session.py`: `bind_turn(*, session_token, signing_key, public_key, agent_id, tools, domains=None, connector=None, anggaran=None, exp_seconds=3600, task_id=None, dsn=None) -> (user_id, token_string, payload_dict)` — validate the session then issue an agent permission token (default budget {step_max 25, token_max 100000, rupiah_max 0}). `payload_from_token(token, public_key)` = `verify_token`.
+- `sandbox_tool.py`: `SandboxTool(Tool)` — name `run_code`, parameters {code (required), timeout_s (default 30)}, `read_only=False`, `concurrency_safe=True`. Execution is delegated to `puspa.sandbox.Sandbox`; `SandboxUnavailable` -> `ToolResult.error` (never executes on the host). nanobot's built-in shell tool is NOT on the Puspa token's list.
+- `factory.py`: `PuspaChassis` (dataclass config: task_id, agent_id, ledger, gate, public_key, sandbox, skill_manifests, log) + `build_registry(chassis)` (register `SandboxTool` first, before `AgentLoop` is created) + `build_hook_factory(chassis)` + `assemble(chassis, config, bus=None)` -> `AgentLoop.from_config(config, bus=bus, tool_registry=registry, hooks=[...], hook_factories=[...])`.
+- Subagent tokens: nanobot's `SubagentManager.spawn` has NO token slot; the mechanism is a Puspa ContextVar set around `spawn()` (visible in the subagent because `asyncio.create_task` copies the context — tested in `test_integration.py`).
 
-Yang BELUM di fase 0 (fase 2): uji turn ujung-ke-ujung dengan `AgentLoop` asli + provider model; penutupan alur persetujuan->eksekusi async; pemblokiran hasil beracun oleh Pemeriksa; kebijakan ledger saat Postgres mati; `Sandbox.run` di executor.
+NOT yet in phase 0 (phase 2): an end-to-end turn test with the real `AgentLoop` + model provider; closing the approval -> async execution flow; blocking of poisoned results by the Verifier; ledger policy when Postgres is down; `Sandbox.run` in an executor.
 
-## Tes
+## Tests
 
-- pytest. `tests/conftest.py`: fixture `test_dsn` (env `PUSPA_TEST_DSN` atau default peer-auth), `ephemeral_keys` (Ed25519 baru per sesi tes), `tmp_skill_dir`, `vault_master_key` (master key acak per tes, hanya di env proses tes). Fixture autouse: terapkan skema accounts lalu `TRUNCATE pengguna, sesi, vault CASCADE` sebelum dan sesudah tiap tes — TRUNCATE CASCADE ikut mengosongkan tabel `agen` (FK ke pengguna), jadi baris agen tidak bocor antar tes. Fallback `sys.path` ke clone lokal `./nanobot` hanya dipakai kalau direktorinya memang ada (guard `Path.exists()`); dari fresh clone, tes memakai nanobot dari dependency git pin.
-- Tiap modul tes punya komentar header yang memetakan ke bagian definisi + gerbang.
-- `test_attacks.py` (8 jalur, definisi 2.6) ditulis SETELAH paket mendarat, oleh subagen terpisah, berdasarkan antarmuka di kontrak ini.
-- Jangan klaim lolos sebelum `pytest` hijau. Sertakan output tes di laporan akhir.
+- pytest. `tests/conftest.py`: fixtures `test_dsn` (env `PUSPA_TEST_DSN` or peer-auth default), `ephemeral_keys` (fresh Ed25519 keys per test session), `tmp_skill_dir`, `vault_master_key` (random master key per test, only in the test process env). Autouse fixture: apply the accounts schema then `TRUNCATE users, sessions, vault CASCADE` before and after each test — TRUNCATE CASCADE also empties the `agents` table (FK to users), so agent rows don't leak between tests. The `sys.path` fallback to the local `./nanobot` clone is only used if the directory actually exists (guarded by `Path.exists()`); from a fresh clone, tests use nanobot from the git-pinned dependency.
+- Each test module has a header comment mapping it to a definition section + gate.
+- `test_attacks.py` (8 paths, definition 2.6) was written AFTER the packages landed, by a separate subagent, based on the interfaces in this contract.
+- Don't claim a pass before `pytest` is green. Include the test output in the final report.
