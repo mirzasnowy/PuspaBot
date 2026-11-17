@@ -48,7 +48,7 @@ def use_credit(user_id: str, *, amount: int = COST_CHECK_DETAIL,
             cur.execute(
                 "INSERT INTO monthly_credits (user_id, month, sisa)"
                 " VALUES (%s, %s, %s)"
-                " ON CONFLICT (user_id, bulan) DO NOTHING",
+                " ON CONFLICT (user_id, month) DO NOTHING",
                 (user_id, month, CREDIT_FREE_PER_MONTH))
             cur.execute(
                 "SELECT sisa FROM monthly_credits WHERE user_id = %s AND month = %s"

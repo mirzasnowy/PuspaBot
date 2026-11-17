@@ -63,7 +63,7 @@ def record_consent(user_id, dsn=None, ledger=None, agent_id=None, task_id=None):
         if agent_id is None or task_id is None:
             raise ValueError("ledger butuh agent_id + task_id")
         ev = ledger.append_event(
-            task_id=task_id, agent_id=agent_id, event_type="data_consents",
+            task_id=task_id, agent_id=agent_id, event_type="data_consent",
             content={"text_version": TEKS_VERSI, "user_id": str(user_id)},
         )
         event_id = str(ev["id"])

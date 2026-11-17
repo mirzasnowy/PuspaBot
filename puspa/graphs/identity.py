@@ -135,10 +135,10 @@ def kandidat_identitas(*, brand: str | None = None, series: str | None = None,
         syarat.append("brand ILIKE %s")
         value.append("%" + brand + "%")
     if series:
-        syarat.append("seri ILIKE %s")
+        syarat.append("series ILIKE %s")
         value.append("%" + series + "%")
     if category:
-        syarat.append("kategori = %s")
+        syarat.append("category = %s")
         value.append(category)
     if not syarat:
         return []
@@ -219,8 +219,8 @@ def price_terkini(product_id: str, dsn=None) -> list[dict]:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT DISTINCT ON (t.marketplace) t.marketplace, t.listing_url,"
-                " t.status AS status_tautan, h.harga, h.ongkir, h.store_rating,"
-                " h.stok, h.evidence_id, h.waktu"
+                " t.status AS status_tautan, h.price, h.shipping, h.store_rating,"
+                " h.stock, h.evidence_id, h.created_at"
                 " FROM listing_links t JOIN price_series h ON h.tautan_id = t.id"
                 " WHERE t.product_id = %s AND t.status <> 'user_rejected'"
                 " ORDER BY t.marketplace, h.created_at DESC",

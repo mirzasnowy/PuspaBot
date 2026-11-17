@@ -35,8 +35,8 @@ EVENT_TYPES_NEW = [
     "trigger_missed",
     "module_proposed",
     "module_activated",
-    "false_reports",
-    "data_consents",
+    "false_report",
+    "data_consent",
 ]
 
 #: 22 event_type lama — harus tetap ada semua (tidak ada yang hilang/berubah).
@@ -120,8 +120,8 @@ def test_rantai_hash_campuran_old_and_new_tetap_utuh(ledger, task_id):
         "heartbeat",
         "trigger_missed",
         "workflow_paused",
-        "false_reports",
-        "data_consents",
+        "false_report",
+        "data_consent",
         "task_completed",
     ]
     created_at = [

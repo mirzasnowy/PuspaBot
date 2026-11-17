@@ -603,7 +603,7 @@ def test_skills_loader_terima_skill_workspace_bertanda_tangan(
     sign_skill(skill_dir, sk)
     loader = PuspaSkillsLoader(workspace, public_key=pk)
     content = loader.load_skill("price")
-    assert content is not None and "Isi skill harga" in content
+    assert content is not None and "Isi skill price" in content
 
 
 def test_skills_loader_tolak_skill_diubah_setelah_tanda_tangan(

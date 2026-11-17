@@ -122,7 +122,7 @@ def change_workflow(workflow_id: str, *, user_id: str, trigger: dict | None = No
         raise WorkflowError("alur tidak ditemukan")
     if workflow["status"] == "deleted":
         raise WorkflowError("alur sudah dihapus")
-    trigger_new = trigger if trigger is not None else workflow["triggers"]
+    trigger_new = trigger if trigger is not None else workflow["trigger"]
     step_new = step if step is not None else workflow["step"]
     masalah = validasi_trigger(trigger_new) + periksa_workflow(step_new)
     if masalah:
@@ -159,7 +159,7 @@ def rollback_workflow(workflow_id: str, *, user_id: str, versi: int, dsn=None) -
             if old is None:
                 raise WorkflowError(f"versi {versi} tidak ada")
     return change_workflow(workflow_id, user_id=user_id,
-                     trigger=old["triggers"], step=old["step"], dsn=dsn)
+                     trigger=old["trigger"], step=old["step"], dsn=dsn)
 
 
 def delete_workflow(workflow_id: str, *, user_id: str, dsn=None) -> dict:
@@ -287,7 +287,7 @@ def executor_fixture():
                                           "reason": "pending_jawaban_user"},
         "save_memory": lambda fact, source="user_stated": {
             "success": True, "tersimpan": True},
-        "save_to_module_table": lambda module, table, rows: {
+        "save_to_module_table": lambda modules, table, rows: {
             "success": True, "tersimpan": len(rows or [])},
     }
 
@@ -660,7 +660,7 @@ def tick_workflow(*, dsn=None, sekarang: datetime | None = None,
         if rows is None or not (rows["schedule"] or "").startswith("alur:"):
             continue
         user_id = str(rows["user_id"])
-        workflow_id = rows["workflows"]
+        workflow_id = rows["workflow"]
         workflow = take_workflow(workflow_id, user_id=user_id, dsn=dsn)
         if workflow is None or workflow["status"] != "active":
             continue
@@ -684,7 +684,7 @@ def tick_workflow(*, dsn=None, sekarang: datetime | None = None,
                 continue  # sudah pernah jalan (idempotensi)
         # Perbaiki jadwal berikutnya dari definisi pemicu alur.
         try:
-            berikut_new = hitung_berikutnya(workflow["triggers"], sekarang)
+            berikut_new = hitung_berikutnya(workflow["trigger"], sekarang)
         except Exception:  # noqa: BLE001
             berikut_new = None
         if berikut_new is not None:
