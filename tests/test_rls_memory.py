@@ -16,7 +16,7 @@ def _connect_as_app(test_dsn):
     return conn
 
 
-def test_rls_without_user_not_melihat_apa_pun(make_user, test_dsn):
+def test_rls_without_user_sees_nothing(make_user, test_dsn):
     u = make_user()
     from puspa.memory import profile
 
@@ -29,7 +29,7 @@ def test_rls_without_user_not_melihat_apa_pun(make_user, test_dsn):
             assert cur.fetchone()[0] == 0
 
 
-def test_rls_hanya_rows_own_own(make_user, test_dsn):
+def test_rls_only_own_rows(make_user, test_dsn):
     from puspa.memory import episodic, profile
 
     a, b = make_user(), make_user()
@@ -50,7 +50,7 @@ def test_rls_hanya_rows_own_own(make_user, test_dsn):
             assert cur.fetchall() == []
 
 
-def test_rls_tulis_orang_lain_rejected(make_user, test_dsn):
+def test_rls_write_by_other_person_rejected(make_user, test_dsn):
     a = make_user()
     with _connect_as_app(test_dsn) as conn:
         with conn.cursor() as cur:

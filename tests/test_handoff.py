@@ -5,99 +5,99 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from puspa.runtime.handoff import (Handoff, HandoffContract, HandoffError,
-                                   check_batas_handoff_antar_agent,
-                                   tolak_lingkaran)
+                                   check_handoff_limit_between_agents,
+                                   reject_cycle)
 
 
 def _kontrak(**kw):
-    dasar = {"dari_id": "agen-a", "to_id": "agen-b", "purpose": "cari harga",
-             "masukan": {"type": "search_price", "product": "laptop"},
+    dasar = {"from_id": "agen-a", "to_id": "agen-b", "purpose": "cari harga",
+             "inputs": {"type": "search_price", "product": "laptop"},
              "expected_output": {"type": "price"},
              "completion_definition": "harga + toko + tautan ditemukan"}
     dasar.update(kw)
     return HandoffContract(**dasar)
 
 
-def test_kontrak_valid_and_field_required():
+def test_contract_valid_and_field_required():
     k = _kontrak()
     assert k.timeout_seconds == 45
     assert k.idempotency_key.startswith("handoff-")
 
 
-def test_kontrak_without_skema_rejected():
+def test_contract_without_schema_rejected():
     with pytest.raises(HandoffError):
-        _kontrak(masukan={"product": "laptop"})  # tanpa 'jenis'
+        _kontrak(inputs={"product": "laptop"})  # tanpa 'jenis'
     with pytest.raises(HandoffError):
         _kontrak(expected_output={"value": 1})
     with pytest.raises(HandoffError):
         _kontrak(permission_class="Raja")
     with pytest.raises(HandoffError):
-        _kontrak(dari_id="agen-a", to_id="agen-a")
+        _kontrak(from_id="agen-a", to_id="agen-a")
     with pytest.raises(HandoffError):
         _kontrak(completion_definition="  ")
 
 
-def test_mesin_status_lengkap():
+def test_handoff_state_machine_full_status():
     h = Handoff(_kontrak())
     assert h.status == "proposed"
-    h.terima()
-    h.mulai()
-    assert h.serahkan({"type": "price", "value": 12500000}) == "handed_over_at"
-    h.nyatakan_passed()
+    h.accept()
+    h.start()
+    assert h.hand_over({"type": "price", "value": 12500000}) == "handed_over_at"
+    h.mark_passed()
     assert h.status == "passed"
 
 
-def test_output_not_passed_skema_rejected():
+def test_output_failing_schema_rejected():
     h = Handoff(_kontrak())
-    h.terima()
-    h.mulai()
-    assert h.serahkan({"type": "bukan_price"}) == "rejected"
+    h.accept()
+    h.start()
+    assert h.hand_over({"type": "bukan_price"}) == "rejected"
     assert h.status == "rejected"
 
 
-def test_transisi_not_sah_rejected():
+def test_transition_not_valid_rejected():
     h = Handoff(_kontrak())
     with pytest.raises(HandoffError):
-        h.mulai()  # belum diterima
+        h.start()  # belum diterima
     with pytest.raises(HandoffError):
-        h.serahkan({"type": "price"})
+        h.hand_over({"type": "price"})
 
 
-def test_satu_trial_ulang_lalu_report():
+def test_one_repeated_trial_then_report():
     h = Handoff(_kontrak())
-    h.terima()
-    h.mulai()
-    h.tolak("sumber tidak bisa dibaca")
-    assert h.coba_ulang() is True
+    h.accept()
+    h.start()
+    h.reject("sumber tidak bisa dibaca")
+    assert h.retry() is True
     assert h.status == "proposed" and h.trial == 2
-    h.tolak("gagal lagi")
-    assert h.coba_ulang() is False  # habis: agen melapor ke user
+    h.reject("gagal lagi")
+    assert h.retry() is False  # habis: agen melapor ke user
 
 
-def test_macet_without_heartbeat_30_detik():
+def test_stuck_without_heartbeat_30_seconds():
     h = Handoff(_kontrak())
-    h.terima()
-    h.mulai()
-    sekarang = h.created_at + timedelta(seconds=31)
-    assert h.macet(sekarang) is True
+    h.accept()
+    h.start()
+    now = h.created_at + timedelta(seconds=31)
+    assert h.is_stalled(now) is True
     h.heartbeat(h.created_at + timedelta(seconds=20))
-    assert h.macet(h.created_at + timedelta(seconds=40)) is False
-    assert h.macet(h.created_at + timedelta(seconds=51)) is True
+    assert h.is_stalled(h.created_at + timedelta(seconds=40)) is False
+    assert h.is_stalled(h.created_at + timedelta(seconds=51)) is True
 
 
-def test_macet_past_batas_time():
+def test_stuck_past_time_limit():
     h = Handoff(_kontrak(timeout_seconds=45))
-    h.terima()
-    h.mulai()
+    h.accept()
+    h.start()
     # Detak terus, tapi tetap lewat batas waktu kontrak.
     h.heartbeat(h.created_at + timedelta(seconds=40))
-    assert h.macet(h.created_at + timedelta(seconds=46)) is True
+    assert h.is_stalled(h.created_at + timedelta(seconds=46)) is True
 
 
-def test_lingkaran_rejected_and_maks_tiga_handoff():
-    tolak_lingkaran(["agen-a", "agen-b"], "agen-b", "agen-c")  # boleh
+def test_circular_handoff_rejected_and_max_three_handoffs():
+    reject_cycle(["agen-a", "agen-b"], "agen-b", "agen-c")  # boleh
     with pytest.raises(HandoffError, match="melingkar"):
-        tolak_lingkaran(["agen-a", "agen-b"], "agen-b", "agen-a")
-    check_batas_handoff_antar_agent(2)
+        reject_cycle(["agen-a", "agen-b"], "agen-b", "agen-a")
+    check_handoff_limit_between_agents(2)
     with pytest.raises(HandoffError):
-        check_batas_handoff_antar_agent(3)
+        check_handoff_limit_between_agents(3)

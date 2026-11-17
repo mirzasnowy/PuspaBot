@@ -2,8 +2,8 @@
 
 from .onboarding import (
     FIRST_TASK_TYPES,
-    TARGET_MINUTE,
-    TEMPLATE_WORKFLOW_BAWAAN,
+    TARGET_MINUTES,
+    BUILTIN_WORKFLOW_TEMPLATES,
     StubNotifier,
     complete_step1,
     complete_step2,

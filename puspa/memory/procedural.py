@@ -30,9 +30,9 @@ from psycopg.types.json import Jsonb
 
 from .schema import resolve_dsn
 
-SYARAT_VERIFIED_JALAN = 3
-SYARAT_VERIFIED_AGENT = 2
-SYARAT_BROKEN_FAILED_BERTURUT = 2
+REQUIRED_VERIFIED_RUNS = 3
+REQUIRED_VERIFIED_AGENTS = 2
+BROKEN_AFTER_CONSECUTIVE_FAILURES = 2
 
 
 def _connect(dsn=None):
@@ -44,7 +44,7 @@ def _row_to_procedure(row):
         "id": str(row["id"]),
         "user_id": str(row["user_id"]),
         "service": row["service"],
-        "versi": row["versi"],
+        "version": row["versi"],
         "step": row["step"],
         "output_schema": row["output_schema"],
         "required_checks": row["required_checks"],
@@ -114,12 +114,12 @@ def _mark_run_in_cursor(cur, row, success, agent_id):
     failed_new = row["failed_runs"] + (0 if success else 1)
     consecutive_failures = 0 if success else row["consecutive_failed_runs"] + 1
     status = row["status"]
-    if consecutive_failures >= SYARAT_BROKEN_FAILED_BERTURUT:
+    if consecutive_failures >= BROKEN_AFTER_CONSECUTIVE_FAILURES:
         status = "broken"
     elif (
         status == "trial"
-        and success_new >= SYARAT_VERIFIED_JALAN
-        and len(agent_ids) >= SYARAT_VERIFIED_AGENT
+        and success_new >= REQUIRED_VERIFIED_RUNS
+        and len(agent_ids) >= REQUIRED_VERIFIED_AGENTS
     ):
         status = "verified"
     cur.execute(

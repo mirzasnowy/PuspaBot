@@ -43,7 +43,7 @@ class CassetteError(Exception):
     """Kaset tidak valid / tidak ditemukan."""
 
 
-def rekam_dari_ledger(event: list[dict], task_id: str) -> dict:
+def record_from_ledger(event: list[dict], task_id: str) -> dict:
     """Bangun kaset dari kejadian `tool_selesai` satu tugas.
 
     Kembalikan {"tugas_id": ..., "rekaman": [{"tool": ..., "keluaran": ...}]}.
@@ -53,7 +53,7 @@ def rekam_dari_ledger(event: list[dict], task_id: str) -> dict:
         if ev.get("type") != "tool_completed" or ev.get("task_id") != task_id:
             continue
         content = ev.get("content") or {}
-        recording.append({"tool": content.get("tool", "not_dikenal"),
+        recording.append({"tool": content.get("tool", "unknown"),
                         "output": content.get("output")})
     return {"task_id": task_id, "recording": recording}
 
@@ -64,8 +64,8 @@ def save_cassette(cassette: dict, name: str, *, cassette_dir: Path | None = None
     """Simpan kaset sebagai file JSON lokal. Kembalikan path berkas."""
     folder = Path(cassette_dir or CASSETTE_DIR_DEFAULT)
     folder.mkdir(parents=True, exist_ok=True)
-    berkas = folder / f"{name}.json"
-    berkas.write_text(json.dumps(cassette, indent=2, ensure_ascii=False), encoding="utf-8")
+    file_path = folder / f"{name}.json"
+    file_path.write_text(json.dumps(cassette, indent=2, ensure_ascii=False), encoding="utf-8")
     if dsn is not None and user_id and task_id:
         import os
 
@@ -77,13 +77,13 @@ def save_cassette(cassette: dict, name: str, *, cassette_dir: Path | None = None
                 cur.execute(
                     "INSERT INTO cassettes (id, task_id, user_id, name, berkas)"
                     " VALUES (%s, %s, %s, %s, %s)",
-                    (f"kaset-{uuid.uuid4().hex[:8]}", task_id, user_id, name, str(berkas)),
+                    (f"kaset-{uuid.uuid4().hex[:8]}", task_id, user_id, name, str(file_path)),
                 )
             conn.commit()
-    return berkas
+    return file_path
 
 
-def muat_cassette(path: str | Path) -> dict:
+def load_cassette(path: str | Path) -> dict:
     """Muat kaset dari file JSON."""
     path = Path(path)
     if not path.exists():
@@ -101,24 +101,24 @@ class CassettePlayer:
 
     def __init__(self, cassette: dict) -> None:
         self.cassette = copy.deepcopy(cassette)
-        self._posisi: dict[str, int] = {}
-        self.putaran = 0
+        self._position: dict[str, int] = {}
+        self.play_count = 0
 
-    def putar(self, tool: str):
+    def play(self, tool: str):
         recording = [r for r in self.cassette.get("recording", []) if r.get("tool") == tool]
-        idx = self._posisi.get(tool, 0)
+        idx = self._position.get(tool, 0)
         if idx >= len(recording):
             raise CassetteError(f"kaset kehabisan rekaman untuk tool {tool!r}")
-        self._posisi[tool] = idx + 1
-        self.putaran += 1
+        self._position[tool] = idx + 1
+        self.play_count += 1
         return copy.deepcopy(recording[idx]["output"])
 
-    def sisa(self, tool: str) -> int:
+    def remaining(self, tool: str) -> int:
         recording = [r for r in self.cassette.get("recording", []) if r.get("tool") == tool]
-        return len(recording) - self._posisi.get(tool, 0)
+        return len(recording) - self._position.get(tool, 0)
 
 
-def suntik_price_wrong(cassette: dict, *, tool: str, value_new) -> dict:
+def inject_price_wrong(cassette: dict, *, tool: str, value_new) -> dict:
     """Uji suntik: ubah satu angka di keluaran Pembaca dalam kaset.
 
     Kembalikan kaset BARU (asli tidak diubah). Pemeriksa harus
@@ -159,18 +159,18 @@ def delete_cassette_task(task_id: str, *, cassette_dir: Path | None = None,
                 rows = cur.fetchall()
                 cur.execute("DELETE FROM cassettes WHERE task_id = %s", (task_id,))
             conn.commit()
-        for name, berkas in rows:
-            p = Path(berkas)
+        for name, file_path in rows:
+            p = Path(file_path)
             if p.exists():
                 p.unlink()
             deleted.append(name)
         return {"deleted": deleted}
-    for berkas in folder.glob("*.json"):
+    for file_path in folder.glob("*.json"):
         try:
-            data = json.loads(berkas.read_text(encoding="utf-8"))
+            data = json.loads(file_path.read_text(encoding="utf-8"))
         except Exception:
             continue
         if data.get("task_id") == task_id:
-            berkas.unlink()
-            deleted.append(berkas.stem)
+            file_path.unlink()
+            deleted.append(file_path.stem)
     return {"deleted": deleted}

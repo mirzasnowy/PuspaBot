@@ -55,13 +55,13 @@ def consolidate_idle(user_id, older_than_days=30, agent_id=None, dsn=None,
     lewat `kejadian_ids` yang sudah tersimpan).
     """
     now = now or datetime.now(timezone.utc)
-    ambang = now - timedelta(days=older_than_days)
+    cutoff = now - timedelta(days=older_than_days)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT DISTINCT task_id FROM episodic WHERE user_id = %s "
                 "AND created_at < %s AND task_id IS NOT NULL",
-                (user_id, ambang),
+                (user_id, cutoff),
             )
             task_ids = [r["task_id"] for r in cur.fetchall()]
             cur.execute(
@@ -73,7 +73,7 @@ def consolidate_idle(user_id, older_than_days=30, agent_id=None, dsn=None,
                 already.update(str(k) for k in (r["event_ids"] or []))
     summaries_created = 0
     procedures_promoted = 0
-    task_diproses = []
+    processed_tasks = []
     for task_id in task_ids:
         with _connect(dsn) as conn:
             with conn.cursor() as cur:
@@ -106,14 +106,14 @@ def consolidate_idle(user_id, older_than_days=30, agent_id=None, dsn=None,
                 )
             conn.commit()
         summaries_created += 1
-        task_diproses.append(str(task_id))
+        processed_tasks.append(str(task_id))
         # Pola berhasil -> prosedural: episode tugas_selesai yang
         # isinya menandai berhasil.
-        completed_at = [e for e in new if e["type"] == "task_completed"]
-        if completed_at and any(w in e["content"].lower() for e in completed_at for w in ("successful", "berhasil")):
-            service = completed_at[0]["content"].split(":", 1)[0].strip() or "tasks"
+        completed_episodes = [e for e in new if e["type"] == "task_completed"]
+        if completed_episodes and any(w in e["content"].lower() for e in completed_episodes for w in ("successful", "berhasil")):
+            service = completed_episodes[0]["content"].split(":", 1)[0].strip() or "tasks"
             step = [e["content"] for e in new if e["type"] != "task_completed"] or [
-                e["content"] for e in completed_at
+                e["content"] for e in completed_episodes
             ]
             procedural.record_successful_task(
                 user_id, service, step, agent_id=agent_id,
@@ -124,7 +124,7 @@ def consolidate_idle(user_id, older_than_days=30, agent_id=None, dsn=None,
     return {
         "summaries_created": summaries_created,
         "procedures_promoted": procedures_promoted,
-        "tasks": task_diproses,
+        "tasks": processed_tasks,
     }
 
 

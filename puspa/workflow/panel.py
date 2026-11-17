@@ -23,12 +23,12 @@ def _esc(text) -> str:
 def card_step_html(card: dict) -> str:
     """Satu kartu langkah: judul, blok, kelas izin, lencana aksi keluar."""
     lencana = ""
-    if card.get("action_logout"):
+    if card.get("outbound_action"):
         lencana = ' <span class="lencana-aksi">butuh persetujuan</span>'
     return (
         f'<div class="kartu-langkah" data-blok="{_esc(card.get("block", ""))}">'
         f'<h4>{_esc(card.get("title", ""))}</h4>'
-        f'<p>{_esc(card.get("deskripsi", ""))}</p>'
+        f'<p>{_esc(card.get("description", ""))}</p>'
         f'<p class="meta">Blok: <code>{_esc(card.get("block", ""))}</code>'
         f' · Kelas: {_esc(card.get("permission_class", ""))}{lencana}</p>'
         f'</div>'
@@ -36,30 +36,30 @@ def card_step_html(card: dict) -> str:
 
 
 def panel_workflow_html(*, name: str, trigger: dict, card: list[dict],
-                    manifest_teks: str = "", message: str = "") -> str:
+                    manifest_text: str = "", message: str = "") -> str:
     """Panel draf alur: nama + pemicu + kartu langkah + manifes izin."""
     card_html = "\n".join(card_step_html(k) for k in card)
-    trigger_teks = _esc(trigger.get("type", "manual"))
+    trigger_text = _esc(trigger.get("type", "manual"))
     message_html = f'<p class="pesan">{_esc(message)}</p>' if message else ""
-    manifest_html = (f'<pre class="manifes">{_esc(manifest_teks)}</pre>'
-                    if manifest_teks else "")
+    manifest_html = (f'<pre class="manifes">{_esc(manifest_text)}</pre>'
+                    if manifest_text else "")
     return (
         f'<section class="panel-alur"><h3>{_esc(name)}</h3>'
-        f'<p>Pemicu: {trigger_teks}</p>{message_html}'
+        f'<p>Pemicu: {trigger_text}</p>{message_html}'
         f'<div class="daftar-langkah">{card_html}</div>'
         f'{manifest_html}</section>'
     )
 
 
-def result_jalan_html(result: dict) -> str:
+def result_run_html(result: dict) -> str:
     """Hasil jalan / uji kering: tiap langkah + status + biaya + alasan."""
     rows = []
-    for l in result.get("step_results", []):
-        status = "successful" if l.get("success") else (
-            "pending" if l.get("success") is None else "failed")
-        if l.get("simulasi"):
+    for step_result in result.get("step_results", []):
+        status = "successful" if step_result.get("success") else (
+            "pending" if step_result.get("success") is None else "failed")
+        if step_result.get("simulated"):
             status = "simulasi (uji kering)"
-        rows.append(f'<li>{_esc(l.get("block", "?"))} — {status}</li>')
+        rows.append(f'<li>{_esc(step_result.get("block", "?"))} — {status}</li>')
     reason = result.get("reason") or ""
     return (
         f'<section class="hasil-jalan"><p>Status: {_esc(result.get("status", ""))}</p>'

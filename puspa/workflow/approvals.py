@@ -17,7 +17,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
-KEDALUWARSA_HOUR = 24
+EXPIRY_HOURS = 24
 
 
 class ApprovalError(Exception):
@@ -31,17 +31,25 @@ def _connect(dsn=None):
 
 def content_hash(action: dict) -> str:
     """Hash isi aksi persis (kanonik, urut kunci) — pengikat persetujuan."""
-    kanonik = json.dumps(action, sort_keys=True, ensure_ascii=False)
-    return hashlib.sha256(kanonik.encode("utf-8")).hexdigest()
+    canonical = json.dumps(action, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def request_approval(*, jalan_id: str, workflow_id: str, user_id: str,
-                      action: dict, sekarang: datetime | None = None,
+def _row_approval(row: dict) -> dict:
+    """Baris persetujuan dengan kunci Inggris (`jalan_id` -> `run_id`)."""
+    row = dict(row)
+    if "jalan_id" in row:
+        row["run_id"] = row.pop("jalan_id")
+    return row
+
+
+def request_approval(*, run_id: str, workflow_id: str, user_id: str,
+                      action: dict, now: datetime | None = None,
                       dsn=None) -> dict:
     """Antrekan satu aksi keluar dari jalan alur. Kembalikan baris
     persetujuan (status 'menunggu', kedaluwarsa +24 jam)."""
-    sekarang = sekarang or datetime.now(timezone.utc)
-    expires_at = sekarang + timedelta(hours=KEDALUWARSA_HOUR)
+    now = now or datetime.now(timezone.utc)
+    expires_at = now + timedelta(hours=EXPIRY_HOURS)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -49,14 +57,14 @@ def request_approval(*, jalan_id: str, workflow_id: str, user_id: str,
                 " content_hash, status, created_at, expires_at)"
                 " VALUES (%s, %s, %s, %s, %s, 'pending', %s, %s)"
                 " RETURNING id, jalan_id, workflow_id, status, content_hash, expires_at",
-                (jalan_id, workflow_id, user_id, json.dumps(action),
-                 content_hash(action), sekarang, expires_at))
+                (run_id, workflow_id, user_id, json.dumps(action),
+                 content_hash(action), now, expires_at))
             row = cur.fetchone()
         conn.commit()
-    return dict(row)
+    return _row_approval(row)
 
 
-def take_approval(approval_id: str, *, user_id: str, dsn=None) -> dict | None:
+def get_approval(approval_id: str, *, user_id: str, dsn=None) -> dict | None:
     """Baca satu persetujuan — hanya milik user itu (isolasi §2.15)."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
@@ -64,21 +72,21 @@ def take_approval(approval_id: str, *, user_id: str, dsn=None) -> dict | None:
                 "SELECT * FROM workflow_approvals WHERE id = %s AND user_id = %s",
                 (approval_id, user_id))
             row = cur.fetchone()
-    return dict(row) if row else None
+    return _row_approval(row) if row else None
 
 
-def periksa_kedaluwarsa(approval_id: str, *, user_id: str,
-                        sekarang: datetime | None = None, dsn=None) -> dict:
+def check_expiry(approval_id: str, *, user_id: str,
+                        now: datetime | None = None, dsn=None) -> dict:
     """Tandai 'kedaluwarsa' bila sudah lewat 24 jam dan masih menunggu.
     Kembalikan baris terbaru (apa pun statusnya)."""
-    sekarang = sekarang or datetime.now(timezone.utc)
+    now = now or datetime.now(timezone.utc)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE workflow_approvals SET status = 'expired'"
                 " WHERE id = %s AND user_id = %s AND status = 'pending'"
                 " AND expires_at <= %s RETURNING *",
-                (approval_id, user_id, sekarang))
+                (approval_id, user_id, now))
             row = cur.fetchone()
             if row is None:
                 cur.execute(
@@ -86,12 +94,12 @@ def periksa_kedaluwarsa(approval_id: str, *, user_id: str,
                     (approval_id, user_id))
                 row = cur.fetchone()
         conn.commit()
-    return dict(row) if row else None
+    return _row_approval(row) if row else None
 
 
-def putuskan(*, approval_id: str, user_id: str, setuju: bool,
-             action_kini: dict | None = None,
-             sekarang: datetime | None = None, dsn=None) -> dict:
+def decide(*, approval_id: str, user_id: str, approved: bool,
+             current_action: dict | None = None,
+             now: datetime | None = None, dsn=None) -> dict:
     """User menyetujui / menolak. Aturan:
     - sudah kedaluwarsa (lewat 24 jam) → status jadi 'kedaluwarsa',
       ApprovalError (aksi dibatalkan, bukan dieksekusi terlambat);
@@ -100,7 +108,7 @@ def putuskan(*, approval_id: str, user_id: str, setuju: bool,
     - sudah diputuskan sebelumnya → ApprovalError.
     Kembalikan baris terbaru bila berhasil diputuskan.
     """
-    sekarang = sekarang or datetime.now(timezone.utc)
+    now = now or datetime.now(timezone.utc)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -112,7 +120,7 @@ def putuskan(*, approval_id: str, user_id: str, setuju: bool,
             if row["status"] != "pending":
                 raise ApprovalError(
                     f"persetujuan sudah {row['status']}")
-            if row["expires_at"] <= sekarang:
+            if row["expires_at"] <= now:
                 cur.execute(
                     "UPDATE workflow_approvals SET status = 'expired'"
                     " WHERE id = %s RETURNING *", (approval_id,))
@@ -120,7 +128,7 @@ def putuskan(*, approval_id: str, user_id: str, setuju: bool,
                 conn.commit()
                 raise ApprovalError(
                     "approval already expired (24h) - action cancelled")
-            if action_kini is not None and content_hash(action_kini) != row["content_hash"]:
+            if current_action is not None and content_hash(current_action) != row["content_hash"]:
                 cur.execute(
                     "UPDATE workflow_approvals SET status = 'cancelled'"
                     " WHERE id = %s RETURNING *", (approval_id,))
@@ -128,16 +136,16 @@ def putuskan(*, approval_id: str, user_id: str, setuju: bool,
                 conn.commit()
                 raise ApprovalError(
                     "action content changed after being requested - approval void, request again")
-            status_new = "granted" if setuju else "rejected"
+            status_new = "granted" if approved else "rejected"
             cur.execute(
                 "UPDATE workflow_approvals SET status = %s WHERE id = %s RETURNING *",
                 (status_new, approval_id))
             row = cur.fetchone()
         conn.commit()
-    return dict(row)
+    return _row_approval(row)
 
 
-def items_pending(user_id: str, dsn=None) -> list[dict]:
+def list_pending(user_id: str, dsn=None) -> list[dict]:
     """Antrean persetujuan alur yang masih menunggu (layar Tugas)."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
@@ -145,4 +153,4 @@ def items_pending(user_id: str, dsn=None) -> list[dict]:
                 "SELECT * FROM workflow_approvals WHERE user_id = %s"
                 " AND status = 'pending' ORDER BY created_at",
                 (user_id,))
-            return [dict(r) for r in cur.fetchall()]
+            return [_row_approval(r) for r in cur.fetchall()]

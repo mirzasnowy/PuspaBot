@@ -2,38 +2,38 @@
 
 import pytest
 
-from puspa.router.router import hitung_cost, pilih
+from puspa.router.router import compute_cost, choose
 
 
-def test_pembaca_use_model_termurah():
-    p = pilih("pembaca")
+def test_reader_uses_cheapest_model():
+    p = choose("pembaca")
     assert p.rp_per_1k_input + p.rp_per_1k_output == min(
         b[3] + b[4] for b in
-        __import__("puspa.router.router", fromlist=["KATALOG"]).KATALOG)
+        __import__("puspa.router.router", fromlist=["KATALOG"]).CATALOG)
 
 
-def test_perencana_use_model_menengah_passed_reference():
-    from puspa.router.router import KATALOG
+def test_planner_uses_mid_tier_model_passed_by_reference():
+    from puspa.router.router import CATALOG
 
-    p = pilih("perencana")
-    rows = next(b for b in KATALOG if b[1] == p.model)
+    p = choose("perencana")
+    rows = next(b for b in CATALOG if b[1] == p.model)
     assert rows[6] is True  # lolos 10 tugas acuan
-    assert pilih("penyaji").model == p.model
+    assert choose("penyaji").model == p.model
 
 
-def test_pemeriksa_family_berbeda_dari_pembuat():
-    p = pilih("pemeriksa", family_pembuat="deepseek")
+def test_verifier_family_differs_from_maker():
+    p = choose("pemeriksa", creator_family="deepseek")
     assert p.family != "deepseek"
-    p2 = pilih("pemeriksa", family_pembuat="qwen")
+    p2 = choose("pemeriksa", creator_family="qwen")
     assert p2.family != "qwen"
 
 
-def test_vision_termurah_and_hitung_cost():
-    p = pilih("vision")
+def test_cheapest_vision_model_and_cost_counted():
+    p = choose("vision")
     assert p is not None and p.vision is True
-    assert hitung_cost(p, 1000, 500) == p.rp_per_1k_input + p.rp_per_1k_output // 2
+    assert compute_cost(p, 1000, 500) == p.rp_per_1k_input + p.rp_per_1k_output // 2
 
 
-def test_peran_not_dikenal_rejected():
+def test_unknown_role_rejected():
     with pytest.raises(ValueError):
-        pilih("raja")
+        choose("raja")

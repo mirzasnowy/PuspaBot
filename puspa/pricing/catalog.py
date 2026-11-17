@@ -23,15 +23,15 @@ begitu Nero memutuskan sumber (keputusan 15).
 from __future__ import annotations
 
 # (merek, seri, nomor_model, kategori, varian)
-BIBIT_KATALOG: list[tuple[str, str, str, str, dict]] = [
-    ("Samsung", "Galaxy S24", "SM-S921B", "phone", {"storage": "256GB", "warna": "hitam"}),
-    ("Samsung", "Galaxy S24", "SM-S921B", "phone", {"storage": "512GB", "warna": "hitam"}),
-    ("Apple", "iPhone 15", "A3090", "phone", {"storage": "128GB", "warna": "hitam"}),
-    ("Apple", "MacBook Air M3", "MQKP3ID/A", "laptop", {"storage": "256GB", "warna": "silver"}),
-    ("Lenovo", "IdeaPad Slim 5", "82XB00FUID", "laptop", {"storage": "512GB", "warna": "abu-abu"}),
-    ("Samsung", "Galaxy Tab A9", "SM-X110", "tablet", {"storage": "64GB", "warna": "abu-abu"}),
-    ("Apple", "Watch SE 2", "A2729", "smartwatch", {"warna": "hitam"}),
-    ("Samsung", "Galaxy Buds2 Pro", "SM-R510", "earphones/TWS", {"warna": "putih"}),
+SEED_CATALOG: list[tuple[str, str, str, str, dict]] = [
+    ("Samsung", "Galaxy S24", "SM-S921B", "phone", {"storage": "256GB", "color": "hitam"}),
+    ("Samsung", "Galaxy S24", "SM-S921B", "phone", {"storage": "512GB", "color": "hitam"}),
+    ("Apple", "iPhone 15", "A3090", "phone", {"storage": "128GB", "color": "hitam"}),
+    ("Apple", "MacBook Air M3", "MQKP3ID/A", "laptop", {"storage": "256GB", "color": "silver"}),
+    ("Lenovo", "IdeaPad Slim 5", "82XB00FUID", "laptop", {"storage": "512GB", "color": "abu-abu"}),
+    ("Samsung", "Galaxy Tab A9", "SM-X110", "tablet", {"storage": "64GB", "color": "abu-abu"}),
+    ("Apple", "Watch SE 2", "A2729", "smartwatch", {"color": "hitam"}),
+    ("Samsung", "Galaxy Buds2 Pro", "SM-R510", "earphones/TWS", {"color": "putih"}),
     ("LG", "UHD 4K 55 inci", "55UR7500PSC", "TV", {}),
     ("Sony", "PlayStation 5 Slim", "CFI-2018A01", "game console", {"storage": "1TB"}),
     ("Canon", "EOS R50", "EOSR50", "camera", {}),
@@ -43,17 +43,17 @@ BIBIT_KATALOG: list[tuple[str, str, str, str, dict]] = [
 # 10 barang uji default (keputusan 7) — satu per kategori, HP dua.
 PRODUCT_TEST_DEFAULT: list[dict] = [
     {"brand": "Samsung", "series": "Galaxy S24", "model_number": "SM-S921B",
-     "category": "phone", "variant": {"storage": "256GB", "warna": "hitam"}},
+     "category": "phone", "variant": {"storage": "256GB", "color": "hitam"}},
     {"brand": "Apple", "series": "iPhone 15", "model_number": "A3090",
-     "category": "phone", "variant": {"storage": "128GB", "warna": "hitam"}},
+     "category": "phone", "variant": {"storage": "128GB", "color": "hitam"}},
     {"brand": "Apple", "series": "MacBook Air M3", "model_number": "MQKP3ID/A",
-     "category": "laptop", "variant": {"storage": "256GB", "warna": "silver"}},
+     "category": "laptop", "variant": {"storage": "256GB", "color": "silver"}},
     {"brand": "Samsung", "series": "Galaxy Tab A9", "model_number": "SM-X110",
-     "category": "tablet", "variant": {"storage": "64GB", "warna": "abu-abu"}},
+     "category": "tablet", "variant": {"storage": "64GB", "color": "abu-abu"}},
     {"brand": "Apple", "series": "Watch SE 2", "model_number": "A2729",
-     "category": "smartwatch", "variant": {"warna": "hitam"}},
+     "category": "smartwatch", "variant": {"color": "hitam"}},
     {"brand": "Samsung", "series": "Galaxy Buds2 Pro", "model_number": "SM-R510",
-     "category": "earphones/TWS", "variant": {"warna": "putih"}},
+     "category": "earphones/TWS", "variant": {"color": "putih"}},
     {"brand": "LG", "series": "UHD 4K 55 inci", "model_number": "55UR7500PSC",
      "category": "TV", "variant": {}},
     {"brand": "Sony", "series": "PlayStation 5 Slim", "model_number": "CFI-2018A01",
@@ -74,12 +74,12 @@ CATEGORY_SCOPE = (
 CATEGORY_REJECTED = ("fashion", "baju", "sepatu", "tas", "clothing")
 
 
-def di_luar_scope(category: str) -> bool:
+def out_of_scope(category: str) -> bool:
     """True bila kategori di luar 9 kategori §4.1."""
     return str(category).strip().lower() not in {k.lower() for k in CATEGORY_SCOPE}
 
 
-def penolakan_scope(category: str) -> str:
+def scope_rejection_message(category: str) -> str:
     """Pesan penolakan yang jelas untuk kategori di luar scope (§5.2)."""
     return (
         f"Kategori {category!r} di luar scope bandingkan harga Puspa "
@@ -91,14 +91,14 @@ def penolakan_scope(category: str) -> str:
     )
 
 
-def content_bibit(dsn=None) -> dict:
+def seed_catalog(dsn=None) -> dict:
     """Isi graf identitas dari BIBIT_KATALOG. Kembalikan hitungan."""
     from puspa.graphs.identity import add_product
 
-    ditambah = 0
-    for brand, series, model_number, category, variant in BIBIT_KATALOG:
+    added = 0
+    for brand, series, model_number, category, variant in SEED_CATALOG:
         add_product(brand=brand, series=series, model_number=model_number,
                       category=category, variant=variant, dsn=dsn)
-        ditambah += 1
-    return {"bibit_ditulis": ditambah,
-            "product_unik": len({(m, n) for m, _s, n, _k, _v in BIBIT_KATALOG})}
+        added += 1
+    return {"bibit_ditulis": added,
+            "product_unik": len({(m, n) for m, _s, n, _k, _v in SEED_CATALOG})}

@@ -55,7 +55,7 @@ REQUIRED_FIELDS = frozenset(
         "tools",
         "domains",
         "connectors",
-        "anggaran",
+        "budget",
         "exp",
         "iat",
         "parent",
@@ -63,7 +63,7 @@ REQUIRED_FIELDS = frozenset(
 )
 
 # Field wajib di dalam anggaran.
-ANGGARAN_FIELDS = frozenset({"step_max", "token_max", "rupiah_max"})
+BUDGET_FIELDS = frozenset({"step_max", "token_max", "rupiah_max"})
 
 # Registri in-memory: token_id -> payload (untuk revoke_all_for_tugas).
 _issued: dict[str, dict] = {}
@@ -132,14 +132,14 @@ def _validate_payload(payload: dict) -> None:
         for k, v in payload["connectors"].items()
     ):
         raise TokenError("field konektor harus {nama: [scope]}")
-    anggaran = payload["anggaran"]
-    if not isinstance(anggaran, dict):
+    budget = payload["budget"]
+    if not isinstance(budget, dict):
         raise TokenError("field anggaran harus dict")
-    missing_anggaran = ANGGARAN_FIELDS - set(anggaran)
-    if missing_anggaran:
-        raise TokenError(f"anggaran kehilangan field: {sorted(missing_anggaran)}")
-    for key in ANGGARAN_FIELDS:
-        if not isinstance(anggaran[key], (int, float)) or isinstance(anggaran[key], bool):
+    missing_budget = BUDGET_FIELDS - set(budget)
+    if missing_budget:
+        raise TokenError(f"anggaran kehilangan field: {sorted(missing_budget)}")
+    for key in BUDGET_FIELDS:
+        if not isinstance(budget[key], (int, float)) or isinstance(budget[key], bool):
             raise TokenError(f"anggaran.{key} harus angka")
     for key in ("exp", "iat"):
         if not isinstance(payload[key], int) or isinstance(payload[key], bool):
@@ -232,8 +232,8 @@ def is_subset(child: dict, parent: dict) -> bool:
         for name, scopes in child["connectors"].items():
             if set(scopes) - set(parent["connectors"].get(name, [])):
                 return False
-        for key in ANGGARAN_FIELDS:
-            if child["anggaran"][key] > parent["anggaran"][key]:
+        for key in BUDGET_FIELDS:
+            if child["budget"][key] > parent["budget"][key]:
                 return False
         if child["exp"] > parent["exp"]:
             return False

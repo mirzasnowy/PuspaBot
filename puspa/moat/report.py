@@ -26,7 +26,7 @@ def _connect(dsn=None):
 
 
 def report_wrong(*, evidence_id: str, user_id: str, reason: str = "",
-                sumber: str = "", category: str = "",
+                source: str = "", category: str = "",
                 task_id: str, agent_id: str, dsn=None,
                 ledger=None) -> dict:
     """Catat laporan salah atas satu angka (bukti_id).
@@ -42,21 +42,21 @@ def report_wrong(*, evidence_id: str, user_id: str, reason: str = "",
                 "INSERT INTO false_reports (evidence_id, user_id, reason)"
                 " VALUES (%s, %s, %s) RETURNING id",
                 (evidence_id, user_id, reason))
-            laporan_id = str(cur.fetchone()["id"])
-            if sumber:
+            report_id = str(cur.fetchone()["id"])
+            if source:
                 cur.execute(
                     "INSERT INTO source_readings (user_id, sumber, category, vonis)"
                     " VALUES (%s, %s, %s, 'Cannot be determined')",
-                    (user_id, sumber, category))
+                    (user_id, source, category))
         conn.commit()
     if ledger is not None:
         ledger.append_event(task_id=task_id, agent_id=agent_id,
                             event_type="false_report",
                             content={"evidence_id": evidence_id, "reason": reason})
-    return {"laporan_id": laporan_id, "reread_requested": True}
+    return {"laporan_id": report_id, "reread_requested": True}
 
 
-def items_laporan(evidence_id: str, dsn=None) -> list[dict]:
+def list_reports(evidence_id: str, dsn=None) -> list[dict]:
     """Daftar laporan salah untuk satu bukti."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:

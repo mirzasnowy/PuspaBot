@@ -28,7 +28,7 @@ def test_onboarding_4_step_end_to_end(make_user, test_dsn, ledger):
     s2 = complete_step2(u["user_id"], notifier=notifier, dsn=test_dsn)
     assert s2["current_step"] == 2
     # Web Push Fase 2 belum ada: uji kirim JUJUR melaporkan tidak terkirim.
-    assert s2["notif_terkirim"] is False
+    assert s2["notification_sent"] is False
     assert len(notifier.trial) == 1
     s3 = complete_step3(u["user_id"], connector="nanti", dsn=test_dsn)
     assert s3["current_step"] == 3 and s3["connector"] == "nanti"
@@ -36,27 +36,27 @@ def test_onboarding_4_step_end_to_end(make_user, test_dsn, ledger):
         u["user_id"], "compare_prices", "Asus Vivobook 14",
         dsn=test_dsn, ledger=ledger, agent_id=u["agent_id"],
     )
-    assert result["terbukti"] is False  # stub jujur: wedge Fase 3
+    assert result["verified"] is False  # stub jujur: wedge Fase 3
     assert "Fase 3" in result["reason"]
     assert result["status"]["current_step"] == 4
-    assert result["templat_workflow_ditawarkan"] == [
+    assert result["offered_workflow_templates"] == [
         "Tagihan bulanan", "Pantau harga barang", "Rekap tagihan minggu ini",
     ]
     # Buku Kerja mencatat tugas stub; episodik mencatat tugas pertama.
     assert len(ledger.events(result["task_id"])) == 2
-    durasi = measure_onboarding_seconds(result["status"])
-    assert durasi is not None and durasi < 300
+    duration = measure_onboarding_seconds(result["status"])
+    assert duration is not None and duration < 300
     assert within_target(result["status"]) is True
 
 
-def test_task_pertama_without_ledger_tetap_jalan(make_user, test_dsn):
+def test_first_task_without_ledger_still_runs(make_user, test_dsn):
     u = make_user()
     start_onboarding(u["user_id"], dsn=test_dsn)
     result = run_first_task(u["user_id"], "check_bill", "PLN", dsn=test_dsn)
-    assert result["terbukti"] is False and result["event_ids"] == []
+    assert result["verified"] is False and result["event_ids"] == []
 
 
-def test_validasi_step_onboarding(make_user, test_dsn):
+def test_validation_step_onboarding(make_user, test_dsn):
     u = make_user()
     start_onboarding(u["user_id"], dsn=test_dsn)
     with pytest.raises(ValueError):
@@ -68,7 +68,7 @@ def test_validasi_step_onboarding(make_user, test_dsn):
     assert get_status("00000000-0000-0000-0000-000000000000", dsn=test_dsn) is None
 
 
-def test_onboarding_not_can_diulang_without_mulai(make_user, test_dsn):
+def test_onboarding_cannot_repeat_without_start(make_user, test_dsn):
     u = make_user()
     with pytest.raises(KeyError):
         complete_step1(u["user_id"], "Nero", "santai", dsn=test_dsn)

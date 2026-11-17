@@ -9,66 +9,66 @@ Tugas acuan 8 dan 9 berjalan sebagai alur:
 
 from __future__ import annotations
 
-TEMPLAT = {
+TEMPLATES = {
     "bill_monthly": {
         "name": "Tagihan bulanan",
-        "deskripsi": "Tiap tanggal 25 cek PLN dan PDAM, ingatkan aku, siapkan bayar.",
+        "description": "Tiap tanggal 25 cek PLN dan PDAM, ingatkan aku, siapkan bayar.",
         "triggers": {"type": "schedule", "mode": "date", "date": 25,
                    "start_time": "07:00"},
         "step": [
             {"block": "check_bill",
-             "masukan": {"provider": "PLN", "number_pelanggan": ""},
+             "inputs": {"provider": "PLN", "customer_number": ""},
              "title": "Cek tagihan PLN"},
             {"block": "check_bill",
-             "masukan": {"provider": "PDAM", "number_pelanggan": ""},
+             "inputs": {"provider": "PDAM", "customer_number": ""},
              "title": "Cek tagihan PDAM"},
             {"block": "send_notification",
-             "masukan": {"message": "Tagihan PLN dan PDAM sudah dicek — lihat rinciannya."},
+             "inputs": {"message": "Tagihan PLN dan PDAM sudah dicek — lihat rinciannya."},
              "title": "Ingatkan aku"},
             {"block": "prepare_payment",
-             "masukan": {"provider": "PLN", "amount": 0, "purpose": "PLN"},
+             "inputs": {"provider": "PLN", "amount": 0, "purpose": "PLN"},
              "title": "Siapkan bayar (mode aman)"},
         ],
     },
     "watch_prices": {
         "name": "Pantau harga barang",
-        "deskripsi": "Pantau harga barang di watchlist; beri tahu bila turun di bawah ambang.",
-        "triggers": {"type": "price_turun", "product_id": "samsung-galaxy-s25",
+        "description": "Pantau harga barang di watchlist; beri tahu bila turun di bawah ambang.",
+        "triggers": {"type": "price_drop", "product_id": "samsung-galaxy-s25",
                    "price_threshold": 10000000},
         "step": [
             {"block": "watch_prices",
-             "masukan": {"product_id": "samsung-galaxy-s25",
+             "inputs": {"product_id": "samsung-galaxy-s25",
                          "price_threshold": 10000000},
              "title": "Pantau harga"},
             {"block": "condition",
-             "masukan": {"ungkapan": "watch_price.di_bawah_ambang == True"},
-             "maka": [{"block": "send_notification",
-                       "masukan": {"message": "Harga barang yang kamu pantau turun di bawah ambang."},
+             "inputs": {"expression": "watch_price.below_threshold == True"},
+             "then": [{"block": "send_notification",
+                       "inputs": {"message": "Harga barang yang kamu pantau turun di bawah ambang."},
                        "title": "Beri tahu harga turun"}],
-             "kalau_not": [],
+             "else": [],
              "title": "Kalau harga turun"},
         ],
     },
     "rekap_bill_weekly": {
         "name": "Rekap tagihan minggu ini",
-        "deskripsi": "Tiap Senin ingatkan semua tagihan yang jatuh tempo minggu ini.",
+        "description": "Tiap Senin ingatkan semua tagihan yang jatuh tempo minggu ini.",
         "triggers": {"type": "schedule", "mode": "day", "day": "senin",
                    "start_time": "07:00"},
         "step": [
             {"block": "check_bill",
-             "masukan": {"provider": "PLN", "number_pelanggan": ""},
+             "inputs": {"provider": "PLN", "customer_number": ""},
              "title": "Cek tagihan PLN"},
             {"block": "check_bill",
-             "masukan": {"provider": "PDAM", "number_pelanggan": ""},
+             "inputs": {"provider": "PDAM", "customer_number": ""},
              "title": "Cek tagihan PDAM"},
             {"block": "check_bill",
-             "masukan": {"provider": "airtime", "number_pelanggan": ""},
+             "inputs": {"provider": "airtime", "customer_number": ""},
              "title": "Cek tagihan pulsa"},
             {"block": "check_bill",
-             "masukan": {"provider": "paket data", "number_pelanggan": ""},
+             "inputs": {"provider": "paket data", "customer_number": ""},
              "title": "Cek tagihan paket data"},
             {"block": "send_notification",
-             "masukan": {"message": "Rekap tagihan minggu ini sudah siap — lihat rinciannya."},
+             "inputs": {"message": "Rekap tagihan minggu ini sudah siap — lihat rinciannya."},
              "title": "Ingatkan semua tagihan"},
         ],
     },
@@ -81,25 +81,25 @@ TASK_REFERENCE_WORKFLOW = {
 }
 
 
-def items_templat() -> list[dict]:
+def list_templates() -> list[dict]:
     """Tiga templat bawaan (nama + deskripsi + pemicu + langkah)."""
-    return [dict(v, key=k) for k, v in TEMPLAT.items()]
+    return [dict(v, key=k) for k, v in TEMPLATES.items()]
 
 
-def take_templat(key: str) -> dict:
-    if key not in TEMPLAT:
+def get_template(key: str) -> dict:
+    if key not in TEMPLATES:
         raise KeyError(f"templat {key!r} tidak ada (hanya 3 templat bawaan)")
-    return dict(TEMPLAT[key])
+    return dict(TEMPLATES[key])
 
 
-def create_dari_templat(key: str, *, user_id: str, agent_id: str,
+def create_from_template(key: str, *, user_id: str, agent_id: str,
                       trigger: dict | None = None, dsn=None) -> dict:
     """Buat alur draf dari templat (pemicu boleh ditimpa — misal tugas
     acuan 8 memakai pemicu manual)."""
     from puspa.workflow.runner import create_workflow
 
-    templat = take_templat(key)
+    template = get_template(key)
     return create_workflow(
-        user_id=user_id, agent_id=agent_id, name=templat["name"],
-        trigger=trigger if trigger is not None else dict(templat["triggers"]),
-        step=[dict(l) for l in templat["step"]], dsn=dsn)
+        user_id=user_id, agent_id=agent_id, name=template["name"],
+        trigger=trigger if trigger is not None else dict(template["triggers"]),
+        step=[dict(l) for l in template["step"]], dsn=dsn)

@@ -83,7 +83,7 @@ def task_id(ledger):
         conn.execute("DELETE FROM events WHERE task_id = %s", (tid,))
 
 
-def test_himpunan_tertutup_31_jenis():
+def test_closed_set_of_31_event_types():
     assert len(EVENT_TYPES_OLD) == 22
     assert len(EVENT_TYPES_NEW) == 9
     assert set(EVENT_TYPES_OLD).isdisjoint(EVENT_TYPES_NEW)
@@ -92,7 +92,7 @@ def test_himpunan_tertutup_31_jenis():
 
 
 @pytest.mark.parametrize("event_type", EVENT_TYPES_NEW)
-def test_append_jenis_new_and_read_kembali(ledger, task_id, event_type):
+def test_append_new_event_type_and_read_back(ledger, task_id, event_type):
     ev = ledger.append_event(
         task_id=task_id, agent_id=AGEN, event_type=event_type, content={"type": event_type}
     )
@@ -101,14 +101,14 @@ def test_append_jenis_new_and_read_kembali(ledger, task_id, event_type):
     assert ev["previous_hash"] == GENESIS  # kejadian pertama tugas ini
     assert len(ev["hash"]) == 64
 
-    dibaca = ledger.events(task_id)
-    assert len(dibaca) == 1
-    assert dibaca[0] == ev
+    read = ledger.events(task_id)
+    assert len(read) == 1
+    assert read[0] == ev
     # Filter event_type mengembalikan kejadian yang sama.
     assert [e["id"] for e in ledger.events(task_id, event_type=event_type)] == [ev["id"]]
 
 
-def test_rantai_hash_campuran_old_and_new_tetap_utuh(ledger, task_id):
+def test_hash_chain_mixed_old_and_new_still_intact(ledger, task_id):
     # Campuran event_type lama + baru dalam satu tugas, urut append.
     urutan = [
         "task_created",
@@ -130,8 +130,8 @@ def test_rantai_hash_campuran_old_and_new_tetap_utuh(ledger, task_id):
         )
         for i, j in enumerate(urutan)
     ]
-    for sebelum, sesudah in zip(created_at, created_at[1:]):
-        assert sesudah["previous_hash"] == sebelum["hash"]
+    for before, sesudah in zip(created_at, created_at[1:]):
+        assert sesudah["previous_hash"] == before["hash"]
     assert [e["type"] for e in ledger.events(task_id)] == urutan
 
     ok, putus = ledger.verify_chain(task_id)
@@ -139,7 +139,7 @@ def test_rantai_hash_campuran_old_and_new_tetap_utuh(ledger, task_id):
     assert putus == []
 
 
-def test_jenis_tak_dikenal_rejected_python_and_db(ledger, task_id):
+def test_event_type_unknown_rejected_python_and_db(ledger, task_id):
     # Level Python: append dan filter events menolak event_type sembarang.
     with pytest.raises(InvalidEventTypeError):
         ledger.append_event(
@@ -163,7 +163,7 @@ def test_jenis_tak_dikenal_rejected_python_and_db(ledger, task_id):
 
 
 @pytest.mark.parametrize("event_type", EVENT_TYPES_NEW)
-def test_check_db_menerima_jenis_new_insert_langsung(ledger, task_id, event_type):
+def test_check_db_accepts_new_event_type_direct_insert(ledger, task_id, event_type):
     # INSERT langsung via SQL (tanpa Ledger) dengan tiap event_type baru harus
     # lolos CHECK — membuktikan schema.sql, bukan hanya JENIS_KEJADIAN.
     with psycopg.connect(DSN, autocommit=True) as conn:

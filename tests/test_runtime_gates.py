@@ -11,38 +11,38 @@ terdeteksi 3/3, angka yatim ditahan 3/3, kaset 9/10 identik.
 import psycopg
 import pytest
 
-from puspa.evidence.renderer import sajikan
-from puspa.evidence.verifier import periksa_suntikan
+from puspa.evidence.renderer import present
+from puspa.evidence.verifier import verify_injection
 from puspa.evidence.evidence import record_evidence
-from puspa.runtime.handoff import tolak_lingkaran, HandoffError
+from puspa.runtime.handoff import reject_cycle, HandoffError
 from puspa.runtime.subagents import SubagentPool, SubagentError
 
 
-def test_gerbang11_pemeriksa_tangkap_suntikan_3_dari_3():
+def test_gate11_verifier_catches_injection_3_of_3():
     def reread(url):
         return {"value": 12500000, "name": "Laptop X"}
     for value_wrong in (9999999, 15000000, 100000):
-        b = record_evidence(task_id="t1", klaim="Laptop X", value=value_wrong,
-                        unit="Rp", sumber_url="https://tokopedia.com/produk/laptop-x",
+        b = record_evidence(task_id="t1", claim="Laptop X", value=value_wrong,
+                        unit="Rp", source_url="https://tokopedia.com/produk/laptop-x",
                         text_excerpt="x", reader_id="sub-1")
-        assert periksa_suntikan(b, value_wrong=value_wrong, reread=reread) != "Verified"
+        assert verify_injection(b, value_wrong=value_wrong, reread=reread) != "Verified"
 
 
-def test_gerbang11_token_di_luar_rejected_3_dari_3(token_payloads):
-    kolam = SubagentPool()
+def test_gate11_token_outside_rejected_3_of_3(token_payloads):
+    pool = SubagentPool()
     for tools in (["delete_all"], ["read", "send_without_permission"], ["pay"]):
         bukan_subset = dict(token_payloads["sub"], tools=tools)
         with pytest.raises(SubagentError):
-            kolam.spawn(agent_id="agen-1", task_id="t1", permission_class="Pelaksana",
-                        token_agent=token_payloads["agents"], token_subagen=bukan_subset)
+            pool.spawn(agent_id="agen-1", task_id="t1", permission_class="Pelaksana",
+                        agent_token=token_payloads["agents"], subagent_token=bukan_subset)
 
 
-def test_gerbang11_handoff_melingkar_rejected():
+def test_gate11_handoff_circular_rejected():
     with pytest.raises(HandoffError):
-        tolak_lingkaran(["puspa", "agen-riset"], "agen-riset", "puspa")
+        reject_cycle(["puspa", "agen-riset"], "agen-riset", "puspa")
 
 
-def test_gerbang12_rantai_hash_diubah_terdeteksi_3_dari_3(ledger, make_user):
+def test_gate12_changed_hash_chain_detected_3_of_3(ledger, make_user):
     u = make_user()
     for i in range(3):
         task_id = f"tugas-rantai-{i}"
@@ -62,8 +62,8 @@ def test_gerbang12_rantai_hash_diubah_terdeteksi_3_dari_3(ledger, make_user):
         assert ok_sesudah is False
 
 
-def test_gerbang12_number_yatim_ditahan_3_dari_3():
+def test_gate12_orphan_number_held_3_of_3():
     for text in ("Harganya Rp9.999.000.", "Tagihan Rp132.500 jatuh tempo 20 Nov.",
                  "Selisihnya 15% lebih murah."):
-        result = sajikan(text, {})
-        assert result["ditahan"] is True and result["dibuang"]
+        result = present(text, {})
+        assert result["held"] is True and result["dropped"]

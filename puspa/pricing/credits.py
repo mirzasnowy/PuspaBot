@@ -20,13 +20,13 @@ class CreditError(Exception):
     """Kredit tidak cukup / tidak bisa dipakai."""
 
 
-def _month_ini() -> str:
+def _current_month() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m")
 
 
-def sisa_credit(user_id: str, dsn=None, month: str | None = None) -> int:
+def remaining_credit(user_id: str, dsn=None, month: str | None = None) -> int:
     """Sisa kredit bulan ini (default 15 bila belum ada baris)."""
-    month = month or _month_ini()
+    month = month or _current_month()
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
@@ -41,7 +41,7 @@ def use_credit(user_id: str, *, amount: int = COST_CHECK_DETAIL,
                  dsn=None, month: str | None = None) -> int:
     """Pakai kredit; kembalikan sisa. Habis -> KreditError (bukan
     utang diam-diam)."""
-    month = month or _month_ini()
+    month = month or _current_month()
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
@@ -53,12 +53,12 @@ def use_credit(user_id: str, *, amount: int = COST_CHECK_DETAIL,
             cur.execute(
                 "SELECT sisa FROM monthly_credits WHERE user_id = %s AND month = %s"
                 " FOR UPDATE", (user_id, month))
-            sisa = int(cur.fetchone()[0])
-            if sisa < amount:
+            remaining = int(cur.fetchone()[0])
+            if remaining < amount:
                 raise CreditError(
-                    f"kredit tidak cukup: sisa {sisa}, butuh {amount}")
+                    f"kredit tidak cukup: sisa {remaining}, butuh {amount}")
             cur.execute(
                 "UPDATE monthly_credits SET sisa = sisa - %s WHERE user_id = %s AND month = %s",
                 (amount, user_id, month))
         conn.commit()
-    return sisa - amount
+    return remaining - amount

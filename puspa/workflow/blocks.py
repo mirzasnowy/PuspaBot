@@ -18,263 +18,263 @@ KLASS_PERMISSION = ("Pembaca", "Pelaksana", "Pemeriksa")
 
 # Blok yang memicu aksi keluar (§2.6): kirim, buat event, siapkan
 # bayar. Ketiganya WAJIB lewat antrean persetujuan di runner.
-BLOCK_ACTION_LOGOUT = ("create_event", "prepare_payment")
+OUTBOUND_ACTION_BLOCKS = ("create_event", "prepare_payment")
 
 # Domain yang boleh dibaca tiap blok baca (allowlist, §2.6). Tidak ada
 # panggilan HTTP bebas di alur (§2.12): blok di luar daftar ini tidak
 # boleh memanggil HTTP sama sekali.
-DOMAIN_BLOCK = {
+BLOCK_DOMAINS = {
     "compare_prices": ("tokopedia.com", "shopee.co.id", "blibli.com"),
     "watch_prices": ("tokopedia.com", "shopee.co.id", "blibli.com"),
-    "check_bill": ("situs_provider_bill",),
+    "check_bill": ("site_provider_bill",),
 }
 
 # Satu definisi per blok. `masukan`/`keluaran`: nama field -> tipe
 # sederhana ("teks", "angka", "tanggal", "pilihan", "daftar", "uang",
 # "ya_tidak"). `izin`: konektor, scope, domain, batas_belanja (Rp).
-BLOK = {
+BLOCKS = {
     "check_bill": {
-        "masukan": {"provider": "choice", "number_pelanggan": "text"},
-        "output": {"amount": "uang", "due_date": "date",
-                     "status": "choice", "evidence_id": "text", "vonis": "choice"},
+        "inputs": {"provider": "choice", "customer_number": "text"},
+        "output": {"amount": "money", "due_date": "date",
+                     "status": "choice", "evidence_id": "text", "verdict": "choice"},
         "permission_class": "Pembaca",
-        "permission": {"connectors": [], "scope": [], "domain": ["situs_provider_bill"],
-                 "batas_belanja": 0},
-        "action_logout": False,
+        "permission": {"connectors": [], "scope": [], "domain": ["site_provider_bill"],
+                 "spending_limit": 0},
+        "outbound_action": False,
         "cost_rp": 0,
-        "deskripsi": "Cek jumlah + jatuh tempo + status tagihan satu provider.",
+        "description": "Cek jumlah + jatuh tempo + status tagihan satu provider.",
     },
     "compare_prices": {
-        "masukan": {"name_product": "text"},
-        "output": {"termurah": "uang", "price": "items", "selisih": "uang",
-                     "vonis": "choice"},
+        "inputs": {"name_product": "text"},
+        "output": {"cheapest": "money", "price": "items", "spread": "money",
+                     "verdict": "choice"},
         "permission_class": "Pembaca",
         "permission": {"connectors": [], "scope": [],
                  "domain": ["tokopedia.com", "shopee.co.id", "blibli.com"],
-                 "batas_belanja": 0},
-        "action_logout": False,
+                 "spending_limit": 0},
+        "outbound_action": False,
         "cost_rp": 0,
-        "deskripsi": "Bandingkan harga barang baru di Tokopedia, Shopee, Blibli.",
+        "description": "Bandingkan harga barang baru di Tokopedia, Shopee, Blibli.",
     },
     "watch_prices": {
-        "masukan": {"product_id": "text", "price_threshold": "uang"},
-        "output": {"price_kini": "uang", "di_bawah_ambang": "ya_not",
+        "inputs": {"product_id": "text", "price_threshold": "money"},
+        "output": {"current_price": "money", "below_threshold": "boolean",
                      "evidence_id": "text"},
         "permission_class": "Pembaca",
         "permission": {"connectors": [], "scope": [],
                  "domain": ["tokopedia.com", "shopee.co.id", "blibli.com"],
-                 "batas_belanja": 0},
-        "action_logout": False,
+                 "spending_limit": 0},
+        "outbound_action": False,
         "cost_rp": 0,
-        "deskripsi": "Baca harga barang di watchlist; benar bila di bawah ambang.",
+        "description": "Baca harga barang di watchlist; benar bila di bawah ambang.",
     },
     "search_email": {
-        "masukan": {"kata_key": "text"},
+        "inputs": {"keywords": "text"},
         "output": {"email": "items"},
         "permission_class": "Pembaca",
         "permission": {"connectors": ["gmail"], "scope": ["gmail.readonly"],
-                 "domain": [], "batas_belanja": 0},
-        "action_logout": False,
+                 "domain": [], "spending_limit": 0},
+        "outbound_action": False,
         "cost_rp": 0,
-        "deskripsi": "Cari email berdasarkan kata kunci (hanya metadata + ringkasan).",
+        "description": "Cari email berdasarkan kata kunci (hanya metadata + ringkasan).",
     },
     "read_email": {
-        "masukan": {"email_id": "text"},
-        "output": {"pengirim": "text", "subjek": "text", "content": "text"},
+        "inputs": {"email_id": "text"},
+        "output": {"sender": "text", "subject": "text", "content": "text"},
         "permission_class": "Pembaca",
         "permission": {"connectors": ["gmail"], "scope": ["gmail.readonly"],
-                 "domain": [], "batas_belanja": 0},
-        "action_logout": False,
+                 "domain": [], "spending_limit": 0},
+        "outbound_action": False,
         "cost_rp": 0,
-        "deskripsi": "Baca satu email lewat Pembaca terkarantina (§2.6).",
+        "description": "Baca satu email lewat Pembaca terkarantina (§2.6).",
     },
     "create_draft": {
-        "masukan": {"penerima": "text", "subjek": "text", "content": "text"},
+        "inputs": {"recipient": "text", "subject": "text", "content": "text"},
         "output": {"draft_id": "text"},
         "permission_class": "Pelaksana",
         "permission": {"connectors": ["gmail"], "scope": ["gmail.compose"],
-                 "domain": [], "batas_belanja": 0},
-        "action_logout": False,
+                 "domain": [], "spending_limit": 0},
+        "outbound_action": False,
         "cost_rp": 0,
-        "deskripsi": "Buat draf balasan email. Draf BUKAN kirim; kirim tetap butuh persetujuan.",
+        "description": "Buat draf balasan email. Draf BUKAN kirim; kirim tetap butuh persetujuan.",
     },
     "create_event": {
-        "masukan": {"title": "text", "created_at": "date", "peserta": "items"},
+        "inputs": {"title": "text", "created_at": "date", "attendees": "items"},
         "output": {"event_id": "text"},
         "permission_class": "Pelaksana",
         "permission": {"connectors": ["calendar"], "scope": ["calendar.events"],
-                 "domain": [], "batas_belanja": 0},
-        "action_logout": True,
+                 "domain": [], "spending_limit": 0},
+        "outbound_action": True,
         "cost_rp": 0,
-        "deskripsi": "Buat event Calendar. Aksi keluar: masuk antrean persetujuan.",
+        "description": "Buat event Calendar. Aksi keluar: masuk antrean persetujuan.",
     },
     "prepare_payment": {
-        "masukan": {"provider": "choice", "amount": "uang", "purpose": "text"},
-        "output": {"draft_pay_id": "text", "content_hash": "text"},
+        "inputs": {"provider": "choice", "amount": "money", "purpose": "text"},
+        "output": {"payment_draft_id": "text", "content_hash": "text"},
         "permission_class": "Pelaksana",
         "permission": {"connectors": [], "scope": [], "domain": [],
-                 "batas_belanja": 0},
-        "action_logout": True,
+                 "spending_limit": 0},
+        "outbound_action": True,
         "cost_rp": 0,
-        "deskripsi": "Siapkan bayar mode aman: DRAF saja, user menyetujui di bank/e-wallet sendiri.",
+        "description": "Siapkan bayar mode aman: DRAF saja, user menyetujui di bank/e-wallet sendiri.",
     },
     "send_notification": {
-        "masukan": {"message": "text"},
-        "output": {"terkirim": "ya_not"},
+        "inputs": {"message": "text"},
+        "output": {"sent": "boolean"},
         "permission_class": "Pelaksana",
-        "permission": {"connectors": [], "scope": [], "domain": [], "batas_belanja": 0},
-        "action_logout": False,
+        "permission": {"connectors": [], "scope": [], "domain": [], "spending_limit": 0},
+        "outbound_action": False,
         "cost_rp": 0,
-        "deskripsi": "Kirim pengingat dalam aplikasi (Web Push). Bukan kirim email/SMS.",
+        "description": "Kirim pengingat dalam aplikasi (Web Push). Bukan kirim email/SMS.",
     },
     "ask_user": {
-        "masukan": {"pertanyaan": "text"},
-        "output": {"jawaban": "text"},
+        "inputs": {"question": "text"},
+        "output": {"answer": "text"},
         "permission_class": "Pelaksana",
-        "permission": {"connectors": [], "scope": [], "domain": [], "batas_belanja": 0},
-        "action_logout": False,
+        "permission": {"connectors": [], "scope": [], "domain": [], "spending_limit": 0},
+        "outbound_action": False,
         "cost_rp": 0,
-        "deskripsi": "Berhenti dan bertanya ke user; jalan alur lanjut setelah dijawab.",
+        "description": "Berhenti dan bertanya ke user; jalan alur lanjut setelah dijawab.",
     },
     "wait_for_approval": {
-        "masukan": {"action": "text"},
-        "output": {"disetujui": "ya_not"},
+        "inputs": {"action": "text"},
+        "output": {"approved": "boolean"},
         "permission_class": "Pelaksana",
-        "permission": {"connectors": [], "scope": [], "domain": [], "batas_belanja": 0},
-        "action_logout": False,
+        "permission": {"connectors": [], "scope": [], "domain": [], "spending_limit": 0},
+        "outbound_action": False,
         "cost_rp": 0,
-        "deskripsi": "Tunggu persetujuan user atas satu aksi yang antre.",
+        "description": "Tunggu persetujuan user atas satu aksi yang antre.",
     },
     "condition": {
-        "masukan": {"ungkapan": "text"},
-        "output": {"correct": "ya_not"},
+        "inputs": {"expression": "text"},
+        "output": {"correct": "boolean"},
         "permission_class": "Pelaksana",
-        "permission": {"connectors": [], "scope": [], "domain": [], "batas_belanja": 0},
-        "action_logout": False,
+        "permission": {"connectors": [], "scope": [], "domain": [], "spending_limit": 0},
+        "outbound_action": False,
         "cost_rp": 0,
-        "deskripsi": "Percabangan: jalankan langkah `maka` bila benar, `kalau_not` bila salah.",
+        "description": "Percabangan: jalankan langkah `maka` bila benar, `kalau_not` bila salah.",
     },
     "for_each": {
-        "masukan": {"items": "items"},
-        "output": {"amount_item": "number"},
+        "inputs": {"items": "items"},
+        "output": {"item_count": "number"},
         "permission_class": "Pelaksana",
-        "permission": {"connectors": [], "scope": [], "domain": [], "batas_belanja": 0},
-        "action_logout": False,
+        "permission": {"connectors": [], "scope": [], "domain": [], "spending_limit": 0},
+        "outbound_action": False,
         "cost_rp": 0,
-        "deskripsi": "Ulangi langkah dalam untuk tiap item (maks 20 item).",
+        "description": "Ulangi langkah dalam untuk tiap item (maks 20 item).",
     },
     "save_memory": {
-        "masukan": {"fact": "text", "source": "choice"},
-        "output": {"tersimpan": "ya_not"},
+        "inputs": {"fact": "text", "source": "choice"},
+        "output": {"saved": "boolean"},
         "permission_class": "Pelaksana",
-        "permission": {"connectors": [], "scope": [], "domain": [], "batas_belanja": 0},
-        "action_logout": False,
+        "permission": {"connectors": [], "scope": [], "domain": [], "spending_limit": 0},
+        "outbound_action": False,
         "cost_rp": 0,
-        "deskripsi": "Simpan fakta ke profil/episodik (asal: user_stated).",
+        "description": "Simpan fakta ke profil/episodik (asal: user_stated).",
     },
     "save_to_module_table": {
-        "masukan": {"modules": "text", "table": "text", "rows": "items"},
-        "output": {"tersimpan": "number"},
+        "inputs": {"modules": "text", "table": "text", "rows": "items"},
+        "output": {"saved": "number"},
         "permission_class": "Pelaksana",
-        "permission": {"connectors": [], "scope": [], "domain": [], "batas_belanja": 0},
-        "action_logout": False,
+        "permission": {"connectors": [], "scope": [], "domain": [], "spending_limit": 0},
+        "outbound_action": False,
         "cost_rp": 0,
-        "deskripsi": "Simpan baris ke tabel milik modul (modul itu sendiri).",
+        "description": "Simpan baris ke tabel milik modul (modul itu sendiri).",
     },
 }
 
 # Batas MVP (§2.12).
-MAKS_STEP = 10
-MAKS_CABANG = 2
-MAKS_ITEM_FOR_EACH = 20
-MAKS_WORKFLOW_ACTIVE = 5
-CEILING_COST_JALAN_RP = 5000
+MAX_STEPS = 10
+MAX_BRANCHES = 2
+MAX_ITEMS_PER_FOR_EACH = 20
+MAX_ACTIVE_WORKFLOWS = 5
+CEILING_COST_PER_RUN_RP = 5000
 
 
 class BlockError(Exception):
     """Blok tidak dikenal, masukan tidak lolos skema, atau batas dilanggar."""
 
 
-def items_block() -> list[str]:
+def list_blocks() -> list[str]:
     """Nama 15 blok pustaka, terurut."""
-    return sorted(BLOK)
+    return sorted(BLOCKS)
 
 
-def definisi_block(name: str) -> dict:
+def block_definition(name: str) -> dict:
     """Definisi satu blok; `BlockError` bila nama tidak ada di pustaka."""
-    if name not in BLOK:
+    if name not in BLOCKS:
         raise BlockError(f"blok {name!r} tidak ada di pustaka (15 blok MVP)")
-    return BLOK[name]
+    return BLOCKS[name]
 
 
-def periksa_masukan(name: str, masukan: dict) -> list[str]:
+def validate_inputs(name: str, inputs: dict) -> list[str]:
     """Periksa masukan langkah terhadap skema blok. Kembalikan daftar
     field yang hilang (kosong = lolos). Tipe nilai tidak dicek di sini
     (nilai datang dari data alur, dicek lagi saat jalan)."""
-    definisi = definisi_block(name)
-    if not isinstance(masukan, dict):
+    definition = block_definition(name)
+    if not isinstance(inputs, dict):
         return ["masukan harus objek"]
-    return [f for f in definisi["masukan"] if f not in masukan]
+    return [f for f in definition["inputs"] if f not in inputs]
 
 
-def periksa_step(step: dict) -> list[str]:
+def validate_step(step: dict) -> list[str]:
     """Periksa satu langkah alur: blok dikenal + masukan lengkap +
     percabangan berstruktur benar. Kembalikan daftar masalah."""
-    masalah: list[str] = []
+    problems: list[str] = []
     if not isinstance(step, dict):
         return ["langkah harus objek"]
     name = step.get("block")
-    if not isinstance(name, str) or name not in BLOK:
+    if not isinstance(name, str) or name not in BLOCKS:
         return [f"blok {name!r} tidak ada di pustaka"]
-    for f in periksa_masukan(name, step.get("masukan", {})):
-        masalah.append(f"langkah {name}: masukan kurang {f!r}")
+    for f in validate_inputs(name, step.get("inputs", {})):
+        problems.append(f"langkah {name}: masukan kurang {f!r}")
     if name == "condition":
-        for cabang in ("maka", "kalau_not"):
-            content = step.get(cabang, [])
+        for branch in ("then", "else"):
+            content = step.get(branch, [])
             if not isinstance(content, list):
-                masalah.append(f"langkah kondisi: {cabang!r} harus daftar langkah")
+                problems.append(f"langkah kondisi: {branch!r} harus daftar langkah")
             else:
                 for sub in content:
-                    masalah += periksa_step(sub)
+                    problems += validate_step(sub)
     if name == "for_each":
-        content = step.get("step_dalam", [])
+        content = step.get("nested_steps", [])
         if not isinstance(content, list):
-            masalah.append("langkah for_each: 'step_dalam' harus daftar langkah")
+            problems.append("langkah for_each: 'step_dalam' harus daftar langkah")
         else:
             for sub in content:
-                masalah += periksa_step(sub)
-    return masalah
+                problems += validate_step(sub)
+    return problems
 
 
-def kedalaman_cabang(step: list) -> int:
+def branch_depth(step: list) -> int:
     """Tingkat percabangan terdalam (kondisi di dalam kondisi, dst.)."""
-    dalam = 0
-    for l in step:
-        if not isinstance(l, dict):
+    depth = 0
+    for step_item in step:
+        if not isinstance(step_item, dict):
             continue
-        if l.get("block") == "condition":
-            cabang = max(
-                [kedalaman_cabang(l.get("maka", [])),
-                 kedalaman_cabang(l.get("kalau_not", []))] or [0])
-            dalam = max(dalam, 1 + cabang)
-        elif l.get("block") == "for_each":
-            dalam = max(dalam, kedalaman_cabang(l.get("step_dalam", [])))
-    return dalam
+        if step_item.get("block") == "condition":
+            branch = max(
+                [branch_depth(step_item.get("then", [])),
+                 branch_depth(step_item.get("else", []))] or [0])
+            depth = max(depth, 1 + branch)
+        elif step_item.get("block") == "for_each":
+            depth = max(depth, branch_depth(step_item.get("nested_steps", [])))
+    return depth
 
 
-def periksa_workflow(step: list) -> list[str]:
+def validate_workflow(step: list) -> list[str]:
     """Periksa seluruh daftar langkah alur terhadap batas MVP.
     Kembalikan daftar masalah (kosong = lolos)."""
-    masalah: list[str] = []
+    problems: list[str] = []
     if not isinstance(step, list) or not step:
         return ["alur harus punya minimal 1 langkah"]
-    if len(step) > MAKS_STEP:
-        masalah.append(
-            f"alur punya {len(step)} langkah, maks {MAKS_STEP} di MVP")
-    for l in step:
-        masalah += periksa_step(l)
-    cabang = kedalaman_cabang(step)
-    if cabang > MAKS_CABANG:
-        masalah.append(
-            f"percabangan {cabang} tingkat, maks {MAKS_CABANG} di MVP")
-    return masalah
+    if len(step) > MAX_STEPS:
+        problems.append(
+            f"alur punya {len(step)} langkah, maks {MAX_STEPS} di MVP")
+    for step_item in step:
+        problems += validate_step(step_item)
+    branch = branch_depth(step)
+    if branch > MAX_BRANCHES:
+        problems.append(
+            f"percabangan {branch} tingkat, maks {MAX_BRANCHES} di MVP")
+    return problems

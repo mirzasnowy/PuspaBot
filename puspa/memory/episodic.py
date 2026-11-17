@@ -75,17 +75,17 @@ def search_episodes(user_id, query, limit=5, agent_id=None,
                 cur.execute(
                     "SELECT id, user_id, agent_id, task_id, type, content, "
                     "event_id, created_at, "
-                    "embedding <=> %s::vector AS jarak FROM episodic "
-                    "WHERE user_id = %s ORDER BY jarak ASC LIMIT %s",
+                    "embedding <=> %s::vector AS distance FROM episodic "
+                    "WHERE user_id = %s ORDER BY distance ASC LIMIT %s",
                     (vector, user_id, limit),
                 )
             else:
                 cur.execute(
                     "SELECT id, user_id, agent_id, task_id, type, content, "
                     "event_id, created_at, "
-                    "embedding <=> %s::vector AS jarak FROM episodic "
+                    "embedding <=> %s::vector AS distance FROM episodic "
                     "WHERE user_id = %s AND (agent_id IS NULL OR agent_id = %s) "
-                    "ORDER BY jarak ASC LIMIT %s",
+                    "ORDER BY distance ASC LIMIT %s",
                     (vector, user_id, agent_id, limit),
                 )
             out = []
@@ -99,8 +99,8 @@ def search_episodes(user_id, query, limit=5, agent_id=None,
                     "content": r["content"],
                     "event_id": str(r["event_id"]) if r["event_id"] else None,
                     "created_at": r["created_at"],
-                    "jarak": float(r["jarak"]),
-                    "kemiripan": 1.0 - float(r["jarak"]),
+                    "distance": float(r["distance"]),
+                    "similarity": 1.0 - float(r["distance"]),
                 })
             return out
 

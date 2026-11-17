@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from puspa.billing import billing
-from puspa.billing.fixture import DATA_TEST, SitusTest
+from puspa.billing.fixture import DATA_TEST, SiteFixture
 
 
 def _read_dari_fixture(situs):
@@ -36,55 +36,55 @@ def _read_ulang_dari_fixture(situs):
 
 def test_check_bill_pln_fixture(make_user, test_dsn):
     user = make_user()
-    with SitusTest() as situs:
+    with SiteFixture() as situs:
         result = billing.check_bill(
             user_id=user["user_id"], agent_id=user["agent_id"], provider="PLN",
-            number_pelanggan="123456789012", read_situs=_read_dari_fixture(situs),
+            customer_number="123456789012", read_site=_read_dari_fixture(situs),
             reread=_read_ulang_dari_fixture(situs),
             task_id="tugas-pln-1", mode="fixture", dsn=test_dsn)
     assert result["success"] is True
     assert result["amount"] == DATA_TEST["pln"]["amount"]
     assert result["due_date"] == DATA_TEST["pln"]["due_date"]
     assert result["status"] == "not_yet_pay"
-    assert result["vonis"] == "Verified"
+    assert result["verdict"] == "Verified"
     assert result["evidence_id"]
     # Prosedur PLN lahir otomatis sebagai percobaan.
     assert result["procedures"]["service"] == "PLN"
 
 
-def test_check_bill_keempat_provider(make_user, test_dsn):
+def test_check_bill_four_providers(make_user, test_dsn):
     user = make_user()
-    with SitusTest() as situs:
+    with SiteFixture() as situs:
         for provider, number in (("PLN", "123456789012"), ("PDAM", "987654321"),
                                 ("airtime", "081234567890"), ("paket data", "081234567890")):
             result = billing.check_bill(
                 user_id=user["user_id"], agent_id=user["agent_id"], provider=provider,
-                number_pelanggan=number, read_situs=_read_dari_fixture(situs),
+                customer_number=number, read_site=_read_dari_fixture(situs),
                 reread=_read_ulang_dari_fixture(situs),
                 task_id=f"tugas-{provider}", mode="fixture", dsn=test_dsn)
             assert result["success"] is True, provider
             assert result["amount"] == DATA_TEST[provider.lower()]["amount"], provider
 
 
-def test_bpjs_rejected_tegas(make_user, test_dsn):
+def test_bpjs_strictly_rejected(make_user, test_dsn):
     user = make_user()
     result = billing.check_bill(
         user_id=user["user_id"], agent_id=user["agent_id"], provider="BPJS",
-        number_pelanggan="0001234567890", read_situs=lambda u: "",
+        customer_number="0001234567890", read_site=lambda u: "",
         reread=lambda u: {}, task_id="tugas-bpjs", mode="fixture", dsn=test_dsn)
     assert result["success"] is False and result["reason"] == "provider_di_luar_mvp"
 
 
-def test_prosedur_broken_not_dijalankan(make_user, test_dsn):
+def test_broken_procedure_does_not_run(make_user, test_dsn):
     user = make_user()
-    with SitusTest() as situs:
+    with SiteFixture() as situs:
         def _failed(url):
             raise RuntimeError("situs down")
 
         for i in range(2):
             result = billing.check_bill(
                 user_id=user["user_id"], agent_id=user["agent_id"], provider="PLN",
-                number_pelanggan="123456789012", read_situs=_failed,
+                customer_number="123456789012", read_site=_failed,
                 reread=lambda u: {}, task_id=f"tugas-gagal-{i}",
                 mode="fixture", dsn=test_dsn)
             assert result["success"] is False
@@ -97,7 +97,7 @@ def test_prosedur_broken_not_dijalankan(make_user, test_dsn):
 
         result = billing.check_bill(
             user_id=user["user_id"], agent_id=user["agent_id"], provider="PLN",
-            number_pelanggan="123456789012", read_situs=_hitung,
+            customer_number="123456789012", read_site=_hitung,
             reread=_read_ulang_dari_fixture(situs),
             task_id="tugas-sesudah-rusak", mode="fixture", dsn=test_dsn)
         assert result["success"] is False and result["reason"] == "prosedur_broken"
@@ -107,16 +107,16 @@ def test_prosedur_broken_not_dijalankan(make_user, test_dsn):
 def test_reminder_due_date():
     from datetime import date
 
-    assert billing.reminder_due_date(due_date="2026-11-20", day_sebelum=3,
+    assert billing.reminder_due_date(due_date="2026-11-20", days_before=3,
                                          today=date(2026, 11, 18)) == {
-        "perlu_remind": True, "day_lagi": 2}
-    assert billing.reminder_due_date(due_date="2026-11-20", day_sebelum=3,
-                                         today=date(2026, 11, 10))["perlu_remind"] is False
-    assert billing.reminder_due_date(due_date=None)["perlu_remind"] is False
+        "needs_reminder": True, "days_left": 2}
+    assert billing.reminder_due_date(due_date="2026-11-20", days_before=3,
+                                         today=date(2026, 11, 10))["needs_reminder"] is False
+    assert billing.reminder_due_date(due_date=None)["needs_reminder"] is False
 
 
-def test_siapkan_pay_hanya_draft_without_eksekusi():
-    draft = billing.siapkan_pay(provider="PLN", amount=132500,
+def test_prepare_payment_draft_only_without_execution():
+    draft = billing.prepare_pay(provider="PLN", amount=132500,
                                  due_date="2026-11-20",
                                  number_pelanggan_masked="1234******12")
     assert draft["mode"] == "prepare_payment"

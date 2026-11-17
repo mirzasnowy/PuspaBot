@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import html
 
-KOMPONEN = ("card", "table", "items", "form", "number", "grafik_garis",
-            "tombol_action")
+COMPONENTS = ("card", "table", "items", "form", "number", "line_chart",
+            "action_button")
 
 
 def _esc(text) -> str:
@@ -28,87 +28,87 @@ def _rupiah(value) -> str:
         return _esc(value)
 
 
-def render_grafik_garis(title: str, value: list) -> str:
+def render_line_chart(title: str, value: list) -> str:
     """Satu grafik garis (SVG) dari daftar angka. Tanpa JavaScript."""
     if not value:
         return f'<div class="grafik"><h4>{_esc(title)}</h4><p>Belum ada data.</p></div>'
     number = [float(v) for v in value]
-    atas, bawah = max(number), min(number)
-    rentang = (atas - bawah) or 1.0
-    lebar, high = 300, 120
-    titik = []
+    top, bottom = max(number), min(number)
+    span = (top - bottom) or 1.0
+    width, height = 300, 120
+    points = []
     for i, v in enumerate(number):
-        x = 10 + (i * (lebar - 20) / max(len(number) - 1, 1))
-        y = 10 + (1 - (v - bawah) / rentang) * (high - 20)
-        titik.append(f"{x:.1f},{y:.1f}")
-    polyline = " ".join(titik)
+        x = 10 + (i * (width - 20) / max(len(number) - 1, 1))
+        y = 10 + (1 - (v - bottom) / span) * (height - 20)
+        points.append(f"{x:.1f},{y:.1f}")
+    polyline = " ".join(points)
     return (
         f'<div class="grafik"><h4>{_esc(title)}</h4>'
-        f'<svg width="{lebar}" height="{high}" viewBox="0 0 {lebar} {high}" '
+        f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
         f'role="img" aria-label="grafik garis {_esc(title)}">'
         f'<polyline points="{polyline}" fill="none" stroke="#2563eb" '
         f'stroke-width="2"/></svg>'
-        f'<p>{_esc(bawah)} – {_esc(atas)}</p></div>'
+        f'<p>{_esc(bottom)} – {_esc(top)}</p></div>'
     )
 
 
-def render_tampilan(tampilan: dict, data: dict) -> str:
+def render_view(view: dict, data: dict) -> str:
     """Render satu tampilan. `data`: {nama_tabel: [baris, ...]} — data
     contoh (pratinjau) atau data nyata modul."""
-    event_type = tampilan.get("type")
-    title = tampilan.get("title", "")
-    if event_type not in KOMPONEN:
+    event_type = view.get("type")
+    title = view.get("title", "")
+    if event_type not in COMPONENTS:
         raise ValueError(f"komponen {event_type!r} tidak diizinkan")
     if event_type == "card":
-        text = tampilan.get("text", "")
+        text = view.get("text", "")
         return (f'<div class="kartu"><h4>{_esc(title)}</h4>'
                 f'<p>{_esc(text)}</p></div>')
     if event_type == "number":
-        table = tampilan.get("table", "")
-        kolom = tampilan.get("kolom", "")
+        table = view.get("table", "")
+        columns = view.get("columns", "")
         rows = data.get(table, [])
-        total = sum(float(b.get(kolom, 0) or 0) for b in rows
-                    if isinstance(b.get(kolom), (int, float)))
-        label = tampilan.get("format", "")
+        total = sum(float(row.get(columns, 0) or 0) for row in rows
+                    if isinstance(row.get(columns), (int, float)))
+        label = view.get("format", "")
         value = _rupiah(total) if label == "Rupiah" else f"{total:,.0f}".replace(",", ".")
         return (f'<div class="angka"><h4>{_esc(title)}</h4>'
                 f'<p class="nilai">{value}</p></div>')
     if event_type == "table":
-        table = tampilan.get("table", "")
-        kolom = tampilan.get("kolom", []) or []
+        table = view.get("table", "")
+        columns = view.get("columns", []) or []
         rows = data.get(table, [])
-        kepala = "".join(f"<th>{_esc(k)}</th>" for k in kolom)
+        header = "".join(f"<th>{_esc(k)}</th>" for k in columns)
         content = ""
-        for b in rows:
-            sel = "".join(f"<td>{_esc(b.get(k, ''))}</td>" for k in kolom)
-            content += f"<tr>{sel}</tr>"
+        for row in rows:
+            cells = "".join(f"<td>{_esc(row.get(k, ''))}</td>" for k in columns)
+            content += f"<tr>{cells}</tr>"
         return (f'<div class="tabel"><h4>{_esc(title)}</h4>'
-                f'<table><thead><tr>{kepala}</tr></thead>'
+                f'<table><thead><tr>{header}</tr></thead>'
                 f'<tbody>{content}</tbody></table></div>')
     if event_type == "items":
-        table = tampilan.get("table", "")
-        kolom = tampilan.get("kolom", "")
+        table = view.get("table", "")
+        columns = view.get("columns", "")
         rows = data.get(table, [])
-        item = "".join(f"<li>{_esc(b.get(kolom, ''))}</li>" for b in rows)
+        item = "".join(f"<li>{_esc(row.get(columns, ''))}</li>" for row in rows)
         return f'<div class="daftar"><h4>{_esc(title)}</h4><ul>{item}</ul></div>'
     if event_type == "form":
-        kolom = tampilan.get("kolom", []) or []
+        columns = view.get("columns", []) or []
         field = ""
-        for k in kolom:
+        for k in columns:
             field += (f'<label>{_esc(k)} '
                       f'<input name="{_esc(k)}" type="text"></label>')
         return (f'<div class="form"><h4>{_esc(title)}</h4>'
                 f'<form>{field}<button type="submit">Simpan</button></form></div>')
-    if event_type == "grafik_garis":
-        table = tampilan.get("table", "")
-        kolom = tampilan.get("kolom", "")
+    if event_type == "line_chart":
+        table = view.get("table", "")
+        columns = view.get("columns", "")
         rows = data.get(table, [])
-        value = [b.get(kolom) for b in rows
-                 if isinstance(b.get(kolom), (int, float))]
-        return render_grafik_garis(title, value)
+        value = [row.get(columns) for row in rows
+                 if isinstance(row.get(columns), (int, float))]
+        return render_line_chart(title, value)
     # tombol_aksi
-    return (f'<div class="tombol-aksi"><button data-aksi="{_esc(tampilan.get("action", ""))}" '
-            f'data-alur="{_esc(tampilan.get("workflows", ""))}">{_esc(title)}</button></div>')
+    return (f'<div class="tombol-aksi"><button data-aksi="{_esc(view.get("action", ""))}" '
+            f'data-alur="{_esc(view.get("workflows", ""))}">{_esc(title)}</button></div>')
 
 
 def render_module(manifest: dict, data: dict | None = None) -> str:
@@ -116,8 +116,8 @@ def render_module(manifest: dict, data: dict | None = None) -> str:
     (manifes['contoh_data']) bila `data` tidak diberikan. Dipakai
     pratinjau di panel Modul (§2.13)."""
     data = data if data is not None else (manifest.get("example_data") or {})
-    bagian = [f'<section class="panel-modul"><h3>{_esc(manifest.get("name", ""))}</h3>']
-    for t in manifest.get("tampilan", []) or []:
-        bagian.append(render_tampilan(t, data))
-    bagian.append("</section>")
-    return "\n".join(bagian)
+    parts = [f'<section class="panel-modul"><h3>{_esc(manifest.get("name", ""))}</h3>']
+    for t in manifest.get("views", []) or []:
+        parts.append(render_view(t, data))
+    parts.append("</section>")
+    return "\n".join(parts)

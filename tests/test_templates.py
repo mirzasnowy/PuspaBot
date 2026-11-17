@@ -2,30 +2,30 @@
 
 import pytest
 
-from puspa.workflow.blocks import periksa_workflow
+from puspa.workflow.blocks import validate_workflow
 from puspa.workflow.runner import (
-    aktifkan_workflow, jalankan_workflow, dry_run,
+    activate_workflow, run_workflow, dry_run,
 )
 from puspa.workflow.templates import (
-    TASK_REFERENCE_WORKFLOW, take_templat, create_dari_templat, items_templat,
+    TASK_REFERENCE_WORKFLOW, get_template, create_from_template, list_templates,
 )
-from puspa.workflow.triggers import validasi_trigger
+from puspa.workflow.triggers import validate_trigger
 
 
-def test_tepat_3_templat_bawaan():
-    templat = items_templat()
-    assert len(templat) == 3
-    assert {t["key"] for t in templat} == {
+def test_exactly_3_default_templates():
+    template = list_templates()
+    assert len(template) == 3
+    assert {t["key"] for t in template} == {
         "bill_monthly", "watch_prices", "rekap_bill_weekly"}
 
 
-def test_all_templat_passed_validasi():
-    for t in items_templat():
-        assert validasi_trigger(t["triggers"]) == [], t["key"]
-        assert periksa_workflow(t["step"]) == [], t["key"]
+def test_all_templates_pass_validation():
+    for t in list_templates():
+        assert validate_trigger(t["triggers"]) == [], t["key"]
+        assert validate_workflow(t["step"]) == [], t["key"]
 
 
-def test_task_reference_8_and_9_memetakan_to_templat():
+def test_task_references_8_and_9_map_to_templates():
     assert TASK_REFERENCE_WORKFLOW[8] == "bill_monthly"
     assert TASK_REFERENCE_WORKFLOW[9] == "rekap_bill_weekly"
 
@@ -33,21 +33,21 @@ def test_task_reference_8_and_9_memetakan_to_templat():
 def _aktifkan(make_user, test_dsn, permission_user_penuh, key, trigger=None):
     u = make_user()
     user_id, agent_id = u["user_id"], u["agent_id"]
-    workflow = create_dari_templat(key, user_id=user_id, agent_id=agent_id,
+    workflow = create_from_template(key, user_id=user_id, agent_id=agent_id,
                              trigger=trigger, dsn=test_dsn)
     dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     assert dry["success"] is True, dry
-    aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
-                  result_dry=dry, dsn=test_dsn)
+    activate_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
+                  dry_run_result=dry, dsn=test_dsn)
     return user_id, workflow
 
 
-def test_task_reference_8_reminder_bill_sebagai_workflow(make_user, test_dsn,
+def test_task_reference_8_reminder_bill_as_workflow(make_user, test_dsn,
                                                      permission_user_penuh):
     # Tugas 8: "Buatkan pengingat untuk tagihan." — pemicu manual.
     user_id, workflow = _aktifkan(make_user, test_dsn, permission_user_penuh,
                               "bill_monthly", trigger={"type": "manual"})
-    result = jalankan_workflow(workflow["id"], user_id=user_id, trigger_jenis="manual",
+    result = run_workflow(workflow["id"], user_id=user_id, trigger_type="manual",
                           dsn=test_dsn)
     # Berhenti di siapkan bayar (aksi keluar -> antrean persetujuan).
     assert result["status"] == "pending_approval"
@@ -59,13 +59,13 @@ def test_task_reference_8_reminder_bill_sebagai_workflow(make_user, test_dsn,
                for l in result["step_results"])
 
 
-def test_task_reference_9_rekap_weekly_sebagai_workflow(make_user, test_dsn,
+def test_task_reference_9_recap_weekly_as_workflow(make_user, test_dsn,
                                                   permission_user_penuh):
     # Tugas 9: "Ingatkan semua tagihan yang jatuh tempo minggu ini."
     user_id, workflow = _aktifkan(make_user, test_dsn, permission_user_penuh,
                               "rekap_bill_weekly",
                               trigger={"type": "manual"})
-    result = jalankan_workflow(workflow["id"], user_id=user_id, trigger_jenis="manual",
+    result = run_workflow(workflow["id"], user_id=user_id, trigger_type="manual",
                           dsn=test_dsn)
     assert result["success"] is True, result
     check = [l for l in result["step_results"] if l["block"] == "check_bill"]
@@ -75,13 +75,13 @@ def test_task_reference_9_rekap_weekly_sebagai_workflow(make_user, test_dsn,
     assert result["step_results"][-1]["block"] == "send_notification"
 
 
-def test_templat_watch_price_tertahan_gerbang_tos(make_user, test_dsn):
+def test_watch_price_template_held_by_tos_gate(make_user, test_dsn):
     # Jujur: pantau harga live ditahan keputusan 15 (ToS). Uji kering
     # templat ini GAGAL TERLIHAT dengan alasan syarat layanan — bukan
     # sukses palsu, bukan upaya HTTP.
     u = make_user()
     user_id, agent_id = u["user_id"], u["agent_id"]
-    workflow = create_dari_templat("watch_prices", user_id=user_id, agent_id=agent_id,
+    workflow = create_from_template("watch_prices", user_id=user_id, agent_id=agent_id,
                              dsn=test_dsn)
     result = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     assert result["success"] is False

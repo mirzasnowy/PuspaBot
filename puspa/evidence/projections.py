@@ -18,21 +18,21 @@ from __future__ import annotations
 
 def thread_chat(event: list[dict]) -> list[dict]:
     """Thread chat: pesan + handoff + hasil, urut waktu."""
-    logout = []
+    output = []
     for ev in event:
         event_type = ev.get("type", "")
         content = ev.get("content") or {}
         if event_type in ("user_message", "agent_message"):
-            logout.append({"type": "message", "dari": content.get("dari", ev.get("agent_id", "")),
+            output.append({"type": "message", "sender": content.get("sender", ev.get("agent_id", "")),
                            "text": content.get("text", ""), "created_at": str(ev.get("created_at", ""))})
         elif event_type.startswith("handoff_"):
-            logout.append({"type": "handoffs", "status": event_type[len("handoff_"):],
-                           "dari": content.get("dari", ""), "to": content.get("to", ""),
+            output.append({"type": "handoffs", "status": event_type[len("handoff_"):],
+                           "sender": content.get("sender", ""), "to": content.get("to", ""),
                            "purpose": content.get("purpose", ""), "created_at": str(ev.get("created_at", ""))})
         elif event_type in ("task_completed", "task_failed"):
-            logout.append({"type": "result", "status": event_type,
+            output.append({"type": "result", "status": event_type,
                            "task_id": ev.get("task_id", ""), "created_at": str(ev.get("created_at", ""))})
-    return logout
+    return output
 
 
 def office(event: list[dict]) -> dict:
@@ -43,26 +43,26 @@ def office(event: list[dict]) -> dict:
         if not aid:
             continue
         info = agent.setdefault(aid, {"agent_id": aid, "status": "idle",
-                                     "task_terakhir": "", "cost_rp": 0,
-                                     "sub_agent": {}})
+                                     "last_task": "", "cost_rp": 0,
+                                     "subagents": {}})
         event_type = ev.get("type", "")
         content = ev.get("content") or {}
         if event_type == "task_created":
-            info["status"] = "bekerja"
-            info["task_terakhir"] = ev.get("task_id", "")
+            info["status"] = "working"
+            info["last_task"] = ev.get("task_id", "")
         elif event_type in ("task_completed", "task_failed", "task_stopped"):
             info["status"] = "idle"
         elif event_type == "subagent_created":
             sub = content.get("subagent_id") or ev.get("subagent_id") or ""
-            info["sub_agent"][sub] = {"status": "bekerja", "permission_class": content.get("permission_class", "")}
+            info["subagents"][sub] = {"status": "working", "permission_class": content.get("permission_class", "")}
         elif event_type == "heartbeat":
             sub = ev.get("subagent_id") or ""
-            if sub in info["sub_agent"]:
-                info["sub_agent"][sub]["status"] = "bekerja"
+            if sub in info["subagents"]:
+                info["subagents"][sub]["status"] = "working"
         if isinstance(content.get("cost_rp"), (int, float)):
             info["cost_rp"] += int(content["cost_rp"])
     for info in agent.values():
-        info["sub_agent"] = list(info["sub_agent"].values())
+        info["subagents"] = list(info["subagents"].values())
     return {"agents": list(agent.values())}
 
 
@@ -80,10 +80,10 @@ def items_evidence(event: list[dict]) -> list[dict]:
     for ev in event:
         content = ev.get("content") or {}
         if ev.get("type") == "evidence_recorded" and content.get("evidence_id"):
-            evidence[content["evidence_id"]] = {"evidence_id": content["evidence_id"], "klaim": content.get("klaim", ""),
-                                      "value": content.get("value"), "vonis": "Uncertain"}
+            evidence[content["evidence_id"]] = {"evidence_id": content["evidence_id"], "claim": content.get("claim", ""),
+                                      "value": content.get("value"), "verdict": "Uncertain"}
         elif ev.get("type") == "verification_completed" and content.get("evidence_id") in evidence:
-            evidence[content["evidence_id"]]["vonis"] = content.get("vonis", evidence[content["evidence_id"]]["vonis"])
+            evidence[content["evidence_id"]]["verdict"] = content.get("verdict", evidence[content["evidence_id"]]["verdict"])
     return list(evidence.values())
 
 

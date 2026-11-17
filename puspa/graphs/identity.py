@@ -32,12 +32,12 @@ from psycopg.types.json import Jsonb
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
-KATEGORI = (
+CATEGORIES = (
     "phone", "laptop", "tablet", "smartwatch", "earphones/TWS", "TV",
     "game console", "camera", "branded home appliances",
 )
 MARKETPLACE = ("Tokopedia", "Shopee", "Blibli")
-STATUS_TAUTAN = ("automatic", "user_confirmed", "user_rejected")
+LINK_STATUSES = ("automatic", "user_confirmed", "user_rejected")
 
 
 class IdentityError(Exception):
@@ -49,23 +49,23 @@ def _connect(dsn=None):
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
-def normalisasi_number_model(model_number: str) -> str:
+def normalize_model_number(model_number: str) -> str:
     """Kunci model deterministik: huruf besar, tanpa spasi/strip/titik."""
     return re.sub(r"[^A-Z0-9]", "", str(model_number).upper())
 
 
-def normalisasi_variant(variant: dict | None) -> dict:
+def normalize_variant(variant: dict | None) -> dict:
     """Varian ternormalisasi: hanya kunci yang memengaruhi harga.
 
     Kunci yang dikenal: storage, warna, ram. Nilai dipangkas dan
     dilipat ke huruf kecil. Kunci lain dibuang (bukan ditebak).
     """
     variant = variant or {}
-    logout = {}
-    for key in ("storage", "warna", "ram"):
+    output = {}
+    for key in ("storage", "color", "ram"):
         if key in variant and variant[key] not in (None, ""):
-            logout[key] = " ".join(str(variant[key]).lower().split())
-    return logout
+            output[key] = " ".join(str(variant[key]).lower().split())
+    return output
 
 
 def _row_product(row) -> dict:
@@ -74,7 +74,7 @@ def _row_product(row) -> dict:
             "variant": row["variant"], "created_at": row["created_at"]}
 
 
-def _row_tautan(row) -> dict:
+def _row_link(row) -> dict:
     return {"id": str(row["id"]), "product_id": str(row["product_id"]),
             "user_id": str(row["user_id"]), "marketplace": row["marketplace"],
             "listing_url": row["listing_url"], "status": row["status"],
@@ -88,12 +88,12 @@ def add_product(*, brand: str, model_number: str, category: str,
     Kategori di luar 9 kategori §4.1 ditolak — fashion dan barang
     non-standar bukan scope wedge.
     """
-    if category not in KATEGORI:
+    if category not in CATEGORIES:
         raise IdentityError(
             f"kategori di luar scope wedge (9 kategori §4.1): {category!r}")
     if not brand or not model_number:
         raise IdentityError("merek dan model_number wajib diisi")
-    key = normalisasi_number_model(model_number)
+    key = normalize_model_number(model_number)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -104,7 +104,7 @@ def add_product(*, brand: str, model_number: str, category: str,
                 cur.execute(
                     "INSERT INTO canonical_products (brand, series, model_number, category, variant)"
                     " VALUES (%s, %s, %s, %s, %s) RETURNING *",
-                    (brand, series, key, category, Jsonb(normalisasi_variant(variant))))
+                    (brand, series, key, category, Jsonb(normalize_variant(variant))))
                 row = cur.fetchone()
         conn.commit()
     return _row_product(row)
@@ -116,46 +116,46 @@ def search_product(model_number: str, dsn=None) -> dict | None:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM canonical_products WHERE model_number = %s",
-                (normalisasi_number_model(model_number),))
+                (normalize_model_number(model_number),))
             row = cur.fetchone()
     return _row_product(row) if row else None
 
 
-def kandidat_identitas(*, brand: str | None = None, series: str | None = None,
+def identity_candidates(*, brand: str | None = None, series: str | None = None,
                        model_number: str | None = None, category: str | None = None,
                        dsn=None) -> list[dict]:
     """Kandidat identitas untuk ditampilkan ke user saat ragu (§3.2
     langkah 2). TIDAK PERNAH memilih sendiri — pemanggil yang bertanya.
     """
-    syarat, value = [], []
+    conditions, values = [], []
     if model_number:
-        syarat.append("model_number LIKE %s")
-        value.append("%" + normalisasi_number_model(model_number) + "%")
+        conditions.append("model_number LIKE %s")
+        values.append("%" + normalize_model_number(model_number) + "%")
     if brand:
-        syarat.append("brand ILIKE %s")
-        value.append("%" + brand + "%")
+        conditions.append("brand ILIKE %s")
+        values.append("%" + brand + "%")
     if series:
-        syarat.append("series ILIKE %s")
-        value.append("%" + series + "%")
+        conditions.append("series ILIKE %s")
+        values.append("%" + series + "%")
     if category:
-        syarat.append("category = %s")
-        value.append(category)
-    if not syarat:
+        conditions.append("category = %s")
+        values.append(category)
+    if not conditions:
         return []
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT * FROM canonical_products WHERE " + " AND ".join(syarat)
-                + " ORDER BY brand, model_number LIMIT 10", value)
+                "SELECT * FROM canonical_products WHERE " + " AND ".join(conditions)
+                + " ORDER BY brand, model_number LIMIT 10", values)
             return [_row_product(r) for r in cur.fetchall()]
 
 
-def tautkan_listing(*, product_id: str, user_id: str, marketplace: str,
+def link_listing(*, product_id: str, user_id: str, marketplace: str,
                     listing_url: str, status: str = "automatic", dsn=None) -> dict:
     """Tautkan listing ke produk kanonik dengan status tautan."""
     if marketplace not in MARKETPLACE:
         raise IdentityError(f"marketplace tidak dikenal: {marketplace!r}")
-    if status not in STATUS_TAUTAN:
+    if status not in LINK_STATUSES:
         raise IdentityError(f"status tautan tidak dikenal: {status!r}")
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
@@ -170,10 +170,10 @@ def tautkan_listing(*, product_id: str, user_id: str, marketplace: str,
                     (product_id, user_id, marketplace, listing_url, status))
                 row = cur.fetchone()
         conn.commit()
-    return _row_tautan(row)
+    return _row_link(row)
 
 
-def konfirmasi_tautan(tautan_id: str, *, user_id: str, accepted: bool, dsn=None) -> dict:
+def confirm_link(link_id: str, *, user_id: str, accepted: bool, dsn=None) -> dict:
     """Jawaban user atas kandidat: tautan menjadi `dikonfirmasi_user`
     atau `ditolak_user` (§3.2 langkah 3)."""
     status = "user_confirmed" if accepted else "user_rejected"
@@ -181,15 +181,15 @@ def konfirmasi_tautan(tautan_id: str, *, user_id: str, accepted: bool, dsn=None)
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE listing_links SET status = %s WHERE id = %s AND user_id = %s RETURNING *",
-                (status, tautan_id, user_id))
+                (status, link_id, user_id))
             row = cur.fetchone()
             if row is None:
-                raise KeyError(f"tautan tidak ditemukan: {tautan_id}")
+                raise KeyError(f"tautan tidak ditemukan: {link_id}")
         conn.commit()
-    return _row_tautan(row)
+    return _row_link(row)
 
 
-def record_price(*, tautan_id: str, user_id: str, price, shipping=0,
+def record_price(*, link_id: str, user_id: str, price, shipping=0,
                 store_rating=None, stock: str = "unknown",
                 evidence_id: str, created_at: datetime | None = None, dsn=None) -> dict:
     """Tulis satu titik deret waktu harga. Angka tanpa bukti_id DITOLAK
@@ -206,27 +206,27 @@ def record_price(*, tautan_id: str, user_id: str, price, shipping=0,
                 "INSERT INTO price_series (tautan_id, user_id, created_at, price, shipping,"
                 " store_rating, stock, evidence_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
                 " RETURNING id, created_at",
-                (tautan_id, user_id, created_at or datetime.now(timezone.utc),
+                (link_id, user_id, created_at or datetime.now(timezone.utc),
                  price_f, float(shipping), store_rating, stock, evidence_id))
             row = cur.fetchone()
         conn.commit()
     return {"id": str(row["id"]), "created_at": row["created_at"]}
 
 
-def price_terkini(product_id: str, dsn=None) -> list[dict]:
+def current_prices(product_id: str, dsn=None) -> list[dict]:
     """Harga terkini tiap marketplace untuk satu produk kanonik."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT DISTINCT ON (t.marketplace) t.marketplace, t.listing_url,"
-                " t.status AS status_tautan, h.price, h.shipping, h.store_rating,"
+                " t.status AS link_status, h.price, h.shipping, h.store_rating,"
                 " h.stock, h.evidence_id, h.created_at"
                 " FROM listing_links t JOIN price_series h ON h.tautan_id = t.id"
                 " WHERE t.product_id = %s AND t.status <> 'user_rejected'"
                 " ORDER BY t.marketplace, h.created_at DESC",
                 (product_id,))
             return [{"marketplace": r["marketplace"], "listing_url": r["listing_url"],
-                     "status_tautan": r["status_tautan"], "price": float(r["price"]),
+                     "link_status": r["link_status"], "price": float(r["price"]),
                      "shipping": float(r["shipping"]),
                      "store_rating": float(r["store_rating"]) if r["store_rating"] is not None else None,
                      "stock": r["stock"], "evidence_id": r["evidence_id"],
@@ -235,7 +235,7 @@ def price_terkini(product_id: str, dsn=None) -> list[dict]:
 
 def history_price(product_id: str, *, day: int = 30, dsn=None) -> list[dict]:
     """Riwayat harga 30 hari (API baca §3.2)."""
-    sejak = datetime.now(timezone.utc) - timedelta(days=day)
+    since = datetime.now(timezone.utc) - timedelta(days=day)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -243,14 +243,14 @@ def history_price(product_id: str, *, day: int = 30, dsn=None) -> list[dict]:
                 " FROM listing_links t JOIN price_series h ON h.tautan_id = t.id"
                 " WHERE t.product_id = %s AND t.status <> 'user_rejected' AND h.created_at >= %s"
                 " ORDER BY h.created_at ASC",
-                (product_id, sejak))
+                (product_id, since))
             return [{"marketplace": r["marketplace"], "created_at": r["created_at"],
                      "price": float(r["price"]), "shipping": float(r["shipping"]),
                      "store_rating": float(r["store_rating"]) if r["store_rating"] is not None else None,
                      "evidence_id": r["evidence_id"]} for r in cur.fetchall()]
 
 
-def cocokkan_automatic(*, model_number: str, brand: str | None = None,
+def match_automatic(*, model_number: str, brand: str | None = None,
                       dsn=None) -> dict:
     """Pencocokan bertingkat (§3.2).
 
@@ -263,5 +263,5 @@ def cocokkan_automatic(*, model_number: str, brand: str | None = None,
     product = search_product(model_number, dsn=dsn)
     if product is not None:
         return {"match": product, "kandidat": [], "perlu_ask": False}
-    kandidat = kandidat_identitas(brand=brand, model_number=model_number, dsn=dsn)
-    return {"match": None, "kandidat": kandidat, "perlu_ask": True}
+    candidates = identity_candidates(brand=brand, model_number=model_number, dsn=dsn)
+    return {"match": None, "kandidat": candidates, "perlu_ask": True}

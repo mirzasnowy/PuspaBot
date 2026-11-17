@@ -9,7 +9,7 @@ import pytest
 from puspa.memory import consolidate, episodic, procedural, profile, slices
 
 
-def test_irisan_hanya_kolom_yang_diizinkan(make_user, test_dsn):
+def test_slice_only_allowed_columns(make_user, test_dsn):
     u = make_user()
     profile.add_fact(u["user_id"], "name", "Nero", "user_stated", dsn=test_dsn)
     episodic.record_episode(u["user_id"], "suka kopi tubruk", "user_message", dsn=test_dsn)
@@ -17,11 +17,11 @@ def test_irisan_hanya_kolom_yang_diizinkan(make_user, test_dsn):
         u["user_id"], u["agent_id"], str(uuid.uuid4()), "kopi",
         ["episodic"], "token-123", dsn=test_dsn,
     )
-    assert set(data) == {"episodic", "_irisan_id", "_dicatat_pada"}
+    assert set(data) == {"episodic", "_slice_id", "_recorded_at"}
     assert data["episodic"] and "kopi" in data["episodic"][0]["content"]
 
 
-def test_irisan_rejected_kalau_kolom_not_diizinkan(make_user, test_dsn):
+def test_slice_rejected_if_column_not_allowed(make_user, test_dsn):
     u = make_user()
     with pytest.raises(ValueError):
         slices.grant_slice(
@@ -35,7 +35,7 @@ def test_irisan_rejected_kalau_kolom_not_diizinkan(make_user, test_dsn):
         )
 
 
-def test_pemberian_irisan_dicatat_and_can_diaudit(make_user, test_dsn):
+def test_slice_grants_recorded_and_auditable(make_user, test_dsn):
     u = make_user()
     sub = str(uuid.uuid4())
     slices.grant_slice(
@@ -45,11 +45,11 @@ def test_pemberian_irisan_dicatat_and_can_diaudit(make_user, test_dsn):
     grants = slices.list_grants(u["user_id"], dsn=test_dsn)
     assert len(grants) == 1
     assert grants[0]["subagent_id"] == sub
-    assert grants[0]["kolom"] == ["profile"]
+    assert grants[0]["columns"] == ["profile"]
     assert grants[0]["token_ref"] == "token-abc"
 
 
-def test_konsolidasi_meringkas_and_menunjuk_event_source(make_user, test_dsn, ledger):
+def test_consolidation_summarizes_and_points_to_source_event(make_user, test_dsn, ledger):
     u = make_user()
     task_id = str(uuid.uuid4())
     ev1 = ledger.append_event(
@@ -86,7 +86,7 @@ def test_konsolidasi_meringkas_and_menunjuk_event_source(make_user, test_dsn, le
     assert len(procs) == 1 and procs[0]["status"] == "trial"
 
 
-def test_konsolidasi_not_mengulang_episode_yang_already_diringkas(make_user, test_dsn):
+def test_consolidation_does_not_repeat_already_summarized_episode(make_user, test_dsn):
     u = make_user()
     task_id = str(uuid.uuid4())
     episodic.record_episode(
@@ -103,7 +103,7 @@ def test_konsolidasi_not_mengulang_episode_yang_already_diringkas(make_user, tes
     assert consolidate.consolidate_idle(u["user_id"], dsn=test_dsn)["summaries_created"] == 0
 
 
-def test_konsolidasi_melewatkan_episode_new(make_user, test_dsn):
+def test_consolidation_skips_new_episode(make_user, test_dsn):
     u = make_user()
     episodic.record_episode(
         u["user_id"], "cek pln berhasil", "task_completed",

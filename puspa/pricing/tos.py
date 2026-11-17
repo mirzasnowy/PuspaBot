@@ -35,46 +35,46 @@ DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 # Hasil cek yang dicatat (sumber -> ringkasan). `boleh_baca_live`
 # False berarti gerbang menahan pembacaan live sampai keputusan Nero.
-RESULT_CHECK = {
+TOS_CHECK_RESULTS = {
     "Tokopedia": {
-        "result": "melarang_automatic",
-        "pasal": "Syarat & Ketentuan B.12-13: dilarang memakai robot, macro, crawler "
+        "result": "forbids_automation",
+        "clause": "Syarat & Ketentuan B.12-13: dilarang memakai robot, macro, crawler "
                  "dan/atau perangkat otomatis untuk crawling/scraping tanpa izin Tokopedia.",
         "source_url": "https://www.tokopedia.com/help/article/terms-conditions",
     },
     "Shopee": {
-        "result": "melarang_automatic",
-        "pasal": "Ketentuan Layanan bag. 3: dilarang mengakses dengan bot/emulator dan "
+        "result": "forbids_automation",
+        "clause": "Ketentuan Layanan bag. 3: dilarang mengakses dengan bot/emulator dan "
                  "memantau/menyalin otomatis tanpa izin tertulis; jalur resmi: Shopee Open Platform.",
         "source_url": "https://shopee.co.id/",
     },
     "Blibli": {
-        "result": "melarang_automatic",
-        "pasal": "Syarat & Ketentuan 2.2: dilarang mengambil isi secara sistematis untuk "
+        "result": "forbids_automation",
+        "clause": "Syarat & Ketentuan 2.2: dilarang mengambil isi secara sistematis untuk "
                  "membuat/menyusun koleksi, kompilasi, database atau direktori tanpa izin tertulis.",
         "source_url": "https://www.blibli.com/faq/tentang-blibli/syarat-ketentuan/",
     },
     "PLN": {
-        "result": "service_resmi_terbatas",
-        "pasal": "Cek tagihan layanan resmi pelanggan sendiri di layanan.pln.co.id; "
+        "result": "limited_official_service",
+        "clause": "Cek tagihan layanan resmi pelanggan sendiri di layanan.pln.co.id; "
                  "butuh login + captcha — jalur otomatis tidak dijamin, bukan larangan eksplisit.",
         "source_url": "https://layanan.pln.co.id/informasi-tagihan-listrik-pembelian-token-pln",
     },
     "PDAM": {
-        "result": "service_resmi_terbatas",
-        "pasal": "Tiap daerah punya situs sendiri; cek tagihan layanan resmi pelanggan sendiri. "
+        "result": "limited_official_service",
+        "clause": "Tiap daerah punya situs sendiri; cek tagihan layanan resmi pelanggan sendiri. "
                  "MVP hanya PDAM milik Nero + pengguna uji (§4.2).",
         "source_url": "",
     },
     "airtime": {
-        "result": "service_resmi_terbatas",
-        "pasal": "Cek pulsa/paket data lewat kanal resmi operator (aplikasi/UMB); "
+        "result": "limited_official_service",
+        "clause": "Cek pulsa/paket data lewat kanal resmi operator (aplikasi/UMB); "
                  "tidak ada API publik umum. Jalur otomatis menunggu prosedur per operator.",
         "source_url": "",
     },
     "paket data": {
-        "result": "service_resmi_terbatas",
-        "pasal": "Sama seperti pulsa: kanal resmi operator, tanpa API publik umum.",
+        "result": "limited_official_service",
+        "clause": "Sama seperti pulsa: kanal resmi operator, tanpa API publik umum.",
         "source_url": "",
     },
 }
@@ -82,7 +82,7 @@ RESULT_CHECK = {
 # Gerbang baca live: hanya sumber dengan hasil `layanan_resmi_terbatas`
 # yang boleh dibaca live (itu pun hanya atas permintaan user dan
 # berfrekuensi rendah); sumber `melarang_otomatis` DITAHAN.
-BOLEH_READ_LIVE = {"PLN", "PDAM", "airtime", "paket data"}
+LIVE_READ_ALLOWED = {"PLN", "PDAM", "airtime", "paket data"}
 
 
 def _connect(dsn=None):
@@ -90,7 +90,7 @@ def _connect(dsn=None):
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
-def boleh_read(sumber: str, *, mode: str = "live") -> bool:
+def may_read(source: str, *, mode: str = "live") -> bool:
     """Gerbang baca (§11): True bila sumber boleh dibaca.
 
     `mode="fixture"` (situs uji lokal / data uji) selalu True.
@@ -99,9 +99,9 @@ def boleh_read(sumber: str, *, mode: str = "live") -> bool:
     """
     if mode == "fixture":
         return True
-    if sumber not in RESULT_CHECK:
+    if source not in TOS_CHECK_RESULTS:
         return False
-    return sumber in BOLEH_READ_LIVE
+    return source in LIVE_READ_ALLOWED
 
 
 def record_result_check(dsn=None, checked_on: date | None = None) -> list[dict]:
@@ -109,23 +109,23 @@ def record_result_check(dsn=None, checked_on: date | None = None) -> list[dict]:
     checked_on = checked_on or date(2026, 11, 17)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            for sumber, content in RESULT_CHECK.items():
+            for source, content in TOS_CHECK_RESULTS.items():
                 cur.execute(
                     "INSERT INTO tos_checks (sumber, result, pasal, source_url, checked_on)"
                     " VALUES (%s, %s, %s, %s, %s)"
                     " ON CONFLICT (sumber) DO UPDATE SET result = EXCLUDED.result,"
                     " pasal = EXCLUDED.pasal, source_url = EXCLUDED.source_url,"
                     " checked_on = EXCLUDED.checked_on",
-                    (sumber, content["result"], content["pasal"], content["source_url"], checked_on))
+                    (source, content["result"], content["clause"], content["source_url"], checked_on))
         conn.commit()
-    return items_result_check(dsn=dsn)
+    return list_check_results(dsn=dsn)
 
 
-def items_result_check(dsn=None) -> list[dict]:
+def list_check_results(dsn=None) -> list[dict]:
     """Baca hasil cek syarat layanan yang tercatat."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM tos_checks ORDER BY sumber")
-            return [{"sumber": r["sumber"], "result": r["result"], "pasal": r["pasal"],
+            return [{"source": r["sumber"], "result": r["result"], "clause": r["pasal"],
                      "source_url": r["source_url"], "checked_on": r["checked_on"],
-                     "keputusan": r["keputusan"]} for r in cur.fetchall()]
+                     "decision": r["keputusan"]} for r in cur.fetchall()]

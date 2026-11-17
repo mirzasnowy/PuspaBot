@@ -18,10 +18,10 @@ from __future__ import annotations
 
 import re
 
-from puspa.workflow.blocks import BLOK
+from puspa.workflow.blocks import BLOCKS
 
 # Provider MVP (§4.2) + kata yang menunjukkannya di chat.
-PROVIDER_KATA = {
+PROVIDER_WORDS = {
     "pln": "PLN",
     "pdam": "PDAM",
     "airtime": "airtime",
@@ -32,17 +32,17 @@ PROVIDER_KATA = {
 
 # Kemampuan yang sering diminta tapi BELUM ADA bloknya di MVP — tiap
 # pola memetakan ke nama blok yang dicatat sebagai Permintaan Blok.
-PERMINTAAN_POLa = [
+MISSING_BLOCK_PATTERNS = [
     (r"\b(kirim|kirimkan)\b.*\b(email|wa|whatsapp|telegram)\b", "send_email"),
     (r"\bbayar(kan|lah)?\b.*\b(otomatis|langsung|tanpa.*setuju)", "pay_automatic"),
     (r"\b(telepon|telpon|hubungi|call)\b", "phone"),
-    (r"\b(download|unduh)\b", "unduh_file"),
+    (r"\b(download|unduh)\b", "download_file"),
     (r"\b(isi|isikan)\s+form\b", "content_form"),
-    (r"\bposting\b|\bpost(ing)?\b.*\b(ig|instagram|x|twitter|tiktok)\b", "posting_sosial"),
+    (r"\bposting\b|\bpost(ing)?\b.*\b(ig|instagram|x|twitter|tiktok)\b", "social_post"),
 ]
 
 # Kata kerja yang menunjuk blok yang ADA.
-PATTERN_BLOCK = [
+BLOCK_PATTERNS = [
     (r"\bcek\b.*\btagihan\b|\bcek\b.*\b(pln|pdam|pulsa|paket data|listrik)\b",
      "check_bill"),
     (r"\bbandingkan\b.*\bharga\b|\bcek\b.*\bharga\b.*\b(barang|hp|laptop|tv)\b",
@@ -59,17 +59,17 @@ PATTERN_BLOCK = [
 ]
 
 
-def _provider_disebut(text: str) -> list[str]:
+def _mentioned_providers(text: str) -> list[str]:
     """Provider MVP yang disebut di teks (terurut kemunculan)."""
     low = text.lower()
-    ketemu: list[str] = []
-    for kata, provider in PROVIDER_KATA.items():
-        if kata in low and provider not in ketemu:
-            ketemu.append(provider)
-    return ketemu
+    found: list[str] = []
+    for kata, provider in PROVIDER_WORDS.items():
+        if kata in low and provider not in found:
+            found.append(provider)
+    return found
 
 
-def _date_disebut(text: str) -> int | None:
+def _mentioned_date(text: str) -> int | None:
     """'tiap tanggal 25' / 'tanggal 25' -> 25. None bila tidak disebut."""
     match = re.search(r"tanggal\s+(\d{1,2})", text.lower())
     if match:
@@ -78,19 +78,19 @@ def _date_disebut(text: str) -> int | None:
     return None
 
 
-def _day_disebut(text: str) -> str | None:
+def _mentioned_day(text: str) -> str | None:
     for day in ("senin", "selasa", "rabu", "kamis", "jumat", "sabtu", "week"):
         if day in text.lower():
             return day
     return None
 
 
-def _day_sebelum(text: str) -> int:
+def _days_before(text: str) -> int:
     match = re.search(r"(\d+)\s+hari\s+sebelum", text.lower())
     return int(match.group(1)) if match else 3
 
 
-def _name_product(text: str) -> str | None:
+def _product_name(text: str) -> str | None:
     match = re.search(r"harga\s+(?:barang\s+)?(.+?)(?:\s+di\b|\s*$)", text.lower())
     if match:
         name = match.group(1).strip(" .")
@@ -98,21 +98,21 @@ def _name_product(text: str) -> str | None:
     return None
 
 
-def compose_draft(teks_user: str, *, user_id: str, dsn=None) -> dict:
+def compose_draft(user_text: str, *, user_id: str, dsn=None) -> dict:
     """Susun draf alur dari satu pesan chat. Kembalikan:
     {nama, pemicu, langkah, permintaan_blok, pesan, kartu}.
     `permintaan_blok`: kemampuan diminta yang belum ada bloknya
     (dicatat ke tabel permintaan_blok Fase 3 + dijelaskan ke user).
     `pesan`: kalimat yang ditampilkan ke user (gagal terlihat).
     """
-    text = (teks_user or "").strip()
+    text = (user_text or "").strip()
     low = text.lower()
     step: list[dict] = []
     trigger: dict = {"type": "manual"}
-    permintaan: list[str] = []
+    requests: list[str] = []
 
-    date = _date_disebut(text)
-    day = _day_disebut(text)
+    date = _mentioned_date(text)
+    day = _mentioned_day(text)
     if date is not None:
         trigger = {"type": "schedule", "mode": "date", "date": date,
                   "start_time": "07:00"}
@@ -125,85 +125,85 @@ def compose_draft(teks_user: str, *, user_id: str, dsn=None) -> dict:
 
     # Pemicu jatuh tempo: "N hari sebelum jatuh tempo" / "ingatkan ... jatuh tempo".
     if "jatuh tempo" in low:
-        provider = _provider_disebut(text)
+        provider = _mentioned_providers(text)
         trigger = {"type": "due_date",
-                  "day_sebelum": _day_sebelum(text),
+                  "days_before": _days_before(text),
                   "provider": provider[0] if provider else "PLN"}
 
     # Pemicu harga turun.
     if "harga turun" in low or "turun di bawah" in low:
         match = re.search(r"(?:di bawah|turun(?: ke)?)\s*rp?\s?([\d.]+)", low)
-        ambang = int(match.group(1).replace(".", "")) if match else 0
-        trigger = {"type": "price_turun", "product_id": _name_product(text) or "product",
-                  "price_threshold": ambang}
+        threshold = int(match.group(1).replace(".", "")) if match else 0
+        trigger = {"type": "price_drop", "product_id": _product_name(text) or "product",
+                  "price_threshold": threshold}
 
     # Langkah: cek tagihan per provider yang disebut.
-    provider = _provider_disebut(text)
+    provider = _mentioned_providers(text)
     if provider and ("cek" in low or "check" in low or "tagihan" in low or "bill" in low or "jatuh tempo" in low or "due" in low):
         for p in provider:
             step.append({"block": "check_bill",
-                            "masukan": {"provider": p, "number_pelanggan": ""},
+                            "inputs": {"provider": p, "customer_number": ""},
                             "title": f"Cek tagihan {p}"})
     # Rekap: untuk_tiap atas daftar provider (tugas acuan 9).
     if "semua tagihan" in low or "rekap" in low:
         if not step:
             for p in ("PLN", "PDAM", "airtime", "paket data"):
                 step.append({"block": "check_bill",
-                                "masukan": {"provider": p, "number_pelanggan": ""},
+                                "inputs": {"provider": p, "customer_number": ""},
                                 "title": f"Cek tagihan {p}"})
     # Bandingkan / pantau harga.
     if ("bandingkan" in low or "compare" in low) and ("harga" in low or "price" in low):
         step.append({"block": "compare_prices",
-                        "masukan": {"name_product": _name_product(text) or ""},
+                        "inputs": {"name_product": _product_name(text) or ""},
                         "title": "Bandingkan harga"})
     if ("pantau" in low or "watch" in low) and ("harga" in low or "price" in low):
         step.append({"block": "watch_prices",
-                        "masukan": {"product_id": _name_product(text) or "",
+                        "inputs": {"product_id": _product_name(text) or "",
                                     "price_threshold": 0},
                         "title": "Pantau harga"})
     # Cari/baca email + draf.
     if re.search(r"\bcari\b.*\bemail\b", low):
         step.append({"block": "search_email",
-                        "masukan": {"kata_key": ""}, "title": "Cari email"})
+                        "inputs": {"keywords": ""}, "title": "Cari email"})
     if re.search(r"\bbaca\b.*\bemail\b", low):
         step.append({"block": "read_email",
-                        "masukan": {"email_id": ""}, "title": "Baca email"})
+                        "inputs": {"email_id": ""}, "title": "Baca email"})
     if "draft" in low:
         step.append({"block": "create_draft",
-                        "masukan": {"penerima": "", "subjek": "", "content": ""},
+                        "inputs": {"recipient": "", "subject": "", "content": ""},
                         "title": "Buat draf balasan"})
     if re.search(r"\bbuat\b.*\bevent\b|\bjadwalkan\b", low):
         step.append({"block": "create_event",
-                        "masukan": {"title": "", "created_at": "", "peserta": []},
+                        "inputs": {"title": "", "created_at": "", "attendees": []},
                         "title": "Buat event"})
     # Ingatkan (notif) — setelah cek tagihan.
     if "ingatkan" in low or "ingatin" in low or "remind" in low:
         step.append({"block": "send_notification",
-                        "masukan": {"message": "Tagihanmu sudah dicek — lihat rinciannya."},
+                        "inputs": {"message": "Tagihanmu sudah dicek — lihat rinciannya."},
                         "title": "Ingatkan aku"})
     # Siapkan bayar — selalu di akhir, setelah cek.
     if "siapkan bayar" in low or "siapkan pembayaran" in low:
         step.append({"block": "prepare_payment",
-                        "masukan": {"provider": provider[0] if provider else "PLN",
+                        "inputs": {"provider": provider[0] if provider else "PLN",
                                     "amount": 0, "purpose": ""},
                         "title": "Siapkan bayar (mode aman)"})
 
     # Kemampuan yang diminta tapi belum ada bloknya → Permintaan Blok.
-    for pattern, name_block in PERMINTAAN_POLa:
-        if re.search(pattern, low) and name_block not in permintaan:
-            permintaan.append(name_block)
-    if permintaan:
-        from puspa.moat.library import record_permintaan_block
+    for pattern, block_name in MISSING_BLOCK_PATTERNS:
+        if re.search(pattern, low) and block_name not in requests:
+            requests.append(block_name)
+    if requests:
+        from puspa.moat.library import record_block_request
 
-        for name_block in permintaan:
-            record_permintaan_block(
-                user_id=user_id, block=name_block,
+        for block_name in requests:
+            record_block_request(
+                user_id=user_id, block=block_name,
                 reason=f"diminta lewat chat saat menyusun alur: {text[:120]!r}",
                 dsn=dsn)
 
-    if not step and not permintaan:
+    if not step and not requests:
         return {
-            "name": "", "triggers": trigger, "step": [], "permintaan_block": [],
+            "name": "", "triggers": trigger, "step": [], "block_requests": [],
             "message": ("Aku belum paham alur yang kamu maksud. Coba contoh: "
                       "'tiap tanggal 25 cek PLN dan PDAM, ingatkan aku, "
                       "siapkan bayar'."),
@@ -212,8 +212,8 @@ def compose_draft(teks_user: str, *, user_id: str, dsn=None) -> dict:
 
     name = "Alur " + ("tagihan bulanan" if provider else "new")
     message = ""
-    if permintaan:
-        items = ", ".join(permintaan)
+    if requests:
+        items = ", ".join(requests)
         message = (f"Blok ini belum ada di Puspa, jadi tidak bisa kusertakan: {items}. "
                  "Aku sudah mencatatnya sebagai Permintaan Blok — blok baru berisi "
                  "kode tetap fase 6. Alur di bawah ini hanya memakai blok yang sudah ada.")
@@ -221,7 +221,7 @@ def compose_draft(teks_user: str, *, user_id: str, dsn=None) -> dict:
         "name": name,
         "triggers": trigger,
         "step": step,
-        "permintaan_block": permintaan,
+        "block_requests": requests,
         "message": message,
         "card": [card_step(l) for l in step],
     }
@@ -232,12 +232,12 @@ def card_step(step: dict) -> dict:
     ringkasan masukan). Ini 'kanvas node' Puspa — kartu, bukan klon
     Langflow."""
     block = step.get("block", "?")
-    definisi = BLOK.get(block, {})
+    definition = BLOCKS.get(block, {})
     return {
         "title": step.get("title") or block,
         "block": block,
-        "deskripsi": definisi.get("deskripsi", ""),
-        "permission_class": definisi.get("permission_class", ""),
-        "masukan": step.get("masukan", {}),
-        "action_logout": definisi.get("action_logout", False),
+        "description": definition.get("description", ""),
+        "permission_class": definition.get("permission_class", ""),
+        "inputs": step.get("inputs", {}),
+        "outbound_action": definition.get("outbound_action", False),
     }

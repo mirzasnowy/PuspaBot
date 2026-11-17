@@ -20,7 +20,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
-BATAS_READ_DAILY = 20
+DAILY_READ_LIMIT = 20
 
 
 def _connect(dsn=None):
@@ -44,7 +44,7 @@ def add_watchlist(*, user_id: str, product_id: str, price_threshold=None,
     return {"id": str(row["id"]), "active": row["active"]}
 
 
-def items_watchlist(user_id: str, dsn=None) -> list[dict]:
+def list_watchlist(user_id: str, dsn=None) -> list[dict]:
     """Daftar barang yang dipantau user (aktif saja)."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
@@ -61,40 +61,40 @@ def items_watchlist(user_id: str, dsn=None) -> list[dict]:
                     for r in cur.fetchall()]
 
 
-def sisa_anggaran_read(user_id: str, dsn=None, date: date | None = None) -> int:
+def remaining_read_budget(user_id: str, dsn=None, day: date | None = None) -> int:
     """Sisa anggaran baca hari ini (maks 20/hari/pengguna)."""
-    date = date or datetime.now(timezone.utc).date()
+    day = day or datetime.now(timezone.utc).date()
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT amount FROM read_budgets WHERE user_id = %s AND date = %s",
-                (user_id, date))
+                (user_id, day))
             row = cur.fetchone()
-    return BATAS_READ_DAILY - (int(row["amount"]) if row else 0)
+    return DAILY_READ_LIMIT - (int(row["amount"]) if row else 0)
 
 
-def _use_anggaran(user_id: str, amount: int, dsn, date: date) -> bool:
+def _use_budget(user_id: str, amount: int, dsn, day: date) -> bool:
     """Pakai anggaran baca; False bila sudah habis (sampler berhenti,
     bukan membaca diam-diam melewati batas)."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO read_budgets (user_id, date, amount) VALUES (%s, %s, 0)"
-                " ON CONFLICT (user_id, date) DO NOTHING", (user_id, date))
+                " ON CONFLICT (user_id, date) DO NOTHING", (user_id, day))
             cur.execute(
                 "SELECT amount FROM read_budgets WHERE user_id = %s AND date = %s FOR UPDATE",
-                (user_id, date))
-            dipakai = int(cur.fetchone()["amount"])
-            if dipakai + amount > BATAS_READ_DAILY:
+                (user_id, day))
+            used = int(cur.fetchone()["amount"])
+            if used + amount > DAILY_READ_LIMIT:
                 return False
             cur.execute(
                 "UPDATE read_budgets SET amount = amount + %s WHERE user_id = %s AND date = %s",
-                (amount, user_id, date))
+                (amount, user_id, day))
         conn.commit()
     return True
 
 
-def jalankan_sampler(*, user_id: str, agent_id: str, read_price,
+def run_sampler(*, user_id: str, agent_id: str, read_price,
                      dsn=None) -> dict:
     """Satu putaran sampler: baca harga tiap barang watchlist aktif.
 
@@ -104,27 +104,27 @@ def jalankan_sampler(*, user_id: str, agent_id: str, read_price,
     dilewati dan dilaporkan. Kembalikan {"dibaca", "dilewati",
     "alert": [...]} — alert bila harga <= ambang.
     """
-    date = datetime.now(timezone.utc).date()
-    dibaca, dilewati, alert = [], [], []
-    for product in items_watchlist(user_id, dsn=dsn):
-        if not _use_anggaran(user_id, 1, dsn, date):
-            dilewati.append({"product_id": product["product_id"],
+    day = datetime.now(timezone.utc).date()
+    read, skipped, alert = [], [], []
+    for product in list_watchlist(user_id, dsn=dsn):
+        if not _use_budget(user_id, 1, dsn, day):
+            skipped.append({"product_id": product["product_id"],
                              "reason": "anggaran_read_daily_habis"})
             continue
         try:
             result = read_price(product)
         except Exception as exc:  # noqa: BLE001 — satu barang gagal, lanjut
-            dilewati.append({"product_id": product["product_id"],
+            skipped.append({"product_id": product["product_id"],
                              "reason": f"baca_gagal: {exc}"[:200]})
             continue
         if not result:
-            dilewati.append({"product_id": product["product_id"],
+            skipped.append({"product_id": product["product_id"],
                              "reason": "not_can_dibaca"})
             continue
-        dibaca.append(product["product_id"])
-        ambang = product["price_threshold"]
-        if ambang is not None and result.get("price") is not None and result["price"] <= ambang:
+        read.append(product["product_id"])
+        threshold = product["price_threshold"]
+        if threshold is not None and result.get("price") is not None and result["price"] <= threshold:
             alert.append({"product_id": product["product_id"],
-                          "price": result["price"], "price_threshold": ambang})
-    return {"dibaca": dibaca, "dilewati": dilewati, "alert": alert,
-            "sisa_anggaran": sisa_anggaran_read(user_id, dsn=dsn, date=date)}
+                          "price": result["price"], "price_threshold": threshold})
+    return {"dibaca": read, "dilewati": skipped, "alert": alert,
+            "remaining_budget": remaining_read_budget(user_id, dsn=dsn, day=day)}

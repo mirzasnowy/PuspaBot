@@ -38,7 +38,7 @@ def bind_turn(
     tools,
     domains=None,
     connector=None,
-    anggaran=None,
+    budget=None,
     exp_seconds: int = 3600,
     task_id: str | None = None,
     dsn=None,
@@ -60,8 +60,8 @@ def bind_turn(
         "tools": list(tools),
         "domains": list(domains or []),
         "connectors": dict(connector or {}),
-        "anggaran": dict(
-            anggaran
+        "budget": dict(
+            budget
             or {"step_max": 25, "token_max": 100_000, "rupiah_max": 0}
         ),
         "exp": now + exp_seconds,

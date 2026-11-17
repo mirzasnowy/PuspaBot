@@ -81,56 +81,56 @@ class GoogleConnector:
         return resp.json()
 
     # -- Gmail ----------------------------------------------------------
-    def gmail_search(self, query: str, maks: int = 10) -> list[dict]:
+    def gmail_search(self, query: str, max_results: int = 10) -> list[dict]:
         """Cari email (metadata saja; isi dibaca lewat Pembaca)."""
         data = self._get("https://gmail.googleapis.com/gmail/v1/users/me/messages",
-                         params={"q": query, "maxResults": maks})
+                         params={"q": query, "maxResults": max_results})
         return data.get("messages", [])
 
-    def gmail_read(self, message_id: str, *, pembaca=None) -> dict:
+    def gmail_read(self, message_id: str, *, reader=None) -> dict:
         """Baca satu email. Isi mentah selalu lewat Pembaca terkarantina."""
         data = self._get(f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}",
                          params={"format": "full"})
-        if pembaca is not None:
-            text = _ekstrak_teks_email(data)
-            return pembaca.read_text(f"https://mail.google.com/mail/u/0/#inbox/{message_id}", text)
+        if reader is not None:
+            text = _extract_email_text(data)
+            return reader.read_text(f"https://mail.google.com/mail/u/0/#inbox/{message_id}", text)
         return data
 
-    def gmail_create_draft(self, *, kepada: str, subjek: str, content: str) -> dict:
+    def gmail_create_draft(self, *, recipient: str, subject: str, content: str) -> dict:
         """Buat draf (draf ditulis Pembaca sebagai data, Pelaksana yang
         memanggil tool ini — lihat §2.6)."""
         import base64
 
-        mentah = base64.urlsafe_b64encode(
-            f"To: {kepada}\r\nSubject: {subjek}\r\n\r\n{content}".encode("utf-8")).decode()
+        raw = base64.urlsafe_b64encode(
+            f"To: {recipient}\r\nSubject: {subject}\r\n\r\n{content}".encode("utf-8")).decode()
         return self._post("https://gmail.googleapis.com/gmail/v1/users/me/drafts",
-                          {"message": {"raw": mentah}})
+                          {"message": {"raw": raw}})
 
-    def gmail_send(self, *, kepada: str, subjek: str, content: str,
-                    disetujui: bool = False, request_id: str = "") -> dict:
+    def gmail_send(self, *, recipient: str, subject: str, content: str,
+                    approved: bool = False, request_id: str = "") -> dict:
         """Kirim email — HANYA setelah persetujuan (gerbang tunggal)."""
-        if not disetujui:
+        if not approved:
             raise ConnectorError("sending email needs user approval (single gate)")
         import base64
 
-        mentah = base64.urlsafe_b64encode(
-            f"To: {kepada}\r\nSubject: {subjek}\r\n\r\n{content}".encode("utf-8")).decode()
+        raw = base64.urlsafe_b64encode(
+            f"To: {recipient}\r\nSubject: {subject}\r\n\r\n{content}".encode("utf-8")).decode()
         return self._post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
-                          {"raw": mentah, "request_id": request_id})
+                          {"raw": raw, "request_id": request_id})
 
     # -- Drive ----------------------------------------------------------
-    def drive_search(self, query: str, maks: int = 10) -> list[dict]:
+    def drive_search(self, query: str, max_results: int = 10) -> list[dict]:
         data = self._get("https://www.googleapis.com/drive/v3/files",
-                         params={"q": f"name contains '{query}'", "pageSize": maks,
+                         params={"q": f"name contains '{query}'", "pageSize": max_results,
                                  "fields": "files(id,name,mimeType)"})
         return data.get("files", [])
 
-    def drive_read(self, file_id: str, *, pembaca=None) -> dict:
+    def drive_read(self, file_id: str, *, reader=None) -> dict:
         data = self._get(f"https://www.googleapis.com/drive/v3/files/{file_id}",
                          params={"alt": "media"})
-        if pembaca is not None:
+        if reader is not None:
             text = data.get("text", "") if isinstance(data, dict) else str(data)
-            return pembaca.read_text(f"https://drive.google.com/file/d/{file_id}", text)
+            return reader.read_text(f"https://drive.google.com/file/d/{file_id}", text)
         return data
 
     # -- Calendar -------------------------------------------------------
@@ -140,23 +140,23 @@ class GoogleConnector:
                                  "singleEvents": True, "orderBy": "startTime"})
         return data.get("items", [])
 
-    def calendar_create_event(self, *, summary: str, mulai: str, completed_at: str,
-                            peserta: list[str] | None = None,
-                            disetujui: bool = False) -> dict:
+    def calendar_create_event(self, *, summary: str, start: str, completed_at: str,
+                            attendees: list[str] | None = None,
+                            approved: bool = False) -> dict:
         """Buat event — HANYA setelah persetujuan."""
-        if not disetujui:
+        if not approved:
             raise ConnectorError("creating an event needs user approval (single gate)")
         return self._post("https://www.googleapis.com/calendar/v3/calendars/primary/events",
                           {"summaries": summary,
-                           "start": {"dateTime": mulai}, "end": {"dateTime": completed_at},
-                           "attendees": [{"email": p} for p in (peserta or [])]})
+                           "start": {"dateTime": start}, "end": {"dateTime": completed_at},
+                           "attendees": [{"email": p} for p in (attendees or [])]})
 
 
-def _ekstrak_teks_email(data: dict) -> str:
+def _extract_email_text(data: dict) -> str:
     """Ambil teks polos dari payload Gmail (best-effort, tanpa parsing MIME penuh)."""
     payload = data.get("payload") or {}
-    bagian = payload.get("parts") or []
-    for part in bagian:
+    parts = payload.get("parts") or []
+    for part in parts:
         body = part.get("body") or {}
         text = body.get("data", "")
         if text:

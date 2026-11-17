@@ -14,8 +14,8 @@ from puspa.consent import (
 from puspa.memory import episodic, procedural, profile
 
 
-def test_teks_approval_memuat_6_hal_required():
-    for frasa in (
+def test_approval_text_contains_6_required_items():
+    for phrase in (
         "What data is stored",
         "Where",
         "How long",
@@ -23,10 +23,10 @@ def test_teks_approval_memuat_6_hal_required():
         "Export and delete",
         "Shared graph",
     ):
-        assert frasa in TEXT_APPROVAL
+        assert phrase in TEXT_APPROVAL
 
 
-def test_approval_dicatat_table_and_book_kerja(make_user, test_dsn, ledger):
+def test_approval_recorded_in_table_and_ledger(make_user, test_dsn, ledger):
     u = make_user()
     assert has_consented(u["user_id"], dsn=test_dsn) is False
     task_id = "22222222-2222-2222-2222-222222222222"
@@ -43,14 +43,14 @@ def test_approval_dicatat_table_and_book_kerja(make_user, test_dsn, ledger):
     assert events[0]["content"]["text_version"] == TEKS_VERSI
 
 
-def test_approval_without_ledger_tetap_tercatat_di_table(make_user, test_dsn):
+def test_approval_without_ledger_still_recorded_in_table(make_user, test_dsn):
     u = make_user()
     result = record_consent(u["user_id"], dsn=test_dsn)
     assert result["event_id"] is None
     assert has_consented(u["user_id"], dsn=test_dsn) is True
 
 
-def test_export_memuat_data_without_rahasia(make_user, test_dsn, vault_master_key):
+def test_export_contains_data_without_secret(make_user, test_dsn, vault_master_key):
     from puspa.accounts.vault import put as vault_put
 
     u = make_user()
@@ -67,7 +67,7 @@ def test_export_memuat_data_without_rahasia(make_user, test_dsn, vault_master_ke
     assert "RAHASIA" not in str(export)  # token vault tidak ikut ekspor
 
 
-def test_delete_akun_menghapus_data_di_luar_book_kerja(make_user, test_dsn, ledger):
+def test_delete_account_deletes_data_outside_ledger(make_user, test_dsn, ledger):
     u = make_user()
     profile.add_fact(u["user_id"], "name", "Nero", "user_stated", dsn=test_dsn)
     episodic.record_episode(u["user_id"], "suka kopi", "user_message", dsn=test_dsn)

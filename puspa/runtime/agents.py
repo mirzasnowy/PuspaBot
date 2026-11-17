@@ -75,7 +75,7 @@ def ensure_puspa_agent(user_id: str, dsn=None) -> str:
     return agent_id
 
 
-def create_agent(user_id: str, name: str, peran: str = "", purpose: str = "", dsn=None) -> dict:
+def create_agent(user_id: str, name: str, role: str = "", purpose: str = "", dsn=None) -> dict:
     """Buat agen baru milik pengguna. Agen ke-4 ditolak (maks 3)."""
     if not name or not name.strip():
         raise AgentError("nama agen tidak boleh kosong")
@@ -91,19 +91,19 @@ def create_agent(user_id: str, name: str, peran: str = "", purpose: str = "", ds
             cur.execute(
                 "INSERT INTO agent_meta (agent_id, user_id, name, peran, purpose, required)"
                 " VALUES (%s, %s, %s, %s, %s, FALSE)",
-                (agent_id, user_id, name.strip(), peran, purpose),
+                (agent_id, user_id, name.strip(), role, purpose),
             )
         conn.commit()
-    return {"agent_id": agent_id, "name": name.strip(), "peran": peran,
+    return {"agent_id": agent_id, "name": name.strip(), "role": role,
             "purpose": purpose, "required": False}
 
 
-def items_agent(user_id: str, dsn=None) -> list[dict]:
+def list_agents(user_id: str, dsn=None) -> list[dict]:
     """Semua agen milik pengguna, Puspa wajib selalu pertama."""
     with _connect(dsn) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute(
-                "SELECT agent_id, name, peran, purpose, required FROM agent_meta"
+                "SELECT agent_id, name, peran AS role, purpose, required FROM agent_meta"
                 " WHERE user_id = %s ORDER BY required DESC, created_at ASC",
                 (user_id,),
             )

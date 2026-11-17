@@ -26,7 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # (provider, model, keluarga, rp_per_1k_input, rp_per_1k_output, vision, lolos_acuan)
-KATALOG = (
+CATALOG = (
     ("openrouter", "deepseek/deepseek-chat-v3.1", "deepseek", 9, 27, False, True),
     ("openrouter", "qwen/qwen3-32b", "qwen", 2, 6, False, True),
     ("openrouter", "google/gemma-3-4b-it", "gemma", 1, 3, True, False),
@@ -48,44 +48,44 @@ class ChoiceModel:
 
 
 def _choice(rows) -> ChoiceModel:
-    provider, model, family, login, logout, vision, _passed = rows
-    return ChoiceModel(provider, model, family, login, logout, vision)
+    provider, model, family, rp_in, rp_out, vision, _passed = rows
+    return ChoiceModel(provider, model, family, rp_in, rp_out, vision)
 
 
-def _termurah(kandidat) -> ChoiceModel:
-    return min((_choice(b) for b in kandidat),
+def _cheapest(candidates) -> ChoiceModel:
+    return min((_choice(b) for b in candidates),
                key=lambda p: p.rp_per_1k_input + p.rp_per_1k_output)
 
 
-def pilih(peran: str, *, family_pembuat: str | None = None) -> ChoiceModel | None:
+def choose(role: str, *, creator_family: str | None = None) -> ChoiceModel | None:
     """Pilih (provider, model) termurah untuk satu peran.
 
     Peran: 'perencana' | 'penyaji' | 'pembaca' | 'pencari' |
     'pemeriksa' | 'vision'. Kembalikan None hanya untuk vision bila
     tidak ada model vision di katalog.
     """
-    if peran in ("perencana", "penyaji"):
-        kandidat = [b for b in KATALOG if b[6]]  # lolos 10 tugas acuan
-        return _termurah(kandidat)
-    if peran in ("pembaca", "pencari"):
-        return _termurah(KATALOG)
-    if peran == "pemeriksa":
-        kandidat = [b for b in KATALOG if b[2] != family_pembuat] if family_pembuat else list(KATALOG)
-        if not kandidat:  # hanya satu keluarga di katalog: pakai termurah
-            kandidat = list(KATALOG)
-        return _termurah(kandidat)
-    if peran == "vision":
-        kandidat = [b for b in KATALOG if b[5]]
-        return _termurah(kandidat) if kandidat else None
-    raise ValueError(f"peran tidak dikenal: {peran!r}")
+    if role in ("perencana", "penyaji"):
+        candidates = [b for b in CATALOG if b[6]]  # lolos 10 tugas acuan
+        return _cheapest(candidates)
+    if role in ("pembaca", "pencari"):
+        return _cheapest(CATALOG)
+    if role == "pemeriksa":
+        candidates = [b for b in CATALOG if b[2] != creator_family] if creator_family else list(CATALOG)
+        if not candidates:  # hanya satu keluarga di katalog: pakai termurah
+            candidates = list(CATALOG)
+        return _cheapest(candidates)
+    if role == "vision":
+        candidates = [b for b in CATALOG if b[5]]
+        return _cheapest(candidates) if candidates else None
+    raise ValueError(f"peran tidak dikenal: {role!r}")
 
 
-def hitung_cost(choice: ChoiceModel, token_login: int, token_logout: int) -> int:
+def compute_cost(choice: ChoiceModel, input_tokens: int, output_tokens: int) -> int:
     """Biaya Rupiah (dibulatkan ke bawah) untuk satu panggilan."""
-    return (token_login * choice.rp_per_1k_input + token_logout * choice.rp_per_1k_output) // 1000
+    return (input_tokens * choice.rp_per_1k_input + output_tokens * choice.rp_per_1k_output) // 1000
 
 
-def build_provider(peran: str, *, family_pembuat: str | None = None,
+def build_provider(role: str, *, creator_family: str | None = None,
                    user_id: str | None = None, dsn: str | None = None):
     """Bangun provider nanobot untuk peran lewat factory BYOK Fase 0.
 
@@ -94,7 +94,7 @@ def build_provider(peran: str, *, family_pembuat: str | None = None,
     yang jujur (bukan kunci karangan). Vision yang tidak tersedia
     melempar ValueError supaya pemanggil meminta nama barang ke user.
     """
-    choice = pilih(peran, family_pembuat=family_pembuat)
+    choice = choose(role, creator_family=creator_family)
     if choice is None:
         raise ValueError("tidak ada model vision di router; minta user menulis nama barang")
     import sys

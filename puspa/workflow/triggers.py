@@ -15,20 +15,20 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
 
-TRIGGER_TYPES = ("schedule", "due_date", "price_turun", "manual")
+TRIGGER_TYPES = ("schedule", "due_date", "price_drop", "manual")
 # Pemicu yang sengaja ditolak di MVP (§2.12, keputusan 18).
 TRIGGER_REJECTED = ("email_login", "webhook")
-INTERVAL_MINIMAL_HOUR = 1
-HARI = ("senin", "selasa", "rabu", "kamis", "jumat", "sabtu", "week")
+MIN_INTERVAL_HOURS = 1
+WEEKDAYS = ("senin", "selasa", "rabu", "kamis", "jumat", "sabtu", "week")
 
 
 class TriggerError(Exception):
     """Pemicu tidak valid atau di luar MVP."""
 
 
-def validasi_trigger(trigger: dict) -> list[str]:
+def validate_trigger(trigger: dict) -> list[str]:
     """Periksa satu pemicu. Kembalikan daftar masalah (kosong = lolos)."""
-    masalah: list[str] = []
+    problems: list[str] = []
     if not isinstance(trigger, dict):
         return ["pemicu harus objek"]
     event_type = trigger.get("type")
@@ -41,42 +41,42 @@ def validasi_trigger(trigger: dict) -> list[str]:
         if mode == "date":
             day = trigger.get("date")
             if not isinstance(day, int) or not 1 <= day <= 31:
-                masalah.append("pemicu jadwal tanggal: 'tanggal' harus 1-31")
+                problems.append("pemicu jadwal tanggal: 'tanggal' harus 1-31")
         elif mode == "day":
-            if trigger.get("day") not in HARI:
-                masalah.append(f"pemicu jadwal hari: 'hari' harus salah satu {HARI}")
+            if trigger.get("day") not in WEEKDAYS:
+                problems.append(f"pemicu jadwal hari: 'hari' harus salah satu {WEEKDAYS}")
         elif mode == "interval_hour":
             hour = trigger.get("hour")
-            if not isinstance(hour, (int, float)) or hour < INTERVAL_MINIMAL_HOUR:
-                masalah.append(
-                    f"pemicu jadwal interval: minimal {INTERVAL_MINIMAL_HOUR} jam")
+            if not isinstance(hour, (int, float)) or hour < MIN_INTERVAL_HOURS:
+                problems.append(
+                    f"pemicu jadwal interval: minimal {MIN_INTERVAL_HOURS} jam")
         else:
-            masalah.append("pemicu jadwal: 'mode' harus tanggal/hari/interval_hour")
+            problems.append("pemicu jadwal: 'mode' harus tanggal/hari/interval_hour")
         start_time = trigger.get("start_time", "07:00")
         try:
             time.fromisoformat(str(start_time))
         except ValueError:
-            masalah.append(f"pemicu jadwal: 'jam_mulai' {start_time!r} bukan jam valid")
+            problems.append(f"pemicu jadwal: 'jam_mulai' {start_time!r} bukan jam valid")
     elif event_type == "due_date":
-        day = trigger.get("day_sebelum")
+        day = trigger.get("days_before")
         if not isinstance(day, int) or day < 0:
-            masalah.append("pemicu due_date: 'day_sebelum' harus bilangan >= 0")
+            problems.append("pemicu due_date: 'day_sebelum' harus bilangan >= 0")
         if trigger.get("provider") not in ("PLN", "PDAM", "airtime", "paket data"):
-            masalah.append("pemicu due_date: 'provider' harus provider MVP")
-    elif event_type == "price_turun":
+            problems.append("pemicu due_date: 'provider' harus provider MVP")
+    elif event_type == "price_drop":
         if not trigger.get("product_id"):
-            masalah.append("pemicu price_turun: 'product_id' wajib (dari watchlist)")
-        ambang = trigger.get("price_threshold")
-        if not isinstance(ambang, (int, float)) or ambang <= 0:
-            masalah.append("pemicu price_turun: 'price_threshold' harus Rupiah > 0")
-    return masalah
+            problems.append("pemicu price_turun: 'product_id' wajib (dari watchlist)")
+        threshold = trigger.get("price_threshold")
+        if not isinstance(threshold, (int, float)) or threshold <= 0:
+            problems.append("pemicu price_turun: 'price_threshold' harus Rupiah > 0")
+    return problems
 
 
-def _hour_mulai(trigger: dict) -> time:
+def _start_hour(trigger: dict) -> time:
     return time.fromisoformat(str(trigger.get("start_time", "07:00")))
 
 
-def next_trigger_at(trigger: dict, sekarang: datetime | None = None) -> datetime:
+def next_trigger_at(trigger: dict, now: datetime | None = None) -> datetime:
     """Hitung waktu picu berikutnya untuk pemicu jadwal. `manual`,
     `jatuh_tempo`, dan `harga_turun` tidak punya jadwal tetap — mereka
     dievaluasi saat data berubah (lihat `cocok_jatuh_tempo` dan
@@ -84,25 +84,25 @@ def next_trigger_at(trigger: dict, sekarang: datetime | None = None) -> datetime
     """
     if trigger.get("type") != "schedule":
         return None
-    sekarang = sekarang or datetime.now(timezone.utc)
-    hour = _hour_mulai(trigger)
+    now = now or datetime.now(timezone.utc)
+    hour = _start_hour(trigger)
     mode = trigger.get("mode")
     if mode == "interval_hour":
-        return sekarang + timedelta(hours=float(trigger["hour"]))
+        return now + timedelta(hours=float(trigger["hour"]))
     if mode == "day":
-        target = HARI.index(trigger["day"])  # senin = 0
-        calon = datetime.combine(sekarang.date(), hour, tzinfo=timezone.utc)
-        selisih = (target - sekarang.weekday()) % 7
-        calon += timedelta(days=selisih)
-        if calon <= sekarang:
-            calon += timedelta(days=7)
-        return calon
+        target = WEEKDAYS.index(trigger["day"])  # senin = 0
+        candidate = datetime.combine(now.date(), hour, tzinfo=timezone.utc)
+        delta_days = (target - now.weekday()) % 7
+        candidate += timedelta(days=delta_days)
+        if candidate <= now:
+            candidate += timedelta(days=7)
+        return candidate
     # mode tanggal: tanggal yang sama tiap bulan.
     day = int(trigger["date"])
-    tahun, month = sekarang.year, sekarang.month
+    tahun, month = now.year, now.month
     for _ in range(2):  # bulan ini, kalau lewat bulan depan
         try:
-            calon = datetime.combine(
+            candidate = datetime.combine(
                 date(tahun, month, day), hour, tzinfo=timezone.utc)
         except ValueError:
             # tanggal 31 di bulan 30 hari: geser ke akhir bulan.
@@ -111,8 +111,8 @@ def next_trigger_at(trigger: dict, sekarang: datetime | None = None) -> datetime
             else:
                 month += 1
             continue
-        if calon > sekarang:
-            return calon
+        if candidate > now:
+            return candidate
         if month == 12:
             tahun, month = tahun + 1, 1
         else:
@@ -136,23 +136,23 @@ def match_due_date(trigger: dict, bill: list[dict],
         if not due:
             continue
         due = date.fromisoformat(str(due)) if isinstance(due, str) else due
-        selisih = (due - today).days
-        if 0 <= selisih <= int(trigger.get("day_sebelum", 3)):
+        delta_days = (due - today).days
+        if 0 <= delta_days <= int(trigger.get("days_before", 3)):
             match.append(t)
     return match
 
 
-def match_price_turun(trigger: dict, price_kini: int | None) -> bool:
+def match_price_drop(trigger: dict, current_price: int | None) -> bool:
     """Benar bila harga kini (dari watchlist/sampler Fase 3) sudah di
     bawah atau sama dengan ambang. `harga_kini` None = belum ada data
     (tidak memicu — gagal terlihat, bukan tebak)."""
-    if price_kini is None:
+    if current_price is None:
         return False
-    return int(price_kini) <= int(trigger["price_threshold"])
+    return int(current_price) <= int(trigger["price_threshold"])
 
 
-def save_to_penjadwal(*, user_id: str, workflow_id: str, trigger: dict,
-                        sekarang: datetime | None = None, dsn=None):
+def save_to_scheduler(*, user_id: str, workflow_id: str, trigger: dict,
+                        now: datetime | None = None, dsn=None):
     """Simpan pemicu jadwal ke tabel pemicu Fase 2 (dipakai ulang).
     Pemicu jatuh_tempo / harga_turun / manual tidak punya jadwal tetap
     sehingga tidak disimpan di sini — mereka dievaluasi tiap tick oleh
@@ -162,10 +162,10 @@ def save_to_penjadwal(*, user_id: str, workflow_id: str, trigger: dict,
 
     if trigger.get("type") != "schedule":
         return None
-    berikutnya = next_trigger_at(trigger, sekarang)
+    next_time = next_trigger_at(trigger, now)
     return create_trigger(
         user_id, "schedule",
-        next_trigger_at=berikutnya,
+        next_trigger_at=next_time,
         schedule=f"alur:{workflow_id}",
         workflow=workflow_id,
         dsn=dsn,
