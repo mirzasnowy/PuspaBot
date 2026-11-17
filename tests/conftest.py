@@ -193,7 +193,7 @@ def agent_kedua(test_dsn):
     """A second user-created agent (for cross-agent procedure reuse)."""
     from puspa.runtime.agents import create_agent
 
-    return create_agent("agen-kedua", dsn=test_dsn)
+    return lambda user_id: create_agent(user_id, "agen-kedua", dsn=test_dsn)
 
 
 @pytest.fixture

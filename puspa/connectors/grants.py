@@ -76,5 +76,5 @@ def items_connector(user_id: str, agent_id: str, dsn=None) -> list[dict]:
 
 def punya_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> bool:
     """True bila agen ini terhubung ke konektor itu."""
-    return any(k["connectors"] == connector and k["terhubung"]
+    return any(k["connector"] == connector and k["terhubung"]
                for k in items_connector(user_id, agent_id, dsn=dsn))

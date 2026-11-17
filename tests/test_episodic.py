@@ -26,7 +26,7 @@ def test_pencarian_mengutamakan_yang_paling_mirip(make_user, test_dsn):
     result = episodic.search_episodes(u["user_id"], "laptop asus vivobook", limit=3, dsn=test_dsn)
     assert "laptop" in result[0]["content"]
     assert "laptop" in result[1]["content"]
-    assert result[2]["content"].startswith("bill")
+    assert result[2]["content"].startswith("tagihan")
 
 
 def test_episodik_terisolasi_antar_user(make_user, test_dsn):
