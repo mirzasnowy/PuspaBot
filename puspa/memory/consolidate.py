@@ -71,8 +71,8 @@ def consolidate_idle(user_id, older_than_days=30, agent_id=None, dsn=None,
             already = set()
             for r in cur.fetchall():
                 already.update(str(k) for k in (r["event_ids"] or []))
-    summary_created = 0
-    prosedur_dipromosikan = 0
+    summaries_created = 0
+    procedures_promoted = 0
     task_diproses = []
     for task_id in task_ids:
         with _connect(dsn) as conn:
@@ -105,12 +105,12 @@ def consolidate_idle(user_id, older_than_days=30, agent_id=None, dsn=None,
                     (user_id, agent_id, period_start, period_end, text, event_ids),
                 )
             conn.commit()
-        summary_created += 1
+        summaries_created += 1
         task_diproses.append(str(task_id))
         # Pola berhasil -> prosedural: episode tugas_selesai yang
         # isinya menandai berhasil.
         completed_at = [e for e in new if e["type"] == "task_completed"]
-        if completed_at and any("successful" in e["content"].lower() for e in completed_at):
+        if completed_at and any(w in e["content"].lower() for e in completed_at for w in ("successful", "berhasil")):
             service = completed_at[0]["content"].split(":", 1)[0].strip() or "tasks"
             step = [e["content"] for e in new if e["type"] != "task_completed"] or [
                 e["content"] for e in completed_at
@@ -120,10 +120,10 @@ def consolidate_idle(user_id, older_than_days=30, agent_id=None, dsn=None,
                 source_event_id=event_ids[0] if event_ids else None,
                 dsn=dsn,
             )
-            prosedur_dipromosikan += 1
+            procedures_promoted += 1
     return {
-        "summary_created": summary_created,
-        "prosedur_dipromosikan": prosedur_dipromosikan,
+        "summaries_created": summaries_created,
+        "procedures_promoted": procedures_promoted,
         "tasks": task_diproses,
     }
 

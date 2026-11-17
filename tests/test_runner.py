@@ -165,7 +165,7 @@ def test_approval_content_berubah_batal(make_user, test_dsn, permission_user_pen
     action_berubah = {"block": "prepare_payment",
                     "masukan": {"provider": "PLN", "amount": 900000,
                                 "purpose": "PLN"}}
-    with pytest.raises(approvals.ApprovalError, match="isi aksi berubah"):
+    with pytest.raises(approvals.ApprovalError, match="action content changed"):
         approvals.putuskan(approval_id=result["approval_id"],
                            user_id=user_id, setuju=True,
                            action_kini=action_berubah, dsn=test_dsn)

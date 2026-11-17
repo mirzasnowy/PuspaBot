@@ -112,14 +112,14 @@ def putuskan(*, approval_id: str, user_id: str, setuju: bool,
             if row["status"] != "pending":
                 raise ApprovalError(
                     f"persetujuan sudah {row['status']}")
-            if row["expired"] <= sekarang:
+            if row["expires_at"] <= sekarang:
                 cur.execute(
                     "UPDATE workflow_approvals SET status = 'expired'"
                     " WHERE id = %s RETURNING *", (approval_id,))
                 row = cur.fetchone()
                 conn.commit()
                 raise ApprovalError(
-                    "persetujuan sudah kedaluwarsa (24 jam) — aksi dibatalkan")
+                    "approval already expired (24h) - action cancelled")
             if action_kini is not None and content_hash(action_kini) != row["content_hash"]:
                 cur.execute(
                     "UPDATE workflow_approvals SET status = 'cancelled'"
@@ -127,7 +127,7 @@ def putuskan(*, approval_id: str, user_id: str, setuju: bool,
                 row = cur.fetchone()
                 conn.commit()
                 raise ApprovalError(
-                    "isi aksi berubah setelah diminta — persetujuan batal, minta ulang")
+                    "action content changed after being requested - approval void, request again")
             status_new = "granted" if setuju else "rejected"
             cur.execute(
                 "UPDATE workflow_approvals SET status = %s WHERE id = %s RETURNING *",

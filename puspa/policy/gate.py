@@ -243,7 +243,7 @@ class Gate:
         if request.status != "disetujui":
             self._deny(request, f"aksi belum disetujui (status: {request.status!r})")
         if _content_hash(request.content) != request.content_hash:
-            self._deny(request, "isi aksi berubah setelah disetujui; persetujuan batal", invalidate=True)
+            self._deny(request, "action content changed after approval; approval void", invalidate=True)
         # Token masih valid? (cek ulang exp + pencabutan)
         if request.token_payload.get("exp", 0) <= int(time.time()):
             self._deny(request, "token sudah kedaluwarsa", invalidate=True)

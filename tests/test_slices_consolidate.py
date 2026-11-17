@@ -76,8 +76,8 @@ def test_konsolidasi_meringkas_and_menunjuk_event_source(make_user, test_dsn, le
         )
         conn.commit()
     result = consolidate.consolidate_idle(u["user_id"], older_than_days=30, dsn=test_dsn)
-    assert result["summary_created"] == 1
-    assert result["prosedur_dipromosikan"] == 1
+    assert result["summaries_created"] == 1
+    assert result["procedures_promoted"] == 1
     summary = consolidate.list_summaries(u["user_id"], dsn=test_dsn)
     assert len(summary) == 1
     assert set(summary[0]["event_ids"]) == {str(ev1["id"]), str(ev2["id"])}
@@ -99,8 +99,8 @@ def test_konsolidasi_not_mengulang_episode_yang_already_diringkas(make_user, tes
             (u["user_id"],),
         )
         conn.commit()
-    assert consolidate.consolidate_idle(u["user_id"], dsn=test_dsn)["summary_created"] == 1
-    assert consolidate.consolidate_idle(u["user_id"], dsn=test_dsn)["summary_created"] == 0
+    assert consolidate.consolidate_idle(u["user_id"], dsn=test_dsn)["summaries_created"] == 1
+    assert consolidate.consolidate_idle(u["user_id"], dsn=test_dsn)["summaries_created"] == 0
 
 
 def test_konsolidasi_melewatkan_episode_new(make_user, test_dsn):
@@ -110,4 +110,4 @@ def test_konsolidasi_melewatkan_episode_new(make_user, test_dsn):
         task_id=str(uuid.uuid4()), event_id=str(uuid.uuid4()), dsn=test_dsn,
     )
     result = consolidate.consolidate_idle(u["user_id"], older_than_days=30, dsn=test_dsn)
-    assert result["summary_created"] == 0
+    assert result["summaries_created"] == 0

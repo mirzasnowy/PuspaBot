@@ -408,7 +408,7 @@ def jalankan_workflow(workflow_id: str, *, user_id: str, trigger_jenis: str = "m
             cost += int(BLOK[name].get("cost_rp", 0))
             if cost > CEILING_COST_JALAN_RP:
                 status, reason = "failed", (
-                    f"plafon biaya per jalan Rp{CEILING_COST_JALAN_RP:,} terlampaui"
+                    f"cost ceiling per run Rp{CEILING_COST_JALAN_RP:,} exceeded"
                     .replace(",", "."))
                 return
             if name == "condition":
