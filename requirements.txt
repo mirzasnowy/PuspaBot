@@ -1,0 +1,24 @@
+# Dependensi Fase 0 Puspa.
+#
+# nanobot dipakai sebagai dependency dari GitHub, pin ke commit yang
+# sudah diinventaris (HEAD e767174) — lihat NOTICE.md. Dari fresh clone,
+# `pip install -r requirements.txt` menginstal nanobot dari pin ini;
+# clone lokal ./nanobot hanya referensi baca + fallback sys.path di
+# tests/conftest.py kalau direktorinya memang ada. Nama paket di PyPI
+# adalah nanobot-ai (import tetap `nanobot`).
+nanobot-ai @ git+https://github.com/HKUDS/nanobot@e767174
+psycopg[binary]
+argon2-cffi
+cryptography
+pytest
+# Dependensi nanobot (dibutuhkan paket puspa.chassis + tes integrasi):
+pydantic
+pydantic-settings
+loguru
+pyyaml
+json_repair
+tiktoken
+jinja2
+regex
+jsonschema
+filelock
