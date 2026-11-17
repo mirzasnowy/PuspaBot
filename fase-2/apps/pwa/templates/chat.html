@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block isi %}
+<h1>Chat</h1>
+<p class="pesan-sub">Group chat: kamu, Puspa, dan agenmu di satu thread. Sub-agen terlipat secara default; @mention agen atau sub-agen untuk bicara langsung. Pesanmu selalu menyela tugas yang berjalan.</p>
+<div id="strip-kerja" hx-get="/kantor" hx-trigger="every 5s" hx-select="#strip-kerja" hx-swap="outerHTML"></div>
+<div id="riwayat">
+{% for p in pesan %}
+<div class="kartu"><strong>{{ p.dari }}</strong>: {{ p.teks }}</div>
+{% else %}
+<p class="pesan-sub">Belum ada pesan. Sapa Puspa dulu.</p>
+{% endfor %}
+</div>
+<form hx-post="/api/chat" hx-swap="none" method="post">
+<input name="teks" placeholder="Tulis pesan ke Puspa..." required style="width:70%">
+<button type="submit">Kirim</button>
+</form>
+<p class="pesan-sub">Kirim foto untuk cek harga (fase 3). Angka bermakna punya tombol Bukti di panelnya.</p>
+<div id="sse-status" class="pesan-sub">Live: SSE /sse aktif saat ada tugas berjalan.</div>
+<script>
+var es = new EventSource('/sse');
+es.onmessage = function(e) { document.getElementById('sse-status').textContent = 'Live: ' + e.data.slice(0, 120); };
+</script>
+{% endblock %}

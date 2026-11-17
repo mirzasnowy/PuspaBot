@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block isi %}
+<h1>Pengaturan</h1>
+<div class="kartu"><strong>Batas belanja</strong><p>Default Rp0 tanpa persetujuan. Agen tidak bisa menaikkannya sendiri.</p></div>
+<div class="kartu"><strong>Bahasa</strong><p>Indonesia.</p></div>
+<div class="kartu"><strong>Notifikasi</strong><p>Web Push (VAPID). Di iOS, push hanya jalan kalau PWA dipasang ke layar utama; onboarding menguji kirim dan menampilkan peringatan kalau notif tidak bisa menjangkau kamu.</p>
+<button id="btn-notif" type="button">Izinkan notifikasi + uji kirim</button>
+<p id="notif-status" class="pesan-sub"></p></div>
+<div class="kartu"><strong>Akun dan perangkat</strong><p>Daftar sesi dan perangkat bisa dilihat dan dicabut (sesi Fase 0).</p></div>
+<div class="kartu"><strong>Persetujuan data</strong><p>Teks v1-2026-11-17 (Fase 1). Persetujuan dicatat di Buku Kerja.</p></div>
+<div class="kartu"><strong>Rekor Otonomi</strong><p>Di MVP semua aksi tetap T0 (tanya setiap kali). Rekor dikumpulkan; usulan naik ke T2 untuk aksi nol-risiko muncul setelah 10 persetujuan berturut-turut tanpa edit.</p></div>
+<script>
+document.getElementById('btn-notif').addEventListener('click', async function() {
+  var status = document.getElementById('notif-status');
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+    status.textContent = 'Peringatan: notifikasi tidak bisa menjangkau kamu di perangkat ini.';
+    return;
+  }
+  var izin = await Notification.requestPermission();
+  if (izin !== 'granted') { status.textContent = 'Peringatan: izin notifikasi tidak diberikan; pengingat hanya tampil di aplikasi.'; return; }
+  status.textContent = 'Notifikasi diizinkan. Uji kirim dicatat di onboarding (langganan push disimpan di server).';
+});
+</script>
+{% endblock %}

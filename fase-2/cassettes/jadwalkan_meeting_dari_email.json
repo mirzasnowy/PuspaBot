@@ -1,0 +1,22 @@
+{
+  "tugas_id": "tugas-acuan-jadwalkan_meeting_dari_email",
+  "nama": "jadwalkan_meeting_dari_email",
+  "rekaman": [
+    {
+      "tool": "gmail_baca",
+      "keluaran": {
+        "jenis": "email",
+        "nilai": 1,
+        "teks": "[DATA: Bisakah kita rapat Rabu jam 10?] "
+      }
+    },
+    {
+      "tool": "calendar_buat_event",
+      "keluaran": {
+        "jenis": "event",
+        "nilai": 1,
+        "id": "ev-uji-1"
+      }
+    }
+  ]
+}

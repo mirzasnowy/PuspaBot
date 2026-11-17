@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block isi %}
+<h1>Masuk ke Puspa</h1>
+<p>Login lewat akun Google (tautan email sebagai cadangan).</p>
+{% if client_id_ada %}
+<a href="/auth/google"><button type="button">Masuk dengan Google</button></a>
+{% else %}
+<p class="pesan-sub">Login Google belum dikonfigurasi di server ini (PUSPA_GOOGLE_CLIENT_ID kosong). Atur kredensial Google OAuth dulu.</p>
+{% endif %}
+{% endblock %}

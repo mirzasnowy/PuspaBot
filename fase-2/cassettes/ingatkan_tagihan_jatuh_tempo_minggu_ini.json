@@ -1,0 +1,24 @@
+{
+  "tugas_id": "tugas-acuan-ingatkan_tagihan_jatuh_tempo_minggu_ini",
+  "nama": "ingatkan_tagihan_jatuh_tempo_minggu_ini",
+  "rekaman": [
+    {
+      "tool": "baca_tagihan",
+      "keluaran": {
+        "jenis": "tagihan",
+        "nilai": 132500,
+        "penyedia": "PLN",
+        "jatuh_tempo": "20 Nov 2026"
+      }
+    },
+    {
+      "tool": "baca_tagihan",
+      "keluaran": {
+        "jenis": "tagihan",
+        "nilai": 85000,
+        "penyedia": "PDAM",
+        "jatuh_tempo": "22 Nov 2026"
+      }
+    }
+  ]
+}

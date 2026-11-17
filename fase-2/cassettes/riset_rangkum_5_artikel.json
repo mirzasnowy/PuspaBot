@@ -1,0 +1,28 @@
+{
+  "tugas_id": "tugas-acuan-riset_rangkum_5_artikel",
+  "nama": "riset_rangkum_5_artikel",
+  "rekaman": [
+    {
+      "tool": "cari_artikel",
+      "keluaran": {
+        "jenis": "artikel",
+        "jumlah": 5,
+        "judul": [
+          "AI agents 2026",
+          "RAG di produksi",
+          "Evaluasi LLM",
+          "Router model murah",
+          "Sandbox aman"
+        ]
+      }
+    },
+    {
+      "tool": "baca_artikel",
+      "keluaran": {
+        "jenis": "ringkasan",
+        "nilai": 5,
+        "teks": "Lima artikel dirangkum."
+      }
+    }
+  ]
+}
