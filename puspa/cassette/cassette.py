@@ -26,13 +26,13 @@ CASSETTE_DIR_DEFAULT = Path(__file__).resolve().parent.parent.parent / "cassette
 
 # 10 tugas acuan (tetap, §8 revisi 7).
 TASK_REFERENCE = (
-    "riset_rangkum_5_artikel",
+    "research_summarize_5_articles",
     "read_email_create_draft",
     "schedule_meeting_from_email",
     "compare_price_laptop",
     "check_bill_pln_prepare_payment",
     "search_file_drive_summarize",
-    "ingat_preferensi_kemarin",
+    "remember_yesterday_preferences",
     "bill_reminder",
     "remind_bill_due_this_week",
     "prepare_payment_electricity_token_50k",

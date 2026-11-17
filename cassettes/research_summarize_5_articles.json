@@ -1,6 +1,6 @@
 {
-  "task_id": "tugas-acuan-riset_rangkum_5_artikel",
-  "name": "riset_rangkum_5_artikel",
+  "task_id": "task-reference-research_summarize_5_articles",
+  "name": "research_summarize_5_articles",
   "recording": [
     {
       "tool": "search_artikel",

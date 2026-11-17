@@ -1,6 +1,6 @@
 {
-  "task_id": "tugas-acuan-ingat_preferensi_kemarin",
-  "name": "ingat_preferensi_kemarin",
+  "task_id": "task-reference-remember_yesterday_preferences",
+  "name": "remember_yesterday_preferences",
   "recording": [
     {
       "tool": "read_memory",

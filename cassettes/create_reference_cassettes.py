@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 KASET = {
-    "riset_rangkum_5_artikel": [
+    "research_summarize_5_articles": [
         {"tool": "search_artikel", "output": {"type": "artikel", "amount": 5,
          "title": ["AI agents 2026", "RAG di produksi", "Evaluasi LLM",
                    "Router model murah", "Sandbox aman"]}},
@@ -51,7 +51,7 @@ KASET = {
         {"tool": "drive_read", "output": {"type": "summaries", "value": 1,
          "text": "[DATA: Nota uji, total Rp132.500.]"}},
     ],
-    "ingat_preferensi_kemarin": [
+    "remember_yesterday_preferences": [
         {"tool": "read_memory", "output": {"type": "fact", "value": 1,
          "text": "User suka jawaban singkat, bahasa santai."}},
     ],
