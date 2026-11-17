@@ -287,7 +287,7 @@ async def check_openai_compat(provider: str, model: str, server: MockProviderSer
     assert body.get("tools"), f"{provider}: body tanpa tools"
     return {"provider": provider, "model": model, "endpoint": req["path"],
             "auth_header": "Authorization: Bearer <mock-key>",
-            "message_format": "openai chat-completions", "result": "mock lolos"}
+            "message_format": "openai chat-completions", "result": "mock passed"}
 
 
 async def check_anthropic(server: MockProviderServer, *, key: str = MOCK_KEY) -> dict[str, Any]:
@@ -310,7 +310,7 @@ async def check_anthropic(server: MockProviderServer, *, key: str = MOCK_KEY) ->
     assert isinstance(body.get("messages"), list), "anthropic: body tanpa messages"
     return {"provider": "anthropic", "model": model, "endpoint": req["path"],
             "auth_header": "x-api-key: <mock-key> (+ anthropic-version)",
-            "message_format": "anthropic messages", "result": "mock lolos"}
+            "message_format": "anthropic messages", "result": "mock passed"}
 
 
 async def check_azure(server: MockProviderServer, *, key: str = MOCK_KEY) -> dict[str, Any]:
@@ -331,7 +331,7 @@ async def check_azure(server: MockProviderServer, *, key: str = MOCK_KEY) -> dic
     assert body.get("model") == model, f"azure: body model={body.get('model')!r}"
     return {"provider": "azure_openai", "model": model, "endpoint": req["path"],
             "auth_header": "Authorization: Bearer <mock-key>",
-            "message_format": "openai responses", "result": "mock lolos"}
+            "message_format": "openai responses", "result": "mock passed"}
 
 
 async def check_bedrock_fake_client() -> dict[str, Any]:
@@ -352,7 +352,7 @@ async def check_bedrock_fake_client() -> dict[str, Any]:
     assert kwargs.get("toolConfig", {}).get("tools"), "bedrock: kwargs tanpa toolConfig.tools"
     return {"provider": "bedrock", "model": model, "endpoint": "converse (fake client, bukan HTTP)",
             "auth_header": "kredensial AWS (SigV4) — tidak lewat HTTP mock",
-            "message_format": "bedrock converse", "result": "mock lolos (fake client)"}
+            "message_format": "bedrock converse", "result": "mock passed (fake client)"}
 
 
 async def run_mock_checks(out_dir: str | Path | None = None) -> list[dict[str, Any]]:

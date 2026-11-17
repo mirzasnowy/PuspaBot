@@ -111,7 +111,7 @@ def test_skor_keandalan_and_turunkan_vonis():
 def test_summary_vonis_lencana_office():
     b1, b2 = _evidence(), _evidence()
     b1.vonis, b2.vonis = "Verified", "Uncertain"
-    assert summary_vonis([b1, b2]) == "1 terverifikasi, 1 belum pasti"
+    assert summary_vonis([b1, b2]) == "1 verified, 1 uncertain"
 
 
 def test_proyeksi_dari_ledger():

@@ -56,5 +56,5 @@ def test_agent_new_mulai_without_connector(make_user):
     agent = create_agent(u["user_id"], "Agen Riset")
     assert items_connector(u["user_id"], agent["agent_id"]) == []
     # Puspa mulai dengan ketiganya.
-    assert {k["connectors"] for k in items_connector(u["user_id"], u["agent_id"])} == {
+    assert {k["connector"] for k in items_connector(u["user_id"], u["agent_id"])} == {
         "gmail", "drive", "calendar"}

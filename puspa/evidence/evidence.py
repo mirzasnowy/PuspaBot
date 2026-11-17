@@ -135,4 +135,4 @@ def summary_vonis(evidence_list: list[EvidenceRecord]) -> str:
     for vonis in ("Verified", "Uncertain", "Cannot be determined"):
         if hitung.get(vonis):
             bagian.append(f"{hitung[vonis]} {vonis.lower()}")
-    return ", ".join(bagian) if bagian else "belum ada bukti"
+    return ", ".join(bagian) if bagian else "no evidence yet"

@@ -226,58 +226,58 @@ def test_wrapper_openrouter_provider():
 def test_mock_openai_chat_completions():
     with MockProviderServer() as server:
         summarize = asyncio.run(check_openai_compat("openai", "gpt-4o-mini", server))
-    assert summarize["result"] == "mock lolos"
+    assert summarize["result"] == "mock passed"
     assert summarize["endpoint"] == "/v1/chat/completions"
 
 
 def test_mock_gemini_via_compat():
     with MockProviderServer() as server:
         summarize = asyncio.run(check_openai_compat("gemini", "gemini-2.5-flash", server))
-    assert summarize["result"] == "mock lolos"
+    assert summarize["result"] == "mock passed"
 
 
 def test_mock_groq_deepseek():
     with MockProviderServer() as server:
-        assert asyncio.run(check_openai_compat("groq", "llama-3.1-8b-instant", server))["result"] == "mock lolos"
-        assert asyncio.run(check_openai_compat("deepseek", "deepseek-chat", server))["result"] == "mock lolos"
+        assert asyncio.run(check_openai_compat("groq", "llama-3.1-8b-instant", server))["result"] == "mock passed"
+        assert asyncio.run(check_openai_compat("deepseek", "deepseek-chat", server))["result"] == "mock passed"
 
 
 def test_mock_together_satu_rows_config():
     with MockProviderServer() as server:
         summarize = asyncio.run(check_openai_compat(
             "together", "meta-llama/Llama-3.1-8b-Instruct", server))
-    assert summarize["result"] == "mock lolos"
+    assert summarize["result"] == "mock passed"
 
 
 def test_mock_openai_compatible_generik():
     with MockProviderServer() as server:
         summarize = asyncio.run(check_openai_compat("openai_compatible", "model-generik-mock", server))
-    assert summarize["result"] == "mock lolos"
+    assert summarize["result"] == "mock passed"
 
 
 def test_mock_ollama_lokal():
     with MockProviderServer() as server:
         summarize = asyncio.run(check_openai_compat("ollama", "llama3.1:8b", server))
-    assert summarize["result"] == "mock lolos"
+    assert summarize["result"] == "mock passed"
 
 
 def test_mock_anthropic_messages():
     with MockProviderServer() as server:
         summarize = asyncio.run(check_anthropic(server))
-    assert summarize["result"] == "mock lolos"
+    assert summarize["result"] == "mock passed"
     assert summarize["endpoint"] == "/v1/messages"
 
 
 def test_mock_azure_responses():
     with MockProviderServer() as server:
         summarize = asyncio.run(check_azure(server))
-    assert summarize["result"] == "mock lolos"
+    assert summarize["result"] == "mock passed"
     assert summarize["endpoint"] == "/openai/v1/responses"
 
 
 def test_mock_bedrock_fake_client():
     summarize = asyncio.run(check_bedrock_fake_client())
-    assert summarize["result"] == "mock lolos (fake client)"
+    assert summarize["result"] == "mock passed (fake client)"
 
 
 def test_mock_all_provider_sekaligus(tmp_path):
