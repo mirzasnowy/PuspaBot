@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS triggers (
     id TEXT PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     type TEXT NOT NULL,
-    jadwal TEXT NOT NULL DEFAULT '',
+    schedule TEXT NOT NULL DEFAULT '',
     workflow TEXT NOT NULL DEFAULT '',
     next_trigger_at TIMESTAMPTZ NOT NULL,
     active BOOLEAN NOT NULL DEFAULT TRUE,

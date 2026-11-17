@@ -13,8 +13,8 @@ TEMPLAT = {
     "bill_monthly": {
         "name": "Tagihan bulanan",
         "deskripsi": "Tiap tanggal 25 cek PLN dan PDAM, ingatkan aku, siapkan bayar.",
-        "triggers": {"type": "jadwal", "mode": "tanggal", "tanggal": 25,
-                   "jam_mulai": "07:00"},
+        "triggers": {"type": "schedule", "mode": "date", "date": 25,
+                   "start_time": "07:00"},
         "step": [
             {"block": "check_bill",
              "masukan": {"provider": "PLN", "number_pelanggan": ""},
@@ -52,8 +52,8 @@ TEMPLAT = {
     "rekap_bill_weekly": {
         "name": "Rekap tagihan minggu ini",
         "deskripsi": "Tiap Senin ingatkan semua tagihan yang jatuh tempo minggu ini.",
-        "triggers": {"type": "jadwal", "mode": "day", "day": "senin",
-                   "jam_mulai": "07:00"},
+        "triggers": {"type": "schedule", "mode": "day", "day": "senin",
+                   "start_time": "07:00"},
         "step": [
             {"block": "check_bill",
              "masukan": {"provider": "PLN", "number_pelanggan": ""},

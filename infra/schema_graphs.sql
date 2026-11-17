@@ -63,9 +63,9 @@ CREATE TABLE IF NOT EXISTS watchlist (
 -- Anggaran baca sampler: maks 20 baca/hari/pengguna (§2.14, §3.8).
 CREATE TABLE IF NOT EXISTS read_budgets (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    tanggal DATE NOT NULL,
+    date DATE NOT NULL,
     amount INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (user_id, tanggal)
+    PRIMARY KEY (user_id, date)
 );
 
 -- Cache bukti bersama: satu baris per (sumber, kunci). TTL 30 menit.

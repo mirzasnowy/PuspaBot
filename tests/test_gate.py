@@ -111,7 +111,7 @@ def test_approve_only_owner(ephemeral_keys, stub_log):
 
 def test_request_kind_not_allowed_by_token(ephemeral_keys, stub_log):
     gate = _gate(ephemeral_keys, stub_log)
-    token = _token(ephemeral_keys, tools=["read_price"], connector={})
+    token = _token(ephemeral_keys, tools=["read_price"], connectors={})
     with pytest.raises(GateDenied):
         gate.request_approval(
             user_id="user-1", agent_id="agen-puspa", token=token,

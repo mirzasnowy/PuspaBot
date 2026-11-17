@@ -35,7 +35,7 @@ DOMAIN_BLOCK = {
 BLOK = {
     "check_bill": {
         "masukan": {"provider": "choice", "number_pelanggan": "text"},
-        "output": {"amount": "uang", "due_date": "tanggal",
+        "output": {"amount": "uang", "due_date": "date",
                      "status": "choice", "evidence_id": "text", "vonis": "choice"},
         "permission_class": "Pembaca",
         "permission": {"connectors": [], "scope": [], "domain": ["situs_provider_bill"],
@@ -99,7 +99,7 @@ BLOK = {
         "deskripsi": "Buat draf balasan email. Draf BUKAN kirim; kirim tetap butuh persetujuan.",
     },
     "create_event": {
-        "masukan": {"title": "text", "created_at": "tanggal", "peserta": "items"},
+        "masukan": {"title": "text", "created_at": "date", "peserta": "items"},
         "output": {"event_id": "text"},
         "permission_class": "Pelaksana",
         "permission": {"connectors": ["calendar"], "scope": ["calendar.events"],

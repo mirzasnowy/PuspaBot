@@ -165,8 +165,8 @@ def get_persona(user_id, dsn=None):
     Urutan berlaku: gaya dasar dari fakta `gaya_bicara`, lalu semua
     fakta `koreksi_gaya` yang masih berlaku sebagai direktif.
     """
-    profile = profile.get_profile(user_id, dsn=dsn)
-    style = profile.get("gaya_bicara", "santai")
+    profile_data = profile.get_profile(user_id, dsn=dsn)
+    style = profile_data.get("gaya_bicara", "santai")
     koreksi = [
         f for f in profile.list_facts(user_id, key="koreksi_gaya", dsn=dsn)
         if f["status"] == "active"

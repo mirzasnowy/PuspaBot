@@ -69,7 +69,7 @@ def _provider_disebut(text: str) -> list[str]:
     return ketemu
 
 
-def _tanggal_disebut(text: str) -> int | None:
+def _date_disebut(text: str) -> int | None:
     """'tiap tanggal 25' / 'tanggal 25' -> 25. None bila tidak disebut."""
     match = re.search(r"tanggal\s+(\d{1,2})", text.lower())
     if match:
@@ -98,7 +98,7 @@ def _name_product(text: str) -> str | None:
     return None
 
 
-def susun_draft(teks_user: str, *, user_id: str, dsn=None) -> dict:
+def compose_draft(teks_user: str, *, user_id: str, dsn=None) -> dict:
     """Susun draf alur dari satu pesan chat. Kembalikan:
     {nama, pemicu, langkah, permintaan_blok, pesan, kartu}.
     `permintaan_blok`: kemampuan diminta yang belum ada bloknya
@@ -111,17 +111,17 @@ def susun_draft(teks_user: str, *, user_id: str, dsn=None) -> dict:
     trigger: dict = {"type": "manual"}
     permintaan: list[str] = []
 
-    tanggal = _tanggal_disebut(text)
+    date = _date_disebut(text)
     day = _day_disebut(text)
-    if tanggal is not None:
-        trigger = {"type": "jadwal", "mode": "tanggal", "tanggal": tanggal,
-                  "jam_mulai": "07:00"}
+    if date is not None:
+        trigger = {"type": "schedule", "mode": "date", "date": date,
+                  "start_time": "07:00"}
     elif day is not None:
-        trigger = {"type": "jadwal", "mode": "day", "day": day,
-                  "jam_mulai": "07:00"}
+        trigger = {"type": "schedule", "mode": "day", "day": day,
+                  "start_time": "07:00"}
     elif "tiap minggu" in low or "weekly" in low or "seminggu" in low:
-        trigger = {"type": "jadwal", "mode": "day", "day": "senin",
-                  "jam_mulai": "07:00"}
+        trigger = {"type": "schedule", "mode": "day", "day": "senin",
+                  "start_time": "07:00"}
 
     # Pemicu jatuh tempo: "N hari sebelum jatuh tempo" / "ingatkan ... jatuh tempo".
     if "jatuh tempo" in low:
@@ -139,7 +139,7 @@ def susun_draft(teks_user: str, *, user_id: str, dsn=None) -> dict:
 
     # Langkah: cek tagihan per provider yang disebut.
     provider = _provider_disebut(text)
-    if provider and ("check" in low or "bill" in low or "jatuh tempo" in low):
+    if provider and ("cek" in low or "check" in low or "tagihan" in low or "bill" in low or "jatuh tempo" in low or "due" in low):
         for p in provider:
             step.append({"block": "check_bill",
                             "masukan": {"provider": p, "number_pelanggan": ""},
@@ -152,11 +152,11 @@ def susun_draft(teks_user: str, *, user_id: str, dsn=None) -> dict:
                                 "masukan": {"provider": p, "number_pelanggan": ""},
                                 "title": f"Cek tagihan {p}"})
     # Bandingkan / pantau harga.
-    if "compare" in low and "price" in low:
+    if ("bandingkan" in low or "compare" in low) and ("harga" in low or "price" in low):
         step.append({"block": "compare_prices",
                         "masukan": {"name_product": _name_product(text) or ""},
                         "title": "Bandingkan harga"})
-    if "watch" in low and "price" in low:
+    if ("pantau" in low or "watch" in low) and ("harga" in low or "price" in low):
         step.append({"block": "watch_prices",
                         "masukan": {"product_id": _name_product(text) or "",
                                     "price_threshold": 0},
@@ -177,7 +177,7 @@ def susun_draft(teks_user: str, *, user_id: str, dsn=None) -> dict:
                         "masukan": {"title": "", "created_at": "", "peserta": []},
                         "title": "Buat event"})
     # Ingatkan (notif) — setelah cek tagihan.
-    if "remind" in low or "ingatin" in low:
+    if "ingatkan" in low or "ingatin" in low or "remind" in low:
         step.append({"block": "send_notification",
                         "masukan": {"message": "Tagihanmu sudah dicek — lihat rinciannya."},
                         "title": "Ingatkan aku"})

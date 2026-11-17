@@ -61,35 +61,35 @@ def items_watchlist(user_id: str, dsn=None) -> list[dict]:
                     for r in cur.fetchall()]
 
 
-def sisa_anggaran_read(user_id: str, dsn=None, tanggal: date | None = None) -> int:
+def sisa_anggaran_read(user_id: str, dsn=None, date: date | None = None) -> int:
     """Sisa anggaran baca hari ini (maks 20/hari/pengguna)."""
-    tanggal = tanggal or datetime.now(timezone.utc).date()
+    date = date or datetime.now(timezone.utc).date()
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT amount FROM read_budgets WHERE user_id = %s AND tanggal = %s",
-                (user_id, tanggal))
+                "SELECT amount FROM read_budgets WHERE user_id = %s AND date = %s",
+                (user_id, date))
             row = cur.fetchone()
     return BATAS_READ_DAILY - (int(row["amount"]) if row else 0)
 
 
-def _use_anggaran(user_id: str, amount: int, dsn, tanggal: date) -> bool:
+def _use_anggaran(user_id: str, amount: int, dsn, date: date) -> bool:
     """Pakai anggaran baca; False bila sudah habis (sampler berhenti,
     bukan membaca diam-diam melewati batas)."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO read_budgets (user_id, tanggal, amount) VALUES (%s, %s, 0)"
-                " ON CONFLICT (user_id, tanggal) DO NOTHING", (user_id, tanggal))
+                "INSERT INTO read_budgets (user_id, date, amount) VALUES (%s, %s, 0)"
+                " ON CONFLICT (user_id, date) DO NOTHING", (user_id, date))
             cur.execute(
-                "SELECT amount FROM read_budgets WHERE user_id = %s AND tanggal = %s FOR UPDATE",
-                (user_id, tanggal))
+                "SELECT amount FROM read_budgets WHERE user_id = %s AND date = %s FOR UPDATE",
+                (user_id, date))
             dipakai = int(cur.fetchone()["amount"])
             if dipakai + amount > BATAS_READ_DAILY:
                 return False
             cur.execute(
-                "UPDATE read_budgets SET amount = amount + %s WHERE user_id = %s AND tanggal = %s",
-                (amount, user_id, tanggal))
+                "UPDATE read_budgets SET amount = amount + %s WHERE user_id = %s AND date = %s",
+                (amount, user_id, date))
         conn.commit()
     return True
 
@@ -104,10 +104,10 @@ def jalankan_sampler(*, user_id: str, agent_id: str, read_price,
     dilewati dan dilaporkan. Kembalikan {"dibaca", "dilewati",
     "alert": [...]} — alert bila harga <= ambang.
     """
-    tanggal = datetime.now(timezone.utc).date()
+    date = datetime.now(timezone.utc).date()
     dibaca, dilewati, alert = [], [], []
     for product in items_watchlist(user_id, dsn=dsn):
-        if not _use_anggaran(user_id, 1, dsn, tanggal):
+        if not _use_anggaran(user_id, 1, dsn, date):
             dilewati.append({"product_id": product["product_id"],
                              "reason": "anggaran_read_daily_habis"})
             continue
@@ -127,4 +127,4 @@ def jalankan_sampler(*, user_id: str, agent_id: str, read_price,
             alert.append({"product_id": product["product_id"],
                           "price": result["price"], "price_threshold": ambang})
     return {"dibaca": dibaca, "dilewati": dilewati, "alert": alert,
-            "sisa_anggaran": sisa_anggaran_read(user_id, dsn=dsn, tanggal=tanggal)}
+            "sisa_anggaran": sisa_anggaran_read(user_id, dsn=dsn, date=date)}

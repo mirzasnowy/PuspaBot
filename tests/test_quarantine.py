@@ -135,7 +135,7 @@ def test_scan_teks_bersih_kosong():
 
 
 def test_scan_span_maks_200_karakter():
-    temuan = scan("send" + "x" * 500)
+    temuan = scan("kirim " + "x" * 500)
     assert temuan
     assert all(len(f.span) <= MAX_CHARS for f in temuan)
 

@@ -354,7 +354,7 @@ def _jalan_terakhir_failed(user_id: str, workflow_id: str, dsn=None) -> int:
             return [r["status"] for r in cur.fetchall()]
 
 
-def test_dry(workflow_id: str, *, user_id: str, context=None, dsn=None) -> dict:
+def dry_run(workflow_id: str, *, user_id: str, context=None, dsn=None) -> dict:
     """Jalankan alur sekali mode baca saja: blok aksi keluar diganti
     simulasi. Kembalikan hasil jalan (lihat jalankan_alur)."""
     return jalankan_workflow(workflow_id, user_id=user_id, trigger_jenis="manual",
@@ -654,10 +654,10 @@ def tick_workflow(*, dsn=None, sekarang: datetime | None = None,
         with _connect(dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT user_id, workflow, jadwal FROM triggers WHERE id = %s",
+                    "SELECT user_id, workflow, schedule FROM triggers WHERE id = %s",
                     (trigger_id,))
                 rows = cur.fetchone()
-        if rows is None or not (rows["jadwal"] or "").startswith("alur:"):
+        if rows is None or not (rows["schedule"] or "").startswith("alur:"):
             continue
         user_id = str(rows["user_id"])
         workflow_id = rows["workflows"]
@@ -675,8 +675,8 @@ def tick_workflow(*, dsn=None, sekarang: datetime | None = None,
                         (trigger_id,))
                     berikut = cur.fetchone()["next_trigger_at"]
             trigger_obj = TriggerFase2(
-                id=trigger_id, user_id=user_id, event_type="jadwal",
-                jadwal=rows["jadwal"], workflow=workflow_id,
+                id=trigger_id, user_id=user_id, event_type="schedule",
+                schedule=rows["schedule"], workflow=workflow_id,
                 next_trigger_at=berikut)
             jalan_trigger_result = jalan_trigger(
                 trigger_obj, dsn=dsn, sekarang=sekarang, terlewat=terlewat)
@@ -694,7 +694,7 @@ def tick_workflow(*, dsn=None, sekarang: datetime | None = None,
                         "UPDATE triggers SET next_trigger_at = %s WHERE id = %s",
                         (berikut_new, trigger_id))
                 conn.commit()
-        jalan = jalankan_workflow(workflow_id, user_id=user_id, trigger_jenis="jadwal",
+        jalan = jalankan_workflow(workflow_id, user_id=user_id, trigger_jenis="schedule",
                               dsn=dsn)
         _record_ledger(jalan_trigger_result["task_id"], workflow["agent_id"],
                       "trigger_missed" if terlewat else "trigger_fired",

@@ -17,7 +17,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
-KEDALUWARSA_JAM = 24
+KEDALUWARSA_HOUR = 24
 
 
 class ApprovalError(Exception):
@@ -41,7 +41,7 @@ def request_approval(*, jalan_id: str, workflow_id: str, user_id: str,
     """Antrekan satu aksi keluar dari jalan alur. Kembalikan baris
     persetujuan (status 'menunggu', kedaluwarsa +24 jam)."""
     sekarang = sekarang or datetime.now(timezone.utc)
-    expires_at = sekarang + timedelta(hours=KEDALUWARSA_JAM)
+    expires_at = sekarang + timedelta(hours=KEDALUWARSA_HOUR)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(

@@ -3,7 +3,7 @@
 from puspa.workflow.composer import card_step
 from puspa.workflow.metrics import metrik_workflow
 from puspa.workflow.panel import result_jalan_html, card_step_html, panel_workflow_html
-from puspa.workflow.runner import aktifkan_workflow, create_workflow, jalankan_workflow, test_dry
+from puspa.workflow.runner import aktifkan_workflow, create_workflow, jalankan_workflow, dry_run
 from puspa.workflow.templates import create_dari_templat
 
 
@@ -22,7 +22,7 @@ def test_metrik_workflow_menghitung_jalan_without_campur(make_user, test_dsn,
     user_id, agent_id = u["user_id"], u["agent_id"]
     workflow = create_dari_templat("rekap_bill_weekly", user_id=user_id,
                              agent_id=agent_id, dsn=test_dsn)
-    dry = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
                   result_dry=dry, dsn=test_dsn)
     jalankan_workflow(workflow["id"], user_id=user_id, dsn=test_dsn)
@@ -48,7 +48,7 @@ def test_panel_card_step_escape_html():
 
 def test_panel_workflow_and_result_jalan():
     html = panel_workflow_html(
-        name="Tagihan bulanan", trigger={"type": "jadwal"},
+        name="Tagihan bulanan", trigger={"type": "schedule"},
         card=[card_step({"block": "check_bill",
                               "masukan": {"provider": "PLN",
                                           "number_pelanggan": ""},

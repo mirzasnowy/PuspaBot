@@ -1,35 +1,35 @@
 """Tes penyusun alur lewat chat (§2.12) + manifes izin turunan."""
 
-from puspa.workflow.composer import card_step, susun_draft
+from puspa.workflow.composer import card_step, compose_draft
 from puspa.workflow.manifest import format_manifest, hitung_manifest, subset_permission
 
 
-def test_susun_example_definisi(make_user, test_dsn):
-    user_id, _ = make_user()
-    draft = susun_draft(
+def test_compose_example_definisi(make_user, test_dsn):
+    user_id = make_user()["user_id"]
+    draft = compose_draft(
         "tiap tanggal 25 cek PLN dan PDAM, ingatkan aku, siapkan bayar",
         user_id=user_id, dsn=test_dsn)
-    assert draft["triggers"] == {"type": "jadwal", "mode": "tanggal",
-                              "tanggal": 25, "jam_mulai": "07:00"}
+    assert draft["triggers"] == {"type": "schedule", "mode": "date",
+                              "date": 25, "start_time": "07:00"}
     block = [l["block"] for l in draft["step"]]
     assert block == ["check_bill", "check_bill", "send_notification", "prepare_payment"]
     assert draft["card"][0]["block"] == "check_bill"
     assert draft["permintaan_block"] == []
 
 
-def test_susun_rekap_all_bill(make_user, test_dsn):
-    user_id, _ = make_user()
-    draft = susun_draft("ingatkan semua tagihan yang jatuh tempo minggu ini",
+def test_compose_rekap_all_bill(make_user, test_dsn):
+    user_id = make_user()["user_id"]
+    draft = compose_draft("ingatkan semua tagihan yang jatuh tempo minggu ini",
                       user_id=user_id, dsn=test_dsn)
-    assert draft["triggers"]["type"] in ("jadwal", "due_date")
+    assert draft["triggers"]["type"] in ("schedule", "due_date")
     block = [l["block"] for l in draft["step"]]
     assert block.count("check_bill") == 4
     assert block[-1] == "send_notification"
 
 
-def test_susun_block_not_yet_ada_dicatat_permintaan_block(make_user, test_dsn):
-    user_id, _ = make_user()
-    draft = susun_draft("tiap tanggal 25 cek PLN, lalu kirim email ke ibu",
+def test_compose_block_not_yet_ada_dicatat_permintaan_block(make_user, test_dsn):
+    user_id = make_user()["user_id"]
+    draft = compose_draft("tiap tanggal 25 cek PLN, lalu kirim email ke ibu",
                       user_id=user_id, dsn=test_dsn)
     assert "send_email" in draft["permintaan_block"]
     assert "belum ada" in draft["message"]
@@ -39,14 +39,14 @@ def test_susun_block_not_yet_ada_dicatat_permintaan_block(make_user, test_dsn):
     with psycopg.connect(test_dsn) as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM block_requests"
-                        " WHERE user_id = %s AND blok = 'send_email'",
+                        " WHERE user_id = %s AND block = 'send_email'",
                         (user_id,))
             assert cur.fetchone()[0] == 1
 
 
-def test_susun_not_paham_memberi_message_jujur(make_user, test_dsn):
-    user_id, _ = make_user()
-    draft = susun_draft("asdf qwer zxcv", user_id=user_id, dsn=test_dsn)
+def test_compose_not_paham_memberi_message_jujur(make_user, test_dsn):
+    user_id = make_user()["user_id"]
+    draft = compose_draft("asdf qwer zxcv", user_id=user_id, dsn=test_dsn)
     assert draft["step"] == []
     assert "belum paham" in draft["message"]
 

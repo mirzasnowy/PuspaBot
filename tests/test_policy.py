@@ -127,7 +127,7 @@ def test_is_subset_ok():
         subagent_id="sub-1",
         tools=["read_price"],
         domains=["tokopedia.com"],
-        connector={"gmail": ["read"]},
+        connectors={"gmail": ["read"]},
         anggaran={"step_max": 15, "token_max": 50000, "rupiah_max": 1000},
         exp=parent["exp"] - 60,
     )

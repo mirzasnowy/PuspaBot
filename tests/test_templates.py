@@ -4,7 +4,7 @@ import pytest
 
 from puspa.workflow.blocks import periksa_workflow
 from puspa.workflow.runner import (
-    aktifkan_workflow, jalankan_workflow, test_dry,
+    aktifkan_workflow, jalankan_workflow, dry_run,
 )
 from puspa.workflow.templates import (
     TASK_REFERENCE_WORKFLOW, take_templat, create_dari_templat, items_templat,
@@ -35,7 +35,7 @@ def _aktifkan(make_user, test_dsn, permission_user_penuh, key, trigger=None):
     user_id, agent_id = u["user_id"], u["agent_id"]
     workflow = create_dari_templat(key, user_id=user_id, agent_id=agent_id,
                              trigger=trigger, dsn=test_dsn)
-    dry = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     assert dry["success"] is True, dry
     aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
                   result_dry=dry, dsn=test_dsn)
@@ -83,6 +83,6 @@ def test_templat_watch_price_tertahan_gerbang_tos(make_user, test_dsn):
     user_id, agent_id = u["user_id"], u["agent_id"]
     workflow = create_dari_templat("watch_prices", user_id=user_id, agent_id=agent_id,
                              dsn=test_dsn)
-    result = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    result = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     assert result["success"] is False
     assert "keputusan 15" in result["reason"]

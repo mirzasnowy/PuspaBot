@@ -5,7 +5,7 @@ idempotensi."""
 
 from datetime import datetime, timezone
 
-from puspa.workflow.runner import aktifkan_workflow, tick_workflow, test_dry
+from puspa.workflow.runner import aktifkan_workflow, tick_workflow, dry_run
 from puspa.workflow.templates import create_dari_templat
 from puspa.workflow.triggers import save_to_penjadwal
 
@@ -15,19 +15,19 @@ def _workflow_bill_active(make_user, test_dsn, permission_user_penuh):
     user_id, agent_id = u["user_id"], u["agent_id"]
     workflow = create_dari_templat("bill_monthly", user_id=user_id, agent_id=agent_id,
                              dsn=test_dsn)
-    dry = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
                   result_dry=dry, dsn=test_dsn)
     trigger = save_to_penjadwal(
         user_id=user_id, workflow_id=str(workflow["id"]),
-        trigger={"type": "jadwal", "mode": "tanggal", "tanggal": 25,
-                "jam_mulai": "07:00"},
+        trigger={"type": "schedule", "mode": "date", "date": 25,
+                "start_time": "07:00"},
         sekarang=datetime(2026, 11, 17, 12, 0, tzinfo=timezone.utc),
         dsn=test_dsn)
     return user_id, workflow, trigger
 
 
-def test_tick_jalankan_workflow_jadwal_and_geser_to_month_next(
+def test_tick_jalankan_workflow_schedule_and_geser_to_month_next(
         make_user, test_dsn, permission_user_penuh):
     user_id, workflow, trigger = _workflow_bill_active(make_user, test_dsn,
                                                permission_user_penuh)

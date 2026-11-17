@@ -104,9 +104,9 @@ def boleh_read(sumber: str, *, mode: str = "live") -> bool:
     return sumber in BOLEH_READ_LIVE
 
 
-def record_result_check(dsn=None, tanggal: date | None = None) -> list[dict]:
+def record_result_check(dsn=None, date: date | None = None) -> list[dict]:
     """Tulis hasil cek syarat layanan ke tabel `cek_syarat_layanan`."""
-    tanggal = tanggal or date(2026, 11, 17)
+    date = date or date(2026, 11, 17)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             for sumber, content in RESULT_CHECK.items():
@@ -116,7 +116,7 @@ def record_result_check(dsn=None, tanggal: date | None = None) -> list[dict]:
                     " ON CONFLICT (sumber) DO UPDATE SET result = EXCLUDED.result,"
                     " pasal = EXCLUDED.pasal, source_url = EXCLUDED.source_url,"
                     " checked_on = EXCLUDED.checked_on",
-                    (sumber, content["result"], content["pasal"], content["source_url"], tanggal))
+                    (sumber, content["result"], content["pasal"], content["source_url"], date))
         conn.commit()
     return items_result_check(dsn=dsn)
 

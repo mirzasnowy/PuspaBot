@@ -53,12 +53,12 @@ def grant_slice(user_id, agent_id, subagent_id, query, kolom, token_ref,
         raise ValueError("token_ref harus string tak kosong")
     data = {}
     if "profile" in kolom:
-        profile = profile.get_profile(user_id, agent_id=agent_id, dsn=dsn)
+        profile_data = profile.get_profile(user_id, agent_id=agent_id, dsn=dsn)
         query_lower = query.lower()
         data["profile"] = {
-            k: v for k, v in profile.items()
+            k: v for k, v in profile_data.items()
             if query_lower in k.lower() or query_lower in v.lower()
-        } or profile
+        } or profile_data
     if "episodic" in kolom:
         data["episodic"] = episodic.search_episodes(
             user_id, query, limit=5, agent_id=agent_id, dsn=dsn
