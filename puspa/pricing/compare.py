@@ -35,7 +35,7 @@ import psycopg
 from puspa.evidence.evidence import record_evidence
 from puspa.evidence.verifier import periksa
 from puspa.graphs.identity import (
-    record_price, cocokkan_automatic, price_terkini, riwayat_price,
+    record_price, cocokkan_automatic, price_terkini, history_price,
     tautkan_listing)
 from puspa.pricing import cache as cache_evidence
 from puspa.pricing import credits as credit
@@ -185,4 +185,4 @@ def check_detail(*, user_id: str, product_id: str, dsn=None) -> dict:
     sisa = credit.use_credit(user_id, dsn=dsn)
     return {"sisa_credit": sisa,
             "price_terkini": price_terkini(product_id, dsn=dsn),
-            "riwayat_30_day": riwayat_price(product_id, day=30, dsn=dsn)}
+            "history_30_day": history_price(product_id, day=30, dsn=dsn)}

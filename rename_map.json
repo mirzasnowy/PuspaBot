@@ -401,6 +401,8 @@
     "jalan_gagal_berturut": "consecutive_failed_runs",
     "jalan_sukses": "successful_runs",
     "jatuh_tempo": "due_date",
+    "jenis": "event_type",
+    "jenis_ngawur": "bogus_type",
     "judul": "title",
     "jumlah_sejauh_ini": "amount_so_far",
     "kejadian_asal_id": "source_event_id",

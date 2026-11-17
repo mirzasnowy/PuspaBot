@@ -5,7 +5,7 @@
     {
       "tool": "prepare_payment",
       "output": {
-        "jenis": "pay",
+        "event_type": "pay",
         "value": 50000,
         "status": "pending_approval"
       }

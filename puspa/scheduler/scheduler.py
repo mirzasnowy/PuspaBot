@@ -27,7 +27,7 @@ import psycopg
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 HEARTBEAT_MATI_DETIK = 120
-JENIS_TRIGGER = ("jadwal", "due_date_bill", "price_turun", "manual",
+TRIGGER_TYPES = ("jadwal", "due_date_bill", "price_turun", "manual",
                 "backup_daily", "konsolidasi")
 
 
@@ -45,7 +45,7 @@ class Pemicu:
 
     id: str
     user_id: str
-    jenis: str
+    event_type: str
     jadwal: str = ""
     workflow: str = ""
     next_trigger_at: datetime = field(default_factory=_sekarang)
@@ -56,20 +56,20 @@ def _connect(dsn=None):
     return psycopg.connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN))
 
 
-def create_trigger(user_id: str, jenis: str, next_trigger_at: datetime,
+def create_trigger(user_id: str, event_type: str, next_trigger_at: datetime,
                 jadwal: str = "", workflow: str = "", dsn=None) -> Pemicu:
     """Buat pemicu baru (idempotent per id yang dibuat di sini)."""
-    if jenis not in JENIS_TRIGGER:
-        raise SchedulerError(f"jenis pemicu tidak dikenal: {jenis!r}")
+    if event_type not in TRIGGER_TYPES:
+        raise SchedulerError(f"jenis pemicu tidak dikenal: {event_type!r}")
     trigger = Pemicu(id=f"pemicu-{uuid.uuid4().hex[:12]}", user_id=str(user_id),
-                    jenis=jenis, jadwal=jadwal, workflow=workflow,
+                    event_type=event_type, jadwal=jadwal, workflow=workflow,
                     next_trigger_at=next_trigger_at)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO triggers (id, user_id, type, jadwal, workflow, next_trigger_at, active)"
                 " VALUES (%s, %s, %s, %s, %s, %s, TRUE)",
-                (trigger.id, trigger.user_id, trigger.jenis, trigger.jadwal,
+                (trigger.id, trigger.user_id, trigger.event_type, trigger.jadwal,
                  trigger.workflow, trigger.next_trigger_at),
             )
         conn.commit()
@@ -89,7 +89,7 @@ def items_trigger_due_date(dsn=None, sekarang: datetime | None = None) -> list[P
             )
             rows = cur.fetchall()
         conn.commit()
-    return [Pemicu(id=r["id"], user_id=str(r["user_id"]), jenis=r["type"],
+    return [Pemicu(id=r["id"], user_id=str(r["user_id"]), event_type=r["type"],
                    jadwal=r["jadwal"] or "", workflow=r["workflows"] or "",
                    next_trigger_at=r["next_trigger_at"], active=r["active"])
             for r in rows]
@@ -128,7 +128,7 @@ def jalan_trigger(trigger: Pemicu, *, sink=None, terlewat: bool = False,
         try:
             sink("trigger_missed" if terlewat else "trigger_fired",
                  {"trigger_id": trigger.id, "task_id": task_id,
-                  "type": trigger.jenis, "terlewat": terlewat})
+                  "type": trigger.event_type, "terlewat": terlewat})
         except Exception:
             pass
     return {"trigger_id": trigger.id, "task_id": task_id, "terlewat": terlewat}
@@ -155,7 +155,7 @@ def jalankan_yang_terlewat(*, sink=None, dsn=None,
             rows = cur.fetchall()
     result = []
     for r in rows:
-        trigger = Pemicu(id=r["id"], user_id=str(r["user_id"]), jenis=r["type"],
+        trigger = Pemicu(id=r["id"], user_id=str(r["user_id"]), event_type=r["type"],
                         jadwal=r["jadwal"] or "", workflow=r["workflows"] or "",
                         next_trigger_at=r["next_trigger_at"], active=r["active"])
         jalan = jalan_trigger(trigger, sink=sink, terlewat=True, dsn=dsn, sekarang=sekarang)
@@ -222,13 +222,13 @@ def jalankan_job_terjadwal(jalan: dict, *, dsn=None) -> dict:
             row = cur.fetchone()
     if row is None:
         return {"job": "not_dikenal", "result": None}
-    jenis, user_id = row
-    if jenis == "backup_daily":
+    event_type, user_id = row
+    if event_type == "backup_daily":
         from puspa.backup.backup import create_backup
 
         result = create_backup(dsn=dsn)
         return {"job": "backup_daily", "result": str(result)}
-    if jenis == "konsolidasi":
+    if event_type == "konsolidasi":
         from puspa.memory.consolidate import consolidate_idle
 
         result = consolidate_idle(str(user_id), dsn=dsn)

@@ -5,7 +5,7 @@
     {
       "tool": "drive_search",
       "output": {
-        "jenis": "file",
+        "event_type": "file",
         "amount": 1,
         "name": [
           "nota-uji.pdf"
@@ -15,7 +15,7 @@
     {
       "tool": "drive_read",
       "output": {
-        "jenis": "summaries",
+        "event_type": "summaries",
         "value": 1,
         "text": "[DATA: Nota uji, total Rp132.500.]"
       }

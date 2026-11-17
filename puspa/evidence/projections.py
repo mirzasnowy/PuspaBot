@@ -20,17 +20,17 @@ def thread_chat(event: list[dict]) -> list[dict]:
     """Thread chat: pesan + handoff + hasil, urut waktu."""
     logout = []
     for ev in event:
-        jenis = ev.get("type", "")
+        event_type = ev.get("type", "")
         content = ev.get("content") or {}
-        if jenis in ("user_message", "agent_message"):
+        if event_type in ("user_message", "agent_message"):
             logout.append({"type": "message", "dari": content.get("dari", ev.get("agent_id", "")),
                            "text": content.get("text", ""), "created_at": str(ev.get("created_at", ""))})
-        elif jenis.startswith("handoff_"):
-            logout.append({"type": "handoffs", "status": jenis[len("handoff_"):],
+        elif event_type.startswith("handoff_"):
+            logout.append({"type": "handoffs", "status": event_type[len("handoff_"):],
                            "dari": content.get("dari", ""), "to": content.get("to", ""),
                            "purpose": content.get("purpose", ""), "created_at": str(ev.get("created_at", ""))})
-        elif jenis in ("task_completed", "task_failed"):
-            logout.append({"type": "result", "status": jenis,
+        elif event_type in ("task_completed", "task_failed"):
+            logout.append({"type": "result", "status": event_type,
                            "task_id": ev.get("task_id", ""), "created_at": str(ev.get("created_at", ""))})
     return logout
 
@@ -45,17 +45,17 @@ def office(event: list[dict]) -> dict:
         info = agent.setdefault(aid, {"agent_id": aid, "status": "idle",
                                      "task_terakhir": "", "cost_rp": 0,
                                      "sub_agent": {}})
-        jenis = ev.get("type", "")
+        event_type = ev.get("type", "")
         content = ev.get("content") or {}
-        if jenis == "task_created":
+        if event_type == "task_created":
             info["status"] = "bekerja"
             info["task_terakhir"] = ev.get("task_id", "")
-        elif jenis in ("task_completed", "task_failed", "task_stopped"):
+        elif event_type in ("task_completed", "task_failed", "task_stopped"):
             info["status"] = "idle"
-        elif jenis == "subagent_created":
+        elif event_type == "subagent_created":
             sub = content.get("subagent_id") or ev.get("subagent_id") or ""
             info["sub_agent"][sub] = {"status": "bekerja", "permission_class": content.get("permission_class", "")}
-        elif jenis == "heartbeat":
+        elif event_type == "heartbeat":
             sub = ev.get("subagent_id") or ""
             if sub in info["sub_agent"]:
                 info["sub_agent"][sub]["status"] = "bekerja"

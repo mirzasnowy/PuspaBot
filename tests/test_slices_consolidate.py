@@ -53,20 +53,20 @@ def test_konsolidasi_meringkas_and_menunjuk_event_source(make_user, test_dsn, le
     u = make_user()
     task_id = str(uuid.uuid4())
     ev1 = ledger.append_event(
-        task_id=task_id, agent_id=u["agent_id"], jenis="user_message",
+        task_id=task_id, agent_id=u["agent_id"], event_type="user_message",
         content={"text": "cek pln"},
     )
     ev2 = ledger.append_event(
-        task_id=task_id, agent_id=u["agent_id"], jenis="task_completed",
+        task_id=task_id, agent_id=u["agent_id"], event_type="task_completed",
         content={"result": "check_pln: berhasil"},
     )
     # Buat episode "lama" (45 hari) dengan kejadian asal yang sama.
-    for ev, jenis, content in (
+    for ev, event_type, content in (
         (ev1, "user_message", "cek tagihan pln nomor pelanggan"),
         (ev2, "task_completed", "check_pln: berhasil, tagihan terbaca"),
     ):
         episodic.record_episode(
-            u["user_id"], content, jenis, task_id=task_id,
+            u["user_id"], content, event_type, task_id=task_id,
             event_id=str(ev["id"]), dsn=test_dsn,
         )
     with psycopg.connect(test_dsn) as conn:

@@ -66,7 +66,7 @@ def test_price_without_evidence_rejected(make_user, test_dsn):
                          price=12000000, evidence_id="", dsn=test_dsn)
 
 
-def test_price_terkini_and_riwayat_30_day(make_user, test_dsn):
+def test_price_terkini_and_history_30_day(make_user, test_dsn):
     user = make_user()
     product = graf.add_product(brand="Samsung", model_number="SM-S921B", category="phone", dsn=test_dsn)
     for pasar, url, price in (
@@ -81,9 +81,9 @@ def test_price_terkini_and_riwayat_30_day(make_user, test_dsn):
     assert {t["marketplace"]: t["price"] for t in terkini} == {
         "Tokopedia": 12999000.0, "Shopee": 12499000.0, "Blibli": 12750000.0}
     assert all(t["evidence_id"] for t in terkini)
-    riwayat = graf.riwayat_price(product["id"], day=30, dsn=test_dsn)
-    assert len(riwayat) == 3
-    assert all(r["evidence_id"] for r in riwayat)
+    history = graf.history_price(product["id"], day=30, dsn=test_dsn)
+    assert len(history) == 3
+    assert all(r["evidence_id"] for r in history)
 
 
 def test_cocokkan_automatic_without_tebakan(make_user, test_dsn):

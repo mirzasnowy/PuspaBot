@@ -5,7 +5,7 @@
     {
       "tool": "create_trigger",
       "output": {
-        "jenis": "triggers",
+        "event_type": "triggers",
         "value": 1,
         "jadwal": "harian 07:00"
       }

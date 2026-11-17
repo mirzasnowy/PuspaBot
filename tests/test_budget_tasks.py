@@ -57,10 +57,10 @@ def test_siklus_lima_tahap_completed():
                                 purpose="riset dan rangkum lima artikel",
                                 rencana=[_step("search"), _step("rangkum")]))
     assert task.status == "completed" and task.tahap == "sajikan"
-    jenis = [e["type"] for e in runner.event_memory()]
-    for wajib in ("task_created", "plan_created", "handoff_proposed",
+    event_type = [e["type"] for e in runner.event_memory()]
+    for required in ("task_created", "plan_created", "handoff_proposed",
                   "handoff_handed_over", "verification_completed", "task_completed"):
-        assert wajib in jenis
+        assert required in event_type
 
 
 def test_purpose_ambigu_ask_satu_pertanyaan():
@@ -114,7 +114,7 @@ def test_tombstone_delete_task_without_update_ledger(tmp_path):
     save_cassette({"task_id": "t-hapus-2", "recording": []}, "kaset-hapus-2", cassette_dir=tmp_path)
     event = []
     result = tombstone_task("t-hapus-2", "user-1", "puspa",
-                            sink=lambda jenis, content: event.append({"type": jenis, "content": content}),
+                            sink=lambda event_type, content: event.append({"type": event_type, "content": content}),
                             cassette_dir=tmp_path)
     assert result["tombstone"] is True
     assert result["cassette_deleted"] == ["kaset-hapus-2"]

@@ -54,7 +54,7 @@ def test_change_membuat_versi_new_and_rollback(make_user, test_dsn):
     assert len(pulih["step"]) == 2
 
 
-def test_delete_not_menghapus_riwayat_jalan(make_user, test_dsn):
+def test_delete_not_menghapus_history_jalan(make_user, test_dsn):
     user_id, agent_id, workflow = _workflow_bill(make_user, test_dsn)
     result = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
     assert result["success"] is True

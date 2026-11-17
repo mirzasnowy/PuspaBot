@@ -18,7 +18,7 @@ import psycopg
 import pytest
 from psycopg import errors as pg_errors
 
-from puspa.ledger import APP_ROLE, GENESIS, JENIS_EVENT, Ledger
+from puspa.ledger import APP_ROLE, EVENT_TYPES, GENESIS, Ledger
 from puspa.ledger.errors import InvalidEventTypeError
 
 DSN = os.environ.get(
@@ -44,18 +44,18 @@ def task_id(ledger):
         conn.execute("DELETE FROM events WHERE task_id = %s", (tid,))
 
 
-def _append(ledger, task_id, jenis="heartbeat", content=None, **kwargs):
+def _append(ledger, task_id, event_type="heartbeat", content=None, **kwargs):
     return ledger.append_event(
         task_id=task_id,
         agent_id=AGEN,
-        jenis=jenis,
+        event_type=event_type,
         content=content if content is not None else {"n": 1},
         **kwargs,
     )
 
 
 def test_append_and_read_kembali(ledger, task_id):
-    ev = _append(ledger, task_id, jenis="task_created", content={"purpose": "cek harga"})
+    ev = _append(ledger, task_id, event_type="task_created", content={"purpose": "cek harga"})
     assert ev["id"]
     assert ev["task_id"] == task_id
     assert ev["agent_id"] == AGEN
@@ -72,11 +72,11 @@ def test_append_and_read_kembali(ledger, task_id):
 
 
 def test_rantai_hash_utuh(ledger, task_id):
-    pertama = _append(ledger, task_id, jenis="task_created", content={"a": 1})
+    pertama = _append(ledger, task_id, event_type="task_created", content={"a": 1})
     kedua = _append(
-        ledger, task_id, jenis="plan_created", content={"b": 2}, parent_id=pertama["id"]
+        ledger, task_id, event_type="plan_created", content={"b": 2}, parent_id=pertama["id"]
     )
-    ketiga = _append(ledger, task_id, jenis="heartbeat", content={"c": 3})
+    ketiga = _append(ledger, task_id, event_type="heartbeat", content={"c": 3})
 
     assert kedua["previous_hash"] == pertama["hash"]
     assert ketiga["previous_hash"] == kedua["hash"]
@@ -87,13 +87,13 @@ def test_rantai_hash_utuh(ledger, task_id):
     assert putus == []
 
     # Filter jenis mengembalikan hanya kejadian yang cocok.
-    assert [e["id"] for e in ledger.events(task_id, jenis="heartbeat")] == [ketiga["id"]]
+    assert [e["id"] for e in ledger.events(task_id, event_type="heartbeat")] == [ketiga["id"]]
 
 
 def test_verify_chain_mendeteksi_perubahan_diam_diam(ledger, task_id):
-    _append(ledger, task_id, jenis="task_created", content={"a": 1})
-    korban = _append(ledger, task_id, jenis="evidence_recorded", content={"price": 100})
-    _append(ledger, task_id, jenis="task_completed", content={"ok": True})
+    _append(ledger, task_id, event_type="task_created", content={"a": 1})
+    korban = _append(ledger, task_id, event_type="evidence_recorded", content={"price": 100})
+    _append(ledger, task_id, event_type="task_completed", content={"ok": True})
 
     ok, _ = ledger.verify_chain(task_id)
     assert ok is True
@@ -112,16 +112,16 @@ def test_verify_chain_mendeteksi_perubahan_diam_diam(ledger, task_id):
 
 
 def test_jenis_di_luar_himpunan_tertutup_rejected(ledger, task_id):
-    assert len(JENIS_EVENT) == 31  # definisi 2.3 revisi 7: 22 lama + 9 baru
+    assert len(EVENT_TYPES) == 31  # definisi 2.3 revisi 7: 22 lama + 9 baru
     with pytest.raises(InvalidEventTypeError):
-        _append(ledger, task_id, jenis="jenis_ngawur", content={})
+        _append(ledger, task_id, event_type="bogus_type", content={})
     with pytest.raises(InvalidEventTypeError):
-        ledger.events(task_id, jenis="jenis_ngawur")
+        ledger.events(task_id, event_type="bogus_type")
     assert ledger.events(task_id) == []  # tidak ada baris yang masuk
 
 
 def test_update_delete_rejected_peran_aplikasi(ledger, task_id):
-    ev = _append(ledger, task_id, jenis="task_created", content={"a": 1})
+    ev = _append(ledger, task_id, event_type="task_created", content={"a": 1})
     # INSERT peran aplikasi diuji di tugas terpisah, supaya baris mentah itu
     # tidak mencemari rantai tugas yang sedang diverifikasi.
     task_sisip = f"{task_id}-sisip"
@@ -161,10 +161,10 @@ def test_update_delete_rejected_peran_aplikasi(ledger, task_id):
 def test_dua_task_punya_rantai_independen(ledger, task_id):
     task_lain = f"tes-{uuid.uuid4().hex[:12]}"
     try:
-        a1 = _append(ledger, task_id, jenis="task_created", content={"tasks": "A"})
-        b1 = _append(ledger, task_lain, jenis="task_created", content={"tasks": "B"})
-        a2 = _append(ledger, task_id, jenis="heartbeat", content={"tasks": "A"})
-        b2 = _append(ledger, task_lain, jenis="heartbeat", content={"tasks": "B"})
+        a1 = _append(ledger, task_id, event_type="task_created", content={"tasks": "A"})
+        b1 = _append(ledger, task_lain, event_type="task_created", content={"tasks": "B"})
+        a2 = _append(ledger, task_id, event_type="heartbeat", content={"tasks": "A"})
+        b2 = _append(ledger, task_lain, event_type="heartbeat", content={"tasks": "B"})
 
         assert a1["previous_hash"] == GENESIS
         assert b1["previous_hash"] == GENESIS
@@ -181,10 +181,10 @@ def test_dua_task_punya_rantai_independen(ledger, task_id):
 
 
 def test_tombstone_delete_task_without_update(ledger, task_id):
-    _append(ledger, task_id, jenis="task_created", content={"purpose": "dibuang"})
-    _append(ledger, task_id, jenis="heartbeat", content={"n": 1})
+    _append(ledger, task_id, event_type="task_created", content={"purpose": "dibuang"})
+    _append(ledger, task_id, event_type="heartbeat", content={"n": 1})
     kubur = _append(
-        ledger, task_id, jenis="task_stopped", content={"deleted": True}
+        ledger, task_id, event_type="task_stopped", content={"deleted": True}
     )
 
     # Hapus = append tombstone; rantai hash tetap utuh, tidak ada UPDATE.

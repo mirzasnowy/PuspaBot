@@ -7,7 +7,7 @@ from puspa.workflow.blocks import (
     periksa_workflow, periksa_step, periksa_masukan,
 )
 
-BLOCK_WAJIB = (
+BLOCK_REQUIRED = (
     "check_bill", "compare_prices", "watch_prices", "search_email",
     "read_email", "create_draft", "create_event", "prepare_payment",
     "send_notification", "ask_user", "wait_for_approval", "condition",
@@ -16,12 +16,12 @@ BLOCK_WAJIB = (
 
 
 def test_pustaka_tepat_15_block():
-    assert set(items_block()) == set(BLOCK_WAJIB)
+    assert set(items_block()) == set(BLOCK_REQUIRED)
     assert len(BLOK) == 15
 
 
 def test_each_block_punya_skema_klass_and_permission():
-    for name in BLOCK_WAJIB:
+    for name in BLOCK_REQUIRED:
         d = definisi_block(name)
         assert d["masukan"] and d["output"], name
         assert d["permission_class"] in ("Pembaca", "Pelaksana", "Pemeriksa"), name

@@ -39,9 +39,9 @@ APP_ROLE = "puspa_app"
 #: DSN default (peer auth sebagai user OS, tanpa password).
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
-#: Himpunan jenis kejadian tertutup — 31 jenis (definisi 2.3 revisi 7:
-#: 22 jenis lama + 9 jenis baru alur/modul/pemicu/laporan/persetujuan).
-JENIS_EVENT = frozenset(
+#: Himpunan event_type kejadian tertutup — 31 event_type (definisi 2.3 revisi 7:
+#: 22 event_type lama + 9 event_type baru alur/modul/pemicu/laporan/persetujuan).
+EVENT_TYPES = frozenset(
     {
         "task_created",
         "plan_created",
@@ -72,13 +72,11 @@ JENIS_EVENT = frozenset(
         "trigger_missed",
         "module_proposed",
         "module_activated",
-        "false_reports",
-        "data_consents",
+        "false_report",
+        "data_consent",
     }
 )
 
-#: Alias berbahasa Inggris untuk himpunan jenis tertutup.
-EVENT_TYPES = JENIS_EVENT
 
 
 def canonical_json(obj) -> str:
@@ -96,7 +94,7 @@ def compute_event_hash(
     task_id: str,
     agent_id: str,
     subagent_id: str | None,
-    jenis: str,
+    event_type: str,
     content: dict,
     parent_id: str | None,
     previous_hash: str,
@@ -107,7 +105,7 @@ def compute_event_hash(
         "task_id": task_id,
         "agent_id": agent_id,
         "subagent_id": subagent_id,
-        "type": jenis,
+        "type": event_type,
         "content": content,
         "parent_id": parent_id,
         "previous_hash": previous_hash,
@@ -153,7 +151,7 @@ class Ledger:
         task_id: str,
         agent_id: str,
         subagent_id: str | None = None,
-        jenis: str,
+        event_type: str,
         content: dict,
         parent_id: str | None = None,
     ) -> dict:
@@ -168,8 +166,8 @@ class Ledger:
             raise LedgerError("task_id harus string tak kosong")
         if not isinstance(agent_id, str) or not agent_id:
             raise LedgerError("agent_id harus string tak kosong")
-        if jenis not in JENIS_EVENT:
-            raise InvalidEventTypeError(jenis)
+        if event_type not in EVENT_TYPES:
+            raise InvalidEventTypeError(event_type)
         if not isinstance(content, dict):
             raise LedgerError("isi harus dict")
         try:
@@ -201,7 +199,7 @@ class Ledger:
                     task_id=task_id,
                     agent_id=agent_id,
                     subagent_id=subagent_id,
-                    jenis=jenis,
+                    event_type=event_type,
                     content=content,
                     parent_id=str(parent_id) if parent_id is not None else None,
                     previous_hash=previous_hash,
@@ -218,7 +216,7 @@ class Ledger:
                         task_id,
                         agent_id,
                         subagent_id,
-                        jenis,
+                        event_type,
                         Jsonb(content),
                         parent_id,
                         previous_hash,
@@ -237,13 +235,13 @@ class Ledger:
             raise LedgerError(f"kejadian {event_id} hilang setelah INSERT")
         return _row_to_event(row)
 
-    def events(self, task_id: str, jenis: str | None = None) -> list[dict]:
-        """Semua kejadian satu tugas, urut penyisipan; opsional saring `jenis`."""
-        if jenis is not None and jenis not in JENIS_EVENT:
-            raise InvalidEventTypeError(jenis)
+    def events(self, task_id: str, event_type: str | None = None) -> list[dict]:
+        """Semua kejadian satu tugas, urut penyisipan; opsional saring `event_type`."""
+        if event_type is not None and event_type not in EVENT_TYPES:
+            raise InvalidEventTypeError(event_type)
         with self._connect() as conn:
             with conn.cursor() as cur:
-                if jenis is None:
+                if event_type is None:
                     cur.execute(
                         "SELECT * FROM events WHERE task_id = %s "
                         "ORDER BY created_at ASC, id ASC",
@@ -253,7 +251,7 @@ class Ledger:
                     cur.execute(
                         "SELECT * FROM events WHERE task_id = %s AND type = %s "
                         "ORDER BY created_at ASC, id ASC",
-                        (task_id, jenis),
+                        (task_id, event_type),
                     )
                 rows = cur.fetchall()
         return [_row_to_event(row) for row in rows]
@@ -274,7 +272,7 @@ class Ledger:
                 task_id=ev["task_id"],
                 agent_id=ev["agent_id"],
                 subagent_id=ev["subagent_id"],
-                jenis=ev["type"],
+                event_type=ev["type"],
                 content=ev["content"],
                 parent_id=ev["parent_id"],
                 previous_hash=ev["previous_hash"],

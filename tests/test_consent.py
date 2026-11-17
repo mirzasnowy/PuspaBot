@@ -14,7 +14,7 @@ from puspa.consent import (
 from puspa.memory import episodic, procedural, profile
 
 
-def test_teks_approval_memuat_6_hal_wajib():
+def test_teks_approval_memuat_6_hal_required():
     for frasa in (
         "Data yang disimpan",
         "Di mana",
@@ -38,7 +38,7 @@ def test_approval_dicatat_table_and_book_kerja(make_user, test_dsn, ledger):
     assert result["event_id"] is not None
     assert has_consented(u["user_id"], dsn=test_dsn) is True
     assert len(list_consents(u["user_id"], dsn=test_dsn)) == 1
-    events = ledger.events(task_id, jenis="data_consents")
+    events = ledger.events(task_id, event_type="data_consents")
     assert len(events) == 1
     assert events[0]["content"]["text_version"] == TEKS_VERSI
 

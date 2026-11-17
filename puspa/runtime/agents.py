@@ -103,8 +103,8 @@ def items_agent(user_id: str, dsn=None) -> list[dict]:
     with _connect(dsn) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute(
-                "SELECT agent_id, name, peran, purpose, wajib FROM agent_meta"
-                " WHERE user_id = %s ORDER BY wajib DESC, created_at ASC",
+                "SELECT agent_id, name, peran, purpose, required FROM agent_meta"
+                " WHERE user_id = %s ORDER BY required DESC, created_at ASC",
                 (user_id,),
             )
             return [dict(r) for r in cur.fetchall()]
@@ -115,7 +115,7 @@ def delete_agent(user_id: str, agent_id: str, dsn=None) -> None:
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT wajib, user_id FROM agent_meta WHERE agent_id = %s", (agent_id,)
+                "SELECT required, user_id FROM agent_meta WHERE agent_id = %s", (agent_id,)
             )
             row = cur.fetchone()
             if row is None:

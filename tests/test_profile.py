@@ -50,9 +50,9 @@ def test_fact_new_not_menimpa_diam_diam(make_user, test_dsn):
     new = profile.add_fact(u["user_id"], "alamat", "Bandung", "user_confirmed", dsn=test_dsn)
     assert new["konflik_dengan"] == old["id"]
     assert profile.get_profile(u["user_id"], dsn=test_dsn) == {"alamat": "Bandung"}
-    riwayat = profile.list_facts(u["user_id"], key="alamat", include_history=True, dsn=test_dsn)
-    assert [f["status"] for f in riwayat] == ["replaced", "active"]
-    assert riwayat[0]["value"] == "Jakarta"  # versi lama tetap bisa dilihat
+    history = profile.list_facts(u["user_id"], key="alamat", include_history=True, dsn=test_dsn)
+    assert [f["status"] for f in history] == ["replaced", "active"]
+    assert history[0]["value"] == "Jakarta"  # versi lama tetap bisa dilihat
 
 
 def test_koreksi_and_delete_fact(make_user, test_dsn):

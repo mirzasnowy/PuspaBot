@@ -5,7 +5,7 @@
     {
       "tool": "gmail_search",
       "output": {
-        "jenis": "email",
+        "event_type": "email",
         "amount": 1,
         "id": [
           "m-uji-1"
@@ -15,7 +15,7 @@
     {
       "tool": "gmail_read",
       "output": {
-        "jenis": "email",
+        "event_type": "email",
         "value": 1,
         "text": "[DATA: Halo, tolong kirim laporan minggu ini.]"
       }
@@ -23,7 +23,7 @@
     {
       "tool": "gmail_create_draft",
       "output": {
-        "jenis": "draft",
+        "event_type": "draft",
         "value": 1,
         "id": "draf-uji-1"
       }

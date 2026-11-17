@@ -45,14 +45,14 @@ def _connect(dsn=None):
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
-def _record_ledger(task_id, agent_id, jenis, content, dsn=None):
+def _record_ledger(task_id, agent_id, event_type, content, dsn=None):
     """Tulis kejadian ke Buku Kerja (bila ledger tersedia). Gagal tulis
     ledger tidak menggagalkan jalan alur — tapi dicatat di alasan."""
     try:
         from puspa.ledger import Ledger
 
         Ledger(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)).append_event(
-            task_id=task_id, agent_id=agent_id, jenis=jenis, content=content)
+            task_id=task_id, agent_id=agent_id, event_type=event_type, content=content)
     except Exception as exc:  # noqa: BLE001 — ledger sekunder di runner
         return str(exc)
     return None
@@ -675,7 +675,7 @@ def tick_workflow(*, dsn=None, sekarang: datetime | None = None,
                         (trigger_id,))
                     berikut = cur.fetchone()["next_trigger_at"]
             trigger_obj = TriggerFase2(
-                id=trigger_id, user_id=user_id, jenis="jadwal",
+                id=trigger_id, user_id=user_id, event_type="jadwal",
                 jadwal=rows["jadwal"], workflow=workflow_id,
                 next_trigger_at=berikut)
             jalan_trigger_result = jalan_trigger(
