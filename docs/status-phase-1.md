@@ -1,209 +1,210 @@
-# STATUS — Fase 1 MVP Puspa (Persona + Memori + Onboarding)
+# STATUS — Phase 1 Puspa MVP (Persona + Memory + Onboarding)
 
-Definisi: revisi 7 (disetujui Nero 17 Nov 2026 ~17:42 WIB).
-Tanggal di definisi diabaikan atas perintah Nero 21:53 WIB (hanya
-urutan, bukan deadline). Kerja lokal di `build/fase-1/`; JANGAN push
-ke GitHub; JANGAN mulai Fase 2.
+Definition: revision 7 (approved by Nero 17 Nov 2026 ~17:42 WIB).
+Dates in the definition ignored on Nero's order, 21:53 WIB (only
+ordering, not deadlines). Local work in `build/fase-1/`; DO NOT push
+to GitHub; DO NOT start Phase 2.
 
-## Angka (semua run SOLO, satu pytest dalam satu waktu)
+## Numbers (all runs SOLO, one pytest at a time)
 
-| Suite | Hasil | Waktu |
+| Suite | Result | Time |
 | --- | --- | --- |
-| Fase 1 (baru) | **58 passed** | 17 Nov 2026 ~15:07 WIB (pasca-pemulihan Postgres, lihat bawah) |
-| Fase 0 (verifikasi ulang) | **244 passed, 4 skipped** | 17 Nov 2026 ~15:07 WIB, solo |
-| Onboarding sisi sistem (4 langkah) | **0,29 detik** (target 5 menit) | diukur 17 Nov 2026 ~15:07 WIB |
-| Backup + restore ke DB bersih | **0,3 detik**, 14 tabel pulih, rantai hash utuh | diukur 17 Nov 2026 ~15:07 WIB |
+| Phase 1 (new) | **58 passed** | 17 Nov 2026 ~15:07 WIB (after Postgres recovery, see below) |
+| Phase 0 (re-verification) | **244 passed, 4 skipped** | 17 Nov 2026 ~15:07 WIB, solo |
+| System-side onboarding (4 steps) | **0.29 seconds** (5-minute target) | measured 17 Nov 2026 ~15:07 WIB |
+| Backup + restore to a clean DB | **0.3 seconds**, 14 tables recovered, hash chain intact | measured 17 Nov 2026 ~15:07 WIB |
 
-4 skip Fase 0 = tes live-container Docker (kernel tolak `setns`) —
-blokir lingkungan yang sama seperti Fase 0, bukan regresi.
+4 Phase 0 skips = live-container Docker tests (kernel rejects `setns`) —
+the same environment block as Phase 0, not a regression.
 
-## Yang dibangun (per scope definisi)
+## What was built (per definition scope)
 
-### 1. Memori 3 lapis (§2.7) — `puspa/memory/`
-- **Profil** (`profile.py`): fakta + merge deterministik UNION;
-  asal `diucapkan_user` / `dikonfirmasi_user` / `disimpulkan`;
-  fakta disimpulkan masuk Usulan (bukan profil) sampai dikonfirmasi /
-  ditolak; fakta baru menggantikan versi lama TANPA menghapus riwayat
-  (status `diganti` + `berlaku_sampai`, konflik dikembalikan sebagai
-  `konflik_dengan`); berlaku dari/sampai, satu versi berlaku; lihat /
-  koreksi / hapus (hapus = status `ditolak`, riwayat tetap ada).
-- **Episodik** (`episodic.py`): riwayat chat + tugas, index vektor
-  pgvector (`vector(384)` + index HNSW `idx_episodik_embedding`,
-  terverifikasi ada di DB); jalur tulis + jalur baca jalan.
-  Embedding: `HashEmbedding` deterministik (lihat "Keputusan" di bawah).
-- **Prosedural** (`procedural.py`): ditulis OTOMATIS dari tugas yang
-  berhasil, tanpa editor; siklus hidup `percobaan` -> `terverifikasi`
-  (3 jalan sukses, min 2 agen) -> `rusak` (2 gagal berturut-turut);
-  nomor pelanggan tidak pernah masuk prosedur. BATAS: Graf Alur
-  Layanan penuh (canary, pakai ulang lintas agen) dibangun Fase 3 —
-  di sini jalur tulis + penyimpanan + status dasar.
-- **Pelingkupan** (C56): profil inti (agen_id NULL, dipegang Puspa)
-  terlihat semua agen; fakta per agen hanya agen itu; episodik /
-  prosedur per user + agen; RLS per tabel (diuji sebagai `puspa_app`).
-- **Irisan** (`slices.py`, C57): sub-agen tidak menyentuh penyimpanan;
-  agen memberi irisan (query maks 500 karakter + kolom tertutup
-  {profil, episodik, prosedural} + token_ref); pemberian dicatat di
-  tabel audit `pemberian_irisan`. KONFLIK: definisi minta dicatat DI
-  BUKU KERJA, tapi himpunan jenis kejadian tertutup (31 jenis) tidak
-  punya `irisan_diberikan` — lihat "Konflik" di bawah.
-- **Konsolidasi saat sepi** (`consolidate.py`, C60): job deterministik
-  (ekstraktif, tanpa model, Rp0) meringkas episodik lama per tugas;
-  tiap ringkasan menunjuk `kejadian_ids` asal; pola berhasil
-  dipromosikan ke prosedural; episode yang sudah diringkas tidak
-  diulang. Pemanggil penjadwal saat idle adalah Fase 2 (2.14).
+### 1. 3-layer memory (§2.7) — `puspa/memory/`
+- **Profile** (`profile.py`): facts + deterministic UNION merge;
+  sources `user_stated` / `user_confirmed` / `inferred`;
+  inferred facts go to Proposals (not the profile) until confirmed /
+  rejected; a new fact replaces the old version WITHOUT deleting history
+  (status `replaced` + `valid_until`, conflicts returned as
+  `konflik_dengan`); valid from/until, one active version; view /
+  correct / delete (delete = status `rejected`, history stays).
+- **Episodic** (`episodic.py`): chat + task history, pgvector index
+  (`vector(384)` + HNSW index `idx_episodik_embedding`,
+  verified present in the DB); write path + read path work.
+  Embedding: deterministic `HashEmbedding` (see "Decisions" below).
+- **Procedural** (`procedural.py`): written AUTOMATICALLY from
+  successful tasks, no editor; lifecycle `trial` -> `verified`
+  (3 successful runs, min 2 agents) -> `broken` (2 consecutive
+  failures); customer numbers never enter procedures. LIMIT: the full
+  service flow graph (canary, cross-agent reuse) is built in Phase 3 —
+  here the write path + storage + base status.
+- **Scoping** (C56): core profile (agent_id NULL, held by Puspa)
+  visible to all agents; per-agent facts only to that agent; episodic /
+  procedural per user + agent; RLS per table (tested as `puspa_app`).
+- **Slices** (`slices.py`, C57): subagents do not touch storage;
+  the agent grants a slice (query max 500 characters + closed column
+  set {profile, episodic, procedural} + token_ref); grants are recorded
+  in the audit table `slice_grants`. CONFLICT: the definition asks for
+  it to be recorded IN THE LEDGER, but the closed event-type set
+  (31 types) has no `slice_granted` — see "Conflicts" below.
+- **Idle-time consolidation** (`consolidate.py`, C60): a deterministic
+  job (extractive, no model, Rp0) summarizes old episodic entries per
+  task; each summary points to its source `event_ids`; successful
+  patterns are promoted to procedural; already-summarized episodes
+  are not repeated. The idle-time scheduler caller is Phase 2 (2.14).
 
 ### 2. Persona (§2.16) — `puspa/persona/`
-- 3 contoh gaya (`santai`, `rapi`, `campur`) + opsional tempel 10-20
-  pesan sendiri (maks 20, tertua dibuang; tanpa impor chat WhatsApp).
-- Koreksi ("lebih santai", "jangan pakai gue", ...) disimpan sebagai
-  fakta `dikonfirmasi_user` dan langsung berlaku (`get_persona`).
-- Harness uji buta gerbang 3 (`blind_test.py`): 20 item (10 asli +
-  10 persona), acak deterministik (seed), lembar uji + penilaian
-  (ambang 60%). Contoh jadi di `blind-test-contoh/` (20 item, 10/10).
-  UJI MANUSIANYA MENUNGGU NERO (5 teman belum menjawab) — tidak ada
-  hasil yang dikarang.
+- 3 style examples (`santai`, `rapi`, `campur`) + optionally paste
+  10-20 of your own messages (max 20, oldest dropped; no WhatsApp
+  chat import).
+- Corrections ("lebih santai", "jangan pakai gue", ...) are stored as
+  `user_confirmed` facts and apply immediately (`get_persona`).
+- Gate 3 blind-test harness (`blind_test.py`): 20 items (10 original +
+  10 persona), deterministic shuffle (seed), test sheet + scoring
+  (60% threshold). Finished example in `blind-test-contoh/` (20 items,
+  10/10). THE HUMAN TEST IS WAITING ON NERO (5 friends have not
+  answered yet) — no results invented.
 
 ### 3. Onboarding (§2.16) — `puspa/onboarding/`
-- 4 langkah: nama+gaya, notif+uji kirim, konektor (boleh nanti),
-  tugas pertama terbimbing. Terukur end-to-end: **0,29 detik sisi
-  sistem** (waktu manusia membaca/mengetik tidak termasuk — angka ini
-  adalah waktu kode, bukan waktu manusia; target 5 menit adalah target
-  alur manusia dan baru bisa diukur saat uji pengguna).
-- Langkah 2 JUJUR: Web Push Fase 2 belum ada, `StubNotifier`
-  melaporkan `terkirim=False` (bukan pura-pura terkirim).
-- Langkah 4 STUB TERUKUR: wedge bandingkan harga/tagihan Fase 3 belum
-  ada; stub memanggil jalur nyata (validasi, Buku Kerja
-  `tugas_dibuat`+`tugas_selesai`, episodik, ukur waktu) dan
-  mengembalikan `terbukti=False` + alasan. Tidak ada harga/tagihan
-  yang dikarang.
-- Sesudah tugas pertama: 3 templat alur bawaan ditawarkan (daftar
-  saja; alur kustom Fase 4).
+- 4 steps: name+style, notifications+test send, connectors (can be
+  later), guided first task. Measured end-to-end: **0.29 seconds system
+  side** (human reading/typing time not included — this number is code
+  time, not human time; the 5-minute target is a human-flow target and
+  can only be measured in user testing).
+- Step 2 is HONEST: Phase 2 Web Push does not exist yet, `StubNotifier`
+  reports `terkirim=False` (not pretend-sent).
+- Step 4 is a MEASURED STUB: the Phase 3 price-compare/bill wedge does
+  not exist yet; the stub calls the real path (validation, ledger
+  `task_created`+`task_completed`, episodic, time measurement) and
+  returns `terbukti=False` + a reason. No price/bill is invented.
+- After the first task: 3 built-in workflow templates offered (list
+  only; custom workflows are Phase 4).
 
-### 4. Login Google (keputusan 16, §2.15) — `puspa/auth/`
-- OAuth 2.0 authorization code + PKCE S256, state anti-CSRF, scope
-  minimal login (`openid email profile`); tukar code, refresh,
-  revoke, verifikasi ID token RS256 (JWKS, iss/aud/exp); token
-  disimpan di vault terenkripsi Fase 0 (`google_oauth`); sesi per
-  perangkat via `sessions.py` Fase 0 (dipakai ulang, tanpa perubahan).
-- Akun Google-only: baris `pengguna` dibuat dengan hash kata sandi
-  acak yang tidak diketahui siapa pun (kolom `password_hash` NOT NULL
-  di skema Fase 0); login kata sandi tidak dipakai lagi.
-- Tautan email cadangan (`email_link.py`): token HMAC sekali pakai,
-  TTL 15 menit, replay ditolak.
-- BLOKIR: publikasi app ke "In production" butuh browser Nero
-  (status Testing = refresh token kedaluwarsa 7 hari). Kode lengkap +
-  diuji (HTTP mock + JWKS RSA asli); publikasi = langkah Nero tertunda.
+### 4. Google login (decision 16, §2.15) — `puspa/auth/`
+- OAuth 2.0 authorization code + PKCE S256, anti-CSRF state, minimal
+  login scope (`openid email profile`); code exchange, refresh,
+  revoke, RS256 ID token verification (JWKS, iss/aud/exp); tokens
+  stored in the Phase 0 encrypted vault (`google_oauth`); per-device
+  sessions via Phase 0 `user_sessions.py` (reused, unchanged).
+- Google-only accounts: a `users` row is created with a random
+  password hash nobody knows (the `password_hash` column is NOT NULL
+  in the Phase 0 schema); password login is no longer used.
+- Backup email link (`email_link.py`): one-time HMAC token,
+  15-minute TTL, replay rejected.
+- BLOCKED: publishing the app to "In production" needs Nero's browser
+  (Testing status = refresh tokens expire after 7 days). Code complete +
+  tested (HTTP mock + real RSA JWKS); publishing = Nero's pending step.
 
-### 5. Cadangan + persetujuan data (§2.17) — `puspa/backup/`, `puspa/consent/`
-- Cadangan: `pg_dump -Fc` -> enkripsi Fernet (kunci hanya dari env
-  `PUSPA_BACKUP_KEY`, tanpa default) -> `build/fase-1/backups/`
-  (di luar DB); retensi 14 hari (prune otomatis); manifest JSON.
-  Penjadwalan harian otomatis menunggu penjadwal Fase 2 (2.14).
-- Uji restore pertama DIJALANKAN (tes `test_restore_ke_db_bersih` +
-  run manual): restore ke DB bersih 0,3 detik, 14 tabel, rantai hash
-  Buku Kerja terverifikasi utuh. Bukti: `backups/puspa-20261117-150740.dump.enc`
-  (+ manifest `.json`).
-- Persetujuan: teks `v1-2026-11-17` (6 hal wajib: data apa, di mana,
-  berapa lama, siapa bisa melihat, ekspor/hapus, graf bersama tanpa
-  identitas); dicatat di tabel `persetujuan_data` + Buku Kerja
-  (jenis `persetujuan_data` sudah ada di ledger).
-- Ekspor akun: profil + episodik (tanpa vektor) + prosedur +
-  ringkasan + persetujuan + onboarding + daftar sesi — TANPA rahasia
-  vault (diuji: token tidak ikut ekspor).
-- Hapus akun: menghapus memori/prosedur/contoh/onboarding/
-  persetujuan + akun (sesi + vault via `users.delete_user` Fase 0);
-  rantai hash tetap utuh (tidak ada UPDATE/DELETE di `kejadian`).
-  BATAS: isi kejadian Buku Kerja milik user yang dihapus TETAP ADA —
-  lihat "Konflik".
+### 5. Backup + data consent (§2.17) — `puspa/backup/`, `puspa/consent/`
+- Backup: `pg_dump -Fc` -> Fernet encryption (key only from env
+  `PUSPA_BACKUP_KEY`, no default) -> `build/fase-1/backups/`
+  (outside the DB); 14-day retention (automatic prune); JSON manifest.
+  Automatic daily scheduling waits for the Phase 2 scheduler (2.14).
+- The first restore test was RUN (test `test_restore_to_db_bersih_and_verifikasi` +
+  a manual run): restore to a clean DB in 0.3 seconds, 14 tables, the
+  ledger hash chain verified intact. Evidence:
+  `backups/puspa-20261117-150740.dump.enc` (+ `.json` manifest).
+- Consent: text `v1-2026-11-17` (6 required points: what data, where,
+  how long, who can see it, export/delete, shared graph without
+  identity); recorded in the `data_consents` table + the ledger
+  (the `data_consent` type already exists in the ledger).
+- Account export: profile + episodic (without vectors) + procedures +
+  summaries + consents + onboarding + session list — WITHOUT vault
+  secrets (tested: tokens are not included in the export).
+- Account deletion: deletes memory/procedures/examples/onboarding/
+  consents + account (sessions + vault via Phase 0 `users.delete_user`);
+  the hash chain stays intact (no UPDATE/DELETE on `events`).
+  LIMIT: the ledger event `content` of a deleted user STAYS —
+  see "Conflicts".
 
-## Keputusan yang dicatat
-1. **Embedding gratis: `HashEmbedding` (Rp0).** Deterministik dari
-   hash token, tanpa model, tanpa jaringan, tanpa dependensi baru.
-   Kualitas semantik terbatas (kemiripan = tumpang-tindih kata).
-   Seam pengganti sudah disiapkan: `EpisodicStore` menerima embedder
-   apa pun (`embed` + `dim`); kandidat naik kelas: BAAI/bge-small
-   lokal via fastembed, atau embedding murah OpenRouter. Ganti dimensi
-   butuh migrasi kolom `vector(N)`.
-2. **pgvector 0.6.0** diinstal via apt (`postgresql-16-pgvector`);
-   ekstensi aktif di `puspa_test`; index HNSW episodik terpasang.
-3. **Ringkasan konsolidasi deterministik** (ekstraktif, tanpa model):
-   Rp0, bisa diuji. Ringkasan berbasis model = peningkatan Fase 2+.
-4. **Tidak ada dependensi baru.** Fase 1 memakai yang sudah ada di
-   venv Fase 0 (psycopg, cryptography, argon2-cffi, httpx, pytest).
-5. **Kebijakan bahasa** (perintah Nero 21:53 WIB): identifier Inggris,
-   nilai domain Indonesia (revisi 7), prosa Indonesia. 22 usulan
-   rename P-1–P-22 TIDAK diterapkan (menunggu kata Nero).
-6. **Render persona deterministik sementara** (`render_reply`):
-   transformasi aturan (gue->aku dsb.) sebagai pengganti render model
-   sampai Fase 2. Harness uji buta memakai transformasi ini — hasil
-   uji buta manusia nanti menguji persona transformasi, bukan persona
-   model; dicatat supaya tidak disalahartikan.
+## Recorded decisions
+1. **Free embedding: `HashEmbedding` (Rp0).** Deterministic from
+   token hashes, no model, no network, no new dependencies.
+   Limited semantic quality (similarity = word overlap).
+   The replacement seam is ready: `EpisodicStore` takes any embedder
+   (`embed` + `dim`); upgrade candidates: local BAAI/bge-small
+   via fastembed, or cheap OpenRouter embeddings. Changing dimensions
+   needs a `vector(N)` column migration.
+2. **pgvector 0.6.0** installed via apt (`postgresql-16-pgvector`);
+   extension active in `puspa_test`; episodic HNSW index installed.
+3. **Deterministic consolidation summaries** (extractive, no model):
+   Rp0, testable. Model-based summaries = a Phase 2+ improvement.
+4. **No new dependencies.** Phase 1 uses what is already in the
+   Phase 0 venv (psycopg, cryptography, argon2-cffi, httpx, pytest).
+5. **Language policy** (Nero's order, 21:53 WIB): English identifiers,
+   Indonesian domain values (revision 7), Indonesian prose. The 22
+   rename proposals P-1–P-22 were NOT applied (waiting on Nero's word).
+6. **Temporary deterministic persona rendering** (`render_reply`):
+   rule transforms (gue->aku etc.) as a stand-in for model rendering
+   until Phase 2. The blind-test harness uses this transform — the
+   human blind test will therefore test the transform persona, not a
+   model persona; recorded so it is not misread.
 
-## Konflik definisi vs build (dicatat, definisi tidak diubah)
-1. **C57 — irisan dicatat di Buku Kerja.** Jenis kejadian tertutup
-   (31 jenis, §2.3) tidak punya jenis untuk pemberian irisan.
-   Sementara: tabel audit `pemberian_irisan` (ber-RLS, bisa diaudit),
-   kolom `kejadian_id` disiapkan untuk menautkan begitu jenisnya ada.
-   Perlu: tambah jenis `irisan_diberikan` (revisi 8 / Fase 2, butuh
-   migrasi CHECK skema Fase 0).
-2. **C129 — hapus akun vs isi Buku Kerja.** Definisi 2.3 melarang
-   UPDATE/DELETE di `kejadian`, dan 2.17 minta hapus akun menghapus
-   memori dkk. dengan rantai tetap utuh lewat tombstone. Fase 1
-   menghapus semua data user DI LUAR Buku Kerja; `isi` kejadian yang
-   memuat data user tetap ada. Perlu: jenis kejadian tombstone /
-   kebijakan redaksi (revisi 8 / Fase 2).
-3. **C126 — "dump tiap hari".** Mekanisme backup + prune + restore
-   jadi dan teruji; penjadwalan harian otomatis butuh penjadwal Fase 2.
-4. **C122 — "5 menit".** Yang terukur di Fase 1 adalah waktu sisi
-   sistem (0,29 detik). Waktu manusia (membaca, mengetik, memilih)
-   baru terukur saat uji pengguna (gerbang 15: 8 dari 10 pengguna uji
-   sampai hasil berbukti pertama dalam 5 menit).
+## Definition vs build conflicts (recorded, definition unchanged)
+1. **C57 — slices recorded in the ledger.** The closed event-type set
+   (31 types, §2.3) has no type for slice grants.
+   Meanwhile: the audit table `slice_grants` (with RLS, auditable),
+   with an `event_id` column prepared to link once the type exists.
+   Needed: add a `slice_granted` type (revision 8 / Phase 2, needs a
+   Phase 0 schema CHECK migration).
+2. **C129 — account deletion vs ledger content.** Definition 2.3 forbids
+   UPDATE/DELETE on `events`, and 2.17 asks account deletion to delete
+   memory etc. with the chain intact via tombstone. Phase 1
+   deletes all user data OUTSIDE the ledger; event `content`
+   holding user data stays. Needed: a tombstone event type /
+   redaction policy (revision 8 / Phase 2).
+3. **C126 — "dump every day".** The backup + prune + restore
+   mechanism is done and tested; automatic daily scheduling needs the
+   Phase 2 scheduler.
+4. **C122 — "5 minutes".** What Phase 1 can measure is system-side
+   time (0.29 seconds). Human time (reading, typing, choosing)
+   can only be measured in user testing (gate 15: 8 of 10 test users
+   reaching their first verified result within 5 minutes).
 
-## Gerbang yang tersentuh
-- **Gerbang 3 (Persona blind A/B): PARSIAL.** Harness + 20 item contoh
-  jadi dan teruji; uji manusia 5 teman TERTUNDA (menunggu Nero).
-- **Gerbang 15 (Operasional + onboarding): PARSIAL.** Persetujuan
-  dicatat (11/11 belum terukur — butuh pengguna uji); restore ke host
-  bersih berhasil dalam 30 menit (terukur 0,3 detik di VM ini);
-  onboarding sistem terukur; 0 token Google kedaluwarsa selama 4
-  minggu uji BELUM terukur (butuh masa uji + publikasi production).
-- **Gerbang 8 (Graf moat):** belum — prosedur tersimpan, graf penuh
-  Fase 3.
+## Gates touched
+- **Gate 3 (Persona blind A/B): PARTIAL.** Harness + 20 example items
+  done and tested; the 5-friend human test is PENDING (waiting on Nero).
+- **Gate 15 (Operations + onboarding): PARTIAL.** Consent recorded
+  (11/11 not yet measured — needs test users); restore to a clean
+  host succeeded within 30 minutes (measured 0.3 seconds on this VM);
+  onboarding system time measured; 0 expired Google tokens over 4
+  weeks of testing NOT yet measured (needs a test period + production
+  publishing).
+- **Gate 8 (Moat graph):** not yet — procedures stored, full graph
+  in Phase 3.
 
-## Butuh Nero (langkah manusia, bukan blokir kode)
-1. **Publikasi aplikasi Google OAuth** ke "In production" (browser
-   Nero; keputusan 19). Tanpa ini refresh token kedaluwarsa 7 hari.
-2. **Uji buta gerbang 3**: 5 teman juri + jawaban mereka.
-3. **Tinjauan hukum** teks persetujuan v1 (keputusan 20) sebelum
-   pengguna di luar lingkaran dekat.
-4. **Keputusan 5** (nomor pelanggan PLN/PDAM/HP) — dibutuhkan Fase 2,
-   bukan Fase 1.
+## Needs Nero (human steps, not code blockers)
+1. **Publish the Google OAuth app** to "In production" (Nero's
+   browser; decision 19). Without this, refresh tokens expire after 7 days.
+2. **Gate 3 blind test**: 5 friend judges + their answers.
+3. **Legal review** of the v1 consent text (decision 20) before
+   users outside the close circle.
+4. **Decision 5** (PLN/PDAM/phone customer numbers) — needed in Phase 2,
+   not Phase 1.
 
-## Insiden lingkungan selama Fase 1
-- **VM restart di tengah kerja** (uptime 0 menit saat dicek ~15:04
-  WIB): Postgres 16 hilang TOTAL (paket apt + cluster + data).
-  Dipulihkan: `apt-get update` + instal `postgresql-16` +
-  `postgresql-16-pgvector` + `pg_ctlcluster 16 main start` +
-  `infra/setup_db.sql` (sebagai postgres, file di-chmod 644 dulu)
-  + `CREATE EXTENSION vector`. Semua file workspace utuh.
-  Kedua suite diverifikasi ulang hijau SESUDAH pemulihan
-  (Fase 1: 58 passed; Fase 0: 244 passed, 4 skipped).
-  Pelajaran: Postgres di VM ini tidak tahan restart — cadangan
-  terenkripsi Fase 1 adalah mitigasi yang tepat; jadwal backup
-  harian otomatis (Fase 2) penting.
-- **Run pytest paralel = false-failure** (dikonfirmasi lagi): run
-  awal Fase 0 menunjukkan 7 failed + 8 error saat dua pytest jalan
-  bersamaan di DB yang sama; run solo hijau. Semua angka di dokumen
-  ini dari run SOLO.
+## Environment incidents during Phase 1
+- **VM restart in the middle of the work** (uptime 0 minutes when
+  checked ~15:04 WIB): Postgres 16 lost COMPLETELY (apt packages +
+  cluster + data). Recovered: `apt-get update` + install
+  `postgresql-16` + `postgresql-16-pgvector` +
+  `pg_ctlcluster 16 main start` + `infra/schema_core.sql`
+  (as postgres, file chmod 644 first) + `CREATE EXTENSION vector`.
+  All workspace files intact. Both suites re-verified green AFTER
+  recovery (Phase 1: 58 passed; Phase 0: 244 passed, 4 skipped).
+  Lesson: Postgres on this VM does not survive restarts — the Phase 1
+  encrypted backup is the right mitigation; the automatic daily
+  backup schedule (Phase 2) matters.
+- **Parallel pytest runs = false failures** (confirmed again): the
+  first Phase 0 run showed 7 failed + 8 errors when two pytest runs
+  ran at the same time on the same DB; solo runs are green. All numbers
+  in this document come from SOLO runs.
 
-## Pola repo besar yang diadaptasi (detail: `../REUSE.md`)
-- **mem0** (Apache-2.0): fakta ber-asal + scoped per user; disimpulkan
-  -> Usulan (bukan profil). Ditulis ulang sebagai `profile.py`.
-- **Graphiti** (Apache-2.0): fakta temporal (berlaku dari/sampai);
-  prosedur sebagai templat tanpa data pribadi. Ditulis ulang.
-- **Letta** (Apache-2.0): sleep-time compute / konsolidasi saat idle.
-  Ditulis ulang sebagai `consolidate.py` (deterministik).
-- **elizaOS** (MIT): persona sebagai data (character file).
-  Ditulis ulang sebagai fakta profil + contoh gaya.
-- Tidak ada kode yang disalin plek-ketiplek; tidak ada dependensi
-  baru; tidak ada fork.
+## Large-repo patterns adapted (detail: `reuse.md`)
+- **mem0** (Apache-2.0): sourced facts + scoped per user; inferred
+  -> Proposals (not profile). Rewritten as `profile.py`.
+- **Graphiti** (Apache-2.0): temporal facts (valid from/until);
+  procedures as templates without personal data. Rewritten.
+- **Letta** (Apache-2.0): sleep-time compute / idle-time consolidation.
+  Rewritten as `consolidate.py` (deterministic).
+- **elizaOS** (MIT): persona as data (character file).
+  Rewritten as profile facts + style examples.
+- No code copied verbatim; no new dependencies; no forks.

@@ -1,135 +1,145 @@
-# Audit Reuse Puspa — apa yang dicopy dari chassis
+# Reuse Audit for Puspa — what was copied from the chassis
 
-Tanggal audit: 17 November 2026 ~22:40 WIB. Auditor hanya baca
-(tidak mengubah kode apa pun). Cakupan: pohon `build/` lokal
-(fase 0, 1, 2, 3 yang sedang berjalan, `cli/`, `web/`).
-Repo GitHub `mirzasnowy/puspa-ai` yang sudah di-push baru berisi
-fase 0 (3 commit) — fase 1–3 belum di-push.
+Audit date: 17 November 2026 ~22:40 WIB. The auditor only read
+(did not change any code). Scope: the local `build/` tree
+(phases 0, 1, 2, 3 in progress, `cli/`, `web/`).
+The GitHub repo `mirzasnowy/puspa-ai` as pushed so far only contains
+phase 0 (3 commits) — phases 1–3 have not been pushed yet.
 
-## Jawaban singkat untuk Nero
+## Short answer for Nero
 
-Yang benar-benar "dicopy" (dipakai kodenya) hanya **satu**: nanobot,
-sebagai **dependensi pip** (git pin), bukan salinan kode — clone
-lokalnya bersih, 0 baris diubah, dan paket Puspa hanya membungkusnya
-lewat titik ekstensi resmi (subclass + `super()`).
+What was actually "copied" (its code used) is only **one**: nanobot,
+as a **pip dependency** (git pin), not a copy of code — its local
+clone is clean, 0 lines changed, and the Puspa package only wraps it
+through official extension points (subclass + `super()`).
 
-Yang lain: **pola yang dipelajari lalu ditulis ulang** sebagai kode
-Puspa sendiri (mem0, Graphiti, Letta, elizaOS, LiteLLM, agno,
+The rest: **patterns studied and then rewritten** as Puspa's own code
+(mem0, Graphiti, Letta, elizaOS, LiteLLM, agno,
 OpenHands, opencode, Home Assistant, Supabase, LadybugDB, RAGFlow)
-atau **hanya dipelajari, tidak ada yang diambil** (LangGraph,
+or **only studied, nothing taken** (LangGraph,
 LangChain, Agent-Reach, hermes-agent, ECC, OpenBot, E2B/Firecracker,
-Langflow, Pipecat/LiveKit, superpowers, dusk.bot — desain saja).
+Langflow, Pipecat/LiveKit, superpowers, dusk.bot — design only).
 
-**Nol salinan verbatim ditemukan** di seluruh kode Puspa
-(lihat "Cara memeriksa" di bawah untuk metode + batasnya).
+**Zero verbatim copies found** across all Puspa code
+(see "How it was checked" below for the method + its limits).
 
-## Cara memeriksa (dan batasnya)
+## How it was checked (and its limits)
 
-1. Grep semua `import`/`from` di `fase-0/puspa`, `fase-0/demo`,
+1. Grep all `import`/`from` in `fase-0/puspa`, `fase-0/demo`,
    `fase-1/puspa`, `fase-2/puspa`, `fase-3/puspa`, `cli/puspa_cli`:
-   tidak ada satu pun import `mem0`, `langchain`, `langgraph`,
+   not a single import of `mem0`, `langchain`, `langgraph`,
    `graphiti`, `litellm`, `agno`, `letta`, `eliza`, `opencode`,
    `hermes`, `agent_reach`, `pipecat`, `livekit`, `langflow`,
    `supabase`, `homeassistant`.
-2. Grep nama API khas sumber (`add_memory`, `StateGraph`,
+2. Grep distinctive source API names (`add_memory`, `StateGraph`,
    `add_node`, `add_edge`, `MemoryClient`, `add_episode`,
-   `add_triplet`, `add_messages`, dsb.): hanya ketemu sebutan
-   "Graphiti" di docstring (kutipan pola) dan satu false positive
-   ("END" di dalam kata "SENDIRI"). Tidak ada permukaan API asing.
-3. Grep `Copyright` di semua kode Puspa: kosong. `find` file
-   `LICENSE*` dan `SKILL.md` di luar `nanobot/`: kosong.
-4. `git -C fase-0/nanobot status --porcelain`: 0 baris (dicek 2x,
-   terakhir ~22:40 WIB). `git diff --stat HEAD`: kosong.
-5. Baca header/docstring tiap file yang mengutip pola, lalu
-   bandingkan desain Puspa dengan sumbernya — perbedaannya
-   tercatat di tabel (mis. mem0 menyimpan fakta disimpulkan;
-   Puspa justru TIDAK menyimpannya di profil, melainkan di Usulan).
-6. Batas kejujuran: tanpa membandingkan baris demi baris dengan
-   semua repo sumber (tidak di-clone), nol mutlak tidak bisa
-   dibuktikan secara matematis. Tapi bukti 1–5 di atas, ditambah
-   kode Puspa yang hampir seluruhnya ber-identifier Indonesia
-   dengan desain yang menyimpang dari sumbernya, adalah bukti kuat.
+   `add_triplet`, `add_messages`, etc.): the only hits were the
+   word "Graphiti" in a docstring (a pattern citation) and one false positive
+   ("END" inside the word "SENDIRI"). No foreign API surface.
+3. Grep `Copyright` across all Puspa code: empty. `find` for
+   `LICENSE*` and `SKILL.md` files outside `nanobot/`: empty.
+4. `git -C fase-0/nanobot status --porcelain`: 0 lines (checked 2x,
+   last ~22:40 WIB). `git diff --stat HEAD`: empty.
+5. Read the header/docstring of each file citing a pattern, then
+   compare Puspa's design with its source — the differences are
+   recorded in the table (e.g. mem0 stores inferred facts;
+   Puspa does NOT store them in the profile, but in Usulan instead).
+6. Honesty limit: without comparing line by line against
+   all source repos (not cloned), absolute zero cannot be
+   proven mathematically. But evidence 1–5 above, plus
+   Puspa code that was almost entirely Indonesian-identified
+   with designs diverging from its sources, is strong evidence.
 
-Log reuse resmi ada di `build/REUSE.md` (8.617 byte, 17 Nov 2026
-15:25) — BUKAN di `fase-0/REUSE.md` seperti diasumsikan brief
-awal. Referensi `../REUSE.md` dari `fase-1/` dan `fase-2/` VALID
-(menunjuk ke `build/REUSE.md`). Atribusi nanobot ada di
-`build/fase-0/NOTICE.md`; atribusi pola fase 1 ada di
-`build/fase-1/NOTICE.md`.
+The official reuse log is at `build/REUSE.md` (8,617 bytes, 17 Nov 2026
+15:25) — NOT at `fase-0/REUSE.md` as the original brief assumed
+(now `docs/reuse.md`). References to `../REUSE.md` from `fase-1/` and `fase-2/` are VALID
+(pointing to `build/REUSE.md`). nanobot attribution is in
+`build/fase-0/NOTICE.md`; phase 1 pattern attribution is in
+`build/fase-1/NOTICE.md` (both now in the root `NOTICE.md`).
 
-## Tabel per repo
+## Per-repo table
 
-| Repo (lisensi) | Yang diambil | Bukti file |
+| Repo (license) | What was taken | File evidence |
 |---|---|---|
-| **nanobot** — HKUDS/nanobot (MIT) | **Dependensi pip saja** (git pin `e767174`, paket `nanobot-ai`), BUKAN salinan kode. Clone lokal hanya referensi baca. Wiring hanya lewat titik ekstensi resmi: subclass `ToolRegistry`/`SkillsLoader`/`AgentHook` + `super()`. 0 baris nanobot diubah (git status bersih). | `fase-0/requirements.txt`; `fase-0/NOTICE.md`; `fase-0/puspa/chassis/*.py` (import `nanobot.agent.*`, 942 baris); `git -C fase-0/nanobot status` = 0 |
-| **opencode** — anomalyco/opencode (MIT, TypeScript) | **Tidak ada kode yang diambil.** Pola UX (layar chat/task/approval sebagai satu alur) dipakai sebagai referensi desain di PWA fase 2, ditulis ulang sebagai FastAPI + Jinja + HTMX + SSE. Catatan: kata "opencode" di `demo/MATRIKS_BYOK.md:169` adalah nama provider di registry nanobot sendiri (`fase-0/nanobot/nanobot/providers/registry.py:334-346`), BUKAN repo ini. | `fase-2/puspa/pwa/app.py` (tidak ada import opencode); `build/REUSE.md` (Fase 2); `fase-2/STATUS_FASE2.md:297` |
-| **langgraph** — langchain-ai/langgraph (MIT) | **Tidak ada yang diambil.** Nol import, nol kode. Orkestrasi Puspa = `AgentLoop` nanobot + siklus tugas 5 tahap Puspa sendiri di atas Postgres + Buku Kerja. | `fase-2/puspa/runtime/tasks.py` (header §2.4 revisi 7, tanpa sebutan LangGraph); grep `langgraph` di semua kode = kosong |
-| **langchain** — langchain-ai/langchain (MIT) | **Tidak ada yang diambil.** Nol import, nol kode. | grep `langchain` di semua kode = kosong |
-| **mem0** — mem0ai/mem0 (Apache-2.0) | **Pola saja, ditulis ulang** (fase 1): fakta ber-asal, scoped per user, fakta disimpulkan TIDAK langsung masuk profil (ditampung di Usulan). Library TIDAK diinstal. Beda dari aslinya: asal tiga nilai revisi 7 (`diucapkan_user`/`dikonfirmasi_user`/`disimpulkan`), status `usulan`/`berlaku`/`ditolak`/`diganti`, merge UNION deterministik. | `fase-1/puspa/memory/profile.py:3-9`; `fase-1/NOTICE.md:9-11`; `build/REUSE.md` (Fase 1); `fase-1/STATUS_FASE1.md:200` |
-| **agent-reach** — (repo kontribusi Nero) | **Tidak ada yang diambil.** Nol sebutan di seluruh kode + dokumen Puspa. PR #880 adalah kontribusi Nero KE repo itu, bukan sumber buat Puspa. | grep `agent.?reach` di `fase-0/`, `fase-1/`, `fase-2/`, `fase-3/`, `cli/`, `web/` = kosong |
-| **hermes-agent** — NousResearch/hermes-agent (MIT) | **Tidak ada yang diambil.** Nol sebutan di kode. Learning loop + `hermes claw migrate` hanya referensi desain di survei 1 untuk modul self-develop (fase 6, belum dibangun). | grep `hermes` di semua kode + dokumen = kosong; survei 1 `repo-reuse-puspa-2026-11-17.md:45-48` |
-| **agno** — agno-agi/agno, AgentOS (Apache-2.0) | **Pola saja, ditulis ulang** (fase 2): eksekusi durable, approval, scheduling, observability → tugas sebagai unit durable di Postgres (SKIP LOCKED), penjadwal, proyeksi bukti. Library TIDAK diinstal. | `fase-2/puspa/runtime/tasks.py`; `fase-2/puspa/scheduler/scheduler.py`; `fase-2/puspa/evidence/projections.py`; `build/REUSE.md` (Fase 2); `fase-2/STATUS_FASE2.md:293-294` |
-| **langflow** — langflow-ai/langflow (MIT) | **Belum ada yang diambil.** Builder visual alur/modul = fase 4, belum dibangun. | `build/REUSE.md` (Fase 2, "Tidak dipakai"); `fase-2/STATUS_FASE2.md:306` |
-| **LiteLLM** — BerriAI/litellm (MIT) | **Pola saja, ditulis ulang** (fase 2): router multi-provider + spend tracking → `puspa/router/router.py`, dibangun DI ATAS factory BYOK fase 0 (`demo/byok_provider.py`), bukan di atas litellm. Library TIDAK diinstal; nol sebutan "litellm" di `demo/`. Beda dari aslinya: peran revisi 7 + aturan keluarga Pemeriksa + tarif Rupiah. | `fase-2/puspa/router/router.py:3-4,106-108`; `build/REUSE.md` (Fase 2); grep `litellm` di `fase-0/demo/` = kosong |
-| **pipecat** (BSD-2-Clause) / **livekit/agents** (Apache-2.0) | **Belum ada yang diambil.** Modul Suara TIDAK ada di definisi revisi 7; pasca-MVP. | `build/REUSE.md` (Fase 2, "Tidak dipakai") |
-| **home-assistant** — home-assistant/core (Apache-2.0) | **Pola saja, ditulis ulang** (fase 2): konektor per entitas dengan scope minimal + otomasi berbasis pemicu → konektor Google (Gmail/Drive/Calendar di atas OAuth fase 1) + pemberian per agen + penjadwal. Library TIDAK dipakai. | `fase-2/puspa/connectors/google.py` (header); `fase-2/puspa/connectors/grants.py`; `build/REUSE.md` (Fase 2) |
-| **ladybugdb** — LadybugDB/ladybug (MIT) | **Pola saja, ditulis ulang** (fase 3, sedang berjalan): graf embedded — node dan edge sebagai baris relasional, bukan server graf → graf identitas + harga di atas Postgres. Library TIDAK dipakai. | `fase-3/puspa/graphs/identity.py` (header); grep import `ladybug`/`kuzu`/`networkx` = kosong |
-| **supabase** — supabase/supabase (Apache-2.0) | **Pola saja, ditulis ulang** (fase 2): RLS + realtime → RLS Postgres (`app.current_user_id`) + SSE sebagai ganti realtime. Library TIDAK dipakai. | `fase-2/infra/schema_fase2.sql:138-157`; `build/REUSE.md` (Fase 2); `fase-2/STATUS_FASE2.md:300-301` |
-| **openhands** — OpenHands/OpenHands (MIT) | **Pola saja, ditulis ulang** (fase 2): pengerasan sandbox (fail-closed + allowlist domain) → dipakai ulang allowlist fase 0, ditegakkan di konektor. Library TIDAK dipakai. Sandbox Puspa = Docker (`docker run`), bukan microVM. | `fase-0/puspa/sandbox/runner.py` (`docker run`, bukan Firecracker); `fase-2/STATUS_FASE2.md:295-296`; `build/REUSE.md` (Fase 2) |
-| **dusk.bot** — DuskBotAI/duskbot (PolyForm Noncommercial 1.0.0) | **Desain saja, bukan kode.** Studi di `web/STUDI_DUSK.md`: ritme seksi, panel mock, kartu harga. Tidak ada kode, teks, atau gambar yang disalin, diunduh, atau di-hotlink. Tidak ada URL eksternal di file web. `web/assets/` hanya berisi logo Puspa + ikon hasil generate. | `web/STUDI_DUSK.md`; grep `https?://` di `web/` (di luar w3.org/localhost) = kosong; `ls web/assets/` |
-| **ECC** — affaan-m/ECC (MIT) | **Tidak ada yang diambil** (dipelajari saja). Nol sebutan di kode Puspa. Pola skill SKILL.md + hooks + continuous learning dicatat di survei, tapi implementasi Puspa mengutip agentskills/Graphiti/Letta, bukan ECC. AgentShield: nol sebutan. | grep `ECC`/`AgentShield`/`shield` di semua kode = kosong (hanya disebut di `fase-0/STATUS.md:10` sebagai aturan tanpa-fork) |
-| **OpenBot** — CopilotKit/OpenBot (MIT) | **Pola desain saja, tidak ada kode.** Konsep gateway fail-closed menginformasikan desain gerbang Puspa, tapi `gate.py` ditulis sendiri (token + batas belanja + persetujuan + idempotensi) TANPA CEL (grep `cel` = kosong). | `fase-0/puspa/policy/gate.py` (header + import: hanya `hashlib`/`time`/`uuid`/`dataclasses` + `puspa.policy.tokens`); survei 1 baris 52-57 |
-| **E2B / Firecracker** (Apache-2.0) | **Tidak ada yang diambil.** Konsep "komputer per bot" hanya pengaruh desain. Sandbox Puspa = Docker, fail-closed. | `fase-0/puspa/sandbox/runner.py`; survei 1 baris 102-148 |
-| **agentskills** — agentskills/agentskills (Apache-2.0) | **Format standar saja, bukan kode.** SKILL.md + frontmatter dipakai sebagai format skill Puspa (supaya kompatibel dengan ekosistem). Validator `skills-ref` TIDAK dipakai. Tidak ada kode yang di-vendor, jadi tidak ada file LICENSE yang wajib disertakan. | `fase-0/puspa/chassis/skills.py:22` ("frontmatter agentskills"); grep `skills-ref` = kosong; survei 1 baris 192-195 |
-| **superpowers / mattpocock/skills / anthropics/skills** (MIT) | **Tidak ada yang diambil.** Tidak ada file SKILL.md dari koleksi ini di Puspa. | `find . -name SKILL.md` di luar `nanobot/` = kosong |
-| **Graphiti** — getzep/graphiti (Apache-2.0) | **Pola saja, ditulis ulang** (fase 1 + fase 3): fakta temporal (`berlaku_dari`/`berlaku_sampai`, satu versi berlaku) → `profile.py`; prosedur sebagai templat tanpa data pribadi → `procedural.py` + `graphs/service.py`. Library TIDAK diinstal (butuh Neo4j/FalkorDB — terlalu berat untuk MVP; dicatat di REUSE.md). | `fase-1/puspa/memory/profile.py:7-9`; `fase-1/puspa/memory/procedural.py:13-14`; `fase-3/puspa/graphs/service.py:8`; `build/REUSE.md` (Fase 1, "Tidak dipakai") |
-| **Letta** — letta-ai/letta (Apache-2.0) | **Pola saja, ditulis ulang** (fase 1): sleep-time compute / konsolidasi saat idle → `consolidate.py`. Beda dari aslinya: ringkasan Puspa DETERMINISTIK dan ekstraktif (tanpa model, Rp0); Letta memakai model. | `fase-1/puspa/memory/consolidate.py` (header); `fase-1/NOTICE.md:16-18`; `build/REUSE.md` (Fase 1) |
-| **elizaOS** — elizaOS/eliza (MIT) | **Pola saja, ditulis ulang** (fase 1): character file (persona sebagai data) → gaya bicara sebagai fakta profil + contoh pesan (maks 20) + koreksi yang langsung berlaku. Bukan file karakter JSON. | `fase-1/puspa/persona/persona.py:3-7`; `fase-1/NOTICE.md:19-21`; `build/REUSE.md` (Fase 1) |
-| **RAGFlow** — infiniflow/ragflow (Apache-2.0) | **Pola saja, ditulis ulang** (fase 3, sedang berjalan): langkah kerja sebagai data yang bisa dipakai ulang → prosedur layanan di atas Postgres. Library TIDAK dipakai. | `fase-3/puspa/graphs/service.py` (header) |
-| **pgvector** (lisensi PostgreSQL) | **Ekstensi database, bukan kode.** Kolom `vector(384)` + index HNSW; embedding `HashEmbedding` ditulis sendiri (hash token, Rp0). | `fase-1/puspa/memory/embeddings.py` (import: `hashlib`/`math`/`re`); `fase-1/puspa/memory/episodic.py` (`::vector`, cosine pgvector); `build/REUSE.md` (Fase 1) |
+| **nanobot** — HKUDS/nanobot (MIT) | **Pip dependency only** (git pin `e767174`, package `nanobot-ai`), NOT a code copy. Local clone is read-only reference. Wiring only through official extension points: subclass `ToolRegistry`/`SkillsLoader`/`AgentHook` + `super()`. 0 lines of nanobot changed (clean git status). | `fase-0/requirements.txt`; `fase-0/NOTICE.md`; `fase-0/puspa/chassis/*.py` (import `nanobot.agent.*`, 942 lines); `git -C fase-0/nanobot status` = 0 |
+| **opencode** — anomalyco/opencode (MIT, TypeScript) | **No code taken.** UX pattern (chat/task/approval screens as one flow) used as a design reference in the phase 2 PWA, rewritten as FastAPI + Jinja + HTMX + SSE. Note: the word "opencode" in `demo/MATRIKS_BYOK.md:169` is a provider name in nanobot's own registry (`fase-0/nanobot/nanobot/providers/registry.py:334-346`), NOT this repo. | `fase-2/puspa/pwa/app.py` (no opencode import); `build/REUSE.md` (Phase 2); `fase-2/STATUS_FASE2.md:297` |
+| **langgraph** — langchain-ai/langgraph (MIT) | **Nothing taken.** Zero imports, zero code. Puspa orchestration = nanobot `AgentLoop` + Puspa's own 5-stage task cycle on top of Postgres + the ledger. | `fase-2/puspa/runtime/tasks.py` (header §2.4 revision 7, no mention of LangGraph); grep `langgraph` across all code = empty |
+| **langchain** — langchain-ai/langchain (MIT) | **Nothing taken.** Zero imports, zero code. | grep `langchain` across all code = empty |
+| **mem0** — mem0ai/mem0 (Apache-2.0) | **Pattern only, rewritten** (phase 1): sourced facts, scoped per user, inferred facts do NOT enter the profile directly (held in Usulan). Library NOT installed. Differs from the original: revision 7 three-valued provenance (`diucapkan_user`/`dikonfirmasi_user`/`disimpulkan`), statuses `usulan`/`berlaku`/`ditolak`/`diganti`, deterministic UNION merge. | `fase-1/puspa/memory/profile.py:3-9`; `fase-1/NOTICE.md:9-11`; `build/REUSE.md` (Phase 1); `fase-1/STATUS_FASE1.md:200` |
+| **agent-reach** — (Nero's contribution repo) | **Nothing taken.** Zero mentions across all Puspa code + documents. PR #880 is Nero's contribution TO that repo, not a source for Puspa. | grep `agent.?reach` in `fase-0/`, `fase-1/`, `fase-2/`, `fase-3/`, `cli/`, `web/` = empty |
+| **hermes-agent** — NousResearch/hermes-agent (MIT) | **Nothing taken.** Zero mentions in the code. Learning loop + `hermes claw migrate` are only design references in survey 1 for the self-develop module (phase 6, not yet built). | grep `hermes` across all code + documents = empty; survey 1 `repo-reuse-puspa-2026-11-17.md:45-48` |
+| **agno** — agno-agi/agno, AgentOS (Apache-2.0) | **Pattern only, rewritten** (phase 2): durable execution, approval, scheduling, observability → tasks as durable units in Postgres (SKIP LOCKED), scheduler, evidence projections. Library NOT installed. | `fase-2/puspa/runtime/tasks.py`; `fase-2/puspa/scheduler/scheduler.py`; `fase-2/puspa/evidence/projections.py`; `build/REUSE.md` (Phase 2); `fase-2/STATUS_FASE2.md:293-294` |
+| **langflow** — langflow-ai/langflow (MIT) | **Nothing taken yet.** The visual workflow/module builder = phase 4, not yet built. | `build/REUSE.md` (Phase 2, "Not used"); `fase-2/STATUS_FASE2.md:306` |
+| **LiteLLM** — BerriAI/litellm (MIT) | **Pattern only, rewritten** (phase 2): multi-provider router + spend tracking → `puspa/router/router.py`, built ON TOP of the phase 0 BYOK factory (`demo/byok_provider.py`), not on top of litellm. Library NOT installed; zero mentions of "litellm" in `demo/`. Differs from the original: revision 7 roles + the Verifier family rule + Rupiah rates. | `fase-2/puspa/router/router.py:3-4,106-108`; `build/REUSE.md` (Phase 2); grep `litellm` in `fase-0/demo/` = empty |
+| **pipecat** (BSD-2-Clause) / **livekit/agents** (Apache-2.0) | **Nothing taken yet.** The Voice module is NOT in the revision 7 definition; post-MVP. | `build/REUSE.md` (Phase 2, "Not used") |
+| **home-assistant** — home-assistant/core (Apache-2.0) | **Pattern only, rewritten** (phase 2): per-entity connectors with minimal scope + trigger-based automation → Google connectors (Gmail/Drive/Calendar on top of Phase 1 OAuth) + per-agent grants + scheduler. Library NOT used. | `fase-2/puspa/connectors/google.py` (header); `fase-2/puspa/connectors/grants.py`; `build/REUSE.md` (Phase 2) |
+| **ladybugdb** — LadybugDB/ladybug (MIT) | **Pattern only, rewritten** (phase 3, in progress): embedded graph — nodes and edges as relational rows, not a graph server → identity + price graph on top of Postgres. Library NOT used. | `fase-3/puspa/graphs/identity.py` (header); grep import `ladybug`/`kuzu`/`networkx` = empty |
+| **supabase** — supabase/supabase (Apache-2.0) | **Pattern only, rewritten** (phase 2): RLS + realtime → Postgres RLS (`app.current_user_id`) + SSE instead of realtime. Library NOT used. | `fase-2/infra/schema_fase2.sql:138-157`; `build/REUSE.md` (Phase 2); `fase-2/STATUS_FASE2.md:300-301` |
+| **openhands** — OpenHands/OpenHands (MIT) | **Pattern only, rewritten** (phase 2): sandbox hardening (fail-closed + domain allowlist) → the phase 0 allowlist reused, enforced in connectors. Library NOT used. Puspa's sandbox = Docker (`docker run`), not microVM. | `fase-0/puspa/sandbox/runner.py` (`docker run`, not Firecracker); `fase-2/STATUS_FASE2.md:295-296`; `build/REUSE.md` (Phase 2) |
+| **dusk.bot** — DuskBotAI/duskbot (PolyForm Noncommercial 1.0.0) | **Design only, not code.** Studied in `web/STUDI_DUSK.md`: section rhythm, mock panels, price cards. No code, text, or images copied, downloaded, or hotlinked. No external URLs in the web files. `web/assets/` contains only the Puspa logo + generated icons. | `web/STUDI_DUSK.md`; grep `https?://` in `web/` (outside w3.org/localhost) = empty; `ls web/assets/` |
+| **ECC** — affaan-m/ECC (MIT) | **Nothing taken** (studied only). Zero mentions in Puspa code. The SKILL.md skill pattern + hooks + continuous learning are recorded in the survey, but Puspa's implementation cites agentskills/Graphiti/Letta, not ECC. AgentShield: zero mentions. | grep `ECC`/`AgentShield`/`shield` across all code = empty (only mentioned in `fase-0/STATUS.md:10` as the no-fork rule) |
+| **OpenBot** — CopilotKit/OpenBot (MIT) | **Design pattern only, no code.** The fail-closed gateway concept informed Puspa's gate design, but `gate.py` was written by hand (token + spending limit + approval + idempotency) WITHOUT CEL (grep `cel` = empty). | `fase-0/puspa/policy/gate.py` (header + imports: only `hashlib`/`time`/`uuid`/`dataclasses` + `puspa.policy.tokens`); survey 1 lines 52-57 |
+| **E2B / Firecracker** (Apache-2.0) | **Nothing taken.** The "one computer per bot" concept is only a design influence. Puspa's sandbox = Docker, fail-closed. | `fase-0/puspa/sandbox/runner.py`; survey 1 lines 102-148 |
+| **agentskills** — agentskills/agentskills (Apache-2.0) | **Standard format only, not code.** SKILL.md + frontmatter used as Puspa's skill format (for ecosystem compatibility). The `skills-ref` validator is NOT used. No code vendored, so no LICENSE file is required. | `fase-0/puspa/chassis/skills.py:22` ("frontmatter agentskills"); grep `skills-ref` = empty; survey 1 lines 192-195 |
+| **superpowers / mattpocock/skills / anthropics/skills** (MIT) | **Nothing taken.** No SKILL.md files from these collections exist in Puspa. | `find . -name SKILL.md` outside `nanobot/` = empty |
+| **Graphiti** — getzep/graphiti (Apache-2.0) | **Pattern only, rewritten** (phases 1 + 3): temporal facts (`berlaku_dari`/`berlaku_sampai`, one active version) → `profile.py`; procedures as templates without personal data → `procedural.py` + `graphs/service.py`. Library NOT installed (needs Neo4j/FalkorDB — too heavy for the MVP; recorded in REUSE.md). | `fase-1/puspa/memory/profile.py:7-9`; `fase-1/puspa/memory/procedural.py:13-14`; `fase-3/puspa/graphs/service.py:8`; `build/REUSE.md` (Phase 1, "Not used") |
+| **Letta** — letta-ai/letta (Apache-2.0) | **Pattern only, rewritten** (phase 1): sleep-time compute / consolidation while idle → `consolidate.py`. Differs from the original: Puspa's summaries are DETERMINISTIC and extractive (no model, Rp0); Letta uses a model. | `fase-1/puspa/memory/consolidate.py` (header); `fase-1/NOTICE.md:16-18`; `build/REUSE.md` (Phase 1) |
+| **elizaOS** — elizaOS/eliza (MIT) | **Pattern only, rewritten** (phase 1): character file (persona as data) → speaking style as profile facts + message examples (max 20) + corrections that apply immediately. Not a JSON character file. | `fase-1/puspa/persona/persona.py:3-7`; `fase-1/NOTICE.md:19-21`; `build/REUSE.md` (Phase 1) |
+| **RAGFlow** — infiniflow/ragflow (Apache-2.0) | **Pattern only, rewritten** (phase 3, in progress): work steps as reusable data → service procedures on top of Postgres. Library NOT used. | `fase-3/puspa/graphs/service.py` (header) |
+| **pgvector** (PostgreSQL license) | **Database extension, not code.** `vector(384)` column + HNSW index; the `HashEmbedding` embedding written by hand (token hash, Rp0). | `fase-1/puspa/memory/embeddings.py` (imports: `hashlib`/`math`/`re`); `fase-1/puspa/memory/episodic.py` (`::vector`, pgvector cosine); `build/REUSE.md` (Phase 1) |
 
-## Dependensi pip (dipakai sebagai pustaka, BUKAN penyalinan kode)
+## Pip dependencies (used as libraries, NOT code copying)
 
 `nanobot-ai` (git pin `e767174`, MIT) · `psycopg[binary]` · `argon2-cffi` ·
 `cryptography` · `pytest` · `pydantic` · `pydantic-settings` · `loguru` ·
 `pyyaml` · `json_repair` · `tiktoken` · `jinja2` · `regex` · `jsonschema` ·
-`filelock` · `httpx` · `rich` · `pillow` · `fastapi==0.163.1` (MIT, fase 2) ·
-`uvicorn` · `playwright==1.65.2` (MIT, fase 3).
-Bukti: `fase-0/requirements.txt`, `fase-1/requirements.txt`,
+`filelock` · `httpx` · `rich` · `pillow` · `fastapi==0.163.1` (MIT, phase 2) ·
+`uvicorn` · `playwright==1.65.2` (MIT, phase 3).
+Evidence: `fase-0/requirements.txt`, `fase-1/requirements.txt`,
 `fase-2/requirements.txt`, `fase-3/requirements.txt`,
 `cli/requirements.txt`.
 
-## Temuan — yang belum beres
+## Findings — what's not yet resolved
 
-1. **REUSE.md belum punya bagian Fase 3.** Dependensi baru
-   `playwright==1.65.2` dan pola RAGFlow + LadybugDB baru tercatat
-   di header kode (`fase-3/puspa/graphs/service.py`,
+1. **REUSE.md has no Phase 3 section yet.** The new dependency
+   `playwright==1.65.2` and the RAGFlow + LadybugDB patterns are only recorded
+   in code headers (`fase-3/puspa/graphs/service.py`,
    `fase-3/puspa/graphs/identity.py`, `fase-3/requirements.txt`),
-   belum di `build/REUSE.md`. Fase 3 juga belum punya STATUS file.
-2. **REUSE.md bagian Fase 0 tidak mencatat pengaruh desain.**
-   Bagian Fase 1 dan Fase 2 mencatat tiap pola + asalnya, tapi
-   bagian Fase 0 hanya mencantumkan nanobot. Pengaruh desain fase 0
-   yang tidak tercatat di log: pola gateway fail-closed OpenBot,
-   konsep komputer-per-bot E2B/Firecracker, format agentskills,
-   pola skill/learning ECC, dan learning loop hermes-agent.
-   Ini celah LOG, bukan pelanggaran — tidak ada kode dari repo-repo
-   itu di fase 0.
-3. **Kalimat survei 2 soal LangGraph salah.** Entri langchain di
-   `chassis-tambahan-2026-11-17.md` menulis "Puspa sudah memakai
-   LangGraph untuk orkestrasi" — tidak benar: nol import dan nol
-   kode LangGraph di seluruh pohon. Orkestrasi Puspa = nanobot
-   `AgentLoop` + siklus tugas Puspa sendiri. Kalimat itu perlu
-   dikoreksi di survei (atau dicatat sebagai kesalahan).
-4. **Celah `get_definitions` di `PuspaRegistry` masih terbuka saat
-   audit dibaca.** `fase-0/puspa/chassis/registry.py` (dibaca ulang
-   ~22:40 WIB, belum berubah) masih mendokumentasikan
-   "`get_definitions` tidak diperiksa — skema tool yang dilihat
-   model bukan eksekusi." Model melihat 18 tool bawaan nanobot
-   padahal token hanya mengizinkan 5 (dibuktikan run live-1 CLI).
-   Perbaikan sedang dikerjakan agen lain; perbaikan lokal CLI sudah
-   ada (`cli/puspa_cli/agent.py:460-464`, `unregister` tool di luar
-   token). Ini BUKAN masalah reuse — tapi dicatat karena berkaitan
-   dengan pembungkusan nanobot.
-5. **Tidak ada pelanggaran lisensi ditemukan.** Tidak ada kode
-   GPL/AGPL/SSPL/PolyForm/CC BY-NC di pohon Puspa. dusk.bot
-   (PolyForm) hanya dipelajari desainnya. Tidak ada fork GitHub.
+   not yet in `build/REUSE.md`. Phase 3 also has no STATUS file yet.
+2. **The Phase 0 section of REUSE.md doesn't record design influences.**
+   The Phase 1 and Phase 2 sections record each pattern + its source, but
+   the Phase 0 section only lists nanobot. Unrecorded phase 0 design
+   influences: the OpenBot fail-closed gateway pattern,
+   the E2B/Firecracker per-bot computer concept, the agentskills format,
+   the ECC skill/learning pattern, and the hermes-agent learning loop.
+   This is a LOG gap, not a violation — there is no code from those
+   repos in phase 0.
+3. **Survey 2's sentence about LangGraph is wrong.** The langchain entry in
+   `chassis-tambahan-2026-11-17.md` writes "Puspa already uses
+   LangGraph for orchestration" — not true: zero imports and zero
+   LangGraph code in the whole tree. Puspa orchestration = nanobot
+   `AgentLoop` + Puspa's own task cycle. That sentence needs
+   correcting in the survey (or recording as an error).
+4. **The `get_definitions` gap in `PuspaRegistry` was still open when the
+   audit was read.** `fase-0/puspa/chassis/registry.py` (re-read
+   ~22:40 WIB, unchanged) still documents
+   "`get_definitions` is not checked — the tool schema the model
+   sees is not execution." The model sees 18 built-in nanobot tools
+   even though the token only allows 5 (proven by live run 1 of the CLI).
+   A fix is being worked on by another agent; a local CLI fix already
+   exists (`cli/puspa_cli/agent.py:460-464`, `unregister` tools outside
+   the token). This is NOT a reuse issue — but it is recorded because it relates
+   to wrapping nanobot.
+5. **No license violations found.** No GPL/AGPL/SSPL/PolyForm/CC BY-NC code in the Puspa tree. dusk.bot
+   (PolyForm) was only studied for its design. No GitHub fork.
+
+## Translator's note (18 Nov 2026)
+
+This is a dated audit record (17 Nov 2026). Quoted old identifiers,
+paths, and file evidence are kept verbatim as they were at audit time.
+Two things have changed since: (1) the language policy this audit
+assumes — Indonesian identifiers and prose — is superseded by the
+English-only refactor ordered by Nero on 18 Nov 2026 (see
+`docs/GLOSSARY.md`); (2) the `build/` / `fase-N/` tree the audit cites
+is now the repo root, `build/REUSE.md` is `docs/reuse.md`, and the
+`fase-0/` + `fase-1/` NOTICE files are the single root `NOTICE.md`.

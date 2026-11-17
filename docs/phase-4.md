@@ -1,32 +1,32 @@
-# Fase 4 — Alur + Modul kustom (revisi 7 §2.12–2.13)
+# Phase 4 — Workflows + Custom modules (revision 7 §2.12–2.13)
 
-Pustaka blok, pemicu, penyusun alur lewat chat, manifes izin turunan,
-uji kering, runner alur, persetujuan kedaluwarsa 24 jam, modul kustom
-dengan gerbang manifes, dan 3 templat bawaan. Semua di `build/fase-4/`;
-paket Fase 0/1/2/3 tidak diubah (dipakai lewat `sys.path`, pola
-conftest fase 0/1/2/3).
+Block library, triggers, chat-based workflow composer, derived
+permission manifests, dry runs, workflow runner, 24-hour approval
+expiry, custom modules with a manifest gate, and 3 built-in templates.
+All in `build/fase-4/`; Phase 0/1/2/3 packages unchanged (used via
+`sys.path`, the conftest pattern of phases 0/1/2/3).
 
-## Struktur
+## Structure
 
-| Modul | Isi |
+| Module | Contents |
 | --- | --- |
-| `puspa/workflow/blocks.py` | Pustaka 15 blok tetap + skema + batas MVP (10 langkah, 2 cabang, 20 item) |
-| `puspa/workflow/triggers.py` | 4 pemicu (jadwal, jatuh tempo, harga turun, manual); email/webhook ditolak |
-| `puspa/workflow/composer.py` | Penyusun alur lewat chat (deterministik, hanya blok pustaka) + Permintaan Blok |
-| `puspa/workflow/manifest.py` | Manifes izin turunan (dihitung kode) + cek himpunan bagian vs izin user |
-| `puspa/workflow/approvals.py` | Antrean persetujuan: terikat isi, kedaluwarsa 24 jam lalu dibatalkan |
-| `puspa/workflow/runner.py` | CRUD + versi/rollback alur, uji kering, jalan alur, tick penjadwal |
-| `puspa/workflow/templates.py` | 3 templat bawaan; tugas acuan 8 dan 9 sebagai alur |
-| `puspa/workflow/panel.py` | Render kartu langkah + hasil jalan (HTML tanpa JavaScript) |
-| `puspa/workflow/metrics.py` | Metrik alur §3.8 (pengguna aktif, jalan tanpa campur, Permintaan Blok) |
-| `puspa/modules/manifest.py` | Manifes modul + gerbang manifes (5, oleh kode) + CRUD/versi/rollback/hapus |
-| `puspa/modules/tables.py` | Tabel milik modul (kolom bertipe, isolasi per pengguna + per modul) |
-| `puspa/modules/views.py` | Render 7 komponen tetap (termasuk grafik garis SVG, tanpa JavaScript) |
-| `puspa/modules/notifications.py` | Aturan notif dari data modul |
-| `puspa/modules/tagihan.py` | Modul bawaan Tagihan sebagai manifes |
-| `infra/schema_fase4.sql` | Tabel alur, jalan_alur, persetujuan_alur, modul, tabel_modul, baris_modul (+ RLS) |
+| `puspa/workflow/blocks.py` | Library of 15 fixed blocks + schemas + MVP limits (10 steps, 2 branches, 20 items) |
+| `puspa/workflow/triggers.py` | 4 triggers (schedule, due date, price drop, manual); email/webhook rejected |
+| `puspa/workflow/composer.py` | Chat-based workflow composer (deterministic, library blocks only) + block requests |
+| `puspa/workflow/manifest.py` | Derived permission manifest (computed by code) + subset check vs user permissions |
+| `puspa/workflow/approvals.py` | Approval queue: content-bound, expires after 24 hours, then cancelled |
+| `puspa/workflow/runner.py` | Workflow CRUD + versions/rollback, dry runs, workflow runs, scheduler tick |
+| `puspa/workflow/templates.py` | 3 built-in templates; reference tasks 8 and 9 as workflows |
+| `puspa/workflow/panel.py` | Render step cards + run results (HTML without JavaScript) |
+| `puspa/workflow/metrics.py` | Workflow metrics §3.8 (active users, hands-free runs, block requests) |
+| `puspa/modules/manifest.py` | Module manifest + manifest gate (5, by code) + CRUD/versions/rollback/delete |
+| `puspa/modules/tables.py` | Module-owned tables (typed columns, per-user + per-module isolation) |
+| `puspa/modules/views.py` | Render 7 fixed components (including SVG line chart, no JavaScript) |
+| `puspa/modules/notifications.py` | Notification rules from module data |
+| `puspa/modules/bills.py` | Built-in Bills module as a manifest |
+| `infra/schema_workflow.sql` | workflows, workflow_runs, workflow_approvals, modules, module_tables, module_rows tables (+ RLS) |
 
-## Menjalankan tes
+## Running the tests
 
 ```bash
 cd build/fase-4
@@ -34,17 +34,17 @@ NO_PROXY=localhost,127.0.0.1 no_proxy=localhost,127.0.0.1 \
   ../fase-0/.venv/bin/python -m pytest tests -q
 ```
 
-Tidak ada dependensi baru (lihat `requirements.txt`). JANGAN jalankan
-pytest paralel (tabrakan TRUNCATE di DB `puspa_test` yang sama).
+No new dependencies (see `requirements.txt`). DO NOT run pytest in
+parallel (TRUNCATE collisions on the shared `puspa_test` DB).
 
-## Angka tes (run solo, 17 Nov 2026)
+## Test numbers (solo run, 17 Nov 2026)
 
-| Suite | Hasil |
+| Suite | Result |
 | --- | --- |
-| Fase 4 (baru) | 76 passed |
-| Fase 0 | 248 passed, 4 skipped |
-| Fase 1 | 58 passed |
-| Fase 2 | 73 passed |
-| Fase 3 (dengan browser) | 62 passed |
+| Phase 4 (new) | 76 passed |
+| Phase 0 | 248 passed, 4 skipped |
+| Phase 1 | 58 passed |
+| Phase 2 | 73 passed |
+| Phase 3 (with browser) | 62 passed |
 
-Detail, gerbang, dan blocker: `STATUS_FASE4.md`.
+Detail, gates, and blockers: `status-phase-4.md`.

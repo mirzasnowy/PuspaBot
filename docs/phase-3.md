@@ -1,49 +1,49 @@
-# Fase 3 — Wedge ganda + Moat (MVP Puspa, revisi 7)
+# Phase 3 — Dual wedge + Moat (Puspa MVP, revision 7)
 
-Definisi: revisi 7 (disetujui Nero 17 Nov 2026 ~17:42 WIB).
-Timeline 17 minggu DIABAIKAN atas perintah Nero 21:53 WIB (tanggal
-hanya urutan, bukan deadline). Kerja lokal di `build/fase-3/`;
-JANGAN push ke GitHub; JANGAN mulai Fase 4.
+Definition: revision 7 (approved by Nero 17 Nov 2026 ~17:42 WIB).
+The 17-week timeline IGNORED on Nero's order, 21:53 WIB (dates are
+only ordering, not deadlines). Local work in `build/fase-3/`;
+DO NOT push to GitHub; DO NOT start Phase 4.
 
-## Yang dibangun
+## What was built
 
-- **Wedge 1 — bandingkan harga** (`puspa/pricing/`): 3 Pembaca
-  (Tokopedia, Shopee, Blibli) + 1 Pemeriksa; pencocokan lewat Graf
-  Identitas; scope 9 kategori dikunci; fashion ditolak dengan pesan
-  jelas; kredit cek detail 1 kredit, 15 gratis/bulan.
-- **Graf Identitas dan Harga** (`puspa/graphs/identity.py`): produk
-  kanonik + tautan listing (`otomatis`/`dikonfirmasi_user`/
-  `ditolak_user`) + deret waktu harga (tanpa `bukti_id` ditolak).
-- **Bibit katalog** (`puspa/pricing/catalog.py`): 14 baris bibit
-  (13 produk unik, 9 kategori) + 10 barang uji default.
-- **Watchlist + sampler** (`puspa/pricing/watchlist.py`): anggaran
-  baca maks 20/hari/pengguna; alert harga turun.
-- **Cache bukti bersama** (`puspa/pricing/cache.py`): TTL 30 menit;
-  Pemeriksa tetap baca ulang independen (tidak pernah pakai cache).
-- **Wedge 2 — autopilot tagihan** (`puspa/billing/`): PLN, PDAM,
-  pulsa, paket data (TIDAK ADA BPJS); prosedur dari Graf Alur
-  Layanan; pengingat jatuh tempo; siapkan bayar mode aman (draf saja).
-- **Graf Alur Layanan** (`puspa/graphs/service.py`): siklus
-  percobaan → terverifikasi → rusak → perbaikan (3 uji) + rollback;
-  canary harian; pakai ulang lintas agen; pola sub-agen tersimpan.
-- **Skor Keandalan** (`puspa/moat/reliability.py`): per sumber
-  (marketplace x kategori) + per prosedur; < 80% → maksimal
-  Belum pasti; label panel Bukti.
-- **Lapor Salah** (`puspa/moat/report.py`): tercatat di Buku Kerja
-  (`laporan_salah`) + menurunkan skor sumber + memicu baca ulang.
-- **Metrik moat gerbang 8** (`puspa/moat/metrics.py`): cakupan
-  pencocokan otomatis, 4 prosedur terverifikasi + dipakai ulang,
-  rasio token, keandalan semua sumber; metrik alur aktif (Fase 4)
-  dilaporkan `tertunda`, tidak diklaim.
-- **Pustaka alur** (`puspa/moat/library.py`): fondasi Fase 4
-  (alur sukses + Permintaan Blok).
-- **Cek syarat layanan** (`puspa/pricing/tos.py`): hasil cek + gerbang
-  baca live (lihat STATUS_FASE3.md — temuan terbesar fase ini).
+- **Wedge 1 — compare prices** (`puspa/pricing/`): 3 readers
+  (Tokopedia, Shopee, Blibli) + 1 verifier; matching via the
+  identity graph; 9-category scope locked; fashion rejected with a
+  clear message; detail check 1 credit, 15 free/month.
+- **Identity and price graph** (`puspa/graphs/identity.py`): canonical
+  products + listing links (`automatic`/`user_confirmed`/
+  `user_rejected`) + price time series (rejected without `evidence_id`).
+- **Catalog seed** (`puspa/pricing/catalog.py`): 14 seed rows
+  (13 unique products, 9 categories) + 10 default test items.
+- **Watchlist + sampler** (`puspa/pricing/watchlist.py`): read budget
+  max 20/day/user; price-drop alerts.
+- **Shared evidence cache** (`puspa/pricing/cache.py`): 30-minute TTL;
+  the verifier still rereads independently (never uses the cache).
+- **Wedge 2 — bill autopilot** (`puspa/billing/`): PLN, PDAM,
+  airtime, data packages (NO BPJS); procedures from the service flow
+  graph; due-date reminders; prepare-payment safe mode (draft only).
+- **Service flow graph** (`puspa/graphs/service.py`): trial →
+  verified → broken → fix (3 tests) + rollback cycle; daily canary;
+  cross-agent reuse; stored subagent patterns.
+- **Reliability score** (`puspa/moat/reliability.py`): per source
+  (marketplace x category) + per procedure; < 80% → max
+  Uncertain; evidence-panel labels.
+- **False reports** (`puspa/moat/report.py`): recorded in the ledger
+  (`false_report`) + lowers the source score + triggers a reread.
+- **Gate 8 moat metrics** (`puspa/moat/metrics.py`): automatic-match
+  coverage, 4 verified + reused procedures, token ratio, reliability
+  of all sources; active-workflow metrics (Phase 4) reported as
+  `pending`, not claimed.
+- **Workflow library** (`puspa/moat/library.py`): Phase 4 foundation
+  (successful workflows + block requests).
+- **Terms-of-service check** (`puspa/pricing/tos.py`): check results +
+  live-read gate (see status-phase-3.md — the biggest finding of this phase).
 
-## Menjalankan tes
+## Running the tests
 
-Semua run SOLO (satu pytest dalam satu waktu — tabrakan TRUNCATE di
-DB `puspa_test` yang sama). Untuk semua HTTP keluar pakai
+All runs SOLO (one pytest at a time — TRUNCATE collisions on the
+shared `puspa_test` DB). For all outbound HTTP use
 `NO_PROXY=localhost,127.0.0.1 no_proxy=localhost,127.0.0.1`.
 
 ```sh
@@ -52,22 +52,23 @@ NO_PROXY=localhost,127.0.0.1 no_proxy=localhost,127.0.0.1 \
   ../fase-0/.venv/bin/python -m pytest tests -q
 ```
 
-Angka terakhir: Fase 3 **62 passed** (dengan browser Chromium lewat
-`PUSPA_CHROMIUM_EXECUTABLE`; 61 passed + 1 skipped tanpa env browser);
-Fase 0 248 passed + 4 skipped; Fase 1 58 passed; Fase 2 73 passed
-(semua run solo).
+Latest numbers: Phase 3 **62 passed** (with a Chromium browser via
+`PUSPA_CHROMIUM_EXECUTABLE`; 61 passed + 1 skipped without the browser
+env); Phase 0 248 passed + 4 skipped; Phase 1 58 passed; Phase 2
+73 passed (all solo runs).
 
-## Catatan jujur (ringkas; detail di STATUS_FASE3.md)
+## Honest notes (short version; detail in status-phase-3.md)
 
-- Pembacaan LIVE ketiga marketplace DITAHAN gerbang ToS: syarat
-  layanan ketiganya melarang pembacaan otomatis tanpa izin. Wedge
-  harga teruji penuh di mode fixture; live menunggu keputusan Nero
-  (keputusan 15).
-- Tagihan live menunggu nomor pelanggan Nero (keputusan 5); canary +
-  uji memakai situs uji lokal.
-- Playwright: paket terinstal; browser Chromium tersedia lewat
-  Chrome for Testing 159 + env `PUSPA_CHROMIUM_EXECUTABLE`
-  (unduhan CDN Playwright diblokir proxy egress — lihat
-  STATUS_FASE3.md). Tanpa env, reader gagal terlihat (`browser_gagal`).
-- Orkestrasi Puspa = AgentLoop nanobot + siklus tugas Puspa sendiri.
-  LangGraph TIDAK dipakai dan tidak diklaim di mana pun.
+- LIVE reads of all three marketplaces HELD by the ToS gate: the terms
+  of service of all three forbid automated reading without permission.
+  The price wedge is fully tested in fixture mode; live waits on
+  Nero's decision (decision 15).
+- Live bills wait on Nero's customer numbers (decision 5); canary +
+  tests use a local test site.
+- Playwright: package installed; Chromium browser available via
+  Chrome for Testing 159 + the `PUSPA_CHROMIUM_EXECUTABLE` env
+  (Playwright CDN download blocked by the egress proxy — see
+  status-phase-3.md). Without the env, the reader fails visibly
+  (`browser_gagal`).
+- Puspa orchestration = nanobot's AgentLoop + Puspa's own task
+  lifecycle. LangGraph is NOT used and is not claimed anywhere.

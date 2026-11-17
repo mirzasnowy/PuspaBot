@@ -1,332 +1,342 @@
-# STATUS — Fase 3 MVP Puspa (Wedge ganda + Moat)
+# STATUS — Phase 3 Puspa MVP (Dual wedge + Moat)
 
-Definisi: revisi 7 (disetujui Nero 17 Nov 2026 ~17:42 WIB).
-Timeline 17 minggu DIABAIKAN atas perintah Nero 21:53 WIB (tanggal
-hanya urutan, bukan deadline). Kerja lokal di `build/fase-3/`;
-JANGAN push ke GitHub; JANGAN mulai Fase 4.
+Definition: revision 7 (approved by Nero 17 Nov 2026 ~17:42 WIB).
+The 17-week timeline IGNORED on Nero's order, 21:53 WIB (dates are
+only ordering, not deadlines). Local work in `build/fase-3/`;
+DO NOT push to GitHub; DO NOT start Phase 4.
 
-## Angka (semua run SOLO, satu pytest dalam satu waktu)
+## Numbers (all runs SOLO, one pytest at a time)
 
-| Suite | Hasil | Waktu |
+| Suite | Result | Time |
 | --- | --- | --- |
-| Fase 3 (baru) | **62 passed** (dengan browser; 61 passed + 1 skipped tanpa env browser) | 17 Nov 2026 ~23:30 WIB |
-| Fase 0 (verifikasi ulang) | **248 passed, 4 skipped** | 17 Nov 2026 ~22:50 WIB, solo |
-| Fase 1 (verifikasi ulang) | **58 passed** | 17 Nov 2026 ~22:50 WIB, solo |
-| Fase 2 (verifikasi ulang) | **73 passed** | 17 Nov 2026 ~22:45 WIB, solo |
+| Phase 3 (new) | **62 passed** (with browser; 61 passed + 1 skipped without the browser env) | 17 Nov 2026 ~23:30 WIB |
+| Phase 0 (re-verification) | **248 passed, 4 skipped** | 17 Nov 2026 ~22:50 WIB, solo |
+| Phase 1 (re-verification) | **58 passed** | 17 Nov 2026 ~22:50 WIB, solo |
+| Phase 2 (re-verification) | **73 passed** | 17 Nov 2026 ~22:45 WIB, solo |
 
-4 skip Fase 0 = tes live-container Docker (kernel tolak `setns`) —
-blokir lingkungan yang sama seperti Fase 0/1/2, bukan regresi.
-Fase 0 naik 244 → 248 passed: 4 tes regresi registry baru
-(keputusan 22, `get_definitions` difilter token, mendarat
-17 Nov 2026 ~22:40 WIB) — bukan perubahan kode Fase 3.
+4 Phase 0 skips = live-container Docker tests (kernel rejects `setns`) —
+the same environment block as Phase 0/1/2, not a regression.
+Phase 0 rose 244 → 248 passed: 4 new registry regression tests
+(decision 22, token-filtered `get_definitions`, landed
+17 Nov 2026 ~22:40 WIB) — not a Phase 3 code change.
 
-Total baris kode baru Fase 3: ~3.500 baris Python (kode + tes; 10 modul
-+ 10 file tes + skema 16 tabel).
+Total new Phase 3 code: ~3,500 lines of Python (code + tests; 10 modules
++ 10 test files + a 16-table schema).
 
-## TEMUAN TERBESAR: syarat layanan ketiga marketplace melarang baca otomatis
+## BIGGEST FINDING: the terms of service of all three marketplaces forbid automated reading
 
-Cek keputusan 15 — dibaca langsung dari halaman syarat resmi tiap
-sumber (17 Nov 2026, tercatat di `cek_syarat_layanan` + `puspa/pricing/tos.py`):
+Decision 15 check — read directly from each source's official terms
+page (17 Nov 2026, recorded in `tos_checks` + `puspa/pricing/tos.py`):
 
-| Sumber | Hasil | Pasal |
+| Source | Result | Clause |
 | --- | --- | --- |
-| Tokopedia | **melarang_otomatis** | S&K B.12-13: dilarang memakai robot, macro, crawler dan/atau perangkat otomatis untuk crawling/scraping tanpa izin Tokopedia. Sumber: https://www.tokopedia.com/help/article/terms-conditions |
-| Shopee | **melarang_otomatis** | Ketentuan Layanan bag. 3: dilarang mengakses dengan bot/emulator dan memantau/menyalin otomatis tanpa izin tertulis; jalur resmi yang diizinkan adalah Shopee Open Platform (butuh akun partner + otorisasi toko). |
-| Blibli | **melarang_otomatis** | S&K 2.2: dilarang mengambil isi secara sistematis untuk membuat/menyusun koleksi, kompilasi, database atau direktori tanpa izin tertulis. Sumber: https://www.blibli.com/faq/tentang-blibli/syarat-ketentuan/ |
-| PLN | layanan_resmi_terbatas | Cek tagihan layanan resmi pelanggan sendiri di layanan.pln.co.id; butuh login + captcha — jalur otomatis tidak dijamin, bukan larangan eksplisit. |
-| PDAM | layanan_resmi_terbatas | Tiap daerah punya situs sendiri; cek tagihan layanan resmi pelanggan sendiri. MVP hanya PDAM milik Nero + pengguna uji (§4.2). |
-| pulsa / paket data | layanan_resmi_terbatas | Cek lewat kanal resmi operator (aplikasi/UMB); tidak ada API publik umum. |
+| Tokopedia | **melarang_otomatis** | Terms B.12-13: forbidden to use robots, macros, crawlers and/or automated tools for crawling/scraping without Tokopedia's permission. Source: https://www.tokopedia.com/help/article/terms-conditions |
+| Shopee | **melarang_otomatis** | Terms of Service section 3: forbidden to access with bots/emulators and to monitor/copy automatically without written permission; the permitted official route is the Shopee Open Platform (needs a partner account + store authorization). |
+| Blibli | **melarang_otomatis** | Terms 2.2: forbidden to systematically take content to create/compile a collection, compilation, database or directory without written permission. Source: https://www.blibli.com/faq/tentang-blibli/syarat-ketentuan/ |
+| PLN | layanan_resmi_terbatas | Bill checks via the official service for your own account at layanan.pln.co.id; needs login + captcha — the automated route is not guaranteed, not an explicit ban. |
+| PDAM | layanan_resmi_terbatas | Each region has its own site; bill checks via the official service for your own account. MVP covers only Nero's PDAM + test users (§4.2). |
+| airtime / data packages | layanan_resmi_terbatas | Checks via the operator's official channels (app/USSD); no general public API. |
 
-**Konsekuensi kode (bukan sekadar catatan):** `puspa/pricing/tos.py`
-punya gerbang `boleh_baca` — pembacaan LIVE ketiga marketplace
-DITAHAN sampai Nero memutuskan lanjut atau ganti sumber (keputusan
-15). `bandingkan_harga(mode="live")` mengembalikan
-`tidak_bisa_dicek` + alasan `syarat_layanan_menunggu_keputusan_nero`
-TANPA satu pun upaya HTTP ke marketplace (diuji: pembaca dipanggil
-0 kali). Kalau sumber memblokir (403/429/captcha), reader melaporkan
-`sumber_memblokir` / `captcha_terdeteksi` — TANPA upaya menembus
-blokir (§11). Jalur resmi yang sesuai syarat (Shopee Open Platform,
-dan kemungkinan API resmi Tokopedia/Blibli) butuh akun partner +
-persetujuan — bukan bagian MVP, perlu keputusan Nero.
+**Code consequence (not just a note):** `puspa/pricing/tos.py`
+has the `boleh_read` gate — LIVE reads of all three marketplaces are
+HELD until Nero decides to proceed or switch sources (decision
+15). `compare_price(mode="live")` returns
+`tidak_bisa_dicek` + the reason `syarat_service_pending_keputusan_nero`
+WITHOUT a single HTTP attempt to a marketplace (tested: the readers
+were called 0 times). If a source blocks (403/429/captcha), the reader
+reports `sumber_memblokir_http_*` / `captcha_terdeteksi` — WITHOUT any
+attempt to break through the block (§11). The compliant official routes
+(Shopee Open Platform, and possibly official Tokopedia/Blibli APIs)
+need a partner account + approval — not part of the MVP, needs Nero's
+decision.
 
-## Yang dibangun (per scope definisi)
+## What was built (per definition scope)
 
-### 1. Wedge 1 — bandingkan harga (§4.1) — `puspa/pricing/compare.py`
-- 3 Pembaca (satu per marketplace) + 1 Pemeriksa membaca ulang tiap
-  angka (§2.5); pencocokan lewat Graf Identitas; semua angka yang
-  tampil punya `bukti_id` (harga tanpa bukti tidak ditulis ke graf).
-- Scope 9 kategori dikunci di kode (`catalog.KATEGORI_SCOPE`):
-  fashion/sepatu/tas ditolak dengan pesan jelas, bukan dibangun versi
-  diam-diam lemah (§5.2). Aturan masuk: nomor model bisa dicocokkan.
-- Ragu → tanya user (kandidat ditampilkan), bukan tebak (§3.2).
-- Output: harga termurah + toko + rating, harga tiap marketplace,
-  selisih, tautan tiap listing, vonis tiap harga.
-- Harga: banding dasar gratis; cek detail (riwayat 30 hari + harga
-  terkini) = 1 kredit; 15 kredit gratis/bulan (`credits.py`).
-- Input foto: belum — foto dibaca model vision Fase 2; wedge menerima
-  nama barang / tautan produk (foto → nama barang oleh agen, sesuai
-  §2.4; dicatat sebagai batas, bukan diklaim).
+### 1. Wedge 1 — compare prices (§4.1) — `puspa/pricing/compare.py`
+- 3 readers (one per marketplace) + 1 verifier rereading every
+  number (§2.5); matching via the identity graph; every displayed
+  number has an `evidence_id` (a price without evidence is not written
+  to the graph).
+- The 9-category scope is locked in code (`CATEGORY_SCOPE`):
+  fashion/shoes/bags rejected with a clear message, not silently built
+  as a weak version (§5.2). Entry rule: the model number must be
+  matchable.
+- When unsure → ask the user (candidates shown), never guess (§3.2).
+- Output: cheapest price + store + rating, price per marketplace,
+  difference, a link per listing, verdict per price.
+- Pricing: base compare free; detail check (30-day history + current
+  price) = 1 credit; 15 free credits/month (`credits.py`).
+- Photo input: not yet — photos are read by the Phase 2 vision model;
+  the wedge takes an item name / product link (photo → item name by
+  the agent, per §2.4; recorded as a limit, not claimed).
 
-### 2. Graf Identitas dan Harga (§3.2) — `puspa/graphs/identity.py`
-- Lapisan identitas: produk kanonik (merek, seri, nomor model,
-  varian ternormalisasi: storage/warna/ram); tautan listing berstatus
-  `otomatis` / `dikonfirmasi_user` / `ditolak_user`.
-- Lapisan harga: deret waktu (harga, ongkir, rating toko, stok,
-  `bukti_id`); `catat_harga` MENOLAK angka tanpa `bukti_id`.
-- Pencocokan bertingkat: kunci model deterministik → kandidat + tanya
-  user → tautan `dikonfirmasi_user` → TIDAK ADA tebakan senyap.
-- API baca: harga terkini, riwayat 30 hari, kandidat identitas.
-- Penyimpanan: Postgres (tabel + relasi), BUKAN graph DB eksternal —
-  §7 terpenuhi; pola graf embedded LadybugDB hanya referensi pola
-  (lihat REUSE.md). Tidak ada bukti Postgres tidak cukup.
+### 2. Identity and price graph (§3.2) — `puspa/graphs/identity.py`
+- Identity layer: canonical products (brand, series, model number,
+  normalized variants: storage/color/RAM); listing links with status
+  `automatic` / `user_confirmed` / `user_rejected`.
+- Price layer: time series (price, shipping, store rating, stock,
+  `evidence_id`); `record_price` REJECTS numbers without `evidence_id`.
+- Tiered matching: deterministic model key → candidates + ask
+  user → `user_confirmed` links → NO silent guessing.
+- Read API: current price, 30-day history, identity candidates.
+- Storage: Postgres (tables + relations), NOT an external graph DB —
+  §7 satisfied; the embedded-graph LadybugDB pattern is only a pattern
+  reference (see `reuse.md`). No evidence Postgres is insufficient.
 
-### 3. Bibit katalog (§3.8) — `puspa/pricing/catalog.py`
-- 14 baris bibit (13 produk unik) lintas 9 kategori; 10 barang uji
-  default (keputusan 7: daftar final menunggu konfirmasi Nero).
-- CATATAN JUJUR: bibit ditulis dari spesifikasi publik yang dikenal,
-  BUKAN hasil tarikan langsung dari halaman spesifikasi resmi merek
-  saat build (tarikan live ditahan gerbang ToS). Bibit ditandai
-  `sumber_bibit="bibit_awal"` di STATUS ini supaya bisa diganti hasil
-  tarikan resmi begitu Nero memutuskan sumber (keputusan 15).
+### 3. Catalog seed (§3.8) — `puspa/pricing/catalog.py`
+- 14 seed rows (13 unique products) across 9 categories; 10 default
+  test items (decision 7: final list waits on Nero's confirmation).
+- HONEST NOTE: the seed was written from known public specifications,
+  NOT pulled directly from the brands' official spec pages during the
+  build (live pulls are held by the ToS gate). The seed is marked
+  `sumber_bibit="bibit_awal"` in this STATUS so it can be replaced with
+  official pulls once Nero decides on sources (decision 15).
 
-### 4. Watchlist + sampler harga (§3.8) — `puspa/pricing/watchlist.py`
-- User menandai barang; sampler membaca berkala dengan anggaran
-  maks 20/hari/pengguna (ditegakkan kode — anggaran habis → barang
-  dilewati + dilaporkan, bukan dibaca diam-diam); alert harga turun
-  bila harga ≤ ambang.
-- BATAS DICATAT: parser cron penuh BELUM ada (catatan Fase 2: pemicu
-  digeser +1 hari). Sampler memakai pemicu `harga_turun`/`jadwal`
-  Fase 2 apa adanya (sekali sehari per barang); cron per jam tetap
-  Fase 4. Penjadwal Fase 2 tidak diubah (aturan kerja fase: jangan
-  edit paket Fase 2 kecuali perbaikan bug).
+### 4. Watchlist + price sampler (§3.8) — `puspa/pricing/watchlist.py`
+- The user flags items; the sampler reads periodically with a budget
+  of max 20/day/user (enforced by code — budget exhausted → items
+  skipped + reported, not read silently); price-drop alerts when the
+  price is at or below the threshold.
+- RECORDED LIMIT: the full cron parser does NOT exist yet (Phase 2
+  note: triggers shift +1 day). The sampler uses the Phase 2
+  `price_turun`/`schedule` triggers as-is (once a day per item); hourly
+  cron stays Phase 4. The Phase 2 scheduler is unchanged (phase work
+  rule: do not edit Phase 2 packages except for bug fixes).
 
-### 5. Cache bukti bersama (§3.8) — `puspa/pricing/cache.py`
-- TTL 30 menit, dipakai ulang antar pengguna oleh Pembaca; tingkat
-  cache hit dicatat (`statistik_hit`, tanpa target di MVP).
-- Pemeriksa TIDAK PERNAH pakai cache: jalur Pemeriksa memanggil
-  reader langsung; diuji (baca_ulang tetap dipanggil 3/3 walau cache
-  terisi).
+### 5. Shared evidence cache (§3.8) — `puspa/pricing/cache.py`
+- 30-minute TTL, reused across users by readers; the cache-hit rate
+  is recorded (`statistics_hit`, no MVP target).
+- The verifier NEVER uses the cache: the verifier path calls the
+  reader directly; tested (rereads still called 3/3 even with a warm
+  cache).
 
-### 6. Lapor Salah (§3.8) — `puspa/moat/report.py`
-- Tiap angka punya laporan salah: tercatat di tabel `laporan_salah`
-  + kejadian `laporan_salah` di Buku Kerja (jenis sudah ada, §2.3) +
-  satu pembacaan `Tidak bisa dipastikan` ditulis ke `pembacaan_sumber`
-  sehingga Skor Keandalan sumbernya turun + baca ulang diminta.
-  Diuji: skor Shopee 100% → 98% sesudah 1 laporan dari 50.
+### 6. False reports (§3.8) — `puspa/moat/report.py`
+- Every number has a false report: recorded in the `false_reports`
+  table + the `false_report` event in the ledger (type already exists,
+  §2.3) + one `Cannot be determined` reading written to
+  `source_readings` so the source's reliability score drops + a reread
+  is requested. Tested: Shopee's score 100% → 98% after 1 report out
+  of 50.
 
-### 7. Wedge 2 — autopilot tagihan (§4.2) — `puspa/billing/billing.py`
-- Provider MVP: PLN, PDAM, pulsa, paket data. TIDAK ADA BPJS
-  (ditolak tegas, diuji).
-- Prosedur dari Graf Alur Layanan; kalau belum ada, agen menemukannya
-  + menulis sebagai prosedur percobaan, baru menjalankan.
-- Nomor pelanggan TIDAK PERNAH masuk graf: `tulis_prosedur` menolak
-  langkah yang memuat pola nomor pelanggan/HP (diuji).
-- Output: jumlah + jatuh tempo + status (angka dari bukti), pengingat
-  sebelum jatuh tempo (N hari sebelum, default 3), siapkan bayar
-  mode aman = DRAF saja (nominal + tujuan + `isi_hash` untuk
-  persetujuan terikat isi; TIDAK ADA eksekusi bayar).
-- Situs uji lokal (`fixture.py`, stdlib saja): PLN Rp132.500 jatuh
-  tempo 2026-11-20 belum_bayar; PDAM Rp87.500; pulsa Rp50.000; paket
-  data Rp75.000. Nilai ini data uji, bukan tagihan nyata siapa pun.
+### 7. Wedge 2 — bill autopilot (§4.2) — `puspa/billing/billing.py`
+- MVP providers: PLN, PDAM, airtime, data packages. NO BPJS
+  (firmly rejected, tested).
+- Procedures from the service flow graph; if none exists yet, the
+  agent finds it + writes it as a trial procedure, then runs it.
+- Customer numbers NEVER enter the graph: `tulis_prosedur` rejects
+  steps containing a customer-number/phone pattern (tested).
+- Output: amount + due date + status (numbers from evidence),
+  reminders before the due date (N days before, default 3), prepare
+  payment safe mode = DRAFT only (amount + destination + `content_hash`
+  for content-bound approval; NO payment execution).
+- Local test site (`fixture.py`, stdlib only): PLN Rp132,500 due
+  2026-11-20 `not_yet_pay`; PDAM Rp87,500; airtime Rp50,000; data
+  package Rp75,000. These are test data, not anyone's real bills.
 
-### 8. Graf Alur Layanan (§3.3) — `puspa/graphs/service.py`
-- Di atas tabel `prosedur` Fase 1 (siklus percobaan → terverifikasi
-  3 jalan sukses min 2 agen → rusak 2 gagal berturut-turut).
-- Tambahan Fase 3: canary harian (hanya prosedur terverifikasi;
-  gagal → prosedur rusak; hasil dicatat di `canary_jalan`); pakai
-  ulang lintas agen dicatat (`pemakaian_prosedur`); perbaikan =
-  versi baru lolos 3 uji sebelum menggantikan + rollback ke versi
-  lama (snapshot di `prosedur_versi`); prosedur `rusak` tidak
-  dijalankan (agen bilang tidak bisa cek).
-- Pola sub-agen juga disimpan di sini: `simpan_pola_subagen`
-  (`bandingkan_harga`: 3 Pembaca + 1 Pemeriksa; `cek_tagihan`:
-  Pembaca + Pemeriksa) + `daftar_pola` lintas agen.
+### 8. Service flow graph (§3.3) — `puspa/graphs/service.py`
+- On top of the Phase 1 `procedures` table (trial → verified
+  cycle: 3 successful runs, min 2 agents → broken after 2 consecutive
+  failures).
+- Phase 3 additions: daily canary (verified procedures only;
+  failure → procedure broken; results recorded in `canary_runs`);
+  cross-agent reuse recorded (`procedure_uses`); fix =
+  a new version passing 3 tests before replacing + rollback to the old
+  version (snapshots in `procedure_versions`); `broken` procedures
+  are not run (the agent says it cannot check).
+- Subagent patterns are also stored here: `save_pattern_subagen`
+  (`compare_prices`: 3 readers + 1 verifier; `check_bill`:
+  reader + verifier) + `daftar_pola` across agents.
 
-### 9. Skor Keandalan (§3.4) — `puspa/moat/reliability.py`
-- Per sumber (marketplace x kategori) dan per prosedur: %
-  Terverifikasi dari 50 pembacaan terakhir + umur pembacaan terakhir.
-- Dipakai: (a) skor < 80% → semua hasil sumber itu maksimal
-  Belum pasti (ditegakkan di `compare.py`, diuji); (b) label jujur
-  panel Bukti ("Shopee, kategori TV: 92% terverifikasi dari 50
-  pembacaan terakhir"); (c) bahan laporan bukti bisnis (metrik).
-- Panel Skor Keandalan di PWA ada di urutan potong #1 (datanya tetap
-  dihitung) — panelnya minimal: label panel tersedia sebagai fungsi,
-  belum dipasang ke template PWA (Fase 2 tidak diubah).
+### 9. Reliability score (§3.4) — `puspa/moat/reliability.py`
+- Per source (marketplace x category) and per procedure: %
+  Verified of the last 50 readings + age of the last reading.
+- Used for: (a) score < 80% → all results from that source are max
+  Uncertain (enforced in `compare.py`, tested); (b) honest evidence
+  panel labels ("Shopee, TV category: 92% verified of the last 50
+  readings"); (c) material for the business evidence report (metrics).
+- The reliability-score panel in the PWA is in cut order #1 (its data
+  is still computed) — the panel itself is minimal: the panel label is
+  available as a function, not yet mounted into the PWA template
+  (Phase 2 unchanged).
 
-### 10. Metrik moat gerbang 8 (§3.6 + §3.8) — `puspa/moat/metrics.py`
-- Terukur lokal: cakupan pencocokan otomatis 100% di tes gerbang
-  (3/3 tautan otomatis; 66,7% di tes metrik dengan 1 tautan
-  dikonfirmasi_user — target ≥ 60% lolos di keduanya); 4 prosedur
-  terverifikasi + masing-masing dipakai ulang agen lain (lolos);
-  canary mendeteksi 2 dari 2 suntikan (lolos); Skor Keandalan
-  terhitung untuk setiap sumber yang dipakai (lolos).
-- Tertunda jujur: rasio token minggu terakhir vs minggu pertama
-  (butuh masa uji 2 minggu — kode pengukur + pencatat token jadi);
-  metrik alur aktif 3.8 (5/10 pengguna punya satu alur aktif) adalah
-  FASE 4 — fondasi pustaka alur tercatat (`library.py`: alur sukses
-  + Permintaan Blok), metriknya TIDAK diklaim di Fase 3.
+### 10. Gate 8 moat metrics (§3.6 + §3.8) — `puspa/moat/metrics.py`
+- Measured locally: automatic-match coverage 100% in the gate test
+  (3/3 automatic links; 66.7% in the metrics test with 1
+  user_confirmed link — target ≥ 60% passes in both); 4 verified
+  procedures + each reused by another agent (passes); canary catches
+  2 of 2 injections (passes); reliability score computed for every
+  source used (passes).
+- Honestly pending: token ratio last week vs first week
+  (needs a 2-week test period — the token measuring + recording code
+  is done); the 3.8 active-workflow metric (5/10 users with one active
+  workflow) is PHASE 4 — the workflow-library foundation is recorded
+  (`library.py`: successful workflows + block requests), its metric is
+  NOT claimed in Phase 3.
 
-### 11. Pembaca: HTTP fetch + Playwright (§2.8) — `puspa/pricing/readers.py`
-- `HttpReader` (httpx, client disuntikkan; tes pakai MockTransport):
-  parser generik JSON-LD `Product`/`Offer` + meta
-  `product:price:amount`; blokir 403/429/captcha dilaporkan, tanpa
-  menembus; domain di luar allowlist ditolak.
-- `PlaywrightReader` (browser read-only): paket `playwright==1.65.2`
-  (MIT) TERINSTAL di venv Fase 0. Unduhan browser Chromium revisi
-  1255 dari CDN Playwright GAGAL 3x (`Download failure, code=1`,
-  percobaan 17 Nov ~22:30, ~22:40, dan ~23:00 WIB, terakhir 7 menit).
-  AKAR MASALAH TERDIAGNOSIS: CDN Playwright mengarahkan ke
-  `playwright.download.prss.microsoft.com`, dan proxy egress
-  mengembalikan `400 Bad Request` (`GatewayExceptionResponse`) untuk
-  host itu — dibuktikan `curl` langsung (redirect 307 → 400).
-  Sementara `storage.googleapis.com` bisa dijangkau (200 OK).
-- SOLUSI YANG JALAN: Chrome for Testing 159.0.8154.6 (revisi yang
-  sama dengan yang diminta Playwright 1.65.2) diunduh dari
-  `storage.googleapis.com` (131 MB, berhasil) ke
+### 11. Readers: HTTP fetch + Playwright (§2.8) — `puspa/pricing/readers.py`
+- `HttpReader` (httpx, injected client; tests use MockTransport):
+  generic JSON-LD `Product`/`Offer` parser + meta
+  `product:price:amount`; 403/429/captcha blocks reported, never
+  broken through; domains outside the allowlist rejected.
+- `PlaywrightReader` (read-only browser): the `playwright==1.65.2`
+  package (MIT) is INSTALLED in the Phase 0 venv. The Chromium 1255
+  browser download from the Playwright CDN FAILED 3x (`Download
+  failure, code=1`, attempts 17 Nov ~22:30, ~22:40, and ~23:00 WIB,
+  the last one 7 minutes). ROOT CAUSE DIAGNOSED: the Playwright CDN
+  redirects to `playwright.download.prss.microsoft.com`, and the egress
+  proxy returns `400 Bad Request` (`GatewayExceptionResponse`) for
+  that host — proven by direct `curl` (307 redirect → 400).
+  Meanwhile `storage.googleapis.com` is reachable (200 OK).
+- WORKING SOLUTION: Chrome for Testing 159.0.8154.6 (the same revision
+  Playwright 1.65.2 asks for) downloaded from
+  `storage.googleapis.com` (131 MB, succeeded) to
   `~/.cache/ms-playwright/chrome-for-testing-159/`; `PlaywrightReader`
-  memakai seam env `PUSPA_CHROMIUM_EXECUTABLE` untuk menunjuk binary
-  itu (`p.chromium.launch(executable_path=...)`). DIBUKTIKAN:
-  reader membaca situs uji lokal dan mengekstrak Rp132.500
-  (`test_playwright_reader_baca_situs_uji_bila_browser_ada`, lolos
-  bila env diset; skip bila tidak ada binary — bukan gagal).
-  Revisi 1223 yang sudah ada di cache TIDAK dipakai (tidak cocok
-  dengan Playwright 1.65.2). Tanpa env, `baca()` mengembalikan
-  `browser_gagal` secara jujur; wedge memakai HTTP fetch sebisanya.
-  TIDAK ADA hasil baca yang dikarang.
+  uses the `PUSPA_CHROMIUM_EXECUTABLE` env seam to point at that
+  binary (`p.chromium.launch(executable_path=...)`). PROVEN:
+  the reader reads the local test site and extracts Rp132,500
+  (`test_playwright_reader_read_situs_test_bila_browser_ada`, passes
+  when the env is set; skips when no binary is present — not a failure).
+  Revision 1223 already in the cache is NOT used (it does not match
+  Playwright 1.65.2). Without the env, `read()` honestly returns
+  `browser_gagal`; the wedge uses HTTP fetch where it can.
+  NO read result is invented.
 
-## Gerbang yang tersentuh
-- **Gerbang 2 (tugas acuan): PARSIAL.** J4 (bandingkan harga laptop)
-  + J5 (cek tagihan PLN + siapkan bayar) kini punya logika wedge +
-  bukti + prosedur — diuji ujung-ke-ujung di fixture (tes gerbang
-  Fase 3). Putaran hidup dengan model + sumber live menunggu
-  keputusan 15 + nomor Nero + pengguna uji.
-- **Gerbang 5 (bandingkan harga akurat): PARSIAL (mekanisme).**
-  Mekanisme akurat teruji di fixture (Pemeriksa menangkap harga salah
-  yang disuntik; vonis + bukti_id di tiap harga). Ukur 95% di 20
-  perbandingan live TERTUNDA — live ditahan ToS (keputusan 15).
-- **Gerbang 6 (bandingkan harga pemakaian): PARSIAL.** Kredit cek
-  detail jadi + diuji (1 kredit, 15/bulan, habis → ditolak).
-  Pemakaian nyata (20 perbandingan/minggu, 1 orang bayar 1 kredit)
-  butuh masa uji + sumber live.
-- **Gerbang 7 (autopilot tagihan): PARSIAL.** Prosedur 4 provider +
-  pengingat + siapkan bayar (draf) jadi + teruji di fixture; 100%
-  angka sama dengan provider + 100% pengingat terkirim butuh nomor
-  live Nero + host selalu hidup (VPS — langkah Nero).
-- **Gerbang 8 (graf moat tiga lapis): PARSIAL (terukur lokal).**
-  Kedua graf terbukti ditulis wedge + dibaca cek berikutnya (query
-  langsung di tes); metrik 3.6 sebagian lolos (cakupan, 4 prosedur +
-  pakai ulang, canary 2/2, keandalan semua sumber), sebagian tertunda
-  (rasio token — butuh masa uji); metrik 3.8 alur aktif adalah Fase 4.
-- **Gerbang 11 (agen + sub-agen): PARSIAL.** Pola 3 Pembaca +
-  1 Pemeriksa tersimpan di graf + dipakai lintas agen; Pemeriksa
-  menangkap harga salah yang disuntik (diuji di wedge, bukan hanya
-  kaset). Handoff macet / Hentikan / hapus Puspa tetap dari Fase 2.
-- **Gerbang 12 (tulang punggung + bukti): PARSIAL.** 100% angka wedge
-  punya `bukti_id` (ditegakkan `catat_harga` + `compare`); angka
-  yatim ditahan di renderer Fase 2. Kaset Fase 3 (putar ulang wedge
-  tanpa jaringan) belum dibuat — tindak lanjut wrap-up.
+## Gates touched
+- **Gate 2 (reference tasks): PARTIAL.** J4 (compare laptop prices)
+  + J5 (check PLN bill + prepare payment) now have wedge logic +
+  evidence + procedures — tested end-to-end in fixtures (Phase 3 gate
+  tests). Live runs with a model + live sources wait on
+  decision 15 + Nero's numbers + test users.
+- **Gate 5 (accurate price compare): PARTIAL (mechanism).**
+  The accurate mechanism is tested in fixtures (the verifier catches
+  injected wrong prices; verdict + evidence_id on every price).
+  Measuring 95% over 20 live compares is PENDING — live is held by
+  ToS (decision 15).
+- **Gate 6 (price-compare usage): PARTIAL.** Detail-check credits
+  done + tested (1 credit, 15/month, exhausted → rejected).
+  Real usage (20 compares/week, 1 person paying 1 credit)
+  needs a test period + live sources.
+- **Gate 7 (bill autopilot): PARTIAL.** Procedures for 4 providers +
+  reminders + prepare payment (draft) done + tested in fixtures; 100%
+  numbers matching the provider + 100% reminders delivered need Nero's
+  live numbers + an always-on host (VPS — Nero's step).
+- **Gate 8 (three-layer moat graph): PARTIAL (measured locally).**
+  Both graphs proven written by the wedge + read by the next check
+  (direct queries in tests); 3.6 metrics partly pass (coverage, 4
+  procedures + reuse, canary 2/2, reliability of all sources), partly
+  pending (token ratio — needs a test period); the 3.8 active-workflow
+  metric is Phase 4.
+- **Gate 11 (agents + subagents): PARTIAL.** The 3-reader +
+  1-verifier pattern stored in the graph + used across agents; the
+  verifier catches injected wrong prices (tested in the wedge, not
+  only in cassettes). Stuck handoffs / Stop / Puspa deletion stay as
+  in Phase 2.
+- **Gate 12 (backbone + evidence): PARTIAL.** 100% of wedge numbers
+  have an `evidence_id` (enforced by `record_price` + `compare`);
+  orphan numbers held in the Phase 2 renderer. Phase 3 cassettes
+  (replaying the wedge without network) not yet made — wrap-up
+  follow-up.
 
-## Butuh Nero (langkah manusia, bukan blokir kode)
-1. **Keputusan 15 — PALING MENDESAK.** Ketiga marketplace melarang
-   baca otomatis di syarat layanannya. Nero memutuskan: (a) lanjut
-   lewat jalur resmi (Shopee Open Platform + API resmi Tokopedia/
-   Blibli — butuh akun partner + persetujuan, di luar MVP),
-   (b) ganti sumber, atau (c) lanjut baca atas permintaan user
-   dengan risiko yang Nero terima secara eksplisit. Sampai ada
-   keputusan, wedge harga live tetap ditahan gerbang (bukan diblokir
-   diam-diam — agen bilang tidak bisa cek + alasannya).
-2. **Keputusan 5** (nomor pelanggan PLN/PDAM + nomor HP untuk canary
-   + uji tagihan live) — dibutuhkan sejak Fase 2; belum diberi.
-   Canary + uji live menunggu nomor ini.
-3. **Keputusan 7** (daftar barang uji final): 10 barang default sudah
-   disiapkan dari bibit katalog — menunggu konfirmasi Nero (atau
-   diganti daftar pilihannya).
-4. **VPS Contabo Singapura** (~$6,99/bulan) untuk host selalu hidup +
-   penjadwal + pengingat (keputusan 2, gerbang 7). Canary harian +
-   sampler berkala mekanismenya jadi; jadwal hariannya jalan saat
-   penjadwal berjalan di host.
-5. **Publikasi aplikasi Google OAuth** ke "In production" (browser
-   Nero; keputusan 19) + callback login PWA final — bukan blokir
-   wedge (wedge memakai baca web + fixture), tapi tugas acuan 2, 3, 6
-   yang butuh Gmail/Drive live bergantung padanya.
+## Needs Nero (human steps, not code blockers)
+1. **Decision 15 — MOST URGENT.** All three marketplaces forbid
+   automated reading in their terms of service. Nero decides: (a) go
+   via the official route (Shopee Open Platform + official Tokopedia/
+   Blibli APIs — needs a partner account + approval, outside the MVP),
+   (b) switch sources, or (c) keep reading at the user's request
+   with a risk Nero explicitly accepts. Until there is a decision,
+   the live price wedge stays held by the gate (not silently blocked —
+   the agent says it cannot check + why).
+2. **Decision 5** (PLN/PDAM customer numbers + phone number for canary
+   + live bill tests) — needed since Phase 2; not yet given.
+   Canary + live tests wait on these numbers.
+3. **Decision 7** (final test-item list): 10 default items prepared
+   from the catalog seed — waiting on Nero's confirmation (or his
+   replacement list).
+4. **Singapore Contabo VPS** (~$6.99/month) for the always-on host +
+   scheduler + reminders (decision 2, gate 7). Daily canary +
+   periodic sampler mechanisms are done; their daily schedule runs
+   when the scheduler runs on the host.
+5. **Publish the Google OAuth app** to "In production" (Nero's
+   browser; decision 19) + the final PWA login callback — not a wedge
+   blocker (the wedge uses web reads + fixtures), but reference tasks
+   2, 3, 6, which need live Gmail/Drive, depend on it.
 
-## Konflik definisi vs build (dicatat, definisi tidak diubah)
-1. **Verifikasi fixture tagihan vs Pemeriksa penuh.** `periksa`
-   Fase 2 menolak sumber di luar allowlist (lapis 1) — situs uji
-   lokal (localhost) tidak lolos. Mode fixture memakai perbandingan
-   deterministik baca-ulang (Pemeriksa tetap membaca ulang lewat
-   callable independen, nilainya dibandingkan; vonis Terverifikasi /
-   Belum pasti / Tidak bisa dipastikan sama). Jalur LIVE tetap memakai
-   `periksa` penuh (allowlist + baca ulang + keputusan berbahasa).
-   Bukan pengurangan keamanan di jalur live; fixture ditandai jelas
-   (`sumber_url` fixture + klaim `tagihan <provider>` dari data uji).
-2. **Bibit katalog bukan tarikan langsung halaman resmi.** Lihat §3
-   di atas — bibit awal ditulis dari spesifikasi publik yang dikenal;
-   tarikan resmi menunggu keputusan 15.
-3. **Parser cron penuh tetap Fase 4.** Sampler memakai pemicu Fase 2
-   apa adanya (sekali sehari); bukan pura-pura cron per jam.
-4. **Panel Skor Keandalan PWA minimal.** Datanya dihitung (label
-   panel tersedia); pemasangan ke template PWA belum dilakukan karena
-   aturan kerja fase melarang edit paket Fase 2 — panel ada di urutan
-   potong #1, jadi ini sesuai definisi.
+## Definition vs build conflicts (recorded, definition unchanged)
+1. **Fixture bill verification vs full verifier.** Phase 2 `periksa`
+   rejects sources outside the allowlist (layer 1) — the local test
+   site (localhost) does not pass. Fixture mode uses deterministic
+   reread comparison (the verifier still rereads via an independent
+   callable, values compared; verdicts Verified / Uncertain / Cannot
+   be determined are the same). The LIVE path still uses full `periksa`
+   (allowlist + reread + language decision). Not a security reduction
+   on the live path; fixtures are clearly marked (fixture `sumber_url`
+   + the `tagihan <provider>` claim from test data).
+2. **The catalog seed is not a direct pull from official pages.** See
+   §3 above — the initial seed was written from known public
+   specifications; official pulls wait on decision 15.
+3. **The full cron parser stays Phase 4.** The sampler uses the Phase 2
+   triggers as-is (once a day); not pretend hourly cron.
+4. **Minimal PWA reliability-score panel.** Its data is computed (the
+   panel label is available); mounting it into the PWA template was
+   not done because the phase work rule forbids editing Phase 2
+   packages — the panel is in cut order #1, so this matches the
+   definition.
 
-## Pola repo besar yang diadaptasi (detail: `../REUSE.md`)
-- **LadybugDB** (MIT): pola graf embedded → graf di atas Postgres
-  (node + edge sebagai baris relasional). BUKAN dipakai sebagai
-  library — hanya polanya.
-- **RAGFlow** (Apache-2.0): pola mesin yang menyimpan langkah kerja
-  sebagai data yang bisa dipakai ulang → Graf Alur Layanan
-  (prosedur + canary + pakai ulang). BUKAN dipakai sebagai library;
-  dipakai sebagai komponen moat, bukan produk dokumen.
-- Tidak ada kode yang disalin plek-ketiplek; tidak ada dependensi
-  baru kecuali Playwright (MIT); tidak ada fork; tidak ada klaim
-  LangGraph di mana pun (orkestrasi = AgentLoop nanobot + siklus
-  tugas Puspa sendiri — koreksi atas kalimat survei yang salah,
-  lihat "Catatan konsistensi" di bawah).
+## Large-repo patterns adapted (detail: `reuse.md`)
+- **LadybugDB** (MIT): embedded-graph pattern → graphs on top of
+  Postgres (nodes + edges as relational rows). NOT used as a
+  library — only its pattern.
+- **RAGFlow** (Apache-2.0): pattern of a machine that stores work steps
+  as reusable data → service flow graph
+  (procedures + canary + reuse). NOT used as a library;
+  used as a moat component, not a document product.
+- No code copied verbatim; no new dependencies except Playwright (MIT);
+  no forks; no LangGraph claims anywhere (orchestration = nanobot's
+  AgentLoop + Puspa's own task lifecycle — a correction of a wrong
+  survey sentence, see "Consistency notes" below).
 
-## Catatan konsistensi (dari Luna, 17 Nov 2026 ~22:46 WIB)
-- **Perubahan kontrak registry Fase 0 (keputusan 22):** kode Fase 3
-  TIDAK memanggil `PuspaRegistry.get_definitions` / `bind_turn` /
-  `prepare_call` sama sekali (grep di `puspa/` + `tests/` kosong) —
-  perubahan visibilitas tool tidak memengaruhi Fase 3. Kalau Fase 4
-  memakai registry, ikat token dulu (`bind_turn`) sebelum berharap
-  ada definisi tool.
-- **Sisa celah `prepare_call`:** pesan error tool tidak dikenal masih
-  mencantumkan daftar `tool_names` lengkap — Fase 3 TIDAK
-  memperkenalkan kembali pola ini (tidak ada pesan error di Fase 3
-  yang membocorkan daftar tool); penutupan celahnya tindak lanjut
-  wrap-up (jatah Fase 2).
-- **REUSE.md Fase 0 belum mencatat pengaruh desain** (OpenBot,
-  E2B/Firecracker, agentskills, ECC, hermes) — bukan tugas Fase 3;
-  dicatat sebagai tindak lanjut wrap-up (audit lengkap di
-  `build/fase-0/REUSE-AUDIT.md`).
-- **Poles CLI (jatah Fase 2):** log loguru nanobot menyela spinner
-  saat pemakaian CLI interaktif — Fase 3 tidak memakai CLI interaktif
-  dalam pengujian, jadi tidak ditemui langsung; dicatat sebagai
-  tindak lanjut wrap-up, bukan scope Fase 3.
-- **LangGraph:** nol import, nol klaim di Fase 3 (grep kosong).
+## Consistency notes (from Luna, 17 Nov 2026 ~22:46 WIB)
+- **Phase 0 registry contract change (decision 22):** Phase 3 code
+  does NOT call `PuspaRegistry.get_definitions` / `bind_turn` /
+  `prepare_call` at all (empty grep in `puspa/` + `tests/`) —
+  the tool-visibility change does not affect Phase 3. If Phase 4
+  uses the registry, bind a token first (`bind_turn`) before expecting
+  any tool definitions.
+- **Remaining `prepare_call` gap:** the unknown-tool error message
+  still lists the full `tool_names` — Phase 3 does NOT reintroduce
+  this pattern (no Phase 3 error message leaks the tool list);
+  closing the gap is a wrap-up follow-up (Phase 2's share).
+- **`reuse.md` does not yet record the Phase 0 design influence** (OpenBot,
+  E2B/Firecracker, agentskills, ECC, hermes) — not Phase 3's job;
+  recorded as a wrap-up follow-up (full audit in
+  `docs/reuse-audit.md`).
+- **CLI polish (Phase 2's share):** nanobot's loguru logs interrupt
+  the spinner during interactive CLI use — Phase 3 does not use the
+  interactive CLI in testing, so it was not met directly; recorded as
+  a wrap-up follow-up, not Phase 3 scope.
+- **LangGraph:** zero imports, zero claims in Phase 3 (empty grep).
 
-## Yang TIDAK dibangun (sengaja, sesuai definisi)
-- Jaringan anti-penipuan + buku besar harga laku (§3.7) — tetap
-  tidak dibangun.
-- Fashion + barang non-standar di wedge (§4.1, §6) — ditolak dengan
-  pesan jelas, bukan dibangun diam-diam.
-- BPJS (§4.2) — ditolak tegas.
-- Langflow (Fase 4), voice Pipecat/LiveKit (pasca-MVP).
-- Pembayaran QRIS penuh / eksekusi bayar (§6) — hanya mode bayar
-  aman (draf).
-- Kaset Fase 3, panel Skor Keandalan PWA penuh, parser cron penuh —
-  tindak lanjut (lihat atas).
+## What was NOT built (deliberately, per the definition)
+- Anti-fraud network + sold-price ledger (§3.7) — still
+  not built.
+- Fashion + non-standard items in the wedge (§4.1, §6) — rejected with
+  a clear message, not built silently.
+- BPJS (§4.2) — firmly rejected.
+- Langflow (Phase 4), voice Pipecat/LiveKit (post-MVP).
+- Full QRIS payment / payment execution (§6) — safe payment mode
+  (draft) only.
+- Phase 3 cassettes, full PWA reliability-score panel, full cron parser —
+  follow-ups (see above).
 
-## Insiden / catatan lingkungan selama Fase 3
-- Postgres tetap hidup sepanjang Fase 3 (tidak ada insiden hilang
-  total seperti Fase 1).
-- Run pytest paralel TIDAK dipakai (semua angka dari run solo).
-- Playwright: unduhan Chromium 1255 dari CDN Playwright gagal 3x —
-  akar masalah terdiagnosis (proxy egress menolak host
-  `playwright.download.prss.microsoft.com`, 400); solusi jalan lewat
-  Chrome for Testing 159 dari `storage.googleapis.com` + seam env
-  `PUSPA_CHROMIUM_EXECUTABLE` (reader membaca situs uji lokal,
-  Rp132.500 terekstrak — teruji).
-- Fase 0 naik 244 → 248 passed karena 4 tes regresi registry baru
-  (keputusan 22) — diverifikasi, bukan artefak run.
+## Environment incidents / notes during Phase 3
+- Postgres stayed alive throughout Phase 3 (no total-loss incident
+  like Phase 1).
+- Parallel pytest runs were NOT used (all numbers from solo runs).
+- Playwright: the Chromium 1255 download from the Playwright CDN failed
+  3x — root cause diagnosed (the egress proxy rejects host
+  `playwright.download.prss.microsoft.com`, 400); the working solution
+  via Chrome for Testing 159 from `storage.googleapis.com` + the
+  `PUSPA_CHROMIUM_EXECUTABLE` env seam (the reader reads the local test
+  site, Rp132,500 extracted — tested).
+- Phase 0 rose 244 → 248 passed because of 4 new registry regression
+  tests (decision 22) — verified, not a run artifact.

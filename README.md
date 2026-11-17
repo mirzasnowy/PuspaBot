@@ -1,147 +1,154 @@
-# Puspa — Fase 0 (Keamanan + tulang punggung)
+# Puspa — Phase 0 (Security + backbone)
 
-Potongan fondasional MVP Puspa (definisi revisi 7, disetujui Nero 17 Nov 2026).
-Periode Fase 0: 18 Nov - 1 Des 2026. Status rinci: lihat `STATUS.md`.
-Kontrak antar-paket: lihat `CONTRACTS.md`.
+The foundational slice of the Puspa MVP (revision 7 definition, approved by Nero 17 Nov 2026).
+Phase 0 period: 18 Nov - 1 Dec 2026. Detailed status: see `docs/status-phase-0.md`.
+Inter-package contracts: see `docs/contracts.md`.
 
 ## Repo
 
-Repo Puspa adalah repo **standalone, BUKAN fork**: **mirzasnowy/puspa-ai**
-(https://github.com/mirzasnowy/puspa-ai, publik, branch main).
-Fase 0 sudah di-push ke sana 17 Nov 2026 (komit `8e91a92` +
-`657ee78`); `nanobot/` tidak ikut di-push (hanya referensi baca lokal).
-**Aturan tanpa-fork (Nero):** jangan pernah membuat fork GitHub dari repo mana pun.
-Kode orang dipakai sebagai dependency pip, atau di-vendor dengan file LICENSE
-asli + atribusi (README dan NOTICE). Lisensi non-komersial/copyleft (GPL,
-CC BY-NC-SA, PolyForm Noncommercial) jangan dipakai.
+The Puspa repo is a **standalone repo, NOT a fork**: **mirzasnowy/puspa-ai**
+(https://github.com/mirzasnowy/puspa-ai, public, main branch).
+Phase 0 was pushed there on 17 Nov 2026 (commits `8e91a92` +
+`657ee78`); `nanobot/` was not pushed (local read-only reference only).
+**No-fork rule (Nero):** never create a GitHub fork of any repo.
+Other people's code is used as a pip dependency, or vendored with its
+original LICENSE file + attribution (README and NOTICE). Non-commercial /
+copyleft licenses (GPL, CC BY-NC-SA, PolyForm Noncommercial) must not
+be used.
 
-## Isi
+## Contents
 
-- `nanobot/` — clone lokal referensi baca dari HKUDS/nanobot (HEAD e767174,
-  MIT). Bukan base repo, belum ada kode yang di-vendor. Inventaris:
-  `nanobot-INVENTORY.md`. Dari fresh clone, nanobot dipakai dari dependency
-  git pin di `requirements.txt` (`nanobot-ai @ git+https://github.com/HKUDS/nanobot@e767174`).
-- `puspa/ledger/` — Buku Kerja: tabel Postgres append-only `kejadian`,
-  rantai hash per tugas, 31 jenis kejadian tertutup.
-- `puspa/policy/` — token izin Ed25519 + subset, skill bertanda tangan,
-  gerbang tunggal aksi keluar, batas belanja (default Rp0).
-- `puspa/accounts/` — login email + Argon2id, sesi per perangkat (hanya
-  sha256 token yang disimpan), vault Fernet per pengguna, Row Level
-  Security Postgres (6 policy, penegakan di peran `puspa_app`),
-  pemeriksaan kepemilikan lintas pengguna (`require_owner` + pembaca
-  bermilik + registry agen). Login kata sandi digantikan login Google di
-  fase 1; sesi + vault dipakai ulang.
-- `puspa/quarantine/` — Pembaca terkarantina (skema ketat, `[DATA: ...]`,
-  maks 200 karakter) + pemindai prompt injection (ID+EN).
-- `puspa/sandbox/` — sandbox Docker fail-closed (allowlist jaringan, tanpa
-  fallback eksekusi di host).
-- `puspa/chassis/` — integrasi dengan nanobot sebagai chassis: token izin
-  turn (ContextVar + `RequestContext`), `PuspaTool` (cek token + skill +
-  gerbang + audit), `PuspaRegistry` (bungkus otomatis + backstop
-  `prepare_call`), `PuspaHook` (siklus tugas ke Buku Kerja),
-  `PuspaSkillsLoader` (skill workspace/plugin wajib bertanda tangan),
-  `bind_turn` (sesi login -> token izin agen), `SandboxTool`
-  (`jalankan_kode`), `PuspaChassis` + `assemble` (composition root).
-  NOL baris kode nanobot diubah.
-- `tests/` — 244 tes lolos + 4 skip (tes live-container, butuh host Docker
-  normal; lihat STATUS.md soal batasan VM ini). Rinci: 105 fondasional +
-  5 tes celah `check_tool` + 26 tes integrasi (`tests/test_integration.py`) +
-  21 tes jenis kejadian ledger + 12 tes RLS + 7 tes vault + 26 tes akses
-  lintas pengguna (23 di `tests/test_access.py` + 3 jalur 8 di
-  `tests/test_attacks.py`) + 1 tes efek samping `resolve_session_as` +
-  41 tes factory BYOK generik + mock harness (`tests/test_byok_provider.py`).
+- `nanobot/` — local read-only reference clone of HKUDS/nanobot (HEAD e767174,
+  MIT). Not the base repo; no code vendored yet. Inventory:
+  `docs/nanobot-inventory.md`. From a fresh clone, nanobot is used from
+  the git-pinned dependency in `requirements.txt`
+  (`nanobot-ai @ git+https://github.com/HKUDS/nanobot@e767174`).
+- `puspa/ledger/` — Ledger: append-only Postgres table `events`,
+  per-task hash chain, 31 closed event types.
+- `puspa/policy/` — Ed25519 permission tokens + subset, signed skills,
+  single gate for outbound actions, spending limit (default Rp0).
+- `puspa/accounts/` — email login + Argon2id, per-device sessions (only
+  the sha256 of the token is stored), per-user Fernet vault, Postgres
+  Row Level Security (6 policies, enforced on the `puspa_app` role),
+  cross-user ownership checks (`require_owner` + owned readers +
+  agent registry). Password login is replaced by Google login in
+  phase 1; sessions + vault are reused.
+- `puspa/quarantine/` — Quarantined reader (strict schema, `[DATA: ...]`,
+  max 200 characters) + prompt-injection scanner (ID+EN).
+- `puspa/sandbox/` — fail-closed Docker sandbox (network allowlist, no
+  fallback to host execution).
+- `puspa/chassis/` — integration with nanobot as the chassis: per-turn
+  permission token (ContextVar + `RequestContext`), `PuspaTool` (token +
+  skill + gate + audit checks), `PuspaRegistry` (automatic wrapping +
+  `prepare_call` backstop), `PuspaHook` (task lifecycle into the ledger),
+  `PuspaSkillsLoader` (workspace/plugin skills must be signed),
+  `bind_turn` (login session -> agent permission token), `SandboxTool`
+  (`run_code`), `PuspaChassis` + `assemble` (composition root).
+  ZERO lines of nanobot code changed.
+- `tests/` — 244 tests passing + 4 skipped (live-container tests, need a
+  normal Docker host; see docs/status-phase-0.md for this VM's limits).
+  Breakdown: 105 foundational + 5 `check_tool` gap tests + 26 integration
+  tests (`tests/test_integration.py`) + 21 ledger event-type tests + 12
+  RLS tests + 7 vault tests + 26 cross-user access tests (23 in
+  `tests/test_access.py` + 3 path-8 tests in `tests/test_attacks.py`) +
+  1 `resolve_session_as` side-effect test + 41 generic BYOK factory
+  tests + mock harness (`tests/test_byok_provider.py`).
 
-## Cara jalan tes
+## Running the tests
+
+From the repo root:
 
 ```bash
-cd build/fase-0
 .venv/bin/python -m pytest tests -q
 ```
 
-Butuh Postgres lokal jalan (cluster 16/main, DB `puspa_test`, role `root`,
-peer auth; DSN bisa dioverride env `PUSPA_TEST_DSN`) dan master key vault
-di env `PUSPA_VAULT_MASTER_KEY` untuk tes vault (diatur otomatis oleh
-fixture tes). Tanpa Postgres, tes ledger/accounts gagal.
+Needs a local Postgres running (cluster 16/main, DB `puspa_test`, role `root`,
+peer auth; DSN can be overridden with env `PUSPA_TEST_DSN`) and the vault
+master key in env `PUSPA_VAULT_MASTER_KEY` for the vault tests (set
+automatically by the test fixture). Without Postgres, the ledger/accounts
+tests fail.
 
-## Setup database
+## Database setup
 
-Satu perintah ini menyiapkan semuanya (idempotent — aman dijalankan
-ulang), sebagai superuser Postgres, dari direktori ini:
+This single command sets everything up (idempotent — safe to re-run),
+as the Postgres superuser, from this directory:
 
 ```bash
-psql "dbname=postgres user=root host=/var/run/postgresql" -f infra/setup_db.sql
+psql "dbname=postgres user=root host=/var/run/postgresql" -f infra/schema_core.sql
 ```
 
-(Varian `sudo -u postgres psql -f ...` juga bisa, tapi file harus bisa
-dibaca user postgres — salin dulu ke `/tmp` kalau permission workspace
-menolak.)
+(The `sudo -u postgres psql -f ...` variant also works, but the file must
+be readable by the postgres user — copy it to `/tmp` first if workspace
+permissions refuse.)
 
-Yang dilakukan `infra/setup_db.sql`: buat role `root` (superuser, peer
-auth) dan `puspa_app` (peran aplikasi yang dikenai RLS) kalau belum ada,
-buat database `puspa_test` kalau belum ada, lalu terapkan skema ledger
-(tabel `kejadian`) + accounts (tabel pengguna/sesi/vault + policy RLS).
-Tidak ada password di mana pun — auth memakai peer auth lewat socket
-lokal. Jangan tambahkan password ke file itu.
+What `infra/schema_core.sql` does: create role `root` (superuser, peer
+auth) and `puspa_app` (the application role subject to RLS) if they do
+not exist yet, create database `puspa_test` if it does not exist yet,
+then apply the ledger schema (table `events`) + accounts (users/sessions/
+vault tables + RLS policies). There is no password anywhere — auth uses
+peer auth over the local socket. Do not add a password to that file.
 
-**Pemulihan setelah VM restart:** Postgres di VM ini tidak tahan
-restart — role + database bisa hilang, bahkan paket apt Postgresnya
-pun bisa hilang total (terjadi 17 Nov 2026). Kalau `psql` gagal konek /
-role hilang, pulihkan dengan urutan ini:
+**Recovery after a VM restart:** Postgres on this VM does not survive
+restarts — roles + database can disappear, and even the Postgres apt
+package itself can vanish entirely (happened 17 Nov 2026). If `psql`
+fails to connect / roles are gone, recover with this sequence:
 
 ```bash
-# 1. Kalau cluster pun hilang (instal ulang paket dulu bila perlu —
-#    apt-get update lama, ~10 menit lewat proxy):
+# 1. If the cluster itself is gone (reinstall the package first if needed —
+#    apt-get update is slow, ~10 minutes via the proxy):
 DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql-16
-# 2. Start cluster:
+# 2. Start the cluster:
 pg_ctlcluster 16 main start
-# 3. Jalankan lagi setup (membuat ulang role + DB + skema):
-psql "dbname=postgres user=root host=/var/run/postgresql" -f infra/setup_db.sql
-# 4. Periksa tes tetap hijau:
+# 3. Run setup again (recreates roles + DB + schema):
+psql "dbname=postgres user=root host=/var/run/postgresql" -f infra/schema_core.sql
+# 4. Check the tests are still green:
 .venv/bin/python -m pytest tests -q
 ```
 
-Cadangan kalau cluster sistem tidak bisa dipakai: Postgres sementara
-via pgserver (cluster di `/tmp/pgdata-puspa-test`, perintah start di
-`/tmp/pgserver-start.py`), lalu tes dengan
+Fallback if the system cluster cannot be used: a temporary Postgres
+via pgserver (cluster in `/tmp/pgdata-puspa-test`, start command in
+`/tmp/pgserver-start.py`), then test with
 `PUSPA_TEST_DSN="dbname=puspa_test user=root host=/tmp/pgdata-puspa-test"`.
-Detail lengkap ada di komentar atas `infra/setup_db.sql`.
+Full details are in the header comments of `infra/schema_core.sql`.
 
-Isolasi antar pengguna ditegakkan Postgres (Row Level Security) pada
-tabel pengguna/sesi/vault: aplikasi memasang pengguna saat ini per
-transaksi lewat `puspa.accounts.rls.as_user(conn, user_id)` — lihat
-`puspa/accounts/schema.sql` untuk policy dan keputusan tanpa-FORCE-nya,
-dan `tests/test_rls.py` untuk bukti perilakunya. Tabel `agen` (registry
-agen -> pemilik) TIDAK dibuat `setup_db.sql` — ia dibuat sesuai kebutuhan
-oleh `puspa.accounts.access.create_agent_schema()`.
+Cross-user isolation is enforced by Postgres (Row Level Security) on
+the users/sessions/vault tables: the app sets the current user per
+transaction via `puspa.accounts.rls.as_user(conn, user_id)` — see
+`puspa/accounts/schema.sql` for the policies and the no-FORCE decision,
+and `tests/test_rls.py` for behavioural evidence. The `agents` table
+(agent registry -> owner) is NOT created by `schema_core.sql` — it is
+created on demand by `puspa.accounts.access.create_agent_schema()`.
 
-## Hasil uji serangan (definisi 2.6)
+## Attack-test results (definition 2.6)
 
-8/8 jalur gagal menembus — lihat `tests/test_attacks.py` + `tests/test_access.py`:
-skill unsigned, tool di luar manifes, injeksi konten web/email, baca memori
-agen lain, injeksi listing/email yang memerintahkan kirim/bayar (executor
-0 kali), sub-agen di luar tokennya, isi diubah setelah approval, pengguna A
-membaca data/konektor/kejadian pengguna B lewat API (ditolak fail-closed).
-Tidak ada temuan kritis.
+8/8 paths failed to break through — see `tests/test_attacks.py` + `tests/test_access.py`:
+unsigned skill, tool outside the manifest, web/email content injection,
+reading another agent's memory, listing/email injection ordering send/pay
+(executor 0 times), subagent outside its token, content changed after
+approval, user A reading user B's data/connectors/events via the API
+(rejected fail-closed). No critical findings.
 
-## Istilah (dipakai di README ini)
+## Terms (used in this README)
 
-- **Puspa** — agen AI personal open source untuk Indonesia (produk yang
-  dibangun repo ini). **MVP** — Minimum Viable Product, versi pertama yang
-  diuji ke pengguna (definisi revisi 7).
-- **Buku Kerja** — tabel Postgres append-only `kejadian` yang mencatat
-  semua yang terjadi, dengan rantai hash per tugas (definisi revisi 7 §2.3).
-- **Pembaca terkarantina** — sub-agen yang hanya boleh membaca data luar
-  lewat skema ketat dan menandai konten yang mencurigakan sebagai DATA
-  (definisi revisi 7 §2.6).
-- **Token izin** — izin bertanda tangan (Ed25519) yang membatasi apa yang
-  boleh dilakukan satu giliran agen: tool, langkah, token model, dan batas
-  belanja. **Gerbang** — satu-satunya jalur aksi keluar (kirim, bayar);
-  tanpa token izin + persetujuan, aksi ditolak.
-- **Ed25519** — algoritma tanda tangan digital untuk token izin dan skill.
-  **Argon2id** — algoritma hash kata sandi untuk login. **Fernet** —
-  enkripsi simetris untuk vault per pengguna. **RLS** (Row Level Security)
-  — penegakan isolasi antar pengguna di dalam Postgres.
-- **DSN** — Data Source Name, alamat koneksi database (di sini Postgres).
-  **HKUDS** — Hong Kong University Data Science Lab, pembuat nanobot.
-  **Chassis** — kerangka agen yang dipakai ulang (nanobot) dan dibungkus
-  lapisan keamanan Puspa; bukan fork, tidak ada baris kodenya yang diubah.
+- **Puspa** — an open-source personal AI agent for Indonesia (the product
+  this repo builds). **MVP** — Minimum Viable Product, the first version
+  tested with users (revision 7 definition).
+- **Ledger** — the append-only Postgres table `events` that records
+  everything that happens, with a per-task hash chain (revision 7
+  definition §2.3).
+- **Quarantined reader** — a subagent that may only read outside data
+  through a strict schema and marks suspicious content as DATA
+  (revision 7 definition §2.6).
+- **Permission token** — a signed permission (Ed25519) limiting what one
+  agent turn may do: tools, steps, model tokens, and spending limit.
+  **Gate** — the only path for outbound actions (send, pay); without a
+  permission token + approval, the action is rejected.
+- **Ed25519** — the digital-signature algorithm for permission tokens and
+  skills. **Argon2id** — the password-hashing algorithm for login.
+  **Fernet** — symmetric encryption for the per-user vault. **RLS**
+  (Row Level Security) — enforcement of cross-user isolation inside
+  Postgres.
+- **DSN** — Data Source Name, a database connection address (here Postgres).
+  **HKUDS** — Hong Kong University Data Science Lab, the makers of nanobot.
+  **Chassis** — the agent framework reused (nanobot) and wrapped in
+  Puspa's security layers; not a fork, none of its code changed.
