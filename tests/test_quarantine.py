@@ -5,7 +5,7 @@
 from puspa.quarantine import Finding, QuarantinedReader, mark, scan
 from puspa.quarantine.reader import MAX_CHARS
 
-ALLOWED = ["tokopedia.com", "shopee.co.id", "blibli.com", "pln.co.id"]
+ALLOWED_DOMAINS = ["tokopedia.com", "shopee.co.id", "blibli.com", "pln.co.id"]
 
 
 def _inner(field: str) -> str:
@@ -18,7 +18,7 @@ def _inner(field: str) -> str:
 
 
 def test_reader_skema_tepat():
-    reader = QuarantinedReader(ALLOWED)
+    reader = QuarantinedReader(ALLOWED_DOMAINS)
     hasil = reader.read_text(
         "https://www.tokopedia.com/toko/sepatu-keren",
         "Sepatu Lari Pro\nHarga Rp350.000, diskon 20%.\nStok 5 buah.",
@@ -34,7 +34,7 @@ def test_reader_skema_tepat():
 
 
 def test_reader_judul_dan_potongan_maks_200_karakter():
-    reader = QuarantinedReader(ALLOWED)
+    reader = QuarantinedReader(ALLOWED_DOMAINS)
     panjang = "A" * 500
     hasil = reader.read_text("tokopedia.com", f"{panjang}\n{panjang}")
     assert len(_inner(hasil["judul"])) == MAX_CHARS
@@ -42,7 +42,7 @@ def test_reader_judul_dan_potongan_maks_200_karakter():
 
 
 def test_reader_angka_dengan_satuan_dan_konteks_maks_200():
-    reader = QuarantinedReader(ALLOWED)
+    reader = QuarantinedReader(ALLOWED_DOMAINS)
     hasil = reader.read_text(
         "shopee.co.id",
         "Tagihan listrik bulan ini Rp125.500 untuk pemakaian 87 kWh. "
@@ -60,7 +60,7 @@ def test_reader_angka_dengan_satuan_dan_konteks_maks_200():
 
 
 def test_reader_tolak_source_di_luar_allowlist():
-    reader = QuarantinedReader(ALLOWED)
+    reader = QuarantinedReader(ALLOWED_DOMAINS)
     try:
         reader.read_text("https://evil.com/promo", "teks apa pun")
     except ValueError as exc:
@@ -70,7 +70,7 @@ def test_reader_tolak_source_di_luar_allowlist():
 
 
 def test_reader_tolak_domain_mirip_allowlist():
-    reader = QuarantinedReader(ALLOWED)
+    reader = QuarantinedReader(ALLOWED_DOMAINS)
     for sumber in ("https://tokopedia.com.evil.com/x", "https://notokopedia.com/x"):
         try:
             reader.read_text(sumber, "teks")
@@ -81,13 +81,13 @@ def test_reader_tolak_domain_mirip_allowlist():
 
 
 def test_reader_subdomain_dari_domain_izin_diterima():
-    reader = QuarantinedReader(ALLOWED)
+    reader = QuarantinedReader(ALLOWED_DOMAINS)
     hasil = reader.read_text("https://www.tokopedia.com/x", "Judul")
     assert hasil["source"] == "https://www.tokopedia.com/x"
 
 
 def test_reader_teks_kosong_tetap_berskema():
-    reader = QuarantinedReader(ALLOWED)
+    reader = QuarantinedReader(ALLOWED_DOMAINS)
     hasil = reader.read_text("pln.co.id", "")
     assert hasil["judul"] == "[DATA: ]"
     assert hasil["angka"] == []

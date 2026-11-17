@@ -1,6 +1,6 @@
 """Registry tool nanobot yang ditegakkan Puspa (definisi 2.6).
 
-``PuspaRegistry`` adalah ``ToolRegistry`` nanobot dengan dua lapis
+``PuspaRegistry`` adalah ``ToolRegistry`` nanobot dengan tiga lapis
 penegakan, tanpa mengubah satu baris kode nanobot:
 
 1. ``register`` membungkus tiap tool dengan ``PuspaTool`` (cek token,
@@ -18,13 +18,18 @@ penegakan, tanpa mengubah satu baris kode nanobot:
    hasil tool error, loop lanjut — pola yang sama dengan pelanggaran
    SSRF/workspace nanobot). Ini menutup tool yang entah bagaimana
    lolos tanpa bungkus.
+3. ``get_definitions`` (visibilitas): model hanya melihat skema tool
+   yang namanya ada di daftar ``tools`` token turn ini — sumber
+   kebenaran yang sama dengan ``prepare_call``. Tanpa token terikat,
+   daftar kosong (fail-closed). Lapisan ini menutup celah visibilitas
+   (model tidak lagi bisa memilih tool di luar token), sementara
+   ``prepare_call`` tetap menjadi penegak eksekusi (defense in depth).
 
 Tanpa token izin yang terikat di turn ini, semua eksekusi ditolak
-(fail-closed). Registry ini milik Puspa: semua turn yang memakainya
-(user, cron, dream, sub-agen) wajib mengikat token saat turn disiapkan
-(lihat ``puspa.chassis.session.bind_turn`` dan ``token_context``).
-``get_definitions`` tidak diperiksa — skema tool yang dilihat model
-bukan eksekusi.
+(fail-closed) dan tidak ada definisi tool yang terlihat. Registry ini
+milik Puspa: semua turn yang memakainya (user, cron, dream, sub-agen)
+wajib mengikat token saat turn disiapkan (lihat
+``puspa.chassis.session.bind_turn`` dan ``token_context``).
 """
 
 from __future__ import annotations
@@ -70,6 +75,28 @@ class PuspaRegistry(ToolRegistry):
             )
         super().register(tool)
         return tool
+
+    def get_definitions(self) -> list[dict[str, Any]]:
+        """Definisi tool yang BOLEH dilihat model di turn ini saja.
+
+        Hanya skema tool yang namanya ada di daftar ``tools`` token izin
+        turn ini (sumber kebenaran yang sama dengan ``prepare_call``);
+        tanpa token terikat, kembalikan daftar kosong (fail-closed).
+        Nanobot memanggil ini per putaran model (dan saat konsolidasi di
+        dalam turn), jadi filter dibaca dari token yang sedang berlaku
+        setiap panggilan — cache induk hanya menyimpan daftar lengkap
+        yang belum difilter, dan yang dikembalikan selalu daftar baru
+        (cache induk tidak pernah diubah).
+        """
+        payload = resolve_token_payload()
+        if payload is None:
+            return []
+        allowed = set(payload.get("tools", []) or [])
+        return [
+            schema
+            for schema in super().get_definitions()
+            if self._schema_name(schema) in allowed
+        ]
 
     def prepare_call(
         self,

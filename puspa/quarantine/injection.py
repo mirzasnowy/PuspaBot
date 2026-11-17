@@ -33,7 +33,7 @@ class Finding:
 # Tingkat "tinggi": perintah langsung ke agen untuk bertindak / membocorkan
 # rahasia / mengabaikan instruksi. "sedang": imperatif umum + URL.
 # "rendah": kata pemicu urgensi / ajakan menghubungi pihak luar.
-_POLAS: list[tuple[str, str, str]] = [
+_PATTERNS: list[tuple[str, str, str]] = [
     # --- tinggi: pengambilalihan instruksi ---
     (r"abaikan\s+(semua\s+)?instruksi", "abaikan instruksi", "tinggi"),
     (r"lupakan\s+(semua\s+)?instruksi", "lupakan instruksi", "tinggi"),
@@ -83,14 +83,14 @@ _POLAS: list[tuple[str, str, str]] = [
 ]
 
 _COMPILED: list[tuple[re.Pattern[str], str, str]] = [
-    (re.compile(pola, re.IGNORECASE), nama, tingkat) for pola, nama, tingkat in _POLAS
+    (re.compile(pola, re.IGNORECASE), nama, tingkat) for pola, nama, tingkat in _PATTERNS
 ]
 
 _MAX_SPAN = 200
 
 
 def _collect(text: str) -> list[tuple[int, int, str, str]]:
-    """Semua kecocokan (start, end, nama pola, tingkat), belum didedup."""
+    """Semua kecocokan (start, end, nama pola, tingkat), belum dideduplikasi."""
     out: list[tuple[int, int, str, str]] = []
     for rx, nama, tingkat in _COMPILED:
         for m in rx.finditer(text):

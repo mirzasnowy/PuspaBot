@@ -12,7 +12,7 @@ persetujuan_ditolak.
 
 ``spending`` adalah objek batas belanja (``SpendingLimit``) atau
 None. Kalau None, pembayaran (siapkan_bayar) selalu ditolak
-(fail-closed): tanpa pemeriksa batas, tidak ada uang yang bergerak.
+(fail-closed): tanpa penegak batas belanja, tidak ada uang yang bergerak.
 
 Token bisa diberikan sebagai string (diverifikasi dengan
 ``public_key`` yang dipasang di Gate) atau sebagai payload dict yang
@@ -110,10 +110,10 @@ class Gate:
             # Stub pencatat yang menerima satu dict kejadian.
             self.log({"jenis": jenis, "isi": isi})
 
-    def _deny(self, request, alasan: str, void: bool = False):
+    def _deny(self, request, alasan: str, invalidate: bool = False):
         """Catat penolakan lalu lempar GateDenied.
 
-        ``void=True`` hanya untuk penolakan yang membatalkan
+        ``invalidate=True`` hanya untuk penolakan yang membatalkan
         persetujuan itu sendiri (isi berubah, token mati): request
         tidak bisa dipakai lagi dan harus diajukan ulang. Penolakan
         sementara (belum disetujui, batas belanja) membiarkan status
@@ -125,7 +125,7 @@ class Gate:
             isi_log["request_id"] = request.request_id
             isi_log["user_id"] = request.user_id
             isi_log["kind"] = request.kind
-            if void:
+            if invalidate:
                 request.status = "ditolak"
         self._log("persetujuan_ditolak", isi_log)
         raise GateDenied(alasan)
@@ -243,17 +243,17 @@ class Gate:
         if request.status != "disetujui":
             self._deny(request, f"aksi belum disetujui (status: {request.status!r})")
         if _isi_hash(request.isi) != request.isi_hash:
-            self._deny(request, "isi aksi berubah setelah disetujui; persetujuan batal", void=True)
+            self._deny(request, "isi aksi berubah setelah disetujui; persetujuan batal", invalidate=True)
         # Token masih valid? (cek ulang exp + pencabutan)
         if request.token_payload.get("exp", 0) <= int(time.time()):
-            self._deny(request, "token sudah kedaluwarsa", void=True)
+            self._deny(request, "token sudah kedaluwarsa", invalidate=True)
         if is_revoked(request.token_id):
-            self._deny(request, "token sudah dicabut", void=True)
+            self._deny(request, "token sudah dicabut", invalidate=True)
         # Batas belanja (cek independen dari persetujuan).
         if request.kind == "siapkan_bayar":
             nominal = request.isi.get("nominal", 0)
             if self.spending is None:
-                self._deny(request, "tidak ada pemeriksa batas belanja; pembayaran ditolak")
+                self._deny(request, "tidak ada penegak batas belanja belanja; pembayaran ditolak")
             if not self._spending_ok(request.user_id, nominal):
                 self._deny(
                     request,

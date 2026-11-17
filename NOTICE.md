@@ -8,7 +8,7 @@ copyleft (GPL, CC BY-NC-SA, PolyForm Noncommercial) tidak dipakai.
 ## nanobot (chassis) — MIT
 
 - **Sumber:** https://github.com/HKUDS/nanobot
-- **Versi yang di-vendor:** HEAD `e767174` (17 Nov 2026), paket `nanobot-ai` 0.4.1
+- **Versi yang dipakai sebagai referensi (clone lokal, belum di-vendor):** HEAD `e767174` (17 Nov 2026), paket `nanobot-ai` 0.4.1
 - **Lokasi di repo ini:** direktori `nanobot/` (salinan penuh hasil clone,
   termasuk file `LICENSE` aslinya)
 - **Lisensi:** MIT License

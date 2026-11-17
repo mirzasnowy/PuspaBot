@@ -7,7 +7,7 @@ Persetujuan DAN batas adalah dua cek independen (STATUS.md keputusan
 2): persetujuan tidak menggantikan batas, batas tidak menggantikan
 persetujuan. Gerbang mengecek keduanya.
 
-Penyimpanan in-memory dan dibagi antar instansi (satu proses).
+Penyimpanan in-memory dan dibagi antar instans (satu proses).
 Persistensi (dari ledger) fase 2; ``ledger`` opsional bisa dipasang
 nanti bila menyediakan ``spent_in_period(user_id)``.
 """
@@ -17,7 +17,7 @@ __all__ = ["SpendingLimit"]
 # Batas default (Rupiah). Rp0 = tidak ada pembayaran yang lolos.
 DEFAULT_LIMIT = 0
 
-# Penyimpanan bersama antar instansi, in-memory.
+# Penyimpanan bersama antar instans, in-memory.
 _limits: dict[str, int] = {}
 _spent: dict[str, int] = {}
 
@@ -25,7 +25,7 @@ _spent: dict[str, int] = {}
 class SpendingLimit:
     """Batas belanja per pengguna.
 
-    ``SpendingLimit(user_id)`` mengikat instansi ke satu pengguna,
+    ``SpendingLimit(user_id)`` mengikat instans ke satu pengguna,
     tapi semua pemanggilan juga menerima ``user_id`` eksplisit
     (``set_limit(user_id, rupiah)`` / ``set_limit(rupiah)``).
     """
@@ -90,7 +90,7 @@ class SpendingLimit:
     def check(self, user_id=None, nominal=None):
         """Benar kalau ``nominal + sudah_dibelanjakan <= batas``.
 
-        Dukung check(nominal) untuk instansi yang terikat pengguna,
+        Dukung check(nominal) untuk instans yang terikat pengguna,
         dan check(user_id, nominal). Nominal 0 selalu lolos selama
         belum ada pengeluaran (0 + 0 <= 0).
         """

@@ -8,7 +8,8 @@ Kontrak antar-paket: lihat `CONTRACTS.md`.
 
 Repo Puspa adalah repo **standalone, BUKAN fork**: **mirzasnowy/puspa-ai**
 (https://github.com/mirzasnowy/puspa-ai, publik, branch main).
-Push hasil Fase 0 ke sana hanya setelah parent mengonfirmasi hasil siap.
+Fase 0 sudah di-push ke sana 17 Nov 2026 (komit `8e91a92` +
+`657ee78`); `nanobot/` tidak ikut di-push (hanya referensi baca lokal).
 **Aturan tanpa-fork (Nero):** jangan pernah membuat fork GitHub dari repo mana pun.
 Kode orang dipakai sebagai dependency pip, atau di-vendor dengan file LICENSE
 asli + atribusi (README dan NOTICE). Lisensi non-komersial/copyleft (GPL,
@@ -42,12 +43,13 @@ CC BY-NC-SA, PolyForm Noncommercial) jangan dipakai.
   `bind_turn` (sesi login -> token izin agen), `SandboxTool`
   (`jalankan_kode`), `PuspaChassis` + `assemble` (composition root).
   NOL baris kode nanobot diubah.
-- `tests/` — 203 tes lolos + 4 skip (tes live-container, butuh host Docker
+- `tests/` — 244 tes lolos + 4 skip (tes live-container, butuh host Docker
   normal; lihat STATUS.md soal batasan VM ini). Rinci: 105 fondasional +
   5 tes celah `check_tool` + 26 tes integrasi (`tests/test_integration.py`) +
   21 tes jenis kejadian ledger + 12 tes RLS + 7 tes vault + 26 tes akses
   lintas pengguna (23 di `tests/test_access.py` + 3 jalur 8 di
-  `tests/test_attacks.py`) + 1 tes efek samping `resolve_session_as`.
+  `tests/test_attacks.py`) + 1 tes efek samping `resolve_session_as` +
+  41 tes factory BYOK generik + mock harness (`tests/test_byok_provider.py`).
 
 ## Cara jalan tes
 
@@ -120,3 +122,26 @@ agen lain, injeksi listing/email yang memerintahkan kirim/bayar (executor
 0 kali), sub-agen di luar tokennya, isi diubah setelah approval, pengguna A
 membaca data/konektor/kejadian pengguna B lewat API (ditolak fail-closed).
 Tidak ada temuan kritis.
+
+## Istilah (dipakai di README ini)
+
+- **Puspa** — agen AI personal open source untuk Indonesia (produk yang
+  dibangun repo ini). **MVP** — Minimum Viable Product, versi pertama yang
+  diuji ke pengguna (definisi revisi 7).
+- **Buku Kerja** — tabel Postgres append-only `kejadian` yang mencatat
+  semua yang terjadi, dengan rantai hash per tugas (definisi revisi 7 §2.3).
+- **Pembaca terkarantina** — sub-agen yang hanya boleh membaca data luar
+  lewat skema ketat dan menandai konten yang mencurigakan sebagai DATA
+  (definisi revisi 7 §2.6).
+- **Token izin** — izin bertanda tangan (Ed25519) yang membatasi apa yang
+  boleh dilakukan satu giliran agen: tool, langkah, token model, dan batas
+  belanja. **Gerbang** — satu-satunya jalur aksi keluar (kirim, bayar);
+  tanpa token izin + persetujuan, aksi ditolak.
+- **Ed25519** — algoritma tanda tangan digital untuk token izin dan skill.
+  **Argon2id** — algoritma hash kata sandi untuk login. **Fernet** —
+  enkripsi simetris untuk vault per pengguna. **RLS** (Row Level Security)
+  — penegakan isolasi antar pengguna di dalam Postgres.
+- **DSN** — Data Source Name, alamat koneksi database (di sini Postgres).
+  **HKUDS** — Hong Kong University Data Science Lab, pembuat nanobot.
+  **Chassis** — kerangka agen yang dipakai ulang (nanobot) dan dibungkus
+  lapisan keamanan Puspa; bukan fork, tidak ada baris kodenya yang diubah.
