@@ -1,0 +1,46 @@
+UJI BUTA PERSONA — Gerbang 3
+Gaya persona: santai
+Tebak tiap balasan: ASLI (ditulis user) atau PERSONA (dibuat Puspa).
+
+1. aku cek dulu harga barang 7 ya
+   Tebakan: [ ] asli   [ ] persona
+2. aku cek dulu harga barang 5 ya
+   Tebakan: [ ] asli   [ ] persona
+3. aku cek dulu harga barang 1 ya
+   Tebakan: [ ] asli   [ ] persona
+4. aku cek dulu harga barang 8 ya
+   Tebakan: [ ] asli   [ ] persona
+5. pesan contoh 7 tentang kopi
+   Tebakan: [ ] asli   [ ] persona
+6. pesan contoh 6 tentang kopi
+   Tebakan: [ ] asli   [ ] persona
+7. aku cek dulu harga barang 9 ya
+   Tebakan: [ ] asli   [ ] persona
+8. pesan contoh 3 tentang kopi
+   Tebakan: [ ] asli   [ ] persona
+9. aku cek dulu harga barang 4 ya
+   Tebakan: [ ] asli   [ ] persona
+10. pesan contoh 0 tentang kopi
+   Tebakan: [ ] asli   [ ] persona
+11. pesan contoh 9 tentang kopi
+   Tebakan: [ ] asli   [ ] persona
+12. pesan contoh 5 tentang kopi
+   Tebakan: [ ] asli   [ ] persona
+13. aku cek dulu harga barang 6 ya
+   Tebakan: [ ] asli   [ ] persona
+14. pesan contoh 8 tentang kopi
+   Tebakan: [ ] asli   [ ] persona
+15. aku cek dulu harga barang 3 ya
+   Tebakan: [ ] asli   [ ] persona
+16. pesan contoh 2 tentang kopi
+   Tebakan: [ ] asli   [ ] persona
+17. pesan contoh 1 tentang kopi
+   Tebakan: [ ] asli   [ ] persona
+18. aku cek dulu harga barang 2 ya
+   Tebakan: [ ] asli   [ ] persona
+19. pesan contoh 4 tentang kopi
+   Tebakan: [ ] asli   [ ] persona
+20. aku cek dulu harga barang 0 ya
+   Tebakan: [ ] asli   [ ] persona
+
+Kirim tebakanmu (20 jawaban) ke penyelenggara uji.

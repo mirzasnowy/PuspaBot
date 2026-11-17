@@ -1,0 +1,113 @@
+{
+  "user_id": "3fd43a36-19b2-4f1a-8b52-70cbfa46356e",
+  "gaya": "santai",
+  "direktif": [
+    "tanpa_gue"
+  ],
+  "seed": 7,
+  "items": [
+    {
+      "teks": "aku cek dulu harga barang 7 ya",
+      "asal": "persona",
+      "nomor": 1
+    },
+    {
+      "teks": "aku cek dulu harga barang 5 ya",
+      "asal": "persona",
+      "nomor": 2
+    },
+    {
+      "teks": "aku cek dulu harga barang 1 ya",
+      "asal": "persona",
+      "nomor": 3
+    },
+    {
+      "teks": "aku cek dulu harga barang 8 ya",
+      "asal": "persona",
+      "nomor": 4
+    },
+    {
+      "teks": "pesan contoh 7 tentang kopi",
+      "asal": "asli",
+      "nomor": 5
+    },
+    {
+      "teks": "pesan contoh 6 tentang kopi",
+      "asal": "asli",
+      "nomor": 6
+    },
+    {
+      "teks": "aku cek dulu harga barang 9 ya",
+      "asal": "persona",
+      "nomor": 7
+    },
+    {
+      "teks": "pesan contoh 3 tentang kopi",
+      "asal": "asli",
+      "nomor": 8
+    },
+    {
+      "teks": "aku cek dulu harga barang 4 ya",
+      "asal": "persona",
+      "nomor": 9
+    },
+    {
+      "teks": "pesan contoh 0 tentang kopi",
+      "asal": "asli",
+      "nomor": 10
+    },
+    {
+      "teks": "pesan contoh 9 tentang kopi",
+      "asal": "asli",
+      "nomor": 11
+    },
+    {
+      "teks": "pesan contoh 5 tentang kopi",
+      "asal": "asli",
+      "nomor": 12
+    },
+    {
+      "teks": "aku cek dulu harga barang 6 ya",
+      "asal": "persona",
+      "nomor": 13
+    },
+    {
+      "teks": "pesan contoh 8 tentang kopi",
+      "asal": "asli",
+      "nomor": 14
+    },
+    {
+      "teks": "aku cek dulu harga barang 3 ya",
+      "asal": "persona",
+      "nomor": 15
+    },
+    {
+      "teks": "pesan contoh 2 tentang kopi",
+      "asal": "asli",
+      "nomor": 16
+    },
+    {
+      "teks": "pesan contoh 1 tentang kopi",
+      "asal": "asli",
+      "nomor": 17
+    },
+    {
+      "teks": "aku cek dulu harga barang 2 ya",
+      "asal": "persona",
+      "nomor": 18
+    },
+    {
+      "teks": "pesan contoh 4 tentang kopi",
+      "asal": "asli",
+      "nomor": 19
+    },
+    {
+      "teks": "aku cek dulu harga barang 0 ya",
+      "asal": "persona",
+      "nomor": 20
+    }
+  ],
+  "jumlah_juri": 0,
+  "jawaban_juri": [],
+  "hasil": null
+}

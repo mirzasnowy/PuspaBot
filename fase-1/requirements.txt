@@ -1,0 +1,11 @@
+# Dependensi Fase 1 — TIDAK ADA dependensi baru.
+# Semua yang dipakai Fase 1 sudah ada di venv Fase 0:
+# psycopg[binary], cryptography, argon2-cffi, httpx, pytest.
+# (httpx dipakai google_oauth.py; argon2 dipakai create_google_user.)
+# Jalankan tes dengan venv Fase 0:
+#   ../fase-0/.venv/bin/python -m pytest tests -q
+psycopg[binary]
+cryptography
+argon2-cffi
+httpx
+pytest

@@ -1,0 +1,112 @@
+"""Irisan memori — sub-agen tidak menyentuh penyimpanan (definisi 2.7, C57).
+
+Aturan: sub-agen tidak punya akses ke penyimpanan memori. Agen
+memberinya irisan: query terbatas + kolom yang diizinkan, lewat token.
+Pemberian irisan DICATAT (tabel `pemberian_irisan`).
+
+CATATAN KONFLIK (dicatat di STATUS_FASE1.md, bukan diubah diam-diam):
+definisi 2.7 meminta pemberian irisan dicatat DI BUKU KERJA, tapi
+himpunan jenis kejadian Buku Kerja tertutup (31 jenis, revisi 7 §2.3)
+dan tidak ada jenis `irisan_diberikan`. Menambah jenis butuh perubahan
+skema Fase 0 + migrasi CHECK — itu keputusan revisi 8 / Fase 2.
+Sementara ini pencatatan memakai tabel audit `pemberian_irisan`
+(milik pengguna, ber-RLS, bisa diaudit); kolom `kejadian_id` disiapkan
+untuk menautkan ke kejadian Buku Kerja begitu jenisnya ada.
+"""
+
+from __future__ import annotations
+
+import psycopg
+from psycopg.rows import dict_row
+
+from . import episodic, profile
+from .schema import resolve_dsn
+
+#: Kolom yang BOLEH diberikan sebagai irisan (himpunan tertutup).
+ALLOWED_COLUMNS = frozenset({"profil", "episodik", "prosedur"})
+
+
+def _connect(dsn=None):
+    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+
+
+def grant_slice(user_id, agen_id, sub_agen_id, query, kolom, token_ref,
+                dsn=None):
+    """Beri irisan memori ke satu sub-agen; kembalikan data irisannya.
+
+    - `kolom`: subset dari {profil, episodik, prosedur}.
+    - `query`: query terbatas (maks 500 karakter); dipakai untuk cari
+      episodik / saring profil.
+    - `token_ref`: referensi token izin sub-agen (string tak kosong).
+    - Pemberian dicatat di `pemberian_irisan` sebelum data dikembalikan.
+    - Data yang dikembalikan HANYA berisi kolom yang diminta, milik
+      user ini, dan (untuk episodik) maksimal 5 hasil.
+    """
+    if not isinstance(query, str) or not query or len(query) > 500:
+        raise ValueError("query harus string tak kosong, maks 500 karakter")
+    kolom = tuple(kolom or [])
+    if not kolom:
+        raise ValueError("kolom irisan tidak boleh kosong")
+    if not set(kolom) <= ALLOWED_COLUMNS:
+        raise ValueError(f"kolom tidak diizinkan: {sorted(set(kolom) - ALLOWED_COLUMNS)}")
+    if not token_ref or not isinstance(token_ref, str):
+        raise ValueError("token_ref harus string tak kosong")
+    data = {}
+    if "profil" in kolom:
+        profil = profile.get_profile(user_id, agen_id=agen_id, dsn=dsn)
+        query_lower = query.lower()
+        data["profil"] = {
+            k: v for k, v in profil.items()
+            if query_lower in k.lower() or query_lower in v.lower()
+        } or profil
+    if "episodik" in kolom:
+        data["episodik"] = episodic.search_episodes(
+            user_id, query, limit=5, agen_id=agen_id, dsn=dsn
+        )
+    if "prosedur" in kolom:
+        from . import procedural
+
+        semua = procedural.list_procedures(user_id, dsn=dsn)
+        query_lower = query.lower()
+        data["prosedur"] = [
+            p for p in semua if query_lower in p["layanan"].lower()
+        ]
+    with _connect(dsn) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO pemberian_irisan (user_id, agen_id, sub_agen_id, "
+                "query, kolom, token_ref) VALUES (%s, %s, %s, %s, %s, %s) "
+                "RETURNING id, dibuat",
+                (user_id, agen_id, sub_agen_id, query, list(kolom), token_ref),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    data["_irisan_id"] = str(row["id"])
+    data["_dicatat_pada"] = row["dibuat"]
+    return data
+
+
+def list_grants(user_id, dsn=None):
+    """Daftar pemberian irisan milik user, terbaru dulu."""
+    with _connect(dsn) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, user_id, agen_id, sub_agen_id, query, kolom, "
+                "token_ref, kejadian_id, dibuat FROM pemberian_irisan "
+                "WHERE user_id = %s ORDER BY dibuat DESC",
+                (user_id,),
+            )
+            return [
+                {
+                    "id": str(r["id"]),
+                    "user_id": str(r["user_id"]),
+                    "agen_id": str(r["agen_id"]) if r["agen_id"] else None,
+                    "sub_agen_id": str(r["sub_agen_id"]) if r["sub_agen_id"] else None,
+                    "query": r["query"],
+                    "kolom": list(r["kolom"]),
+                    "token_ref": r["token_ref"],
+                    "kejadian_id": str(r["kejadian_id"]) if r["kejadian_id"] else None,
+                    "dibuat": r["dibuat"],
+                }
+                for r in cur.fetchall()
+            ]
