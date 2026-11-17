@@ -40,7 +40,7 @@ TABLES_FASE2 = (
 
 
 def create_schema(dsn: str | None = None) -> None:
-    """Jalankan `infra/schema_fase2.sql` (idempotent).
+    """Jalankan `infra/schema_runtime.sql` (idempotent).
 
     Keputusan Fase 2 (pertanyaan Fase 0, butir c): peran `puspa_app`
     DIBERI LOGIN + password — tapi hanya bila env `PUSPA_APP_PASSWORD`
@@ -48,7 +48,7 @@ def create_schema(dsn: str | None = None) -> None:
     password default yang ditulis ke mana pun).
     """
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    sql = (Path(__file__).resolve().parent.parent.parent / "infra" / "schema_fase2.sql").read_text(encoding="utf-8")
+    sql = (Path(__file__).resolve().parent.parent.parent / "infra" / "schema_runtime.sql").read_text(encoding="utf-8")
     with psycopg.connect(dsn, autocommit=True) as conn:
         conn.execute(sql)
         password = os.environ.get("PUSPA_APP_PASSWORD")

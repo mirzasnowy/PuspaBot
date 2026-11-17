@@ -100,10 +100,7 @@ def build_provider(peran: str, *, keluarga_pembuat: str | None = None,
     import sys
     from pathlib import Path
 
-    demo_dir = Path(__file__).resolve().parent.parent.parent.parent / "fase-0" / "demo"
-    if not demo_dir.is_dir():
-        # Layout repo (GitHub): demo/ ada di root repo, bukan di fase-0/demo.
-        demo_dir = Path(__file__).resolve().parent.parent.parent.parent / "demo"
+    demo_dir = Path(__file__).resolve().parent.parent.parent.parent / "demo"
     if str(demo_dir) not in sys.path:
         sys.path.insert(0, str(demo_dir))
     from demo.byok_provider import build_byok_provider  # noqa: E402

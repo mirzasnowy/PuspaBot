@@ -28,9 +28,9 @@ TABLES_FASE3 = (
 
 
 def create_schema(dsn: str | None = None) -> None:
-    """Jalankan `infra/schema_fase3.sql` (idempotent)."""
+    """Jalankan `infra/schema_graphs.sql` (idempotent)."""
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    sql = (Path(__file__).resolve().parent.parent.parent / "infra" / "schema_fase3.sql").read_text(encoding="utf-8")
+    sql = (Path(__file__).resolve().parent.parent.parent / "infra" / "schema_graphs.sql").read_text(encoding="utf-8")
     with psycopg.connect(dsn, autocommit=True) as conn:
         conn.execute(sql)
 

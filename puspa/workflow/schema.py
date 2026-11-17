@@ -20,7 +20,7 @@ def _connect(dsn=None):
 
 
 def create_schema(dsn=None) -> None:
-    sql = (Path(__file__).resolve().parent.parent.parent / "infra" / "schema_fase4.sql").read_text()
+    sql = (Path(__file__).resolve().parent.parent.parent / "infra" / "schema_workflow.sql").read_text()
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(sql)

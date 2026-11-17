@@ -22,3 +22,8 @@ jinja2==3.1.6
 regex==2026.11.15
 jsonschema==4.26.0
 filelock==4.2.11
+# Dependensi Fase 2/3 (di atas Fase 0).
+fastapi==0.163.1
+httpx==0.28.1
+uvicorn==0.54.0
+playwright==1.65.2
