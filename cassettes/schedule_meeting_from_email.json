@@ -1,0 +1,22 @@
+{
+  "task_id": "tugas-acuan-schedule_meeting_from_email",
+  "name": "schedule_meeting_from_email",
+  "recording": [
+    {
+      "tool": "gmail_read",
+      "output": {
+        "jenis": "email",
+        "value": 1,
+        "text": "[DATA: Bisakah kita rapat Rabu jam 10?] "
+      }
+    },
+    {
+      "tool": "calendar_create_event",
+      "output": {
+        "jenis": "events",
+        "value": 1,
+        "id": "ev-uji-1"
+      }
+    }
+  ]
+}

@@ -274,7 +274,7 @@ def find_user_by_email(email, dsn=None):
     email_n = email.strip().lower()
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id FROM pengguna WHERE email = %s", (email_n,))
+            cur.execute("SELECT id FROM users WHERE email = %s", (email_n,))
             row = cur.fetchone()
     return str(row["id"]) if row else None
 
@@ -299,7 +299,7 @@ def create_google_user(email, dsn=None):
         with conn.cursor() as cur:
             try:
                 cur.execute(
-                    "INSERT INTO pengguna (email, password_hash) VALUES (%s, %s) "
+                    "INSERT INTO users (email, password_hash) VALUES (%s, %s) "
                     "RETURNING id",
                     (email_n, password_hash),
                 )
@@ -318,7 +318,7 @@ def complete_google_login(code, code_verifier, client_id, client_secret,
     Kembalikan {user_id, email, session_token, baru}. Sesi dibuat
     lewat sessions.py Fase 0 (dipakai ulang, tanpa perubahan).
     """
-    from puspa.accounts.sessions import create_session
+    from puspa.accounts.user_sessions import create_session
 
     tokens = exchange_code(
         code, code_verifier, client_id, client_secret, redirect_uri,
@@ -329,17 +329,17 @@ def complete_google_login(code, code_verifier, client_id, client_secret,
     if not email:
         raise OAuthError("id_token tidak memuat email")
     user_id = find_user_by_email(email, dsn=dsn)
-    baru = False
+    new = False
     if user_id is None:
         user_id = create_google_user(email, dsn=dsn)
-        baru = True
+        new = True
     store_tokens(user_id, tokens, dsn=dsn)
     session_token = create_session(user_id, device_label, dsn=dsn)
     return {
         "user_id": user_id,
         "email": email,
         "session_token": session_token,
-        "baru": baru,
+        "new": new,
     }
 
 

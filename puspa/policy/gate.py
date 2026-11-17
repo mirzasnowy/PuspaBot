@@ -34,22 +34,22 @@ from .tokens import TokenError, canonical_json, is_revoked, token_id, verify_tok
 __all__ = ["ApprovalRequest", "Gate", "GateDenied"]
 
 # kind aksi keluar yang diakui gerbang.
-KINDS = frozenset({"kirim", "buat_event", "siapkan_bayar", "hapus"})
+KINDS = frozenset({"send", "create_event", "prepare_payment", "delete"})
 
 # Tool yang mengizinkan tiap kind (nama persis atau nama konektor).
 KIND_TOOLS = {
-    "kirim": {"kirim", "gmail.kirim", "gmail.send", "email.kirim"},
-    "buat_event": {"buat_event", "calendar.buat_event", "calendar.create"},
-    "siapkan_bayar": {"siapkan_bayar", "bayar", "payment.bayar"},
-    "hapus": {"hapus", "delete"},
+    "send": {"send", "gmail.kirim", "gmail.send", "email.kirim"},
+    "create_event": {"create_event", "calendar.create_event", "calendar.create"},
+    "prepare_payment": {"prepare_payment", "pay", "payment.bayar"},
+    "delete": {"delete", "delete"},
 }
 
 # Scope konektor yang mengizinkan tiap kind.
 KIND_SCOPES = {
-    "kirim": {"kirim", "send", "write"},
-    "buat_event": {"buat_event", "write", "create"},
-    "siapkan_bayar": {"siapkan_bayar", "bayar"},
-    "hapus": {"hapus", "delete"},
+    "send": {"send", "send", "write"},
+    "create_event": {"create_event", "write", "create"},
+    "prepare_payment": {"prepare_payment", "pay"},
+    "delete": {"delete", "delete"},
 }
 
 
@@ -65,10 +65,10 @@ class ApprovalRequest:
 
     request_id: str
     user_id: str
-    agen_id: str
+    agent_id: str
     kind: str
-    isi: dict
-    isi_hash: str
+    content: dict
+    content_hash: str
     token_payload: dict
     token_id: str
     status: str = "diminta"  # diminta | disetujui | ditolak | dieksekusi
@@ -76,8 +76,8 @@ class ApprovalRequest:
     executed: bool = False
 
 
-def _isi_hash(isi: dict) -> str:
-    return hashlib.sha256(canonical_json(isi)).hexdigest()
+def _content_hash(content: dict) -> str:
+    return hashlib.sha256(canonical_json(content)).hexdigest()
 
 
 def _token_allows_kind(payload: dict, kind: str) -> bool:
@@ -85,8 +85,8 @@ def _token_allows_kind(payload: dict, kind: str) -> bool:
     if tools & KIND_TOOLS.get(kind, set()):
         return True
     scopes = KIND_SCOPES.get(kind, set())
-    for daftar_scope in payload.get("konektor", {}).values():
-        if set(daftar_scope) & scopes:
+    for items_scope in payload.get("connectors", {}).values():
+        if set(items_scope) & scopes:
             return True
     return False
 
@@ -101,16 +101,16 @@ class Gate:
         self._requests: dict[str, ApprovalRequest] = {}
 
     # -- pencatatan ---------------------------------------------------
-    def _log(self, jenis: str, isi: dict) -> None:
+    def _log(self, jenis: str, content: dict) -> None:
         if self.log is None:
             return
         try:
-            self.log(jenis, isi)
+            self.log(jenis, content)
         except TypeError:
             # Stub pencatat yang menerima satu dict kejadian.
-            self.log({"jenis": jenis, "isi": isi})
+            self.log({"type": jenis, "content": content})
 
-    def _deny(self, request, alasan: str, invalidate: bool = False):
+    def _deny(self, request, reason: str, invalidate: bool = False):
         """Catat penolakan lalu lempar GateDenied.
 
         ``invalidate=True`` hanya untuk penolakan yang membatalkan
@@ -120,18 +120,18 @@ class Gate:
         apa adanya supaya alur bisa dilanjutkan (disetujui nanti /
         limit dinaikkan lalu execute ulang).
         """
-        isi_log = {"alasan": alasan}
+        content_log = {"reason": reason}
         if request is not None:
-            isi_log["request_id"] = request.request_id
-            isi_log["user_id"] = request.user_id
-            isi_log["kind"] = request.kind
+            content_log["request_id"] = request.request_id
+            content_log["user_id"] = request.user_id
+            content_log["kind"] = request.kind
             if invalidate:
-                request.status = "ditolak"
-        self._log("persetujuan_ditolak", isi_log)
-        raise GateDenied(alasan)
+                request.status = "rejected"
+        self._log("approval_rejected", content_log)
+        raise GateDenied(reason)
 
     # -- token --------------------------------------------------------
-    def _resolve_token(self, token, user_id, agen_id):
+    def _resolve_token(self, token, user_id, agent_id):
         """Kembalikan (payload, token_id). Token string diverifikasi
         kriptografis; payload dict dianggap sudah diverifikasi
         pemanggil (dicek exp + pencabutan di sini)."""
@@ -150,7 +150,7 @@ class Gate:
             tid = token_id(token)
         else:
             raise GateDenied("token harus string atau payload dict")
-        if payload.get("user_id") != user_id or payload.get("agen_id") != agen_id:
+        if payload.get("user_id") != user_id or payload.get("agent_id") != agent_id:
             raise GateDenied("token bukan milik user/agen ini")
         if payload.get("exp", 0) <= int(time.time()):
             raise GateDenied("token sudah kedaluwarsa")
@@ -158,14 +158,14 @@ class Gate:
             raise GateDenied("token sudah dicabut")
         return payload, tid
 
-    def _check_token_allows(self, payload, kind, isi):
+    def _check_token_allows(self, payload, kind, content):
         if not _token_allows_kind(payload, kind):
             raise GateDenied(f"token tidak mengizinkan aksi {kind!r}")
-        domain = isi.get("domain")
+        domain = content.get("domain")
         if domain is not None and domain not in payload.get("domains", []):
             raise GateDenied(f"token tidak mengizinkan domain {domain!r}")
-        if kind == "siapkan_bayar":
-            nominal = isi.get("nominal")
+        if kind == "prepare_payment":
+            nominal = content.get("nominal")
             if nominal is not None:
                 rupiah_max = payload.get("anggaran", {}).get("rupiah_max")
                 if rupiah_max is not None and nominal > rupiah_max:
@@ -174,7 +174,7 @@ class Gate:
                     )
 
     # -- API kontrak --------------------------------------------------
-    def request_approval(self, *, user_id, agen_id, token, kind, isi: dict) -> ApprovalRequest:
+    def request_approval(self, *, user_id, agent_id, token, kind, content: dict) -> ApprovalRequest:
         """Ajukan aksi keluar untuk dimintai persetujuan user.
 
         Cek token mengizinkan kind + target. Catat
@@ -182,29 +182,29 @@ class Gate:
         """
         if kind not in KINDS:
             raise GateDenied(f"kind aksi tidak dikenal: {kind!r}")
-        if not isinstance(isi, dict):
+        if not isinstance(content, dict):
             raise GateDenied("isi aksi harus dict")
-        payload, tid = self._resolve_token(token, user_id, agen_id)
-        self._check_token_allows(payload, kind, isi)
+        payload, tid = self._resolve_token(token, user_id, agent_id)
+        self._check_token_allows(payload, kind, content)
         request = ApprovalRequest(
             request_id=uuid.uuid4().hex,
             user_id=user_id,
-            agen_id=agen_id,
+            agent_id=agent_id,
             kind=kind,
-            isi=isi,
-            isi_hash=_isi_hash(isi),
+            content=content,
+            content_hash=_content_hash(content),
             token_payload=payload,
             token_id=tid,
         )
         self._requests[request.request_id] = request
         self._log(
-            "persetujuan_diminta",
+            "approval_requested",
             {
                 "request_id": request.request_id,
                 "user_id": user_id,
-                "agen_id": agen_id,
+                "agent_id": agent_id,
                 "kind": kind,
-                "isi_hash": request.isi_hash,
+                "content_hash": request.content_hash,
             },
         )
         return request
@@ -220,7 +220,7 @@ class Gate:
             raise GateDenied(f"permintaan sudah berstatus {request.status!r}")
         request.status = "disetujui"
         self._log(
-            "persetujuan_diberikan",
+            "approval_granted",
             {"request_id": request.request_id, "user_id": user_id, "kind": request.kind},
         )
         return request
@@ -242,7 +242,7 @@ class Gate:
             return request.result
         if request.status != "disetujui":
             self._deny(request, f"aksi belum disetujui (status: {request.status!r})")
-        if _isi_hash(request.isi) != request.isi_hash:
+        if _content_hash(request.content) != request.content_hash:
             self._deny(request, "isi aksi berubah setelah disetujui; persetujuan batal", invalidate=True)
         # Token masih valid? (cek ulang exp + pencabutan)
         if request.token_payload.get("exp", 0) <= int(time.time()):
@@ -250,8 +250,8 @@ class Gate:
         if is_revoked(request.token_id):
             self._deny(request, "token sudah dicabut", invalidate=True)
         # Batas belanja (cek independen dari persetujuan).
-        if request.kind == "siapkan_bayar":
-            nominal = request.isi.get("nominal", 0)
+        if request.kind == "prepare_payment":
+            nominal = request.content.get("nominal", 0)
             if self.spending is None:
                 self._deny(request, "tidak ada penegak batas belanja belanja; pembayaran ditolak")
             if not self._spending_ok(request.user_id, nominal):
@@ -259,7 +259,7 @@ class Gate:
                     request,
                     f"batas belanja tidak mengizinkan nominal Rp{nominal}",
                 )
-        result = executor(request.isi)
+        result = executor(request.content)
         request.result = result
         request.executed = True
         request.status = "dieksekusi"

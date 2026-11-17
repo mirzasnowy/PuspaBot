@@ -32,27 +32,27 @@ from ..memory.schema import resolve_dsn
 #: Tiga contoh gaya yang ditawarkan saat onboarding (C123).
 STYLES = {
     "santai": {
-        "nama": "Santai",
+        "name": "Santai",
         "deskripsi": "Bahasa sehari-hari, slang, singkat, hangat.",
-        "contoh": [
+        "example": [
             "Siap, gue cek dulu ya.",
             "Oke, udah ketemu yang paling murah.",
             "Santai, nanti gue ingetin sebelum jatuh tempo.",
         ],
     },
     "rapi": {
-        "nama": "Rapi",
+        "name": "Rapi",
         "deskripsi": "Bahasa baku yang sopan, kalimat lengkap.",
-        "contoh": [
+        "example": [
             "Baik, saya periksa terlebih dahulu.",
             "Saya sudah menemukan harga termurah untuk Anda.",
             "Saya akan mengingatkan Anda sebelum jatuh tempo.",
         ],
     },
     "campur": {
-        "nama": "Campur kode",
+        "name": "Campur kode",
         "deskripsi": "Campur bahasa Indonesia dan Inggris, informal.",
-        "contoh": [
+        "example": [
             "Got it, aku cek dulu ya.",
             "Done — ini yang paling murah so far.",
             "Reminder set, nanti aku kabarin sebelum due date.",
@@ -60,7 +60,7 @@ STYLES = {
     },
 }
 
-MAX_CONTOH = 20
+MAX_EXAMPLE = 20
 
 #: Koreksi yang dikenali (frasa -> direktif). Frasa lain tetap disimpan
 #: mentah sebagai fakta koreksi dan berlaku sebagai catatan gaya.
@@ -69,9 +69,9 @@ _KOREKSI_DIKENALI = (
     ("lebih formal", "formal"),
     ("lebih baku", "formal"),
     ("lebih singkat", "singkat"),
-    ("jangan pakai gue", "tanpa_gue"),
-    ("jangan pakai lo", "tanpa_lo"),
-    ("jangan pakai saya", "tanpa_saya"),
+    ("jangan pakai gue", "without_gue"),
+    ("jangan pakai lo", "without_lo"),
+    ("jangan pakai saya", "without_saya"),
 )
 
 
@@ -79,12 +79,12 @@ def _connect(dsn=None):
     return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
-def choose_style(user_id, gaya, dsn=None):
+def choose_style(user_id, style, dsn=None):
     """Pilih 1 dari 3 contoh gaya; simpan sebagai fakta profil."""
-    if gaya not in STYLES:
-        raise ValueError(f"gaya tidak dikenal: {gaya!r} (pilih: {sorted(STYLES)})")
+    if style not in STYLES:
+        raise ValueError(f"gaya tidak dikenal: {style!r} (pilih: {sorted(STYLES)})")
     return profile.add_fact(
-        user_id, "gaya_bicara", gaya, "dikonfirmasi_user", dsn=dsn
+        user_id, "gaya_bicara", style, "user_confirmed", dsn=dsn
     )
 
 
@@ -95,33 +95,33 @@ def add_style_samples(user_id, messages, dsn=None):
     """
     if not isinstance(messages, list) or not messages:
         raise ValueError("messages harus list tak kosong")
-    if len(messages) > MAX_CONTOH:
-        raise ValueError(f"maks {MAX_CONTOH} pesan contoh sekali tempel")
+    if len(messages) > MAX_EXAMPLE:
+        raise ValueError(f"maks {MAX_EXAMPLE} pesan contoh sekali tempel")
     bersih = [m.strip() for m in messages if isinstance(m, str) and m.strip()]
     if not bersih:
         raise ValueError("tidak ada pesan contoh yang valid")
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            for teks in bersih:
+            for text in bersih:
                 cur.execute(
-                    "INSERT INTO contoh_gaya (user_id, teks) VALUES (%s, %s)",
-                    (user_id, teks),
+                    "INSERT INTO style_examples (user_id, text) VALUES (%s, %s)",
+                    (user_id, text),
                 )
             cur.execute(
-                "SELECT COUNT(*) AS n FROM contoh_gaya WHERE user_id = %s",
+                "SELECT COUNT(*) AS n FROM style_examples WHERE user_id = %s",
                 (user_id,),
             )
-            jumlah = cur.fetchone()["n"]
-            if jumlah > MAX_CONTOH:
+            amount = cur.fetchone()["n"]
+            if amount > MAX_EXAMPLE:
                 cur.execute(
-                    "DELETE FROM contoh_gaya WHERE id IN ("
-                    "SELECT id FROM contoh_gaya WHERE user_id = %s "
-                    "ORDER BY dibuat ASC LIMIT %s)",
-                    (user_id, jumlah - MAX_CONTOH),
+                    "DELETE FROM style_examples WHERE id IN ("
+                    "SELECT id FROM style_examples WHERE user_id = %s "
+                    "ORDER BY created_at ASC LIMIT %s)",
+                    (user_id, amount - MAX_EXAMPLE),
                 )
-                jumlah = MAX_CONTOH
+                amount = MAX_EXAMPLE
         conn.commit()
-    return jumlah
+    return amount
 
 
 def list_style_samples(user_id, dsn=None):
@@ -129,10 +129,10 @@ def list_style_samples(user_id, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT teks FROM contoh_gaya WHERE user_id = %s ORDER BY dibuat ASC",
+                "SELECT text FROM style_examples WHERE user_id = %s ORDER BY created_at ASC",
                 (user_id,),
             )
-            return [r["teks"] for r in cur.fetchall()]
+            return [r["text"] for r in cur.fetchall()]
 
 
 def apply_correction(user_id, teks_koreksi, dsn=None):
@@ -143,19 +143,19 @@ def apply_correction(user_id, teks_koreksi, dsn=None):
     """
     if not isinstance(teks_koreksi, str) or not teks_koreksi.strip():
         raise ValueError("teks koreksi harus string tak kosong")
-    teks = teks_koreksi.strip()
+    text = teks_koreksi.strip()
     direktif = None
-    lowered = teks.lower()
-    for frasa, nama in _KOREKSI_DIKENALI:
+    lowered = text.lower()
+    for frasa, name in _KOREKSI_DIKENALI:
         if frasa in lowered:
-            direktif = nama
+            direktif = name
             break
-    nilai = direktif or teks
+    value = direktif or text
     fact = profile.add_fact(
-        user_id, "koreksi_gaya", nilai, "dikonfirmasi_user", dsn=dsn
+        user_id, "koreksi_gaya", value, "user_confirmed", dsn=dsn
     )
     fact["direktif"] = direktif
-    fact["teks_asli"] = teks
+    fact["teks_asli"] = text
     return fact
 
 
@@ -165,20 +165,20 @@ def get_persona(user_id, dsn=None):
     Urutan berlaku: gaya dasar dari fakta `gaya_bicara`, lalu semua
     fakta `koreksi_gaya` yang masih berlaku sebagai direktif.
     """
-    profil = profile.get_profile(user_id, dsn=dsn)
-    gaya = profil.get("gaya_bicara", "santai")
+    profile = profile.get_profile(user_id, dsn=dsn)
+    style = profile.get("gaya_bicara", "santai")
     koreksi = [
-        f for f in profile.list_facts(user_id, kunci="koreksi_gaya", dsn=dsn)
-        if f["status"] == "berlaku"
+        f for f in profile.list_facts(user_id, key="koreksi_gaya", dsn=dsn)
+        if f["status"] == "active"
     ]
-    direktif = [f["nilai"] for f in koreksi]
-    contoh = list_style_samples(user_id, dsn=dsn)
+    direktif = [f["value"] for f in koreksi]
+    example = list_style_samples(user_id, dsn=dsn)
     return {
-        "gaya": gaya,
-        "deskripsi": STYLES.get(gaya, STYLES["santai"])["deskripsi"],
+        "style": style,
+        "deskripsi": STYLES.get(style, STYLES["santai"])["deskripsi"],
         "direktif": direktif,
-        "jumlah_contoh": len(contoh),
-        "contoh": contoh,
+        "amount_example": len(example),
+        "example": example,
     }
 
 
@@ -191,16 +191,16 @@ def render_reply(persona, teks_dasar):
     - direktif `formal`/`lebih formal`: gue->saya, lo->Anda.
     - direktif `singkat`: potong ke kalimat pertama.
     """
-    teks = teks_dasar
+    text = teks_dasar
     direktif = persona.get("direktif", [])
-    if "tanpa_gue" in direktif:
-        teks = re.sub(r"\bgue\b", "aku", teks, flags=re.IGNORECASE)
-    if "tanpa_lo" in direktif:
-        teks = re.sub(r"\blo\b", "kamu", teks, flags=re.IGNORECASE)
+    if "without_gue" in direktif:
+        text = re.sub(r"\bgue\b", "aku", text, flags=re.IGNORECASE)
+    if "without_lo" in direktif:
+        text = re.sub(r"\blo\b", "kamu", text, flags=re.IGNORECASE)
     if "formal" in direktif:
-        teks = re.sub(r"\bgue\b", "saya", teks, flags=re.IGNORECASE)
-        teks = re.sub(r"\blo\b", "Anda", teks, flags=re.IGNORECASE)
+        text = re.sub(r"\bgue\b", "saya", text, flags=re.IGNORECASE)
+        text = re.sub(r"\blo\b", "Anda", text, flags=re.IGNORECASE)
     if "singkat" in direktif:
-        pertama = teks.split(".")[0]
-        teks = pertama.strip() + "." if pertama.strip() else teks
-    return teks
+        pertama = text.split(".")[0]
+        text = pertama.strip() + "." if pertama.strip() else text
+    return text

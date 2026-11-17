@@ -84,13 +84,13 @@ def verify_email_link(token, secret=None, dsn=None, now=None):
     with psycopg.connect(resolve_dsn(dsn)) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT 1 FROM tautan_email_digunakan WHERE token_hash = %s",
+                "SELECT 1 FROM used_email_links WHERE token_hash = %s",
                 (token_hash,),
             )
             if cur.fetchone() is not None:
                 raise EmailLinkError("tautan sudah dipakai")
             cur.execute(
-                "INSERT INTO tautan_email_digunakan (token_hash) VALUES (%s)",
+                "INSERT INTO used_email_links (token_hash) VALUES (%s)",
                 (token_hash,),
             )
         conn.commit()

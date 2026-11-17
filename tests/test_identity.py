@@ -5,94 +5,94 @@ import pytest
 from puspa.graphs import identity as graf
 
 
-def test_normalisasi_nomor_model_deterministik():
-    assert graf.normalisasi_nomor_model("sm-s921b") == "SMS921B"
-    assert graf.normalisasi_nomor_model("SM S921-B") == "SMS921B"
-    assert graf.normalisasi_nomor_model("MQKP3ID/A") == "MQKP3IDA"
+def test_normalisasi_number_model_deterministik():
+    assert graf.normalisasi_number_model("sm-s921b") == "SMS921B"
+    assert graf.normalisasi_number_model("SM S921-B") == "SMS921B"
+    assert graf.normalisasi_number_model("MQKP3ID/A") == "MQKP3IDA"
 
 
-def test_normalisasi_varian_hanya_kunci_harga():
-    assert graf.normalisasi_varian({"storage": "256GB", "warna": "Hitam", "berat": "200g"}) == {
+def test_normalisasi_variant_hanya_key_price():
+    assert graf.normalisasi_variant({"storage": "256GB", "warna": "Hitam", "berat": "200g"}) == {
         "storage": "256gb", "warna": "hitam"}
-    assert graf.normalisasi_varian(None) == {}
+    assert graf.normalisasi_variant(None) == {}
 
 
-def test_tambah_dan_cari_produk(make_user, test_dsn):
+def test_add_and_search_product(make_user, test_dsn):
     user = make_user()
-    produk = graf.tambah_produk(merek="Samsung", seri="Galaxy S24", nomor_model="SM-S921B",
-                                kategori="HP", varian={"storage": "256GB"}, dsn=test_dsn)
-    assert produk["nomor_model"] == "SMS921B"
-    assert produk["varian"] == {"storage": "256gb"}
+    product = graf.add_product(brand="Samsung", series="Galaxy S24", model_number="SM-S921B",
+                                category="phone", variant={"storage": "256GB"}, dsn=test_dsn)
+    assert product["model_number"] == "SMS921B"
+    assert product["variant"] == {"storage": "256gb"}
     # Idempotent: tambah lagi -> produk yang sama.
-    lagi = graf.tambah_produk(merek="Samsung", nomor_model="sm-s921b", kategori="HP", dsn=test_dsn)
-    assert lagi["id"] == produk["id"]
-    assert graf.cari_produk("SM-S921B", dsn=test_dsn)["id"] == produk["id"]
-    assert graf.cari_produk("TIDAK-ADA", dsn=test_dsn) is None
+    lagi = graf.add_product(brand="Samsung", model_number="sm-s921b", category="phone", dsn=test_dsn)
+    assert lagi["id"] == product["id"]
+    assert graf.search_product("SM-S921B", dsn=test_dsn)["id"] == product["id"]
+    assert graf.search_product("TIDAK-ADA", dsn=test_dsn) is None
 
 
-def test_kategori_di_luar_scope_ditolak(make_user, test_dsn):
+def test_category_di_luar_scope_rejected(make_user, test_dsn):
     make_user()
     with pytest.raises(graf.IdentityError):
-        graf.tambah_produk(merek="Nike", nomor_model="AIRMAX90", kategori="fashion", dsn=test_dsn)
+        graf.add_product(brand="Nike", model_number="AIRMAX90", category="fashion", dsn=test_dsn)
 
 
-def test_tautan_status_dan_konfirmasi_user(make_user, test_dsn):
+def test_tautan_status_and_konfirmasi_user(make_user, test_dsn):
     user = make_user()
-    produk = graf.tambah_produk(merek="Samsung", nomor_model="SM-S921B", kategori="HP", dsn=test_dsn)
-    tautan = graf.tautkan_listing(produk_id=produk["id"], user_id=user["user_id"],
+    product = graf.add_product(brand="Samsung", model_number="SM-S921B", category="phone", dsn=test_dsn)
+    tautan = graf.tautkan_listing(product_id=product["id"], user_id=user["user_id"],
                                   marketplace="Tokopedia",
                                   listing_url="https://www.tokopedia.com/toko/x",
                                   dsn=test_dsn)
-    assert tautan["status"] == "otomatis"
+    assert tautan["status"] == "automatic"
     dikonfirmasi = graf.konfirmasi_tautan(tautan["id"], user_id=user["user_id"],
-                                          diterima=True, dsn=test_dsn)
-    assert dikonfirmasi["status"] == "dikonfirmasi_user"
-    ditolak = graf.konfirmasi_tautan(tautan["id"], user_id=user["user_id"],
-                                     diterima=False, dsn=test_dsn)
-    assert ditolak["status"] == "ditolak_user"
+                                          accepted=True, dsn=test_dsn)
+    assert dikonfirmasi["status"] == "user_confirmed"
+    rejected = graf.konfirmasi_tautan(tautan["id"], user_id=user["user_id"],
+                                     accepted=False, dsn=test_dsn)
+    assert rejected["status"] == "user_rejected"
     with pytest.raises(KeyError):
         graf.konfirmasi_tautan("00000000-0000-0000-0000-000000000000",
-                               user_id=user["user_id"], diterima=True, dsn=test_dsn)
+                               user_id=user["user_id"], accepted=True, dsn=test_dsn)
 
 
-def test_harga_tanpa_bukti_ditolak(make_user, test_dsn):
+def test_price_without_evidence_rejected(make_user, test_dsn):
     user = make_user()
-    produk = graf.tambah_produk(merek="Samsung", nomor_model="SM-S921B", kategori="HP", dsn=test_dsn)
-    tautan = graf.tautkan_listing(produk_id=produk["id"], user_id=user["user_id"],
+    product = graf.add_product(brand="Samsung", model_number="SM-S921B", category="phone", dsn=test_dsn)
+    tautan = graf.tautkan_listing(product_id=product["id"], user_id=user["user_id"],
                                   marketplace="Shopee",
                                   listing_url="https://shopee.co.id/x", dsn=test_dsn)
     with pytest.raises(graf.IdentityError):
-        graf.catat_harga(tautan_id=tautan["id"], user_id=user["user_id"],
-                         harga=12000000, bukti_id="", dsn=test_dsn)
+        graf.record_price(tautan_id=tautan["id"], user_id=user["user_id"],
+                         price=12000000, evidence_id="", dsn=test_dsn)
 
 
-def test_harga_terkini_dan_riwayat_30_hari(make_user, test_dsn):
+def test_price_terkini_and_riwayat_30_day(make_user, test_dsn):
     user = make_user()
-    produk = graf.tambah_produk(merek="Samsung", nomor_model="SM-S921B", kategori="HP", dsn=test_dsn)
-    for pasar, url, harga in (
+    product = graf.add_product(brand="Samsung", model_number="SM-S921B", category="phone", dsn=test_dsn)
+    for pasar, url, price in (
             ("Tokopedia", "https://www.tokopedia.com/toko/a", 12999000),
             ("Shopee", "https://shopee.co.id/a", 12499000),
             ("Blibli", "https://www.blibli.com/p/a", 12750000)):
-        tautan = graf.tautkan_listing(produk_id=produk["id"], user_id=user["user_id"],
+        tautan = graf.tautkan_listing(product_id=product["id"], user_id=user["user_id"],
                                       marketplace=pasar, listing_url=url, dsn=test_dsn)
-        graf.catat_harga(tautan_id=tautan["id"], user_id=user["user_id"], harga=harga,
-                         ongkir=15000, rating_toko=4.9, bukti_id=f"bukti-{pasar}", dsn=test_dsn)
-    terkini = graf.harga_terkini(produk["id"], dsn=test_dsn)
-    assert {t["marketplace"]: t["harga"] for t in terkini} == {
+        graf.record_price(tautan_id=tautan["id"], user_id=user["user_id"], price=price,
+                         shipping=15000, store_rating=4.9, evidence_id=f"bukti-{pasar}", dsn=test_dsn)
+    terkini = graf.price_terkini(product["id"], dsn=test_dsn)
+    assert {t["marketplace"]: t["price"] for t in terkini} == {
         "Tokopedia": 12999000.0, "Shopee": 12499000.0, "Blibli": 12750000.0}
-    assert all(t["bukti_id"] for t in terkini)
-    riwayat = graf.riwayat_harga(produk["id"], hari=30, dsn=test_dsn)
+    assert all(t["evidence_id"] for t in terkini)
+    riwayat = graf.riwayat_price(product["id"], day=30, dsn=test_dsn)
     assert len(riwayat) == 3
-    assert all(r["bukti_id"] for r in riwayat)
+    assert all(r["evidence_id"] for r in riwayat)
 
 
-def test_cocokkan_otomatis_tanpa_tebakan(make_user, test_dsn):
+def test_cocokkan_automatic_without_tebakan(make_user, test_dsn):
     user = make_user()
-    graf.tambah_produk(merek="Samsung", seri="Galaxy S24", nomor_model="SM-S921B",
-                       kategori="HP", dsn=test_dsn)
-    cocok = graf.cocokkan_otomatis(nomor_model="SM-S921B", dsn=test_dsn)
-    assert cocok["cocok"] is not None and cocok["perlu_tanya"] is False
-    ragu = graf.cocokkan_otomatis(nomor_model="SM-S999Z", merek="Samsung", dsn=test_dsn)
-    assert ragu["cocok"] is None and ragu["perlu_tanya"] is True
+    graf.add_product(brand="Samsung", series="Galaxy S24", model_number="SM-S921B",
+                       category="phone", dsn=test_dsn)
+    match = graf.cocokkan_automatic(model_number="SM-S921B", dsn=test_dsn)
+    assert match["match"] is not None and match["perlu_ask"] is False
+    ragu = graf.cocokkan_automatic(model_number="SM-S999Z", brand="Samsung", dsn=test_dsn)
+    assert ragu["match"] is None and ragu["perlu_ask"] is True
     # Kandidat ditampilkan, bukan dipilih diam-diam.
     assert isinstance(ragu["kandidat"], list)

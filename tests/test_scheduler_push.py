@@ -5,59 +5,59 @@ from datetime import datetime, timedelta, timezone
 import httpx
 import pytest
 
-from puspa.push.push import (buat_kunci_vapid, dekripsi_payload,
-                            enkripsi_payload, kirim, simpan_langganan,
-                            daftar_langganan)
-from puspa.scheduler.scheduler import (buat_pemicu, detak, jalan_pemicu,
+from puspa.push.push import (create_key_vapid, dekripsi_payload,
+                            enkripsi_payload, send, save_langganan,
+                            items_langganan)
+from puspa.scheduler.scheduler import (create_trigger, heartbeat, jalan_trigger,
                                        jalankan_yang_terlewat,
-                                       jadwalkan_backup_harian, sehat, tick)
+                                       schedule_backup_daily, sehat, tick)
 
 
 def _sekarang():
     return datetime.now(timezone.utc)
 
 
-def test_tick_jalankan_pemicu_sekali_idempotent(test_dsn, make_user):
+def test_tick_jalankan_trigger_sekali_idempotent(test_dsn, make_user):
     u = make_user()
-    kejadian = []
-    sink = lambda jenis, isi: kejadian.append({"jenis": jenis, "isi": isi})
-    buat_pemicu(u["user_id"], "jadwal", _sekarang() - timedelta(minutes=5),
+    event = []
+    sink = lambda jenis, content: event.append({"type": jenis, "content": content})
+    create_trigger(u["user_id"], "jadwal", _sekarang() - timedelta(minutes=5),
                 jadwal="harian 07:00", dsn=test_dsn)
-    hasil = tick(sink=sink, dsn=test_dsn)
-    assert len(hasil) == 1
-    assert kejadian[0]["jenis"] == "pemicu_terpicu"
+    result = tick(sink=sink, dsn=test_dsn)
+    assert len(result) == 1
+    assert event[0]["type"] == "trigger_fired"
     # Putaran kedua: pemicu sudah geser +1 hari, tidak jalan lagi.
     assert tick(sink=sink, dsn=test_dsn) == []
 
 
-def test_pemicu_terlewat_dijalankan_sekali_dan_dilaporkan(test_dsn, make_user):
+def test_trigger_terlewat_dijalankan_sekali_and_dilaporkan(test_dsn, make_user):
     u = make_user()
-    kejadian = []
-    sink = lambda jenis, isi: kejadian.append({"jenis": jenis, "isi": isi})
-    buat_pemicu(u["user_id"], "jadwal", _sekarang() - timedelta(hours=3), dsn=test_dsn)
-    hasil = jalankan_yang_terlewat(sink=sink, dsn=test_dsn)
-    assert len(hasil) == 1 and hasil[0]["terlewat"] is True
-    assert kejadian[0]["jenis"] == "pemicu_terlewat"
+    event = []
+    sink = lambda jenis, content: event.append({"type": jenis, "content": content})
+    create_trigger(u["user_id"], "jadwal", _sekarang() - timedelta(hours=3), dsn=test_dsn)
+    result = jalankan_yang_terlewat(sink=sink, dsn=test_dsn)
+    assert len(result) == 1 and result[0]["terlewat"] is True
+    assert event[0]["type"] == "trigger_missed"
     assert jalankan_yang_terlewat(sink=sink, dsn=test_dsn) == []
 
 
-def test_detak_penjadal_mati_lebih_dari_2_menit(test_dsn):
+def test_heartbeat_penjadal_mati_more_dari_2_minute(test_dsn):
     assert sehat(dsn=test_dsn) is False  # belum pernah detak
-    detak(dsn=test_dsn)
+    heartbeat(dsn=test_dsn)
     assert sehat(dsn=test_dsn) is True
-    detak(dsn=test_dsn, sekarang=_sekarang() - timedelta(minutes=3))
+    heartbeat(dsn=test_dsn, sekarang=_sekarang() - timedelta(minutes=3))
     assert sehat(dsn=test_dsn) is False
 
 
-def test_backup_harian_terjadwal_sebagai_pemicu(test_dsn, make_user):
+def test_backup_daily_terjadwal_sebagai_trigger(test_dsn, make_user):
     u = make_user()
-    pemicu = jadwalkan_backup_harian(u["user_id"], dsn=test_dsn)
-    assert pemicu.jenis == "backup_harian"
-    assert pemicu.pemicu_berikutnya > _sekarang()
+    trigger = schedule_backup_daily(u["user_id"], dsn=test_dsn)
+    assert trigger.jenis == "backup_daily"
+    assert trigger.next_trigger_at > _sekarang()
 
 
 def test_vapid_enkripsi_bolak_balik():
-    kunci = buat_kunci_vapid()
+    key = create_key_vapid()
     # Pasangan kunci penerima (simulasi browser).
     from puspa.push.push import _muat_privat, _b64url
     from cryptography.hazmat.primitives import serialization
@@ -73,20 +73,20 @@ def test_vapid_enkripsi_bolak_balik():
         serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
     publik_b64 = base64.urlsafe_b64encode(publik).rstrip(b"=").decode()
     auth_b64 = base64.urlsafe_b64encode(b"0123456789abcdef").rstrip(b"=").decode()
-    badan, kunci_server, garam = enkripsi_payload(b"Tagihan PLN jatuh tempo besok.",
+    badan, key_server, garam = enkripsi_payload(b"Tagihan PLN jatuh tempo besok.",
                                                   p256dh_penerima_b64=publik_b64, auth_b64=auth_b64)
-    jelas = dekripsi_payload(badan, garam_b64=garam, kunci_server_b64=kunci_server,
+    jelas = dekripsi_payload(badan, garam_b64=garam, key_server_b64=key_server,
                              privat_penerima_b64=privat_b64, auth_b64=auth_b64)
     assert jelas == b"Tagihan PLN jatuh tempo besok."
 
 
-def test_kirim_push_lewat_mock():
+def test_send_push_past_mock():
     def handler(request):
         assert request.headers["Authorization"].startswith("vapid t=")
         assert request.headers["Content-Encoding"] == "aes128gcm"
         return httpx.Response(201, json={})
 
-    kunci = buat_kunci_vapid()
+    key = create_key_vapid()
     from cryptography.hazmat.primitives.asymmetric import ec
     from cryptography.hazmat.primitives import serialization
     import base64
@@ -97,15 +97,15 @@ def test_kirim_push_lewat_mock():
     publik_b64 = base64.urlsafe_b64encode(publik).rstrip(b"=").decode()
     auth_b64 = base64.urlsafe_b64encode(b"0123456789abcdef").rstrip(b"=").decode()
     client = httpx.Client(transport=httpx.MockTransport(handler))
-    hasil = kirim(endpoint="https://push.example.id/abc", p256dh=publik_b64,
-                  auth=auth_b64, isi=b"halo", vapid_publik=kunci["publik"],
-                  vapid_privat=kunci["privat"], http_client=client)
-    assert hasil["status"] == 201
+    result = send(endpoint="https://push.example.id/abc", p256dh=publik_b64,
+                  auth=auth_b64, content=b"halo", vapid_publik=key["publik"],
+                  vapid_privat=key["privat"], http_client=client)
+    assert result["status"] == 201
 
 
 def test_langganan_push_disimpan(test_dsn, make_user):
     u = make_user()
-    langganan_id = simpan_langganan(u["user_id"], endpoint="https://push.example.id/abc",
+    langganan_id = save_langganan(u["user_id"], endpoint="https://push.example.id/abc",
                                     p256dh="p256dh-uji", auth="auth-uji", dsn=test_dsn)
-    daftar = daftar_langganan(u["user_id"], dsn=test_dsn)
-    assert len(daftar) == 1 and daftar[0]["id"] == langganan_id
+    items = items_langganan(u["user_id"], dsn=test_dsn)
+    assert len(items) == 1 and items[0]["id"] == langganan_id

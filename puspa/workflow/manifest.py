@@ -12,74 +12,74 @@ from __future__ import annotations
 from puspa.workflow.blocks import BLOK, BlockError
 
 
-def hitung_manifes(langkah: list) -> dict:
+def hitung_manifest(step: list) -> dict:
     """Hitung izin minimal dari semua blok di langkah (termasuk blok di
     dalam kondisi / untuk_tiap). Kembalikan manifes:
     {konektor, scope, domain, batas_belanja, blok} — semuanya terurut.
     """
-    konektor: set[str] = set()
+    connector: set[str] = set()
     scope: set[str] = set()
     domain: set[str] = set()
     batas_belanja = 0
-    blok: list[str] = []
+    block: list[str] = []
 
-    def _kunjungi(daftar):
+    def _kunjungi(items):
         nonlocal batas_belanja
-        for l in daftar:
+        for l in items:
             if not isinstance(l, dict):
                 continue
-            nama = l.get("blok")
-            if nama not in BLOK:
-                raise BlockError(f"blok {nama!r} tidak ada di pustaka")
-            blok.append(nama)
-            izin = BLOK[nama]["izin"]
-            konektor.update(izin["konektor"])
-            scope.update(izin["scope"])
-            domain.update(izin["domain"])
+            name = l.get("block")
+            if name not in BLOK:
+                raise BlockError(f"blok {name!r} tidak ada di pustaka")
+            block.append(name)
+            permission = BLOK[name]["permission"]
+            connector.update(permission["connectors"])
+            scope.update(permission["scope"])
+            domain.update(permission["domain"])
             masukan = l.get("masukan", {}) or {}
-            if nama == "siapkan_bayar":
-                jumlah = masukan.get("jumlah")
-                if isinstance(jumlah, (int, float)) and jumlah > 0:
-                    batas_belanja = max(batas_belanja, int(jumlah))
-            if nama == "kondisi":
+            if name == "prepare_payment":
+                amount = masukan.get("amount")
+                if isinstance(amount, (int, float)) and amount > 0:
+                    batas_belanja = max(batas_belanja, int(amount))
+            if name == "condition":
                 _kunjungi(l.get("maka", []))
-                _kunjungi(l.get("kalau_tidak", []))
-            elif nama == "untuk_tiap":
-                _kunjungi(l.get("langkah_dalam", []))
+                _kunjungi(l.get("kalau_not", []))
+            elif name == "for_each":
+                _kunjungi(l.get("step_dalam", []))
 
-    _kunjungi(langkah)
+    _kunjungi(step)
     return {
-        "konektor": sorted(konektor),
+        "connectors": sorted(connector),
         "scope": sorted(scope),
         "domain": sorted(domain),
         "batas_belanja": batas_belanja,
-        "blok": sorted(set(blok)),
+        "block": sorted(set(block)),
     }
 
 
-def subset_izin(manifes: dict, izin_user: dict) -> tuple[bool, list[str]]:
+def subset_permission(manifest: dict, permission_user: dict) -> tuple[bool, list[str]]:
     """Apakah manifes alur himpunan bagian dari izin user?
     `izin_user`: {konektor, scope, domain, batas_belanja}. Kembalikan
     (lolos, daftar kekurangan) — kekurangan kosong bila lolos."""
-    kurang: list[str] = []
-    for k in ("konektor", "scope", "domain"):
-        punya = set(izin_user.get(k, []) or [])
-        for item in manifes.get(k, []):
+    less: list[str] = []
+    for k in ("connectors", "scope", "domain"):
+        punya = set(permission_user.get(k, []) or [])
+        for item in manifest.get(k, []):
             if item not in punya:
-                kurang.append(f"{k} {item!r} tidak diberikan user")
-    if int(manifes.get("batas_belanja", 0)) > int(izin_user.get("batas_belanja", 0)):
-        kurang.append(
-            f"batas belanja Rp{manifes['batas_belanja']:,} melebihi "
-            f"batas user Rp{izin_user.get('batas_belanja', 0):,}".replace(",", "."))
-    return (not kurang, kurang)
+                less.append(f"{k} {item!r} tidak diberikan user")
+    if int(manifest.get("batas_belanja", 0)) > int(permission_user.get("batas_belanja", 0)):
+        less.append(
+            f"batas belanja Rp{manifest['batas_belanja']:,} melebihi "
+            f"batas user Rp{permission_user.get('batas_belanja', 0):,}".replace(",", "."))
+    return (not less, less)
 
 
-def format_manifes(manifes: dict) -> str:
+def format_manifest(manifest: dict) -> str:
     """Tampilan manifes untuk user saat mengaktifkan (bahasa biasa)."""
-    baris = ["Izin yang diminta alur ini:"]
-    baris.append(f"- Konektor: {', '.join(manifes['konektor']) or 'tidak ada'}")
-    baris.append(f"- Scope: {', '.join(manifes['scope']) or 'tidak ada'}")
-    baris.append(f"- Domain dibaca: {', '.join(manifes['domain']) or 'tidak ada'}")
-    baris.append(f"- Batas belanja: Rp{manifes['batas_belanja']:,}".replace(",", "."))
-    baris.append(f"- Blok dipakai: {', '.join(manifes['blok'])}")
-    return "\n".join(baris)
+    rows = ["Izin yang diminta alur ini:"]
+    rows.append(f"- Konektor: {', '.join(manifest['connectors']) or 'tidak ada'}")
+    rows.append(f"- Scope: {', '.join(manifest['scope']) or 'tidak ada'}")
+    rows.append(f"- Domain dibaca: {', '.join(manifest['domain']) or 'tidak ada'}")
+    rows.append(f"- Batas belanja: Rp{manifest['batas_belanja']:,}".replace(",", "."))
+    rows.append(f"- Blok dipakai: {', '.join(manifest['block'])}")
+    return "\n".join(rows)

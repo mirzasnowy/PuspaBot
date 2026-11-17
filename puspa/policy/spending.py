@@ -81,10 +81,10 @@ class SpendingLimit:
     def record_spend(self, user_id=None, nominal=None):
         """Catat pengeluaran (dipakai gerbang setelah bayar lolos,
         atau oleh tes). Dukung record_spend(nominal)."""
-        uid, jumlah = self._split_user_amount(user_id, nominal, self.user_id)
-        if jumlah < 0:
+        uid, amount = self._split_user_amount(user_id, nominal, self.user_id)
+        if amount < 0:
             raise ValueError("nominal tidak boleh negatif")
-        _spent[uid] = _spent.get(uid, 0) + jumlah
+        _spent[uid] = _spent.get(uid, 0) + amount
         return _spent[uid]
 
     def check(self, user_id=None, nominal=None):

@@ -57,7 +57,7 @@ class SandboxTool(Tool):
 
     @property
     def name(self) -> str:
-        return "jalankan_kode"
+        return "run_code"
 
     @property
     def description(self) -> str:

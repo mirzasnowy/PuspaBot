@@ -37,9 +37,9 @@ def test_create_and_authenticate_ok(test_dsn):
 
 
 def test_authenticate_wrong_password_raises(test_dsn):
-    create_user("bob@example.com", "benar", dsn=test_dsn)
+    create_user("bob@example.com", "correct", dsn=test_dsn)
     with pytest.raises(AuthError):
-        authenticate("bob@example.com", "salah", dsn=test_dsn)
+        authenticate("bob@example.com", "wrong", dsn=test_dsn)
 
 
 def test_authenticate_unknown_email_raises(test_dsn):
@@ -60,7 +60,7 @@ def test_password_never_stored_plaintext(test_dsn):
     create_user("dave@example.com", "rahasia-123", dsn=test_dsn)
     with psycopg.connect(test_dsn) as conn:
         stored = conn.execute(
-            "SELECT password_hash FROM pengguna WHERE email = 'dave@example.com'"
+            "SELECT password_hash FROM users WHERE email = 'dave@example.com'"
         ).fetchone()[0]
     assert stored != "rahasia-123"
     assert stored.startswith("$argon2id$")
@@ -84,10 +84,10 @@ def test_session_invalid_token_raises(test_dsn):
 
 def test_session_token_only_hash_stored(test_dsn):
     uid = create_user("frank@example.com", "pw", dsn=test_dsn)
-    token = create_session(uid, "hp", dsn=test_dsn)
+    token = create_session(uid, "phone", dsn=test_dsn)
     with psycopg.connect(test_dsn) as conn:
         stored = conn.execute(
-            "SELECT token_hash FROM sesi WHERE user_id = %s", (uid,)
+            "SELECT token_hash FROM sessions WHERE user_id = %s", (uid,)
         ).fetchone()[0]
     assert stored != token
     assert stored == hashlib.sha256(token.encode()).hexdigest()
@@ -96,23 +96,23 @@ def test_session_token_only_hash_stored(test_dsn):
 def test_revoke_all_sessions(test_dsn):
     uid = create_user("grace@example.com", "pw", dsn=test_dsn)
     t1 = create_session(uid, "laptop", dsn=test_dsn)
-    t2 = create_session(uid, "hp", dsn=test_dsn)
+    t2 = create_session(uid, "phone", dsn=test_dsn)
     revoke_all_sessions(uid, dsn=test_dsn)
     with pytest.raises(SessionError):
         validate_session(t1, dsn=test_dsn)
     with pytest.raises(SessionError):
         validate_session(t2, dsn=test_dsn)
-    assert all(s["dicabut"] for s in list_sessions(uid, dsn=test_dsn))
+    assert all(s["revoked"] for s in list_sessions(uid, dsn=test_dsn))
 
 
 def test_list_sessions(test_dsn):
     uid = create_user("heidi@example.com", "pw", dsn=test_dsn)
     create_session(uid, "laptop", dsn=test_dsn)
-    create_session(uid, "hp", dsn=test_dsn)
+    create_session(uid, "phone", dsn=test_dsn)
     sessions = list_sessions(uid, dsn=test_dsn)
     assert len(sessions) == 2
-    assert {s["device_label"] for s in sessions} == {"laptop", "hp"}
-    assert all(not s["dicabut"] for s in sessions)
+    assert {s["device_label"] for s in sessions} == {"laptop", "phone"}
+    assert all(not s["revoked"] for s in sessions)
 
 
 # --- Vault ------------------------------------------------------------------
@@ -170,11 +170,11 @@ def test_delete_user_removes_sessions_and_vault(test_dsn, vault_master_key):
         validate_session(token, dsn=test_dsn)
     with psycopg.connect(test_dsn) as conn:
         assert conn.execute(
-            "SELECT COUNT(*) FROM sesi WHERE user_id = %s", (uid,)
+            "SELECT COUNT(*) FROM sessions WHERE user_id = %s", (uid,)
         ).fetchone()[0] == 0
         assert conn.execute(
             "SELECT COUNT(*) FROM vault WHERE user_id = %s", (uid,)
         ).fetchone()[0] == 0
         assert conn.execute(
-            "SELECT COUNT(*) FROM pengguna WHERE id = %s", (uid,)
+            "SELECT COUNT(*) FROM users WHERE id = %s", (uid,)
         ).fetchone()[0] == 0

@@ -6,82 +6,82 @@ from pathlib import Path
 import pytest
 
 from puspa.cassette.cassette import (CassetteError, CassettePlayer,
-                                     TUGAS_ACUAN, hapus_kaset_tugas,
-                                     muat_kaset, rekam_dari_ledger,
-                                     simpan_kaset, suntik_harga_salah)
+                                     TASK_REFERENCE, delete_cassette_task,
+                                     muat_cassette, rekam_dari_ledger,
+                                     save_cassette, suntik_price_wrong)
 
-KASET_DIR = Path(__file__).resolve().parent.parent / "cassettes"
-
-
-def test_sepuluh_kaset_acuan_ada():
-    assert len(TUGAS_ACUAN) == 10
-    for nama in TUGAS_ACUAN:
-        path = KASET_DIR / f"{nama}.json"
-        assert path.exists(), f"kaset acuan hilang: {nama}"
-        data = muat_kaset(path)
-        assert data["rekaman"], f"kaset {nama} kosong"
-        assert all("tool" in r and "keluaran" in r for r in data["rekaman"])
+CASSETTE_DIR = Path(__file__).resolve().parent.parent / "cassettes"
 
 
-def test_rekam_dari_ledger_dan_putar_ulang_identik(tmp_path):
-    kejadian = [
-        {"jenis": "tool_selesai", "tugas_id": "t1",
-         "isi": {"tool": "baca_harga", "keluaran": {"jenis": "harga", "nilai": 12500000}}},
-        {"jenis": "tool_selesai", "tugas_id": "t1",
-         "isi": {"tool": "baca_harga", "keluaran": {"jenis": "harga", "nilai": 11999000}}},
-        {"jenis": "pesan_agen", "tugas_id": "t1", "isi": {"teks": "bukan tool"}},
+def test_sepuluh_cassette_reference_ada():
+    assert len(TASK_REFERENCE) == 10
+    for name in TASK_REFERENCE:
+        path = CASSETTE_DIR / f"{name}.json"
+        assert path.exists(), f"kaset acuan hilang: {name}"
+        data = muat_cassette(path)
+        assert data["recording"], f"kaset {name} kosong"
+        assert all("tool" in r and "output" in r for r in data["recording"])
+
+
+def test_rekam_dari_ledger_and_putar_ulang_identik(tmp_path):
+    event = [
+        {"type": "tool_completed", "task_id": "t1",
+         "content": {"tool": "read_price", "output": {"type": "price", "value": 12500000}}},
+        {"type": "tool_completed", "task_id": "t1",
+         "content": {"tool": "read_price", "output": {"type": "price", "value": 11999000}}},
+        {"type": "agent_message", "task_id": "t1", "content": {"text": "bukan tool"}},
     ]
-    kaset = rekam_dari_ledger(kejadian, "t1")
-    assert len(kaset["rekaman"]) == 2
-    berkas = simpan_kaset(kaset, "uji-putar", kaset_dir=tmp_path)
-    player = CassettePlayer(muat_kaset(berkas))
-    assert player.putar("baca_harga") == {"jenis": "harga", "nilai": 12500000}
-    assert player.putar("baca_harga") == {"jenis": "harga", "nilai": 11999000}
+    cassette = rekam_dari_ledger(event, "t1")
+    assert len(cassette["recording"]) == 2
+    berkas = save_cassette(cassette, "uji-putar", cassette_dir=tmp_path)
+    player = CassettePlayer(muat_cassette(berkas))
+    assert player.putar("read_price") == {"type": "price", "value": 12500000}
+    assert player.putar("read_price") == {"type": "price", "value": 11999000}
     with pytest.raises(CassetteError):
-        player.putar("baca_harga")  # kaset habis: jujur, bukan karangan
+        player.putar("read_price")  # kaset habis: jujur, bukan karangan
 
 
-def test_suntik_harga_salah_ditangkap_pemeriksa(tmp_path):
-    kaset = {"tugas_id": "t1", "rekaman": [
-        {"tool": "baca_harga", "keluaran": {"jenis": "harga", "nilai": 12500000}}]}
-    disuntik = suntik_harga_salah(kaset, tool="baca_harga", nilai_baru=1000)
-    assert kaset["rekaman"][0]["keluaran"]["nilai"] == 12500000  # asli tidak diubah
+def test_suntik_price_wrong_ditangkap_pemeriksa(tmp_path):
+    cassette = {"task_id": "t1", "recording": [
+        {"tool": "read_price", "output": {"type": "price", "value": 12500000}}]}
+    disuntik = suntik_price_wrong(cassette, tool="read_price", value_new=1000)
+    assert cassette["recording"][0]["output"]["value"] == 12500000  # asli tidak diubah
     player = CassettePlayer(disuntik)
-    assert player.putar("baca_harga")["nilai"] == 1000
+    assert player.putar("read_price")["value"] == 1000
     # Pemeriksa membandingkan dengan baca ulang yang benar.
-    from puspa.evidence.evidence import catat_bukti
+    from puspa.evidence.evidence import record_evidence
     from puspa.evidence.verifier import periksa
 
-    b = catat_bukti(tugas_id="t1", klaim="Laptop X", nilai=1000, satuan="Rp",
+    b = record_evidence(task_id="t1", klaim="Laptop X", value=1000, unit="Rp",
                     sumber_url="https://tokopedia.com/produk/laptop-x",
-                    potongan_teks="Laptop X Rp1.000", id_pembaca="sub-1")
-    periksa(b, baca_ulang=lambda url: {"nilai": 12500000, "nama": "Laptop X"})
-    assert b.vonis != "Terverifikasi"
+                    text_excerpt="Laptop X Rp1.000", reader_id="sub-1")
+    periksa(b, reread=lambda url: {"value": 12500000, "name": "Laptop X"})
+    assert b.vonis != "Verified"
 
 
-def test_kaset_ikut_terhapus_saat_tugas_dihapus(tmp_path):
-    kaset = {"tugas_id": "t-hapus", "rekaman": [{"tool": "a", "keluaran": 1}]}
-    simpan_kaset(kaset, "kaset-hapus", kaset_dir=tmp_path)
+def test_cassette_ikut_terhapus_saat_task_deleted(tmp_path):
+    cassette = {"task_id": "t-hapus", "recording": [{"tool": "a", "output": 1}]}
+    save_cassette(cassette, "kaset-hapus", cassette_dir=tmp_path)
     assert (tmp_path / "kaset-hapus.json").exists()
-    hasil = hapus_kaset_tugas("t-hapus", kaset_dir=tmp_path)
-    assert hasil["dihapus"] == ["kaset-hapus"]
+    result = delete_cassette_task("t-hapus", cassette_dir=tmp_path)
+    assert result["deleted"] == ["kaset-hapus"]
     assert not (tmp_path / "kaset-hapus.json").exists()
 
 
-def test_putar_ulang_kaset_acuan_angka_identik_9_dari_10():
+def test_putar_ulang_cassette_reference_number_identik_9_dari_10():
     """Gerbang 12 (parsial): 10 kaset acuan diputar ulang, angka hasil
     putar ulang identik dengan aslinya di minimal 9 dari 10."""
     identik = 0
-    for nama in TUGAS_ACUAN:
-        data = muat_kaset(KASET_DIR / f"{nama}.json")
+    for name in TASK_REFERENCE:
+        data = muat_cassette(CASSETTE_DIR / f"{name}.json")
         player = CassettePlayer(data)
-        nilai_awal = []
-        for rekaman in data["rekaman"]:
-            keluaran = player.putar(rekaman["tool"])
-            if isinstance(keluaran, dict) and "nilai" in keluaran:
-                nilai_awal.append(keluaran["nilai"])
-        nilai_asli = [r["keluaran"]["nilai"] for r in data["rekaman"]
-                      if isinstance(r["keluaran"], dict) and "nilai" in r["keluaran"]]
-        if nilai_awal == nilai_asli:
+        value_start = []
+        for recording in data["recording"]:
+            output = player.putar(recording["tool"])
+            if isinstance(output, dict) and "value" in output:
+                value_start.append(output["value"])
+        value_asli = [r["output"]["value"] for r in data["recording"]
+                      if isinstance(r["output"], dict) and "value" in r["output"]]
+        if value_start == value_asli:
             identik += 1
     assert identik >= 9

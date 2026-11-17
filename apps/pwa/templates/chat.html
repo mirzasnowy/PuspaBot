@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block isi %}
+{% block content %}
 <h1>Chat</h1>
 <p class="pesan-sub">Group chat: kamu, Puspa, dan agenmu di satu thread. Sub-agen terlipat secara default; @mention agen atau sub-agen untuk bicara langsung. Pesanmu selalu menyela tugas yang berjalan.</p>
 <div id="strip-kerja" hx-get="/kantor" hx-trigger="every 5s" hx-select="#strip-kerja" hx-swap="outerHTML"></div>
 <div id="riwayat">
-{% for p in pesan %}
-<div class="kartu"><strong>{{ p.dari }}</strong>: {{ p.teks }}</div>
+{% for p in message %}
+<div class="kartu"><strong>{{ p.dari }}</strong>: {{ p.text }}</div>
 {% else %}
 <p class="pesan-sub">Belum ada pesan. Sapa Puspa dulu.</p>
 {% endfor %}

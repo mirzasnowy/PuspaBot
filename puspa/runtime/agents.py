@@ -26,8 +26,8 @@ import psycopg
 from puspa.accounts.access import register_agent
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
-MAX_AGEN = 3
-NAMA_PUSPA = "Puspa"
+MAX_AGENT = 3
+NAME_PUSPA = "Puspa"
 
 
 class AgentError(Exception):
@@ -38,7 +38,7 @@ def _connect(dsn=None):
     return psycopg.connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN))
 
 
-def _agen_id_puspa(user_id: str) -> str:
+def _agent_id_puspa(user_id: str) -> str:
     """ID agen Puspa deterministik per pengguna (stabil lintas login)."""
     return f"puspa-{user_id}"
 
@@ -49,81 +49,81 @@ def ensure_puspa_agent(user_id: str, dsn=None) -> str:
     Kembalikan `agen_id`. Idempotent. Juga memberikan ketiga konektor
     bawaan Puspa (Gmail, Drive, Calendar) lewat `konektor_agen`.
     """
-    agen_id = _agen_id_puspa(str(user_id))
-    register_agent(agen_id, str(user_id), dsn=dsn)
+    agent_id = _agent_id_puspa(str(user_id))
+    register_agent(agent_id, str(user_id), dsn=dsn)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO agen_meta (agen_id, user_id, nama, peran, tujuan, wajib)"
+                "INSERT INTO agent_meta (agent_id, user_id, name, peran, purpose, required)"
                 " VALUES (%s, %s, %s, %s, %s, TRUE)"
-                " ON CONFLICT (agen_id) DO NOTHING",
-                (agen_id, user_id, NAMA_PUSPA, "agen utama",
+                " ON CONFLICT (agent_id) DO NOTHING",
+                (agent_id, user_id, NAME_PUSPA, "agen utama",
                  "Agen wajib Puspa: memegang profil inti user dan menjadi fallback."),
             )
-            for konektor, scope in (
-                ("gmail", ["baca", "buat_draf", "kirim"]),
-                ("drive", ["baca"]),
-                ("calendar", ["baca", "buat_event"]),
+            for connector, scope in (
+                ("gmail", ["read", "create_draft", "send"]),
+                ("drive", ["read"]),
+                ("calendar", ["read", "create_event"]),
             ):
                 cur.execute(
-                    "INSERT INTO konektor_agen (user_id, agen_id, konektor, scope, terhubung)"
+                    "INSERT INTO agent_connectors (user_id, agent_id, connector, scope, terhubung)"
                     " VALUES (%s, %s, %s, %s, TRUE)"
-                    " ON CONFLICT (user_id, agen_id, konektor) DO NOTHING",
-                    (user_id, agen_id, konektor, scope),
+                    " ON CONFLICT (user_id, agent_id, connector) DO NOTHING",
+                    (user_id, agent_id, connector, scope),
                 )
         conn.commit()
-    return agen_id
+    return agent_id
 
 
-def buat_agen(user_id: str, nama: str, peran: str = "", tujuan: str = "", dsn=None) -> dict:
+def create_agent(user_id: str, name: str, peran: str = "", purpose: str = "", dsn=None) -> dict:
     """Buat agen baru milik pengguna. Agen ke-4 ditolak (maks 3)."""
-    if not nama or not nama.strip():
+    if not name or not name.strip():
         raise AgentError("nama agen tidak boleh kosong")
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM agen_meta WHERE user_id = %s", (user_id,))
-            if cur.fetchone()[0] >= MAX_AGEN:
-                raise AgentError(f"maks {MAX_AGEN} agen per pengguna")
-    agen_id = f"agen-{uuid.uuid4().hex[:12]}"
-    register_agent(agen_id, str(user_id), dsn=dsn)
+            cur.execute("SELECT COUNT(*) FROM agent_meta WHERE user_id = %s", (user_id,))
+            if cur.fetchone()[0] >= MAX_AGENT:
+                raise AgentError(f"maks {MAX_AGENT} agen per pengguna")
+    agent_id = f"agen-{uuid.uuid4().hex[:12]}"
+    register_agent(agent_id, str(user_id), dsn=dsn)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO agen_meta (agen_id, user_id, nama, peran, tujuan, wajib)"
+                "INSERT INTO agent_meta (agent_id, user_id, name, peran, purpose, required)"
                 " VALUES (%s, %s, %s, %s, %s, FALSE)",
-                (agen_id, user_id, nama.strip(), peran, tujuan),
+                (agent_id, user_id, name.strip(), peran, purpose),
             )
         conn.commit()
-    return {"agen_id": agen_id, "nama": nama.strip(), "peran": peran,
-            "tujuan": tujuan, "wajib": False}
+    return {"agent_id": agent_id, "name": name.strip(), "peran": peran,
+            "purpose": purpose, "required": False}
 
 
-def daftar_agen(user_id: str, dsn=None) -> list[dict]:
+def items_agent(user_id: str, dsn=None) -> list[dict]:
     """Semua agen milik pengguna, Puspa wajib selalu pertama."""
     with _connect(dsn) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute(
-                "SELECT agen_id, nama, peran, tujuan, wajib FROM agen_meta"
-                " WHERE user_id = %s ORDER BY wajib DESC, dibuat ASC",
+                "SELECT agent_id, name, peran, purpose, wajib FROM agent_meta"
+                " WHERE user_id = %s ORDER BY wajib DESC, created_at ASC",
                 (user_id,),
             )
             return [dict(r) for r in cur.fetchall()]
 
 
-def hapus_agen(user_id: str, agen_id: str, dsn=None) -> None:
+def delete_agent(user_id: str, agent_id: str, dsn=None) -> None:
     """Hapus agen. Puspa (wajib) DITOLAK; agen orang lain DITOLAK."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT wajib, user_id FROM agen_meta WHERE agen_id = %s", (agen_id,)
+                "SELECT wajib, user_id FROM agent_meta WHERE agent_id = %s", (agent_id,)
             )
             row = cur.fetchone()
             if row is None:
-                raise AgentError(f"agen tidak dikenal: {agen_id!r}")
+                raise AgentError(f"agen tidak dikenal: {agent_id!r}")
             if str(row[1]) != str(user_id):
                 raise AgentError("agen milik pengguna lain")
             if row[0]:
                 raise AgentError("Puspa tidak bisa dihapus")
-            cur.execute("DELETE FROM agen_meta WHERE agen_id = %s", (agen_id,))
-            cur.execute("DELETE FROM agen WHERE agen_id = %s", (agen_id,))
+            cur.execute("DELETE FROM agent_meta WHERE agent_id = %s", (agent_id,))
+            cur.execute("DELETE FROM agents WHERE agent_id = %s", (agent_id,))
         conn.commit()

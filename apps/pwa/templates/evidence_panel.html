@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Panel Bukti</h1>
+{% if evidence %}
+<div class="kartu">
+<p><strong>Klaim:</strong> {{ evidence.klaim }}</p>
+<p><strong>Nilai:</strong> {{ evidence.value }}</p>
+<p><strong>Sumber:</strong> <a href="{{ evidence.sumber_url }}">{{ evidence.sumber_url }}</a></p>
+<p><strong>Waktu ambil:</strong> {{ evidence.time_take }}</p>
+<p><strong>Potongan:</strong> {{ evidence.text_excerpt }}</p>
+<p><strong>Vonis:</strong> {{ evidence.vonis }}</p>
+<p><a href="{{ evidence.sumber_url }}">Buka sumbernya sendiri</a></p>
+</div>
+{% else %}
+<p class="pesan-sub">Bukti {{ evidence_id }} tidak ditemukan.</p>
+{% endif %}
+{% endblock %}

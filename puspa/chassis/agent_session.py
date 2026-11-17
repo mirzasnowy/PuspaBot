@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import time
 
-from puspa.accounts.sessions import validate_session
+from puspa.accounts.user_sessions import validate_session
 from puspa.policy.tokens import issue_token, verify_token
 
 __all__ = ["bind_turn", "payload_from_token"]
@@ -34,13 +34,13 @@ def bind_turn(
     session_token: str,
     signing_key,
     public_key,
-    agen_id: str,
+    agent_id: str,
     tools,
     domains=None,
-    konektor=None,
+    connector=None,
     anggaran=None,
     exp_seconds: int = 3600,
-    tugas_id: str | None = None,
+    task_id: str | None = None,
     dsn=None,
 ) -> tuple[str, str, dict]:
     """Validasi sesi login lalu terbitkan token izin agen.
@@ -55,21 +55,21 @@ def bind_turn(
     now = int(time.time())
     payload = {
         "user_id": user_id,
-        "agen_id": agen_id,
-        "sub_agen_id": None,
+        "agent_id": agent_id,
+        "subagent_id": None,
         "tools": list(tools),
         "domains": list(domains or []),
-        "konektor": dict(konektor or {}),
+        "connectors": dict(connector or {}),
         "anggaran": dict(
             anggaran
-            or {"langkah_max": 25, "token_max": 100_000, "rupiah_max": 0}
+            or {"step_max": 25, "token_max": 100_000, "rupiah_max": 0}
         ),
         "exp": now + exp_seconds,
         "iat": now,
         "parent": None,
     }
-    if tugas_id is not None:
-        payload["tugas_id"] = tugas_id
+    if task_id is not None:
+        payload["task_id"] = task_id
     token = issue_token(payload, signing_key)
     verified = verify_token(token, public_key)
     return user_id, token, verified

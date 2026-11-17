@@ -20,20 +20,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote, unquote
 
 # Nilai uji (bukan tagihan nyata siapa pun).
-DATA_UJI = {
-    "pln": {"jumlah": 132500, "jatuh_tempo": "2026-11-20", "status": "belum_bayar",
+DATA_TEST = {
+    "pln": {"amount": 132500, "due_date": "2026-11-20", "status": "not_yet_pay",
             "periode": "November 2026"},
-    "pdam": {"jumlah": 87500, "jatuh_tempo": "2026-11-25", "status": "belum_bayar",
+    "pdam": {"amount": 87500, "due_date": "2026-11-25", "status": "not_yet_pay",
              "periode": "November 2026"},
-    "pulsa": {"jumlah": 50000, "jatuh_tempo": None, "status": "aktif",
-              "periode": "saldo"},
-    "paket data": {"jumlah": 75000, "jatuh_tempo": "2026-12-01", "status": "aktif",
+    "airtime": {"amount": 50000, "due_date": None, "status": "active",
+              "periode": "balance"},
+    "paket data": {"amount": 75000, "due_date": "2026-12-01", "status": "active",
                    "periode": "30 hari"},
 }
 
 
 class _Handler(BaseHTTPRequestHandler):
-    data: dict = dict(DATA_UJI)
+    data: dict = dict(DATA_TEST)
 
     def log_message(self, *args):  # diam — jangan penuhi log tes
         pass
@@ -44,14 +44,14 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
-        isi = self.data[provider]
+        content = self.data[provider]
         html = (
             "<html><head><title>Tagihan</title></head><body>"
             f"<h1>Tagihan {provider}</h1>"
-            f"<p>Jumlah tagihan: Rp{isi['jumlah']:,}</p>".replace(",", ".")
-            + (f"<p>Jatuh tempo: {isi['jatuh_tempo']}</p>" if isi["jatuh_tempo"] else "")
-            + f"<p>Status: {isi['status']}</p>"
-            + f"<p>Periode: {isi['periode']}</p>"
+            f"<p>Jumlah tagihan: Rp{content['amount']:,}</p>".replace(",", ".")
+            + (f"<p>Jatuh tempo: {content['due_date']}</p>" if content["due_date"] else "")
+            + f"<p>Status: {content['status']}</p>"
+            + f"<p>Periode: {content['periode']}</p>"
             + "</body></html>"
         )
         badan = html.encode("utf-8")
@@ -62,7 +62,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(badan)
 
 
-class SitusUji:
+class SitusTest:
     """Situs uji tagihan di localhost (port acak)."""
 
     def __init__(self):
@@ -83,10 +83,10 @@ class SitusUji:
         return f"http://127.0.0.1:{self.port}/{quote(provider, safe='')}"
 
     @staticmethod
-    def ubah(provider: str, **nilai) -> None:
+    def change(provider: str, **value) -> None:
         """Suntik perubahan ke situs uji (untuk uji canary §3.6)."""
-        _Handler.data[provider] = {**_Handler.data[provider], **nilai}
+        _Handler.data[provider] = {**_Handler.data[provider], **value}
 
     @staticmethod
     def pulihkan(provider: str) -> None:
-        _Handler.data[provider] = dict(DATA_UJI[provider])
+        _Handler.data[provider] = dict(DATA_TEST[provider])

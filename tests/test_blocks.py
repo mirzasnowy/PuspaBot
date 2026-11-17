@@ -3,84 +3,84 @@
 import pytest
 
 from puspa.workflow.blocks import (
-    BLOK, BlockError, daftar_blok, definisi_blok, kedalaman_cabang,
-    periksa_alur, periksa_langkah, periksa_masukan,
+    BLOK, BlockError, items_block, definisi_block, kedalaman_cabang,
+    periksa_workflow, periksa_step, periksa_masukan,
 )
 
-BLOK_WAJIB = (
-    "cek_tagihan", "bandingkan_harga", "pantau_harga", "cari_email",
-    "baca_email", "buat_draf", "buat_event", "siapkan_bayar",
-    "kirim_notif", "tanya_user", "tunggu_persetujuan", "kondisi",
-    "untuk_tiap", "simpan_memori", "simpan_ke_tabel_modul",
+BLOCK_WAJIB = (
+    "check_bill", "compare_prices", "watch_prices", "search_email",
+    "read_email", "create_draft", "create_event", "prepare_payment",
+    "send_notification", "ask_user", "wait_for_approval", "condition",
+    "for_each", "save_memory", "save_to_module_table",
 )
 
 
-def test_pustaka_tepat_15_blok():
-    assert set(daftar_blok()) == set(BLOK_WAJIB)
+def test_pustaka_tepat_15_block():
+    assert set(items_block()) == set(BLOCK_WAJIB)
     assert len(BLOK) == 15
 
 
-def test_tiap_blok_punya_skema_kelas_dan_izin():
-    for nama in BLOK_WAJIB:
-        d = definisi_blok(nama)
-        assert d["masukan"] and d["keluaran"], nama
-        assert d["kelas_izin"] in ("Pembaca", "Pelaksana", "Pemeriksa"), nama
-        assert set(d["izin"]) == {"konektor", "scope", "domain", "batas_belanja"}, nama
+def test_each_block_punya_skema_klass_and_permission():
+    for name in BLOCK_WAJIB:
+        d = definisi_block(name)
+        assert d["masukan"] and d["output"], name
+        assert d["permission_class"] in ("Pembaca", "Pelaksana", "Pemeriksa"), name
+        assert set(d["permission"]) == {"connectors", "scope", "domain", "batas_belanja"}, name
 
 
-def test_blok_baca_email_lewat_pembaca():
-    assert definisi_blok("baca_email")["kelas_izin"] == "Pembaca"
-    assert definisi_blok("cari_email")["izin"]["konektor"] == ["gmail"]
-    assert definisi_blok("baca_email")["izin"]["scope"] == ["gmail.readonly"]
+def test_block_read_email_past_pembaca():
+    assert definisi_block("read_email")["permission_class"] == "Pembaca"
+    assert definisi_block("search_email")["permission"]["connectors"] == ["gmail"]
+    assert definisi_block("read_email")["permission"]["scope"] == ["gmail.readonly"]
 
 
-def test_blok_aksi_keluar_hanya_buat_event_dan_siapkan_bayar():
-    keluar = {n for n, d in BLOK.items() if d["aksi_keluar"]}
-    assert keluar == {"buat_event", "siapkan_bayar"}
+def test_block_action_logout_hanya_create_event_and_siapkan_pay():
+    logout = {n for n, d in BLOK.items() if d["action_logout"]}
+    assert logout == {"create_event", "prepare_payment"}
 
 
-def test_blok_tidak_dikenal_ditolak():
+def test_block_not_dikenal_rejected():
     with pytest.raises(BlockError):
-        definisi_blok("kirim_whatsapp")
-    assert periksa_langkah({"blok": "kirim_whatsapp", "masukan": {}})
+        definisi_block("send_whatsapp")
+    assert periksa_step({"block": "send_whatsapp", "masukan": {}})
 
 
-def test_periksa_masukan_kurang_field():
-    assert periksa_masukan("cek_tagihan", {"provider": "PLN"}) == ["nomor_pelanggan"]
-    assert periksa_masukan("cek_tagihan",
-                            {"provider": "PLN", "nomor_pelanggan": "1"}) == []
+def test_periksa_masukan_less_field():
+    assert periksa_masukan("check_bill", {"provider": "PLN"}) == ["number_pelanggan"]
+    assert periksa_masukan("check_bill",
+                            {"provider": "PLN", "number_pelanggan": "1"}) == []
 
 
-def test_batas_maks_10_langkah():
-    langkah = [{"blok": "kirim_notif", "masukan": {"pesan": "x"}}] * 11
-    masalah = periksa_alur(langkah)
+def test_batas_maks_10_step():
+    step = [{"block": "send_notification", "masukan": {"message": "x"}}] * 11
+    masalah = periksa_workflow(step)
     assert any("maks 10" in m for m in masalah)
 
 
-def test_batas_maks_2_tingkat_percabangan():
-    dalam = {"blok": "kirim_notif", "masukan": {"pesan": "x"}}
-    tiga = {"blok": "kondisi", "masukan": {"ungkapan": "a == b"},
-            "maka": [{"blok": "kondisi", "masukan": {"ungkapan": "a == b"},
-                      "maka": [{"blok": "kondisi", "masukan": {"ungkapan": "a == b"},
-                                "maka": [dalam], "kalau_tidak": []}],
-                      "kalau_tidak": []}],
-            "kalau_tidak": []}
+def test_batas_maks_2_level_percabangan():
+    dalam = {"block": "send_notification", "masukan": {"message": "x"}}
+    tiga = {"block": "condition", "masukan": {"ungkapan": "a == b"},
+            "maka": [{"block": "condition", "masukan": {"ungkapan": "a == b"},
+                      "maka": [{"block": "condition", "masukan": {"ungkapan": "a == b"},
+                                "maka": [dalam], "kalau_not": []}],
+                      "kalau_not": []}],
+            "kalau_not": []}
     assert kedalaman_cabang([tiga]) == 3
-    assert any("maks 2" in m for m in periksa_alur([tiga]))
+    assert any("maks 2" in m for m in periksa_workflow([tiga]))
 
 
-def test_cabang_2_tingkat_lolos():
-    dalam = {"blok": "kirim_notif", "masukan": {"pesan": "x"}}
-    dua = {"blok": "kondisi", "masukan": {"ungkapan": "a == b"},
-           "maka": [{"blok": "kondisi", "masukan": {"ungkapan": "a == b"},
-                     "maka": [dalam], "kalau_tidak": []}],
-           "kalau_tidak": []}
+def test_cabang_2_level_passed():
+    dalam = {"block": "send_notification", "masukan": {"message": "x"}}
+    dua = {"block": "condition", "masukan": {"ungkapan": "a == b"},
+           "maka": [{"block": "condition", "masukan": {"ungkapan": "a == b"},
+                     "maka": [dalam], "kalau_not": []}],
+           "kalau_not": []}
     assert kedalaman_cabang([dua]) == 2
-    assert periksa_alur([dua]) == []
+    assert periksa_workflow([dua]) == []
 
 
-def test_untuk_tiap_maks_20_item_dicek_di_runner():
-    langkah = {"blok": "untuk_tiap", "masukan": {"daftar": list(range(21))},
-               "langkah_dalam": [{"blok": "kirim_notif", "masukan": {"pesan": "x"}}]}
+def test_for_each_maks_20_item_dicek_di_runner():
+    step = {"block": "for_each", "masukan": {"items": list(range(21))},
+               "step_dalam": [{"block": "send_notification", "masukan": {"message": "x"}}]}
     # Skema langkah lolos (batas item dicek saat jalan, bukan saat susun).
-    assert periksa_langkah(langkah) == []
+    assert periksa_step(step) == []

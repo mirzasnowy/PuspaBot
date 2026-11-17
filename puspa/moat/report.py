@@ -25,9 +25,9 @@ def _connect(dsn=None):
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
-def lapor_salah(*, bukti_id: str, user_id: str, alasan: str = "",
-                sumber: str = "", kategori: str = "",
-                tugas_id: str, agen_id: str, dsn=None,
+def report_wrong(*, evidence_id: str, user_id: str, reason: str = "",
+                sumber: str = "", category: str = "",
+                task_id: str, agent_id: str, dsn=None,
                 ledger=None) -> dict:
     """Catat laporan salah atas satu angka (bukti_id).
 
@@ -39,32 +39,32 @@ def lapor_salah(*, bukti_id: str, user_id: str, alasan: str = "",
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO laporan_salah (bukti_id, user_id, alasan)"
+                "INSERT INTO false_reports (evidence_id, user_id, reason)"
                 " VALUES (%s, %s, %s) RETURNING id",
-                (bukti_id, user_id, alasan))
+                (evidence_id, user_id, reason))
             laporan_id = str(cur.fetchone()["id"])
             if sumber:
                 cur.execute(
-                    "INSERT INTO pembacaan_sumber (user_id, sumber, kategori, vonis)"
+                    "INSERT INTO source_readings (user_id, sumber, category, vonis)"
                     " VALUES (%s, %s, %s, 'Tidak bisa dipastikan')",
-                    (user_id, sumber, kategori))
+                    (user_id, sumber, category))
         conn.commit()
     if ledger is not None:
-        ledger.append_event(tugas_id=tugas_id, agen_id=agen_id,
-                            jenis="laporan_salah",
-                            isi={"bukti_id": bukti_id, "alasan": alasan})
-    return {"laporan_id": laporan_id, "baca_ulang_diminta": True}
+        ledger.append_event(task_id=task_id, agent_id=agent_id,
+                            jenis="false_reports",
+                            content={"evidence_id": evidence_id, "reason": reason})
+    return {"laporan_id": laporan_id, "reread_requested": True}
 
 
-def daftar_laporan(bukti_id: str, dsn=None) -> list[dict]:
+def items_laporan(evidence_id: str, dsn=None) -> list[dict]:
     """Daftar laporan salah untuk satu bukti."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, user_id, alasan, baca_ulang_diminta, dibuat"
-                " FROM laporan_salah WHERE bukti_id = %s ORDER BY dibuat",
-                (bukti_id,))
+                "SELECT id, user_id, reason, reread_requested, created_at"
+                " FROM false_reports WHERE evidence_id = %s ORDER BY created_at",
+                (evidence_id,))
             return [{"id": str(r["id"]), "user_id": str(r["user_id"]),
-                     "alasan": r["alasan"],
-                     "baca_ulang_diminta": r["baca_ulang_diminta"],
-                     "dibuat": r["dibuat"]} for r in cur.fetchall()]
+                     "reason": r["reason"],
+                     "reread_requested": r["reread_requested"],
+                     "created_at": r["created_at"]} for r in cur.fetchall()]

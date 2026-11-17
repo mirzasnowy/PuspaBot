@@ -20,7 +20,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
-TTL_MENIT = 30
+TTL_MINUTE = 30
 
 
 def _connect(dsn=None):
@@ -28,41 +28,41 @@ def _connect(dsn=None):
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
-def simpan(kunci: str, *, sumber: str, nilai: dict, bukti_id: str, dsn=None) -> None:
+def save(key: str, *, sumber: str, value: dict, evidence_id: str, dsn=None) -> None:
     """Simpan bukti ke cache bersama (TTL 30 menit)."""
-    kedaluwarsa = datetime.now(timezone.utc) + timedelta(minutes=TTL_MENIT)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=TTL_MINUTE)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO cache_bukti (kunci, sumber, nilai, bukti_id, kedaluwarsa)"
+                "INSERT INTO evidence_cache (key, sumber, value, evidence_id, expires_at)"
                 " VALUES (%s, %s, %s, %s, %s)"
-                " ON CONFLICT (kunci) DO UPDATE SET nilai = EXCLUDED.nilai,"
-                " bukti_id = EXCLUDED.bukti_id, kedaluwarsa = EXCLUDED.kedaluwarsa",
-                (kunci, sumber, Jsonb(nilai), bukti_id, kedaluwarsa))
+                " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value,"
+                " evidence_id = EXCLUDED.evidence_id, expires_at = EXCLUDED.expires_at",
+                (key, sumber, Jsonb(value), evidence_id, expires_at))
         conn.commit()
 
 
-def ambil(kunci: str, dsn=None) -> dict | None:
+def take(key: str, dsn=None) -> dict | None:
     """Ambil dari cache bila masih segar; hit dicatat. None bila
     tidak ada / kedaluwarsa (pemanggil wajib baca ulang sumber)."""
     sekarang = datetime.now(timezone.utc)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT nilai, bukti_id FROM cache_bukti WHERE kunci = %s AND kedaluwarsa > %s",
-                (kunci, sekarang))
+                "SELECT value, evidence_id FROM evidence_cache WHERE key = %s AND expires_at > %s",
+                (key, sekarang))
             row = cur.fetchone()
             if row is None:
                 return None
-            cur.execute("UPDATE cache_bukti SET hit = hit + 1 WHERE kunci = %s", (kunci,))
+            cur.execute("UPDATE evidence_cache SET hit = hit + 1 WHERE key = %s", (key,))
         conn.commit()
-    return {"nilai": row["nilai"], "bukti_id": row["bukti_id"]}
+    return {"value": row["value"], "evidence_id": row["evidence_id"]}
 
 
-def statistik_hit(dsn=None) -> dict:
+def statistics_hit(dsn=None) -> dict:
     """Tingkat cache hit (tanpa target di MVP, §3.8)."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COALESCE(SUM(hit), 0) AS hit, COUNT(*) AS entri FROM cache_bukti")
+            cur.execute("SELECT COALESCE(SUM(hit), 0) AS hit, COUNT(*) AS entri FROM evidence_cache")
             row = cur.fetchone()
     return {"total_hit": int(row["hit"]), "entri_cache": int(row["entri"])}

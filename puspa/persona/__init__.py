@@ -9,7 +9,7 @@ from .blind_test import (
     score_blind_test,
 )
 from .persona import (
-    MAX_CONTOH,
+    MAX_EXAMPLE,
     STYLES,
     add_style_samples,
     apply_correction,
@@ -21,7 +21,7 @@ from .persona import (
 
 __all__ = [
     "AMBANG_GERBANG",
-    "MAX_CONTOH",
+    "MAX_EXAMPLE",
     "STYLES",
     "add_style_samples",
     "apply_correction",

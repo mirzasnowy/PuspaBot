@@ -29,7 +29,7 @@ Tanpa token izin yang terikat di turn ini, semua eksekusi ditolak
 (fail-closed) dan tidak ada definisi tool yang terlihat. Registry ini
 milik Puspa: semua turn yang memakainya (user, cron, dream, sub-agen)
 wajib mengikat token saat turn disiapkan (lihat
-``puspa.chassis.session.bind_turn`` dan ``token_context``).
+``puspa.chassis.agent_session.bind_turn`` dan ``token_context``).
 """
 
 from __future__ import annotations
@@ -128,16 +128,16 @@ class PuspaRegistry(ToolRegistry):
             )
         return tool, params, None
 
-    def _log_denied(self, name: str, alasan: str) -> None:
+    def _log_denied(self, name: str, reason: str) -> None:
         """Catat penolakan di prepare_call (wrapper tidak sempat jalan)."""
         if self._log is None:
             return
         try:
             self._log(
-                "tool_dipanggil", {"tool": name, "status": "ditolak", "alasan": alasan}
+                "tool_called", {"tool": name, "status": "rejected", "reason": reason}
             )
             self._log(
-                "tool_selesai", {"tool": name, "status": "ditolak", "alasan": alasan}
+                "tool_completed", {"tool": name, "status": "rejected", "reason": reason}
             )
         except Exception:
             pass

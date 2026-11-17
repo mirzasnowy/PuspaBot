@@ -10,13 +10,13 @@ import httpx
 import re
 
 from puspa.billing import billing
-from puspa.billing.fixture import DATA_UJI, SitusUji
+from puspa.billing.fixture import DATA_TEST, SitusTest
 from puspa.graphs import service as graf
-from puspa.graphs.identity import harga_terkini
+from puspa.graphs.identity import price_terkini
 from puspa.moat import metrics
 from puspa.pricing import catalog, tos
-from puspa.pricing.compare import bandingkan_harga
-from puspa.pricing.readers import HasilBaca
+from puspa.pricing.compare import compare_price
+from puspa.pricing.readers import ResultRead
 
 URLS = {
     "Tokopedia": "https://www.tokopedia.com/toko/galaxy-s24",
@@ -27,105 +27,105 @@ HARGA = {"Tokopedia": 12999000.0, "Shopee": 12499000.0, "Blibli": 12750000.0}
 
 
 class PembacaPalsu:
-    def __init__(self, harga):
-        self.harga = harga
+    def __init__(self, price):
+        self.price = price
 
-    def baca(self, url):
+    def read(self, url):
         pasar = "Tokopedia" if "tokopedia" in url else "Shopee" if "shopee" in url else "Blibli"
-        return HasilBaca(sukses=True, marketplace=pasar, listing_url=url,
-                         harga=self.harga[pasar], ongkir=15000, rating_toko=4.9,
-                         nama="Samsung Galaxy S24", potongan_teks="[DATA: Galaxy S24]")
+        return ResultRead(success=True, marketplace=pasar, listing_url=url,
+                         price=self.price[pasar], shipping=15000, store_rating=4.9,
+                         name="Samsung Galaxy S24", text_excerpt="[DATA: Galaxy S24]")
 
 
-def _baca_ulang(url):
+def _read_ulang(url):
     pasar = "Tokopedia" if "tokopedia" in url else "Shopee" if "shopee" in url else "Blibli"
-    return {"nilai": HARGA[pasar], "nama": "Samsung Galaxy S24"}
+    return {"value": HARGA[pasar], "name": "Samsung Galaxy S24"}
 
 
-def test_gerbang_fase3_ujung_ke_ujung(make_user, agen_kedua, test_dsn):
+def test_gerbang_fase3_ujung_to_ujung(make_user, agent_kedua, test_dsn):
     user = make_user()
-    agen2 = agen_kedua(user["user_id"])
+    agen2 = agent_kedua(user["user_id"])
 
     # 1. Bibit katalog + hasil cek ToS tercatat.
-    bibit = catalog.isi_bibit(dsn=test_dsn)
-    assert bibit["produk_unik"] == 13
-    assert len(tos.catat_hasil_cek(dsn=test_dsn)) == 7
+    bibit = catalog.content_bibit(dsn=test_dsn)
+    assert bibit["product_unik"] == 13
+    assert len(tos.record_result_check(dsn=test_dsn)) == 7
 
     # 2. Wedge bandingkan harga (fixture) -> graf terisi.
-    hasil = bandingkan_harga(
-        user_id=user["user_id"], agen_id=user["agen_id"], nomor_model="SM-S921B",
-        merek="Samsung", kategori="HP", listing_urls=URLS,
+    result = compare_price(
+        user_id=user["user_id"], agent_id=user["agent_id"], model_number="SM-S921B",
+        brand="Samsung", category="phone", listing_urls=URLS,
         pembaca={p: PembacaPalsu(HARGA) for p in URLS},
-        baca_ulang=_baca_ulang, token=1200, mode="fixture", dsn=test_dsn)
-    assert hasil["sukses"] is True and hasil["termurah"] == "Shopee"
-    assert len(harga_terkini(hasil["produk"]["id"], dsn=test_dsn)) == 3
+        reread=_read_ulang, token=1200, mode="fixture", dsn=test_dsn)
+    assert result["success"] is True and result["termurah"] == "Shopee"
+    assert len(price_terkini(result["product"]["id"], dsn=test_dsn)) == 3
 
     # 3. Wedge tagihan 4 provider (fixture) -> prosedur lahir.
-    with SitusUji() as situs:
-        def baca_situs(url):
+    with SitusTest() as situs:
+        def read_situs(url):
             provider = url.split("fixture://")[1].split("/")[0]
             return httpx.get(situs.url(provider), timeout=5).text
 
-        def baca_ulang_tagihan(url):
+        def read_ulang_bill(url):
             provider = url.split("fixture://")[1].split("/")[0] if "fixture://" in url else "pln"
-            teks = httpx.get(situs.url(provider), timeout=5).text
-            jumlah = float(re.search(r"Rp\s*([\d.]+)", teks).group(1).replace(".", ""))
-            return {"nilai": jumlah, "nama": f"tagihan {provider}"}
+            text = httpx.get(situs.url(provider), timeout=5).text
+            amount = float(re.search(r"Rp\s*([\d.]+)", text).group(1).replace(".", ""))
+            return {"value": amount, "name": f"tagihan {provider}"}
 
-        for provider, nomor in (("PLN", "123456789012"), ("PDAM", "987654321"),
-                                ("pulsa", "081234567890"), ("paket data", "081234567890")):
-            cek = billing.cek_tagihan(
-                user_id=user["user_id"], agen_id=user["agen_id"], provider=provider,
-                nomor_pelanggan=nomor, baca_situs=baca_situs,
-                baca_ulang=baca_ulang_tagihan, tugas_id=f"tugas-{provider}",
+        for provider, number in (("PLN", "123456789012"), ("PDAM", "987654321"),
+                                ("airtime", "081234567890"), ("paket data", "081234567890")):
+            check = billing.check_bill(
+                user_id=user["user_id"], agent_id=user["agent_id"], provider=provider,
+                number_pelanggan=number, read_situs=read_situs,
+                reread=read_ulang_bill, task_id=f"tugas-{provider}",
                 mode="fixture", dsn=test_dsn)
-            assert cek["sukses"] is True, provider
-            assert cek["jumlah"] == DATA_UJI[provider.lower()]["jumlah"]
+            assert check["success"] is True, provider
+            assert check["amount"] == DATA_TEST[provider.lower()]["amount"]
 
     # 4. Tiga jalan sukses oleh 2 agen -> keempat prosedur terverifikasi
     #    + dipakai ulang agen lain.
     for provider in metrics.PROVIDER_MVP:
-        prosedur = next(p for p in graf.daftar_prosedur(user["user_id"], dsn=test_dsn)
-                        if p["layanan"] == provider)
-        for agen in (user["agen_id"], agen2["agen_id"], user["agen_id"]):
-            graf.catat_jalan(prosedur["id"], user["user_id"], True, agen_id=agen, dsn=test_dsn)
-        graf.catat_pakai_ulang(prosedur_id=prosedur["id"], user_id=user["user_id"],
-                               agen_id=agen2["agen_id"], tugas_id="tugas-reuse",
+        prosedur = next(p for p in graf.items_prosedur(user["user_id"], dsn=test_dsn)
+                        if p["service"] == provider)
+        for agent in (user["agent_id"], agen2["agent_id"], user["agent_id"]):
+            graf.record_jalan(prosedur["id"], user["user_id"], True, agent_id=agent, dsn=test_dsn)
+        graf.record_use_ulang(prosedur_id=prosedur["id"], user_id=user["user_id"],
+                               agent_id=agen2["agent_id"], task_id="tugas-reuse",
                                dsn=test_dsn)
-    prosedur_hasil = metrics.prosedur_terverifikasi_dan_dipakai_ulang(user["user_id"], dsn=test_dsn)
-    assert prosedur_hasil["status"] == "lolos"
+    prosedur_result = metrics.prosedur_verified_and_dipakai_ulang(user["user_id"], dsn=test_dsn)
+    assert prosedur_result["status"] == "passed"
 
     # 5. Metrik moat terukur SEBELUM canary merusak PLN (sebagian lolos,
     #    sebagian tertunda jujur).
-    semua = metrics.ukur_semua(user["user_id"], dsn=test_dsn)
-    assert semua["cakupan_pencocokan_otomatis"]["persen"] == 100.0
-    assert semua["prosedur_terverifikasi_dipakai_ulang"]["status"] == "lolos"
-    assert semua["keandalan_sumber"]["status"] == "lolos"
+    semua = metrics.ukur_all(user["user_id"], dsn=test_dsn)
+    assert semua["cakupan_pencocokan_automatic"]["persen"] == 100.0
+    assert semua["prosedur_verified_dipakai_ulang"]["status"] == "passed"
+    assert semua["keandalan_sumber"]["status"] == "passed"
     assert semua["rasio_token"]["status"] == "tertunda"
-    assert semua["alur_aktif_pengguna_uji"]["status"] == "tertunda"
+    assert semua["workflow_active_user_test"]["status"] == "tertunda"
 
     # 6. Canary mendeteksi 2 dari 2 suntikan di situs uji.
-    prosedur_pln = next(p for p in graf.daftar_prosedur(user["user_id"], dsn=test_dsn)
-                        if p["layanan"] == "PLN")
+    prosedur_pln = next(p for p in graf.items_prosedur(user["user_id"], dsn=test_dsn)
+                        if p["service"] == "PLN")
 
     def canary_check(_prosedur):
-        with SitusUji() as situs:
-            teks = httpx.get(situs.url("pln"), timeout=5).text
-        jumlah = float(re.search(r"Rp\s*([\d.]+)", teks).group(1).replace(".", ""))
-        return {"sukses": jumlah == DATA_UJI["pln"]["jumlah"]}
+        with SitusTest() as situs:
+            text = httpx.get(situs.url("pln"), timeout=5).text
+        amount = float(re.search(r"Rp\s*([\d.]+)", text).group(1).replace(".", ""))
+        return {"success": amount == DATA_TEST["pln"]["amount"]}
 
     terdeteksi = 0
     try:
-        SitusUji.ubah("pln", jumlah=999999)
+        SitusTest.change("pln", amount=999999)
         for _ in range(2):
-            hasil_canary = graf.jalankan_canary(
+            result_canary = graf.jalankan_canary(
                 prosedur_id=prosedur_pln["id"], user_id=user["user_id"],
-                agen_id=user["agen_id"], jalankan=canary_check, dsn=test_dsn)
-            if not hasil_canary["sukses"]:
+                agent_id=user["agent_id"], jalankan=canary_check, dsn=test_dsn)
+            if not result_canary["success"]:
                 terdeteksi += 1
     finally:
-        SitusUji.pulihkan("pln")
+        SitusTest.pulihkan("pln")
     assert terdeteksi == 2
     # Canary yang gagal 2x membuat prosedur PLN menjadi rusak — perilaku
     # yang benar (§3.3): prosedur rusak tidak dijalankan lagi.
-    assert graf.ambil_prosedur(prosedur_pln["id"], user["user_id"], dsn=test_dsn)["status"] == "rusak"
+    assert graf.take_prosedur(prosedur_pln["id"], user["user_id"], dsn=test_dsn)["status"] == "broken"

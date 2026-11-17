@@ -56,7 +56,7 @@ def create_user(email, password, dsn=None):
         with conn.cursor() as cur:
             try:
                 cur.execute(
-                    "INSERT INTO pengguna (email, password_hash) VALUES (%s, %s) RETURNING id",
+                    "INSERT INTO users (email, password_hash) VALUES (%s, %s) RETURNING id",
                     (email_n, password_hash),
                 )
                 user_id = cur.fetchone()[0]
@@ -77,7 +77,7 @@ def authenticate(email, password, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, password_hash FROM pengguna WHERE email = %s",
+                "SELECT id, password_hash FROM users WHERE email = %s",
                 (email_n,),
             )
             row = cur.fetchone()
@@ -100,6 +100,6 @@ def delete_user(user_id, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM vault WHERE user_id = %s", (user_id,))
-            cur.execute("DELETE FROM sesi WHERE user_id = %s", (user_id,))
-            cur.execute("DELETE FROM pengguna WHERE id = %s", (user_id,))
+            cur.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
+            cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
         conn.commit()

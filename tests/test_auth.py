@@ -66,7 +66,7 @@ def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
 
-def _buat_jwt_dan_jwks():
+def _create_jwt_and_jwks():
     """Kunci RSA baru + JWT RS256 + JWKS yang cocok (untuk tes saja)."""
     private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     public = private.public_key().public_numbers()
@@ -87,24 +87,24 @@ def _buat_jwt_dan_jwks():
     return f"{header}.{payload}.{_b64url(signature)}", jwks
 
 
-def test_auth_url_pkce_state_dan_challenge():
-    hasil = build_auth_url(
+def test_auth_url_pkce_state_and_challenge():
+    result = build_auth_url(
         "client-id-tes", "https://contoh.id/callback",
         state="state-tetap", code_verifier="v" * 50,
     )
-    assert "accounts.google.com" in hasil["url"]
-    assert "code_challenge_method=S256" in hasil["url"]
-    assert "state=state-tetap" in hasil["url"]
-    assert hasil["state"] == "state-tetap"
-    assert hasil["code_verifier"] == "v" * 50
+    assert "accounts.google.com" in result["url"]
+    assert "code_challenge_method=S256" in result["url"]
+    assert "state=state-tetap" in result["url"]
+    assert result["state"] == "state-tetap"
+    assert result["code_verifier"] == "v" * 50
     # Challenge = base64url(SHA256(verifier)).
     import hashlib
 
     expected = _b64url(hashlib.sha256(b"v" * 50).digest())
-    assert hasil["code_challenge"] == expected
-    assert "scope=openid+email+profile" in hasil["url"]
+    assert result["code_challenge"] == expected
+    assert "scope=openid+email+profile" in result["url"]
     with pytest.raises(ValueError):
-        build_auth_url("c", "https://contoh.id/callback", code_verifier="pendek")
+        build_auth_url("c", "https://contoh.id/callback", code_verifier="short")
 
 
 def test_exchange_refresh_revoke_dengan_http_mock():
@@ -114,13 +114,13 @@ def test_exchange_refresh_revoke_dengan_http_mock():
         http_client=http,
     )
     assert tokens["access_token"] == "access-1"
-    baru = refresh_tokens("refresh-1", "cid", "secret", http_client=http)
-    assert baru["access_token"] == "access-baru"
+    new = refresh_tokens("refresh-1", "cid", "secret", http_client=http)
+    assert new["access_token"] == "access-baru"
     assert revoke_tokens("access-1", http_client=http) is True
 
 
-def test_verify_id_token_asli_dan_palsu():
-    jwt, jwks = _buat_jwt_dan_jwks()
+def test_verify_id_token_asli_and_palsu():
+    jwt, jwks = _create_jwt_and_jwks()
     payload = verify_id_token(jwt, jwks, "client-id-tes")
     assert payload["email"] == "nero@contoh.id"
     with pytest.raises(OAuthError):
@@ -131,31 +131,31 @@ def test_verify_id_token_asli_dan_palsu():
         verify_id_token("bukan.jwt", jwks, "client-id-tes")
 
 
-def test_login_google_lengkap_buat_user_dan_sesi(
+def test_login_google_lengkap_create_user_and_sesi(
     make_user, test_dsn, vault_master_key
 ):
-    jwt, jwks = _buat_jwt_dan_jwks()
+    jwt, jwks = _create_jwt_and_jwks()
     http = FakeHttp(id_token=jwt)
-    hasil = complete_google_login(
+    result = complete_google_login(
         "code-1", "v" * 50, "client-id-tes", "secret",
         "https://contoh.id/callback", jwks,
         device_label="laptop", http_client=http, dsn=test_dsn,
     )
-    assert hasil["email"] == "nero@contoh.id"
-    assert hasil["baru"] is True
-    assert hasil["session_token"]
+    assert result["email"] == "nero@contoh.id"
+    assert result["new"] is True
+    assert result["session_token"]
     # Token tersimpan terenkripsi di vault; login kedua memakai user sama.
-    assert load_tokens(hasil["user_id"], dsn=test_dsn)["refresh_token"] == "refresh-1"
+    assert load_tokens(result["user_id"], dsn=test_dsn)["refresh_token"] == "refresh-1"
     hasil2 = complete_google_login(
         "code-2", "v" * 50, "client-id-tes", "secret",
         "https://contoh.id/callback", jwks,
-        device_label="hp", http_client=http, dsn=test_dsn,
+        device_label="phone", http_client=http, dsn=test_dsn,
     )
-    assert hasil2["user_id"] == hasil["user_id"] and hasil2["baru"] is False
-    assert find_user_by_email("NERO@contoh.id", dsn=test_dsn) == hasil["user_id"]
+    assert hasil2["user_id"] == result["user_id"] and hasil2["new"] is False
+    assert find_user_by_email("NERO@contoh.id", dsn=test_dsn) == result["user_id"]
 
 
-def test_pengguna_google_only_tidak_pakai_kata_sandi_biasa(test_dsn):
+def test_user_google_only_not_use_kata_sandi_biasa(test_dsn):
     from puspa.accounts.users import AuthError, authenticate
 
     user_id = create_google_user("baru@contoh.id", dsn=test_dsn)
@@ -166,7 +166,7 @@ def test_pengguna_google_only_tidak_pakai_kata_sandi_biasa(test_dsn):
         create_google_user("baru@contoh.id", dsn=test_dsn)  # duplikat
 
 
-def test_token_vault_bisa_dihapus(make_user, test_dsn, vault_master_key):
+def test_token_vault_can_deleted(make_user, test_dsn, vault_master_key):
     u = make_user()
     store_tokens(u["user_id"], {"access_token": "x"}, dsn=test_dsn)
     assert load_tokens(u["user_id"], dsn=test_dsn) == {"access_token": "x"}
@@ -176,7 +176,7 @@ def test_token_vault_bisa_dihapus(make_user, test_dsn, vault_master_key):
 
 # --- Tautan email -----------------------------------------------------------
 
-def test_tautan_email_sekali_pakai(email_link_secret, test_dsn):
+def test_tautan_email_sekali_use(email_link_secret, test_dsn):
     url = create_email_link("nero@contoh.id", "https://contoh.id/masuk", secret=email_link_secret)
     token = url.split("token=")[1]
     assert verify_email_link(token, secret=email_link_secret, dsn=test_dsn) == "nero@contoh.id"
@@ -184,7 +184,7 @@ def test_tautan_email_sekali_pakai(email_link_secret, test_dsn):
         verify_email_link(token, secret=email_link_secret, dsn=test_dsn)
 
 
-def test_tautan_email_kedaluwarsa_dan_dipalsukan(email_link_secret, test_dsn):
+def test_tautan_email_kedaluwarsa_and_dipalsukan(email_link_secret, test_dsn):
     url = create_email_link(
         "nero@contoh.id", "https://contoh.id/masuk",
         secret=email_link_secret, ttl_seconds=-10,

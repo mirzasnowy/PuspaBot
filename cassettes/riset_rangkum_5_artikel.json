@@ -1,13 +1,13 @@
 {
-  "tugas_id": "tugas-acuan-riset_rangkum_5_artikel",
-  "nama": "riset_rangkum_5_artikel",
-  "rekaman": [
+  "task_id": "tugas-acuan-riset_rangkum_5_artikel",
+  "name": "riset_rangkum_5_artikel",
+  "recording": [
     {
-      "tool": "cari_artikel",
-      "keluaran": {
+      "tool": "search_artikel",
+      "output": {
         "jenis": "artikel",
-        "jumlah": 5,
-        "judul": [
+        "amount": 5,
+        "title": [
           "AI agents 2026",
           "RAG di produksi",
           "Evaluasi LLM",
@@ -17,11 +17,11 @@
       }
     },
     {
-      "tool": "baca_artikel",
-      "keluaran": {
-        "jenis": "ringkasan",
-        "nilai": 5,
-        "teks": "Lima artikel dirangkum."
+      "tool": "read_artikel",
+      "output": {
+        "jenis": "summaries",
+        "value": 5,
+        "text": "Lima artikel dirangkum."
       }
     }
   ]

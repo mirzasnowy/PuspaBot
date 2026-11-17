@@ -16,11 +16,11 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
-from puspa.policy.tokens import is_subset, revoke_all_for_tugas
+from puspa.policy.tokens import is_subset, revoke_all_for_task
 
-MAX_SUB_PER_AGEN = 4
+MAX_SUB_PER_AGENT = 4
 MAX_SUB_SISTEM = 6
-KELAS_IZIN = ("Pembaca", "Pelaksana", "Pemeriksa")
+KLASS_PERMISSION = ("Pembaca", "Pelaksana", "Pemeriksa")
 
 
 class SubagentError(Exception):
@@ -31,23 +31,23 @@ class SubagentError(Exception):
 class Subagent:
     """Satu sub-agen aktif (catatan kolam; eksekusi di runtime)."""
 
-    sub_agen_id: str
-    agen_id: str
-    tugas_id: str
-    kelas_izin: str
+    subagent_id: str
+    agent_id: str
+    task_id: str
+    permission_class: str
     token_id: str = ""
-    status: str = "aktif"  # aktif | antre | selesai | dihentikan
+    status: str = "active"  # aktif | antre | selesai | dihentikan
 
 
 class SubagentPool:
     """Kolam sub-agen aktif seluruh sistem (in-memory, per proses)."""
 
     def __init__(self) -> None:
-        self._aktif: dict[str, Subagent] = {}
+        self._active: dict[str, Subagent] = {}
         self._antre: list[Subagent] = []
 
-    def spawn(self, *, agen_id: str, tugas_id: str, kelas_izin: str,
-              token_agen: dict, token_subagen: dict,
+    def spawn(self, *, agent_id: str, task_id: str, permission_class: str,
+              token_agent: dict, token_subagen: dict,
               pembuat_adalah_subagen: bool = False) -> Subagent:
         """Buat sub-agen baru (atau antrekan bila kolam penuh).
 
@@ -57,69 +57,69 @@ class SubagentPool:
         """
         if pembuat_adalah_subagen:
             raise SubagentError("sub-agen tidak bisa membuat sub-agen (satu level saja)")
-        if kelas_izin not in KELAS_IZIN:
-            raise SubagentError(f"kelas_izin harus salah satu dari {KELAS_IZIN}")
-        if not is_subset(token_subagen, token_agen):
+        if permission_class not in KLASS_PERMISSION:
+            raise SubagentError(f"kelas_izin harus salah satu dari {KLASS_PERMISSION}")
+        if not is_subset(token_subagen, token_agent):
             raise SubagentError("token sub-agen bukan himpunan bagian dari token agennya")
         sub = Subagent(
-            sub_agen_id=f"sub-{uuid.uuid4().hex[:12]}",
-            agen_id=agen_id, tugas_id=tugas_id, kelas_izin=kelas_izin,
+            subagent_id=f"sub-{uuid.uuid4().hex[:12]}",
+            agent_id=agent_id, task_id=task_id, permission_class=permission_class,
         )
-        per_agen = sum(1 for s in self._aktif.values() if s.agen_id == agen_id)
-        if per_agen >= MAX_SUB_PER_AGEN or len(self._aktif) >= MAX_SUB_SISTEM:
+        per_agent = sum(1 for s in self._active.values() if s.agent_id == agent_id)
+        if per_agent >= MAX_SUB_PER_AGENT or len(self._active) >= MAX_SUB_SISTEM:
             sub.status = "antre"
             self._antre.append(sub)
             return sub
-        self._aktif[sub.sub_agen_id] = sub
+        self._active[sub.subagent_id] = sub
         return sub
 
-    def selesai(self, sub_agen_id: str) -> Subagent | None:
+    def completed_at(self, subagent_id: str) -> Subagent | None:
         """Tandai sub-agen selesai; majukan satu antrean bila ada."""
-        sub = self._aktif.pop(sub_agen_id, None)
+        sub = self._active.pop(subagent_id, None)
         if sub is None:
             for antre in self._antre:
-                if antre.sub_agen_id == sub_agen_id:
+                if antre.subagent_id == subagent_id:
                     self._antre.remove(antre)
-                    antre.status = "selesai"
+                    antre.status = "completed"
                     return antre
             return None
-        sub.status = "selesai"
+        sub.status = "completed"
         self._majukan_antrean()
         return sub
 
     def _majukan_antrean(self) -> None:
-        while self._antre and len(self._aktif) < MAX_SUB_SISTEM:
+        while self._antre and len(self._active) < MAX_SUB_SISTEM:
             calon = self._antre[0]
-            per_agen = sum(1 for s in self._aktif.values() if s.agen_id == calon.agen_id)
-            if per_agen >= MAX_SUB_PER_AGEN:
+            per_agent = sum(1 for s in self._active.values() if s.agent_id == calon.agent_id)
+            if per_agent >= MAX_SUB_PER_AGENT:
                 break
             self._antre.pop(0)
-            calon.status = "aktif"
-            self._aktif[calon.sub_agen_id] = calon
+            calon.status = "active"
+            self._active[calon.subagent_id] = calon
 
-    def aktif_per_agen(self, agen_id: str) -> list[Subagent]:
-        return [s for s in self._aktif.values() if s.agen_id == agen_id]
+    def active_per_agent(self, agent_id: str) -> list[Subagent]:
+        return [s for s in self._active.values() if s.agent_id == agent_id]
 
-    def jumlah_aktif(self) -> int:
-        return len(self._aktif)
+    def amount_active(self) -> int:
+        return len(self._active)
 
-    def jumlah_antre(self) -> int:
+    def amount_antre(self) -> int:
         return len(self._antre)
 
-    def hentikan_tugas(self, tugas_id: str) -> dict:
+    def hentikan_task(self, task_id: str) -> dict:
         """Hentikan semua sub-agen satu tugas + cabut tokennya.
 
         Kembalikan {"dihentikan": n, "token_dicabut": [...], "detik": x}.
         Target < 5 detik (diukur di tes).
         """
         mulai = time.monotonic()
-        korban = [s for s in self._aktif.values() if s.tugas_id == tugas_id]
-        korban += [s for s in self._antre if s.tugas_id == tugas_id]
+        korban = [s for s in self._active.values() if s.task_id == task_id]
+        korban += [s for s in self._antre if s.task_id == task_id]
         for sub in korban:
             sub.status = "dihentikan"
-            self._aktif.pop(sub.sub_agen_id, None)
+            self._active.pop(sub.subagent_id, None)
             if sub in self._antre:
                 self._antre.remove(sub)
-        dicabut = revoke_all_for_tugas(tugas_id)
-        return {"dihentikan": len(korban), "token_dicabut": dicabut,
+        revoked = revoke_all_for_task(task_id)
+        return {"dihentikan": len(korban), "token_dicabut": revoked,
                 "detik": round(time.monotonic() - mulai, 3)}

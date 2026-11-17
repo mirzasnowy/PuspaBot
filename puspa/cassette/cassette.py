@@ -22,20 +22,20 @@ import re
 import uuid
 from pathlib import Path
 
-KASET_DIR_DEFAULT = Path(__file__).resolve().parent.parent.parent / "cassettes"
+CASSETTE_DIR_DEFAULT = Path(__file__).resolve().parent.parent.parent / "cassettes"
 
 # 10 tugas acuan (tetap, §8 revisi 7).
-TUGAS_ACUAN = (
+TASK_REFERENCE = (
     "riset_rangkum_5_artikel",
-    "baca_email_buat_draf",
-    "jadwalkan_meeting_dari_email",
-    "bandingkan_harga_laptop",
-    "cek_tagihan_pln_siapkan_bayar",
-    "cari_file_drive_ringkas",
+    "read_email_create_draft",
+    "schedule_meeting_from_email",
+    "compare_price_laptop",
+    "check_bill_pln_prepare_payment",
+    "search_file_drive_summarize",
     "ingat_preferensi_kemarin",
-    "pengingat_tagihan",
-    "ingatkan_tagihan_jatuh_tempo_minggu_ini",
-    "siapkan_bayar_token_listrik_50rb",
+    "bill_reminder",
+    "remind_bill_due_this_week",
+    "prepare_payment_electricity_token_50k",
 )
 
 
@@ -43,30 +43,30 @@ class CassetteError(Exception):
     """Kaset tidak valid / tidak ditemukan."""
 
 
-def rekam_dari_ledger(kejadian: list[dict], tugas_id: str) -> dict:
+def rekam_dari_ledger(event: list[dict], task_id: str) -> dict:
     """Bangun kaset dari kejadian `tool_selesai` satu tugas.
 
     Kembalikan {"tugas_id": ..., "rekaman": [{"tool": ..., "keluaran": ...}]}.
     """
-    rekaman = []
-    for ev in kejadian:
-        if ev.get("jenis") != "tool_selesai" or ev.get("tugas_id") != tugas_id:
+    recording = []
+    for ev in event:
+        if ev.get("type") != "tool_completed" or ev.get("task_id") != task_id:
             continue
-        isi = ev.get("isi") or {}
-        rekaman.append({"tool": isi.get("tool", "tidak_dikenal"),
-                        "keluaran": isi.get("keluaran")})
-    return {"tugas_id": tugas_id, "rekaman": rekaman}
+        content = ev.get("content") or {}
+        recording.append({"tool": content.get("tool", "not_dikenal"),
+                        "output": content.get("output")})
+    return {"task_id": task_id, "recording": recording}
 
 
-def simpan_kaset(kaset: dict, nama: str, *, kaset_dir: Path | None = None,
+def save_cassette(cassette: dict, name: str, *, cassette_dir: Path | None = None,
                  dsn=None, user_id: str | None = None,
-                 tugas_id: str | None = None) -> Path:
+                 task_id: str | None = None) -> Path:
     """Simpan kaset sebagai file JSON lokal. Kembalikan path berkas."""
-    folder = Path(kaset_dir or KASET_DIR_DEFAULT)
+    folder = Path(cassette_dir or CASSETTE_DIR_DEFAULT)
     folder.mkdir(parents=True, exist_ok=True)
-    berkas = folder / f"{nama}.json"
-    berkas.write_text(json.dumps(kaset, indent=2, ensure_ascii=False), encoding="utf-8")
-    if dsn is not None and user_id and tugas_id:
+    berkas = folder / f"{name}.json"
+    berkas.write_text(json.dumps(cassette, indent=2, ensure_ascii=False), encoding="utf-8")
+    if dsn is not None and user_id and task_id:
         import os
 
         import psycopg
@@ -75,15 +75,15 @@ def simpan_kaset(kaset: dict, nama: str, *, kaset_dir: Path | None = None,
         with psycopg.connect(dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO kaset (id, tugas_id, user_id, nama, berkas)"
+                    "INSERT INTO cassettes (id, task_id, user_id, name, berkas)"
                     " VALUES (%s, %s, %s, %s, %s)",
-                    (f"kaset-{uuid.uuid4().hex[:8]}", tugas_id, user_id, nama, str(berkas)),
+                    (f"kaset-{uuid.uuid4().hex[:8]}", task_id, user_id, name, str(berkas)),
                 )
             conn.commit()
     return berkas
 
 
-def muat_kaset(path: str | Path) -> dict:
+def muat_cassette(path: str | Path) -> dict:
     """Muat kaset dari file JSON."""
     path = Path(path)
     if not path.exists():
@@ -99,54 +99,54 @@ class CassettePlayer:
     kaset -> `CassetteError` jujur (bukan keluaran karangan).
     """
 
-    def __init__(self, kaset: dict) -> None:
-        self.kaset = copy.deepcopy(kaset)
+    def __init__(self, cassette: dict) -> None:
+        self.cassette = copy.deepcopy(cassette)
         self._posisi: dict[str, int] = {}
         self.putaran = 0
 
     def putar(self, tool: str):
-        rekaman = [r for r in self.kaset.get("rekaman", []) if r.get("tool") == tool]
+        recording = [r for r in self.cassette.get("recording", []) if r.get("tool") == tool]
         idx = self._posisi.get(tool, 0)
-        if idx >= len(rekaman):
+        if idx >= len(recording):
             raise CassetteError(f"kaset kehabisan rekaman untuk tool {tool!r}")
         self._posisi[tool] = idx + 1
         self.putaran += 1
-        return copy.deepcopy(rekaman[idx]["keluaran"])
+        return copy.deepcopy(recording[idx]["output"])
 
     def sisa(self, tool: str) -> int:
-        rekaman = [r for r in self.kaset.get("rekaman", []) if r.get("tool") == tool]
-        return len(rekaman) - self._posisi.get(tool, 0)
+        recording = [r for r in self.cassette.get("recording", []) if r.get("tool") == tool]
+        return len(recording) - self._posisi.get(tool, 0)
 
 
-def suntik_harga_salah(kaset: dict, *, tool: str, nilai_baru) -> dict:
+def suntik_price_wrong(cassette: dict, *, tool: str, value_new) -> dict:
     """Uji suntik: ubah satu angka di keluaran Pembaca dalam kaset.
 
     Kembalikan kaset BARU (asli tidak diubah). Pemeriksa harus
     menangkap perubahan ini saat putar ulang (gerbang 11).
     """
-    baru = copy.deepcopy(kaset)
-    for rekaman in baru.get("rekaman", []):
-        if rekaman.get("tool") != tool:
+    new = copy.deepcopy(cassette)
+    for recording in new.get("recording", []):
+        if recording.get("tool") != tool:
             continue
-        keluaran = rekaman.get("keluaran")
-        if isinstance(keluaran, dict) and "nilai" in keluaran:
-            rekaman["keluaran"] = {**keluaran, "nilai": nilai_baru}
-            return baru
-        if isinstance(keluaran, str):
-            diubah = re.sub(r"Rp[\d.,]+", f"Rp{nilai_baru:,}".replace(",", "."), keluaran, count=1)
-            if diubah != keluaran:
-                rekaman["keluaran"] = diubah
-                return baru
+        output = recording.get("output")
+        if isinstance(output, dict) and "value" in output:
+            recording["output"] = {**output, "value": value_new}
+            return new
+        if isinstance(output, str):
+            updated_at = re.sub(r"Rp[\d.,]+", f"Rp{value_new:,}".replace(",", "."), output, count=1)
+            if updated_at != output:
+                recording["output"] = updated_at
+                return new
     raise CassetteError(f"tidak ada angka yang bisa disuntik di tool {tool!r}")
 
 
-def hapus_kaset_tugas(tugas_id: str, *, kaset_dir: Path | None = None,
+def delete_cassette_task(task_id: str, *, cassette_dir: Path | None = None,
                       dsn=None) -> dict:
     """Hapus semua kaset satu tugas (file + baris DB). Kembalikan
     {"dihapus": [nama, ...]}. Dipanggil saat tugas dihapus (tombstone
     Buku Kerja ditulis pemanggil lewat `tugas_dihentikan`)."""
-    folder = Path(kaset_dir or KASET_DIR_DEFAULT)
-    dihapus = []
+    folder = Path(cassette_dir or CASSETTE_DIR_DEFAULT)
+    deleted = []
     if dsn is not None:
         import os
 
@@ -155,22 +155,22 @@ def hapus_kaset_tugas(tugas_id: str, *, kaset_dir: Path | None = None,
         dsn = dsn or os.environ.get("PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
         with psycopg.connect(dsn) as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT nama, berkas FROM kaset WHERE tugas_id = %s", (tugas_id,))
-                baris = cur.fetchall()
-                cur.execute("DELETE FROM kaset WHERE tugas_id = %s", (tugas_id,))
+                cur.execute("SELECT name, berkas FROM cassettes WHERE task_id = %s", (task_id,))
+                rows = cur.fetchall()
+                cur.execute("DELETE FROM cassettes WHERE task_id = %s", (task_id,))
             conn.commit()
-        for nama, berkas in baris:
+        for name, berkas in rows:
             p = Path(berkas)
             if p.exists():
                 p.unlink()
-            dihapus.append(nama)
-        return {"dihapus": dihapus}
+            deleted.append(name)
+        return {"deleted": deleted}
     for berkas in folder.glob("*.json"):
         try:
             data = json.loads(berkas.read_text(encoding="utf-8"))
         except Exception:
             continue
-        if data.get("tugas_id") == tugas_id:
+        if data.get("task_id") == task_id:
             berkas.unlink()
-            dihapus.append(berkas.stem)
-    return {"dihapus": dihapus}
+            deleted.append(berkas.stem)
+    return {"deleted": deleted}

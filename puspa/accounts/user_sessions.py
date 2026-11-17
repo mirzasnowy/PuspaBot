@@ -30,7 +30,7 @@ def create_session(user_id, device_label, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO sesi (user_id, token_hash, device_label) "
+                "INSERT INTO sessions (user_id, token_hash, device_label) "
                 "VALUES (%s, %s, %s)",
                 (user_id, _token_hash(token), device_label),
             )
@@ -48,14 +48,14 @@ def validate_session(token, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT user_id FROM sesi WHERE token_hash = %s AND NOT dicabut",
+                "SELECT user_id FROM sessions WHERE token_hash = %s AND NOT revoked",
                 (token_h,),
             )
             row = cur.fetchone()
             if row is None:
                 raise SessionError("sesi tidak valid atau sudah dicabut")
             cur.execute(
-                "UPDATE sesi SET terakhir_dilihat = now() WHERE token_hash = %s",
+                "UPDATE sessions SET last_seen_at = now() WHERE token_hash = %s",
                 (token_h,),
             )
         conn.commit()
@@ -75,7 +75,7 @@ def owner_of_token(token, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT user_id FROM sesi WHERE token_hash = %s AND NOT dicabut",
+                "SELECT user_id FROM sessions WHERE token_hash = %s AND NOT revoked",
                 (token_h,),
             )
             row = cur.fetchone()
@@ -89,7 +89,7 @@ def revoke_session(token, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE sesi SET dicabut = true WHERE token_hash = %s",
+                "UPDATE sessions SET revoked = true WHERE token_hash = %s",
                 (_token_hash(token),),
             )
         conn.commit()
@@ -100,7 +100,7 @@ def revoke_all_sessions(user_id, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE sesi SET dicabut = true WHERE user_id = %s",
+                "UPDATE sessions SET revoked = true WHERE user_id = %s",
                 (user_id,),
             )
         conn.commit()
@@ -112,8 +112,8 @@ def list_sessions(user_id, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, device_label, dibuat, terakhir_dilihat, dicabut "
-                "FROM sesi WHERE user_id = %s ORDER BY dibuat DESC",
+                "SELECT id, device_label, created_at, last_seen_at, revoked "
+                "FROM sessions WHERE user_id = %s ORDER BY created_at DESC",
                 (user_id,),
             )
             rows = cur.fetchall()
@@ -121,9 +121,9 @@ def list_sessions(user_id, dsn=None):
         {
             "id": str(r[0]),
             "device_label": r[1],
-            "dibuat": r[2],
-            "terakhir_dilihat": r[3],
-            "dicabut": r[4],
+            "created_at": r[2],
+            "last_seen_at": r[3],
+            "revoked": r[4],
         }
         for r in rows
     ]

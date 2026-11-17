@@ -28,10 +28,10 @@ from psycopg.rows import dict_row
 
 from puspa.workflow import approvals
 from puspa.workflow.blocks import (
-    BLOK, MAKS_ALUR_AKTIF, PLAFON_BIAYA_JALAN_RP, periksa_alur,
+    BLOK, MAKS_WORKFLOW_ACTIVE, CEILING_COST_JALAN_RP, periksa_workflow,
 )
-from puspa.workflow.manifest import hitung_manifes, subset_izin
-from puspa.workflow.triggers import validasi_pemicu
+from puspa.workflow.manifest import hitung_manifest, subset_permission
+from puspa.workflow.triggers import validasi_trigger
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
@@ -45,14 +45,14 @@ def _connect(dsn=None):
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
-def _catat_ledger(tugas_id, agen_id, jenis, isi, dsn=None):
+def _record_ledger(task_id, agent_id, jenis, content, dsn=None):
     """Tulis kejadian ke Buku Kerja (bila ledger tersedia). Gagal tulis
     ledger tidak menggagalkan jalan alur — tapi dicatat di alasan."""
     try:
         from puspa.ledger import Ledger
 
         Ledger(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)).append_event(
-            tugas_id=tugas_id, agen_id=agen_id, jenis=jenis, isi=isi)
+            task_id=task_id, agent_id=agent_id, jenis=jenis, content=content)
     except Exception as exc:  # noqa: BLE001 — ledger sekunder di runner
         return str(exc)
     return None
@@ -60,47 +60,47 @@ def _catat_ledger(tugas_id, agen_id, jenis, isi, dsn=None):
 
 # ---------------------------------------------------------------- CRUD
 
-def buat_alur(*, user_id: str, agen_id: str, nama: str, pemicu: dict,
-              langkah: list, dsn=None) -> dict:
+def create_workflow(*, user_id: str, agent_id: str, name: str, trigger: dict,
+              step: list, dsn=None) -> dict:
     """Buat alur baru berstatus 'draf' + simpan versi 1."""
-    masalah = validasi_pemicu(pemicu) + periksa_alur(langkah)
+    masalah = validasi_trigger(trigger) + periksa_workflow(step)
     if masalah:
         raise WorkflowError("; ".join(masalah))
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO alur (user_id, agen_id, nama, pemicu, langkah, status)"
-                " VALUES (%s, %s, %s, %s, %s, 'draf') RETURNING *",
-                (user_id, agen_id, nama, json.dumps(pemicu), json.dumps(langkah)))
+                "INSERT INTO workflows (user_id, agent_id, name, trigger, step, status)"
+                " VALUES (%s, %s, %s, %s, %s, 'draft') RETURNING *",
+                (user_id, agent_id, name, json.dumps(trigger), json.dumps(step)))
             row = dict(cur.fetchone())
             cur.execute(
-                "INSERT INTO alur_versi (alur_id, versi, pemicu, langkah)"
+                "INSERT INTO workflow_versions (workflow_id, versi, trigger, step)"
                 " VALUES (%s, 1, %s, %s)",
-                (row["id"], json.dumps(pemicu), json.dumps(langkah)))
+                (row["id"], json.dumps(trigger), json.dumps(step)))
         conn.commit()
-    _catat_ledger(f"alur-{row['id']}", agen_id, "alur_diajukan",
-                  {"alur_id": str(row["id"]), "nama": nama}, dsn)
+    _record_ledger(f"alur-{row['id']}", agent_id, "workflow_proposed",
+                  {"workflow_id": str(row["id"]), "name": name}, dsn)
     return _row(row)
 
 
-def ambil_alur(alur_id: str, *, user_id: str, dsn=None) -> dict | None:
+def take_workflow(workflow_id: str, *, user_id: str, dsn=None) -> dict | None:
     """Baca satu alur — hanya milik user itu."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM alur WHERE id = %s AND user_id = %s",
-                        (alur_id, user_id))
+            cur.execute("SELECT * FROM workflows WHERE id = %s AND user_id = %s",
+                        (workflow_id, user_id))
             row = cur.fetchone()
     return _row(row) if row else None
 
 
-def daftar_alur(user_id: str, *, status: str | None = None, dsn=None) -> list[dict]:
+def items_workflow(user_id: str, *, status: str | None = None, dsn=None) -> list[dict]:
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             if status:
-                cur.execute("SELECT * FROM alur WHERE user_id = %s AND status = %s"
-                            " ORDER BY dibuat", (user_id, status))
+                cur.execute("SELECT * FROM workflows WHERE user_id = %s AND status = %s"
+                            " ORDER BY created_at", (user_id, status))
             else:
-                cur.execute("SELECT * FROM alur WHERE user_id = %s ORDER BY dibuat",
+                cur.execute("SELECT * FROM workflows WHERE user_id = %s ORDER BY created_at",
                             (user_id,))
             return [_row(r) for r in cur.fetchall()]
 
@@ -113,256 +113,256 @@ def _row(row: dict) -> dict:
     return row
 
 
-def ubah_alur(alur_id: str, *, user_id: str, pemicu: dict | None = None,
-              langkah: list | None = None, dsn=None) -> dict:
+def change_workflow(workflow_id: str, *, user_id: str, trigger: dict | None = None,
+              step: list | None = None, dsn=None) -> dict:
     """Ubah definisi alur (hanya lewat sesi penyusunan user — runner
     tidak pernah memanggil ini). Tiap perubahan = versi baru."""
-    alur = ambil_alur(alur_id, user_id=user_id, dsn=dsn)
-    if alur is None:
+    workflow = take_workflow(workflow_id, user_id=user_id, dsn=dsn)
+    if workflow is None:
         raise WorkflowError("alur tidak ditemukan")
-    if alur["status"] == "dihapus":
+    if workflow["status"] == "deleted":
         raise WorkflowError("alur sudah dihapus")
-    pemicu_baru = pemicu if pemicu is not None else alur["pemicu"]
-    langkah_baru = langkah if langkah is not None else alur["langkah"]
-    masalah = validasi_pemicu(pemicu_baru) + periksa_alur(langkah_baru)
+    trigger_new = trigger if trigger is not None else workflow["triggers"]
+    step_new = step if step is not None else workflow["step"]
+    masalah = validasi_trigger(trigger_new) + periksa_workflow(step_new)
     if masalah:
         raise WorkflowError("; ".join(masalah))
-    versi_baru = int(alur["versi_aktif"]) + 1
+    versi_new = int(workflow["active_version"]) + 1
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE alur SET pemicu = %s, langkah = %s, versi_aktif = %s,"
-                " diubah = now() WHERE id = %s RETURNING *",
-                (json.dumps(pemicu_baru), json.dumps(langkah_baru),
-                 versi_baru, alur_id))
+                "UPDATE workflows SET trigger = %s, step = %s, active_version = %s,"
+                " updated_at = now() WHERE id = %s RETURNING *",
+                (json.dumps(trigger_new), json.dumps(step_new),
+                 versi_new, workflow_id))
             row = dict(cur.fetchone())
             cur.execute(
-                "INSERT INTO alur_versi (alur_id, versi, pemicu, langkah)"
+                "INSERT INTO workflow_versions (workflow_id, versi, trigger, step)"
                 " VALUES (%s, %s, %s, %s)",
-                (alur_id, versi_baru, json.dumps(pemicu_baru),
-                 json.dumps(langkah_baru)))
+                (workflow_id, versi_new, json.dumps(trigger_new),
+                 json.dumps(step_new)))
         conn.commit()
     return _row(row)
 
 
-def rollback_alur(alur_id: str, *, user_id: str, versi: int, dsn=None) -> dict:
+def rollback_workflow(workflow_id: str, *, user_id: str, versi: int, dsn=None) -> dict:
     """Pulihkan versi lama (menjadi versi baru — riwayat tidak ditimpa)."""
-    alur = ambil_alur(alur_id, user_id=user_id, dsn=dsn)
-    if alur is None:
+    workflow = take_workflow(workflow_id, user_id=user_id, dsn=dsn)
+    if workflow is None:
         raise WorkflowError("alur tidak ditemukan")
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT pemicu, langkah FROM alur_versi"
-                " WHERE alur_id = %s AND versi = %s", (alur_id, versi))
-            lama = cur.fetchone()
-            if lama is None:
+                "SELECT trigger, step FROM workflow_versions"
+                " WHERE workflow_id = %s AND versi = %s", (workflow_id, versi))
+            old = cur.fetchone()
+            if old is None:
                 raise WorkflowError(f"versi {versi} tidak ada")
-    return ubah_alur(alur_id, user_id=user_id,
-                     pemicu=lama["pemicu"], langkah=lama["langkah"], dsn=dsn)
+    return change_workflow(workflow_id, user_id=user_id,
+                     trigger=old["triggers"], step=old["step"], dsn=dsn)
 
 
-def hapus_alur(alur_id: str, *, user_id: str, dsn=None) -> dict:
+def delete_workflow(workflow_id: str, *, user_id: str, dsn=None) -> dict:
     """Hapus alur (status 'dihapus'). Riwayat jalan di Buku Kerja dan
     tabel jalan_alur TIDAK dihapus (§2.12)."""
-    alur = ambil_alur(alur_id, user_id=user_id, dsn=dsn)
-    if alur is None:
+    workflow = take_workflow(workflow_id, user_id=user_id, dsn=dsn)
+    if workflow is None:
         raise WorkflowError("alur tidak ditemukan")
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE alur SET status = 'dihapus', diubah = now()"
-                " WHERE id = %s RETURNING *", (alur_id,))
+                "UPDATE workflows SET status = 'deleted', updated_at = now()"
+                " WHERE id = %s RETURNING *", (workflow_id,))
             row = dict(cur.fetchone())
         conn.commit()
     return _row(row)
 
 
-def aktifkan_alur(alur_id: str, *, user_id: str, izin_user: dict,
-                  hasil_kering: dict | None = None, dsn=None) -> dict:
+def aktifkan_workflow(workflow_id: str, *, user_id: str, permission_user: dict,
+                  result_dry: dict | None = None, dsn=None) -> dict:
     """Aktifkan alur. Syarat (semua oleh kode):
     1. maks 5 alur aktif per pengguna;
     2. manifes izin turunan himpunan bagian dari izin user;
     3. uji kering sudah dijalankan dan sukses (hasil_kering wajib).
     """
-    alur = ambil_alur(alur_id, user_id=user_id, dsn=dsn)
-    if alur is None:
+    workflow = take_workflow(workflow_id, user_id=user_id, dsn=dsn)
+    if workflow is None:
         raise WorkflowError("alur tidak ditemukan")
-    if alur["status"] == "dihapus":
+    if workflow["status"] == "deleted":
         raise WorkflowError("alur sudah dihapus")
-    if hasil_kering is None or not hasil_kering.get("sukses"):
+    if result_dry is None or not result_dry.get("success"):
         raise WorkflowError(
             "alur belum lolos uji kering — jalankan uji kering dulu, "
             "lihat hasilnya, baru aktifkan")
-    aktif = [a for a in daftar_alur(user_id, status="aktif", dsn=dsn)
-             if str(a["id"]) != str(alur_id)]
-    if len(aktif) >= MAKS_ALUR_AKTIF:
+    active = [a for a in items_workflow(user_id, status="active", dsn=dsn)
+             if str(a["id"]) != str(workflow_id)]
+    if len(active) >= MAKS_WORKFLOW_ACTIVE:
         raise WorkflowError(
-            f"sudah ada {MAKS_ALUR_AKTIF} alur aktif — maks di MVP")
-    manifes = hitung_manifes(alur["langkah"])
-    lolos, kurang = subset_izin(manifes, izin_user)
-    if not lolos:
-        raise WorkflowError("manifes izin di luar izin user: " + "; ".join(kurang))
+            f"sudah ada {MAKS_WORKFLOW_ACTIVE} alur aktif — maks di MVP")
+    manifest = hitung_manifest(workflow["step"])
+    passed, less = subset_permission(manifest, permission_user)
+    if not passed:
+        raise WorkflowError("manifes izin di luar izin user: " + "; ".join(less))
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE alur SET status = 'aktif', diubah = now()"
-                " WHERE id = %s RETURNING *", (alur_id,))
+                "UPDATE workflows SET status = 'active', updated_at = now()"
+                " WHERE id = %s RETURNING *", (workflow_id,))
             row = dict(cur.fetchone())
         conn.commit()
-    _catat_ledger(f"alur-{alur_id}", alur["agen_id"], "alur_diaktifkan",
-                  {"alur_id": str(alur_id), "manifes": manifes}, dsn)
+    _record_ledger(f"alur-{workflow_id}", workflow["agent_id"], "workflow_activated",
+                  {"workflow_id": str(workflow_id), "manifest": manifest}, dsn)
     return _row(row)
 
 
-def jeda_alur(alur_id: str, *, user_id: str, alasan: str = "", dsn=None) -> dict:
-    alur = ambil_alur(alur_id, user_id=user_id, dsn=dsn)
-    if alur is None:
+def jeda_workflow(workflow_id: str, *, user_id: str, reason: str = "", dsn=None) -> dict:
+    workflow = take_workflow(workflow_id, user_id=user_id, dsn=dsn)
+    if workflow is None:
         raise WorkflowError("alur tidak ditemukan")
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE alur SET status = 'dijeda', diubah = now()"
-                " WHERE id = %s RETURNING *", (alur_id,))
+                "UPDATE workflows SET status = 'paused', updated_at = now()"
+                " WHERE id = %s RETURNING *", (workflow_id,))
             row = dict(cur.fetchone())
         conn.commit()
-    _catat_ledger(f"alur-{alur_id}", alur["agen_id"], "alur_dijeda",
-                  {"alur_id": str(alur_id), "alasan": alasan}, dsn)
+    _record_ledger(f"alur-{workflow_id}", workflow["agent_id"], "workflow_paused",
+                  {"workflow_id": str(workflow_id), "reason": reason}, dsn)
     return _row(row)
 
 
 # ---------------------------------------------------------------- eksekutor
 
-def eksekutor_fixture():
+def executor_fixture():
     """Eksekutor default: data uji (fixture), tanpa HTTP live.
     - cek_tagihan: DATA_UJI Fase 3 (PLN Rp132.500 dst.) — berlabel fixture.
     - bandingkan/pantau harga: gerbang ToS Fase 3 (boleh_baca) — live
       ditahan keputusan 15, kembalikan tidak_bisa_dicek TANPA HTTP.
     - email/draf/event/bayar: draf + simulasi (tanpa konektor live).
     """
-    from puspa.billing.fixture import DATA_UJI
+    from puspa.billing.fixture import DATA_TEST
 
-    def cek_tagihan(provider, nomor_pelanggan=""):
-        data = DATA_UJI.get(str(provider).lower())
+    def check_bill(provider, number_pelanggan=""):
+        data = DATA_TEST.get(str(provider).lower())
         if data is None:
-            return {"sukses": False, "alasan": "provider_di_luar_mvp",
-                    "pesan": f"Provider {provider!r} bukan provider MVP."}
-        return {"sukses": True, "jumlah": data["jumlah"],
-                "jatuh_tempo": data["jatuh_tempo"], "status": data["status"],
-                "bukti_id": f"fixture:{provider}", "vonis": "Belum pasti",
+            return {"success": False, "reason": "provider_di_luar_mvp",
+                    "message": f"Provider {provider!r} bukan provider MVP."}
+        return {"success": True, "amount": data["amount"],
+                "due_date": data["due_date"], "status": data["status"],
+                "evidence_id": f"fixture:{provider}", "vonis": "Uncertain",
                 "sumber": "fixture"}
 
-    def bandingkan_harga(nama_barang):
-        from puspa.pricing.tos import boleh_baca
+    def compare_price(name_product):
+        from puspa.pricing.tos import boleh_read
 
-        if not boleh_baca("tokopedia"):
-            return {"sukses": False, "alasan": "syarat_layanan_menunggu_keputusan_nero",
-                    "pesan": "Tidak bisa cek harga live — syarat layanan marketplace "
+        if not boleh_read("tokopedia"):
+            return {"success": False, "reason": "syarat_service_pending_keputusan_nero",
+                    "message": "Tidak bisa cek harga live — syarat layanan marketplace "
                              "menunggu keputusan Nero (keputusan 15)."}
-        return {"sukses": False, "alasan": "tidak_diimplementasi",
-                "pesan": "Jalur live belum dibuka (keputusan 15)."}
+        return {"success": False, "reason": "not_diimplementasi",
+                "message": "Jalur live belum dibuka (keputusan 15)."}
 
-    def pantau_harga(produk_id, ambang_harga):
-        hasil = bandingkan_harga(produk_id)
-        return hasil
+    def watch_price(product_id, price_threshold):
+        result = compare_price(product_id)
+        return result
 
     return {
-        "cek_tagihan": cek_tagihan,
-        "bandingkan_harga": bandingkan_harga,
-        "pantau_harga": pantau_harga,
-        "cari_email": lambda kata_kunci: {"sukses": True, "email": [], "sumber": "fixture"},
-        "baca_email": lambda email_id: {"sukses": True, "pengirim": "", "subjek": "",
-                                        "isi": "", "sumber": "fixture"},
-        "buat_draf": lambda penerima, subjek, isi: {
-            "sukses": True, "draf_id": "draf-fixture", "sumber": "fixture"},
-        "buat_event": lambda judul, waktu, peserta: {
-            "sukses": True, "event_id": "event-fixture", "sumber": "fixture"},
-        "siapkan_bayar": lambda provider, jumlah, tujuan: {
-            "sukses": True, "draf_bayar_id": "bayar-fixture",
-            "isi_hash": approvals.isi_hash(
-                {"provider": provider, "jumlah": jumlah, "tujuan": tujuan}),
+        "check_bill": check_bill,
+        "compare_prices": compare_price,
+        "watch_prices": watch_price,
+        "search_email": lambda kata_key: {"success": True, "email": [], "sumber": "fixture"},
+        "read_email": lambda email_id: {"success": True, "pengirim": "", "subjek": "",
+                                        "content": "", "sumber": "fixture"},
+        "create_draft": lambda penerima, subjek, content: {
+            "success": True, "draft_id": "draf-fixture", "sumber": "fixture"},
+        "create_event": lambda title, created_at, peserta: {
+            "success": True, "event_id": "event-fixture", "sumber": "fixture"},
+        "prepare_payment": lambda provider, amount, purpose: {
+            "success": True, "draft_pay_id": "bayar-fixture",
+            "content_hash": approvals.content_hash(
+                {"provider": provider, "amount": amount, "purpose": purpose}),
             "sumber": "fixture"},
-        "kirim_notif": lambda pesan: {"sukses": True, "terkirim": True},
-        "tanya_user": lambda pertanyaan: {"sukses": False, "jawaban": None,
-                                          "alasan": "menunggu_jawaban_user"},
-        "simpan_memori": lambda fakta, asal="diucapkan_user": {
-            "sukses": True, "tersimpan": True},
-        "simpan_ke_tabel_modul": lambda modul, tabel, baris: {
-            "sukses": True, "tersimpan": len(baris or [])},
+        "send_notification": lambda message: {"success": True, "terkirim": True},
+        "ask_user": lambda pertanyaan: {"success": False, "jawaban": None,
+                                          "reason": "pending_jawaban_user"},
+        "save_memory": lambda fact, source="user_stated": {
+            "success": True, "tersimpan": True},
+        "save_to_module_table": lambda module, table, rows: {
+            "success": True, "tersimpan": len(rows or [])},
     }
 
 
 # ---------------------------------------------------------------- evaluasi kondisi
 
-def evaluasi_ungkapan(ungkapan: str, konteks: dict) -> bool:
+def evaluasi_ungkapan(ungkapan: str, context: dict) -> bool:
     """Evaluasi ungkapan kondisi sederhana: `<field> <op> <nilai>`.
     Field diambil dari hasil langkah sebelumnya (konteks). Operator:
     == != > < >= <=. Nilai: angka, atau teks tanpa spasi. Ungkapan
     yang tidak bisa diparse → WorkflowError (gagal terlihat)."""
-    cocok = re.match(r"^\s*([\w.]+)\s*(==|!=|>=|<=|>|<)\s*(.+?)\s*$", str(ungkapan))
-    if not cocok:
+    match = re.match(r"^\s*([\w.]+)\s*(==|!=|>=|<=|>|<)\s*(.+?)\s*$", str(ungkapan))
+    if not match:
         raise WorkflowError(f"ungkapan kondisi tidak bisa diparse: {ungkapan!r}")
-    field, op, nilai_teks = cocok.groups()
-    nilai_konteks = konteks
+    field, op, value_teks = match.groups()
+    value_context = context
     for bagian in field.split("."):
-        if isinstance(nilai_konteks, dict) and bagian in nilai_konteks:
-            nilai_konteks = nilai_konteks[bagian]
+        if isinstance(value_context, dict) and bagian in value_context:
+            value_context = value_context[bagian]
         else:
             raise WorkflowError(f"ungkapan kondisi: field {field!r} tidak ada")
     try:
-        nilai = float(nilai_teks)
-        banding = float(nilai_konteks)
+        value = float(value_teks)
+        banding = float(value_context)
     except (TypeError, ValueError):
-        nilai = nilai_teks.strip("'\"")
-        banding = str(nilai_konteks)
+        value = value_teks.strip("'\"")
+        banding = str(value_context)
     if op == "==":
-        return banding == nilai
+        return banding == value
     if op == "!=":
-        return banding != nilai
+        return banding != value
     if op == ">":
-        return banding > nilai
+        return banding > value
     if op == "<":
-        return banding < nilai
+        return banding < value
     if op == ">=":
-        return banding >= nilai
-    return banding <= nilai
+        return banding >= value
+    return banding <= value
 
 
 # ---------------------------------------------------------------- jalan alur
 
-def _simpan_jalan(*, alur_id, user_id, tugas_id, pemicu_jenis, status,
-                  biaya_rp, langkah_hasil, alasan, dsn=None):
+def _save_jalan(*, workflow_id, user_id, task_id, trigger_jenis, status,
+                  cost_rp, step_results, reason, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO jalan_alur (alur_id, user_id, tugas_id, pemicu_jenis,"
-                " status, biaya_rp, langkah_hasil, alasan, selesai)"
+                "INSERT INTO workflow_runs (workflow_id, user_id, task_id, trigger_jenis,"
+                " status, cost_rp, step_results, reason, completed_at)"
                 " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, now()) RETURNING id",
-                (alur_id, user_id, tugas_id, pemicu_jenis, status, biaya_rp,
-                 json.dumps(langkah_hasil), alasan))
+                (workflow_id, user_id, task_id, trigger_jenis, status, cost_rp,
+                 json.dumps(step_results), reason))
             jalan_id = str(cur.fetchone()["id"])
         conn.commit()
     return jalan_id
 
 
-def _jalan_terakhir_gagal(user_id: str, alur_id: str, dsn=None) -> int:
+def _jalan_terakhir_failed(user_id: str, workflow_id: str, dsn=None) -> int:
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT status FROM jalan_alur WHERE alur_id = %s"
-                " ORDER BY dimulai DESC LIMIT 2", (alur_id,))
+                "SELECT status FROM workflow_runs WHERE workflow_id = %s"
+                " ORDER BY started_at DESC LIMIT 2", (workflow_id,))
             return [r["status"] for r in cur.fetchall()]
 
 
-def uji_kering(alur_id: str, *, user_id: str, konteks=None, dsn=None) -> dict:
+def test_dry(workflow_id: str, *, user_id: str, context=None, dsn=None) -> dict:
     """Jalankan alur sekali mode baca saja: blok aksi keluar diganti
     simulasi. Kembalikan hasil jalan (lihat jalankan_alur)."""
-    return jalankan_alur(alur_id, user_id=user_id, pemicu_jenis="manual",
-                         konteks=konteks, mode="kering", dsn=dsn)
+    return jalankan_workflow(workflow_id, user_id=user_id, trigger_jenis="manual",
+                         context=context, mode="dry", dsn=dsn)
 
 
-def jalankan_alur(alur_id: str, *, user_id: str, pemicu_jenis: str = "manual",
-                  konteks=None, mode: str = "jalan",
+def jalankan_workflow(workflow_id: str, *, user_id: str, trigger_jenis: str = "manual",
+                  context=None, mode: str = "jalan",
                   jawaban: dict | None = None, dsn=None) -> dict:
     """Jalankan satu alur. `mode`: 'jalan' atau 'kering'. `konteks`:
     eksekutor (default fixture). `jawaban`: jawaban user untuk blok
@@ -370,256 +370,256 @@ def jalankan_alur(alur_id: str, *, user_id: str, pemicu_jenis: str = "manual",
     {sukses, jalan_id, status, langkah_hasil, biaya_rp, alasan,
      persetujuan_id (bila berhenti di persetujuan)}.
     """
-    alur = ambil_alur(alur_id, user_id=user_id, dsn=dsn)
-    if alur is None:
+    workflow = take_workflow(workflow_id, user_id=user_id, dsn=dsn)
+    if workflow is None:
         raise WorkflowError("alur tidak ditemukan")
-    if mode == "jalan" and alur["status"] != "aktif":
-        raise WorkflowError(f"alur berstatus {alur['status']!r} — aktifkan dulu")
-    eksekutor = konteks or eksekutor_fixture()
-    tugas_id = f"jalan-{uuid.uuid4().hex[:12]}"
-    _catat_ledger(tugas_id, alur["agen_id"], "tugas_dibuat",
-                  {"alur_id": str(alur_id), "pemicu": pemicu_jenis, "mode": mode}, dsn)
-    _catat_ledger(tugas_id, alur["agen_id"], "pemicu_terpicu",
-                  {"alur_id": str(alur_id), "pemicu": pemicu_jenis}, dsn)
+    if mode == "jalan" and workflow["status"] != "active":
+        raise WorkflowError(f"alur berstatus {workflow['status']!r} — aktifkan dulu")
+    executor = context or executor_fixture()
+    task_id = f"jalan-{uuid.uuid4().hex[:12]}"
+    _record_ledger(task_id, workflow["agent_id"], "task_created",
+                  {"workflow_id": str(workflow_id), "triggers": trigger_jenis, "mode": mode}, dsn)
+    _record_ledger(task_id, workflow["agent_id"], "trigger_fired",
+                  {"workflow_id": str(workflow_id), "triggers": trigger_jenis}, dsn)
 
-    hasil_konteks: dict = {}
-    langkah_hasil: list[dict] = []
-    biaya = 0
-    status = "selesai"
-    alasan = ""
-    persetujuan_id = None
+    result_context: dict = {}
+    step_results: list[dict] = []
+    cost = 0
+    status = "completed"
+    reason = ""
+    approval_id = None
 
-    def _jalan_langkah(daftar, kedalaman=0):
-        nonlocal biaya, status, alasan, persetujuan_id
-        for langkah in daftar:
-            if status != "selesai":
+    def _jalan_step(items, kedalaman=0):
+        nonlocal cost, status, reason, approval_id
+        for step in items:
+            if status != "completed":
                 return
-            nama = langkah.get("blok")
-            if nama not in BLOK:
-                status, alasan = "gagal", f"blok {nama!r} tidak ada di pustaka"
+            name = step.get("block")
+            if name not in BLOK:
+                status, reason = "failed", f"blok {name!r} tidak ada di pustaka"
                 return
-            masukan = dict(langkah.get("masukan", {}) or {})
+            masukan = dict(step.get("masukan", {}) or {})
             # Resolusi nilai dari hasil langkah sebelumnya: masukan
             # {"jumlah": "{cek_tagihan.jumlah}"} diisi dari konteks.
             for k, v in list(masukan.items()):
                 if isinstance(v, str) and v.startswith("{") and v.endswith("}"):
-                    kunci = v[1:-1]
-                    masukan[k] = hasil_konteks.get(kunci, v)
-            biaya += int(BLOK[nama].get("biaya_rp", 0))
-            if biaya > PLAFON_BIAYA_JALAN_RP:
-                status, alasan = "gagal", (
-                    f"plafon biaya per jalan Rp{PLAFON_BIAYA_JALAN_RP:,} terlampaui"
+                    key = v[1:-1]
+                    masukan[k] = result_context.get(key, v)
+            cost += int(BLOK[name].get("cost_rp", 0))
+            if cost > CEILING_COST_JALAN_RP:
+                status, reason = "failed", (
+                    f"plafon biaya per jalan Rp{CEILING_COST_JALAN_RP:,} terlampaui"
                     .replace(",", "."))
                 return
-            if nama == "kondisi":
+            if name == "condition":
                 try:
-                    benar = evaluasi_ungkapan(masukan.get("ungkapan", ""), hasil_konteks)
+                    correct = evaluasi_ungkapan(masukan.get("ungkapan", ""), result_context)
                 except WorkflowError as exc:
-                    status, alasan = "gagal", str(exc)
+                    status, reason = "failed", str(exc)
                     return
-                cabang = langkah.get("maka", []) if benar else langkah.get("kalau_tidak", [])
-                langkah_hasil.append({"blok": nama, "benar": benar, "sukses": True})
-                _jalan_langkah(cabang, kedalaman + 1)
+                cabang = step.get("maka", []) if correct else step.get("kalau_not", [])
+                step_results.append({"block": name, "correct": correct, "success": True})
+                _jalan_step(cabang, kedalaman + 1)
                 continue
-            if nama == "untuk_tiap":
-                daftar_item = masukan.get("daftar", [])
-                if not isinstance(daftar_item, list):
-                    daftar_item = hasil_konteks.get(str(masukan.get("daftar", "")), [])
-                if not isinstance(daftar_item, list):
-                    status, alasan = "gagal", "untuk_tiap: 'daftar' bukan daftar"
+            if name == "for_each":
+                items_item = masukan.get("items", [])
+                if not isinstance(items_item, list):
+                    items_item = result_context.get(str(masukan.get("items", "")), [])
+                if not isinstance(items_item, list):
+                    status, reason = "failed", "for_each: 'daftar' bukan daftar"
                     return
-                if len(daftar_item) > 20:
-                    status, alasan = "gagal", "untuk_tiap: maks 20 item"
+                if len(items_item) > 20:
+                    status, reason = "failed", "for_each: maks 20 item"
                     return
-                for item in daftar_item:
-                    hasil_konteks["item"] = item
-                    _jalan_langkah(langkah.get("langkah_dalam", []), kedalaman + 1)
-                    if status != "selesai":
+                for item in items_item:
+                    result_context["item"] = item
+                    _jalan_step(step.get("step_dalam", []), kedalaman + 1)
+                    if status != "completed":
                         return
-                langkah_hasil.append({"blok": nama, "jumlah_item": len(daftar_item),
-                                      "sukses": True})
+                step_results.append({"block": name, "amount_item": len(items_item),
+                                      "success": True})
                 continue
             # Blok aksi keluar: kering -> simulasi; jalan -> antre persetujuan.
-            if BLOK[nama].get("aksi_keluar"):
-                aksi = {"blok": nama, "masukan": masukan}
-                if mode == "kering":
-                    langkah_hasil.append({"blok": nama, "sukses": True,
-                                          "simulasi": True, "aksi": aksi})
-                    hasil_konteks[nama] = {"simulasi": True}
+            if BLOK[name].get("action_logout"):
+                action = {"block": name, "masukan": masukan}
+                if mode == "dry":
+                    step_results.append({"block": name, "success": True,
+                                          "simulasi": True, "action": action})
+                    result_context[name] = {"simulasi": True}
                     continue
                 # Jalan biasa: buat jalan dulu? persetujuan butuh jalan_id.
                 # Simpan jalan 'menunggu_persetujuan' di bawah (setelah loop).
-                status = "menunggu_persetujuan"
-                alasan = f"menunggu persetujuan: {nama}"
-                langkah_hasil.append({"blok": nama, "sukses": None,
-                                      "menunggu_persetujuan": True, "aksi": aksi})
-                persetujuan_id = aksi  # ditukar id setelah jalan disimpan
+                status = "pending_approval"
+                reason = f"menunggu persetujuan: {name}"
+                step_results.append({"block": name, "success": None,
+                                      "pending_approval": True, "action": action})
+                approval_id = action  # ditukar id setelah jalan disimpan
                 return
-            if nama == "tanya_user":
-                judul = langkah.get("judul") or nama
-                if jawaban and judul in jawaban:
-                    hasil = {"sukses": True, "jawaban": jawaban[judul]}
+            if name == "ask_user":
+                title = step.get("title") or name
+                if jawaban and title in jawaban:
+                    result = {"success": True, "jawaban": jawaban[title]}
                 else:
-                    status = "menunggu_jawaban"
-                    alasan = f"menunggu jawaban user: {masukan.get('pertanyaan', '')}"
-                    langkah_hasil.append({"blok": nama, "sukses": None,
-                                          "menunggu_jawaban": True})
+                    status = "pending_jawaban"
+                    reason = f"menunggu jawaban user: {masukan.get('pertanyaan', '')}"
+                    step_results.append({"block": name, "success": None,
+                                          "pending_jawaban": True})
                     return
-                langkah_hasil.append({"blok": nama, "sukses": True, "hasil": hasil})
-                hasil_konteks[nama] = hasil
+                step_results.append({"block": name, "success": True, "result": result})
+                result_context[name] = result
                 continue
-            fn = eksekutor.get(nama)
+            fn = executor.get(name)
             if fn is None:
-                status, alasan = "gagal", f"eksekutor belum menyediakan blok {nama!r}"
+                status, reason = "failed", f"eksekutor belum menyediakan blok {name!r}"
                 return
             try:
-                hasil = fn(**masukan) if masukan else fn()
+                result = fn(**masukan) if masukan else fn()
             except TypeError:
                 try:
-                    hasil = fn(masukan)
+                    result = fn(masukan)
                 except Exception as exc:  # noqa: BLE001
-                    status, alasan = "gagal", f"blok {nama} gagal: {exc}"
+                    status, reason = "failed", f"blok {name} gagal: {exc}"
                     return
             except Exception as exc:  # noqa: BLE001
-                status, alasan = "gagal", f"blok {nama} gagal: {exc}"
+                status, reason = "failed", f"blok {name} gagal: {exc}"
                 return
-            if not isinstance(hasil, dict):
-                status, alasan = "gagal", f"blok {nama}: keluaran bukan objek"
+            if not isinstance(result, dict):
+                status, reason = "failed", f"blok {name}: keluaran bukan objek"
                 return
-            if hasil.get("sukses") is False:
+            if result.get("success") is False:
                 # Gagal terlihat: blok bilang tidak bisa — jalan gagal
                 # dengan alasan blok (bukan ditebak).
-                status, alasan = "gagal", hasil.get("pesan") or hasil.get("alasan") or nama
-                langkah_hasil.append({"blok": nama, "sukses": False, "hasil": hasil})
+                status, reason = "failed", result.get("message") or result.get("reason") or name
+                step_results.append({"block": name, "success": False, "result": result})
                 return
             # Pemeriksa tetap berlaku: angka dari blok baca tanpa bukti_id
             # maksimal Belum pasti (bukan Terverifikasi).
-            if nama in ("cek_tagihan", "bandingkan_harga", "pantau_harga"):
-                if not hasil.get("bukti_id"):
-                    hasil = dict(hasil, vonis="Belum pasti")
-            langkah_hasil.append({"blok": nama, "sukses": True, "hasil": hasil})
-            hasil_konteks[nama] = hasil
+            if name in ("check_bill", "compare_prices", "watch_prices"):
+                if not result.get("evidence_id"):
+                    result = dict(result, vonis="Uncertain")
+            step_results.append({"block": name, "success": True, "result": result})
+            result_context[name] = result
             # Simpan juga per field supaya kondisi bisa membaca
             # "{cek_tagihan.jumlah}" — konteks datar per blok sudah cukup;
             # field diakses sebagai "blok.field" di evaluasi_ungkapan.
-            for k, v in hasil.items():
-                hasil_konteks[f"{nama}.{k}"] = v
+            for k, v in result.items():
+                result_context[f"{name}.{k}"] = v
 
-    _jalan_langkah(alur["langkah"])
+    _jalan_step(workflow["step"])
 
     # Persetujuan (bila berhenti di aksi keluar): jalan harus ada dulu.
-    jalan_id = _simpan_jalan(
-        alur_id=alur_id, user_id=user_id, tugas_id=tugas_id,
-        pemicu_jenis=pemicu_jenis,
-        status="menunggu_persetujuan" if status == "menunggu_persetujuan" else (
-            "selesai" if status == "selesai" else (
-                "menunggu_jawaban" if status == "menunggu_jawaban" else "gagal")),
-        biaya_rp=biaya, langkah_hasil=langkah_hasil,
-        alasan=alasan, dsn=dsn)
-    if status == "menunggu_persetujuan" and isinstance(persetujuan_id, dict):
-        aksi_keluar = persetujuan_id
-        dibuat = approvals.minta_persetujuan(
-            jalan_id=jalan_id, alur_id=alur_id, user_id=user_id,
-            aksi=aksi_keluar, dsn=dsn)
-        persetujuan_id = str(dibuat["id"])
-        _catat_ledger(tugas_id, alur["agen_id"], "persetujuan_diminta",
-                      {"persetujuan_id": persetujuan_id, "aksi": aksi_keluar}, dsn)
+    jalan_id = _save_jalan(
+        workflow_id=workflow_id, user_id=user_id, task_id=task_id,
+        trigger_jenis=trigger_jenis,
+        status="pending_approval" if status == "pending_approval" else (
+            "completed" if status == "completed" else (
+                "pending_jawaban" if status == "pending_jawaban" else "failed")),
+        cost_rp=cost, step_results=step_results,
+        reason=reason, dsn=dsn)
+    if status == "pending_approval" and isinstance(approval_id, dict):
+        action_logout = approval_id
+        created_at = approvals.request_approval(
+            jalan_id=jalan_id, workflow_id=workflow_id, user_id=user_id,
+            action=action_logout, dsn=dsn)
+        approval_id = str(created_at["id"])
+        _record_ledger(task_id, workflow["agent_id"], "approval_requested",
+                      {"approval_id": approval_id, "action": action_logout}, dsn)
 
-    if status == "selesai":
-        _catat_ledger(tugas_id, alur["agen_id"], "tugas_selesai",
-                      {"alur_id": str(alur_id), "biaya_rp": biaya}, dsn)
+    if status == "completed":
+        _record_ledger(task_id, workflow["agent_id"], "task_completed",
+                      {"workflow_id": str(workflow_id), "cost_rp": cost}, dsn)
         # Uji kering TIDAK menghitung jalan sukses (bukan jalan nyata):
         # hitungan sukses + promosi ke prosedur hanya untuk mode jalan.
         if mode != "jalan":
-            return {"sukses": True, "jalan_id": jalan_id, "status": "selesai",
-                    "langkah_hasil": langkah_hasil, "biaya_rp": biaya, "alasan": ""}
+            return {"success": True, "jalan_id": jalan_id, "status": "completed",
+                    "step_results": step_results, "cost_rp": cost, "reason": ""}
         with _connect(dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE alur SET jalan_sukses = jalan_sukses + 1,"
-                    " gagal_berturut = 0 WHERE id = %s RETURNING jalan_sukses",
-                    (alur_id,))
-                sukses_ke = int(cur.fetchone()["jalan_sukses"])
+                    "UPDATE workflows SET successful_runs = successful_runs + 1,"
+                    " consecutive_failures = 0 WHERE id = %s RETURNING successful_runs",
+                    (workflow_id,))
+                success_to = int(cur.fetchone()["successful_runs"])
             conn.commit()
         try:
-            from puspa.moat.library import catat_alur_sukses
+            from puspa.moat.library import record_workflow_success
 
-            catat_alur_sukses(user_id=user_id, nama=alur["nama"],
-                              blok=[l.get("blok") for l in alur["langkah"]], dsn=dsn)
+            record_workflow_success(user_id=user_id, name=workflow["name"],
+                              block=[l.get("block") for l in workflow["step"]], dsn=dsn)
         except Exception:  # noqa: BLE001 — pustaka sekunder
             pass
-        if sukses_ke == 3:
+        if success_to == 3:
             try:
                 from puspa.memory.procedural import record_successful_task
 
                 record_successful_task(
-                    user_id, f"alur:{alur['nama']}", alur["langkah"],
-                    agen_id=alur["agen_id"], dsn=dsn)
+                    user_id, f"alur:{workflow['name']}", workflow["step"],
+                    agent_id=workflow["agent_id"], dsn=dsn)
             except Exception:  # noqa: BLE001 — prosedur sekunder
                 pass
-        return {"sukses": True, "jalan_id": jalan_id, "status": "selesai",
-                "langkah_hasil": langkah_hasil, "biaya_rp": biaya, "alasan": ""}
-    if status in ("menunggu_persetujuan", "menunggu_jawaban"):
-        return {"sukses": False, "jalan_id": jalan_id, "status": status,
-                "langkah_hasil": langkah_hasil, "biaya_rp": biaya,
-                "alasan": alasan, "persetujuan_id": persetujuan_id}
+        return {"success": True, "jalan_id": jalan_id, "status": "completed",
+                "step_results": step_results, "cost_rp": cost, "reason": ""}
+    if status in ("pending_approval", "pending_jawaban"):
+        return {"success": False, "jalan_id": jalan_id, "status": status,
+                "step_results": step_results, "cost_rp": cost,
+                "reason": reason, "approval_id": approval_id}
     # Gagal: 2x berturut-turut -> dijeda otomatis + diberi tahu.
     # Uji kering yang gagal TIDAK menambah hitungan gagal (bukan jalan nyata).
-    _catat_ledger(tugas_id, alur["agen_id"], "tugas_gagal",
-                  {"alur_id": str(alur_id), "alasan": alasan}, dsn)
+    _record_ledger(task_id, workflow["agent_id"], "task_failed",
+                  {"workflow_id": str(workflow_id), "reason": reason}, dsn)
     if mode != "jalan":
-        return {"sukses": False, "jalan_id": jalan_id, "status": "gagal",
-                "langkah_hasil": langkah_hasil, "biaya_rp": biaya,
-                "alasan": alasan, "dijeda_otomatis": False}
+        return {"success": False, "jalan_id": jalan_id, "status": "failed",
+                "step_results": step_results, "cost_rp": cost,
+                "reason": reason, "paused_automatic": False}
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE alur SET gagal_berturut = gagal_berturut + 1"
-                " WHERE id = %s RETURNING gagal_berturut",
-                (alur_id,))
-            gagal = int(cur.fetchone()["gagal_berturut"])
+                "UPDATE workflows SET consecutive_failures = consecutive_failures + 1"
+                " WHERE id = %s RETURNING consecutive_failures",
+                (workflow_id,))
+            failed = int(cur.fetchone()["consecutive_failures"])
         conn.commit()
-    dijeda = False
-    if gagal >= 2 and alur["status"] == "aktif":
-        jeda_alur(alur_id, user_id=user_id, alasan=alasan, dsn=dsn)
-        dijeda = True
-    return {"sukses": False, "jalan_id": jalan_id, "status": "gagal",
-            "langkah_hasil": langkah_hasil, "biaya_rp": biaya,
-            "alasan": alasan, "dijeda_otomatis": dijeda}
+    paused = False
+    if failed >= 2 and workflow["status"] == "active":
+        jeda_workflow(workflow_id, user_id=user_id, reason=reason, dsn=dsn)
+        paused = True
+    return {"success": False, "jalan_id": jalan_id, "status": "failed",
+            "step_results": step_results, "cost_rp": cost,
+            "reason": reason, "paused_automatic": paused}
 
 
-def eksekusi_aksi_disetujui(persetujuan_id: str, *, user_id: str,
-                            konteks=None, dsn=None) -> dict:
+def eksekusi_action_disetujui(approval_id: str, *, user_id: str,
+                            context=None, dsn=None) -> dict:
     """Eksekusi aksi keluar SETELAH user menyetujui (persetujuan sudah
     'diberikan'). Isi aksi diambil dari antrean — bukan dari input
     baru — jadi isi yang dieksekusi = isi yang disetujui."""
-    from puspa.workflow.approvals import ambil_persetujuan
+    from puspa.workflow.approvals import take_approval
 
-    row = ambil_persetujuan(persetujuan_id, user_id=user_id, dsn=dsn)
+    row = take_approval(approval_id, user_id=user_id, dsn=dsn)
     if row is None:
         raise WorkflowError("persetujuan tidak ditemukan")
-    if row["status"] != "diberikan":
+    if row["status"] != "granted":
         raise WorkflowError(f"persetujuan berstatus {row['status']!r} — tidak dieksekusi")
-    aksi = row["aksi"]
-    nama = aksi.get("blok")
-    masukan = aksi.get("masukan", {}) or {}
-    eksekutor = konteks or eksekutor_fixture()
-    fn = eksekutor.get(nama)
+    action = row["action"]
+    name = action.get("block")
+    masukan = action.get("masukan", {}) or {}
+    executor = context or executor_fixture()
+    fn = executor.get(name)
     if fn is None:
-        raise WorkflowError(f"eksekutor belum menyediakan blok {nama!r}")
-    hasil = fn(**masukan)
+        raise WorkflowError(f"eksekutor belum menyediakan blok {name!r}")
+    result = fn(**masukan)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE jalan_alur SET status = 'selesai', selesai = now()"
+                "UPDATE workflow_runs SET status = 'completed', completed_at = now()"
                 " WHERE id = %s", (row["jalan_id"],))
         conn.commit()
-    return {"sukses": True, "hasil": hasil}
+    return {"success": True, "result": result}
 
 
 # ---------------------------------------------------------------- tick penjadwal
 
-def tick_alur(*, dsn=None, sekarang: datetime | None = None,
+def tick_workflow(*, dsn=None, sekarang: datetime | None = None,
               terlewat: bool = False) -> list[dict]:
     """Satu putaran penjadwal untuk alur (§2.14): jalankan pemicu
     jadwal alur yang jatuh tempo (atau terlewat, bila `terlewat`).
@@ -634,72 +634,72 @@ def tick_alur(*, dsn=None, sekarang: datetime | None = None,
     Fase 2 adalah tindak lanjut wrap-up (Fase 2 tidak diubah di sini).
     """
     from puspa.scheduler.scheduler import (
-        daftar_pemicu_jatuh_tempo, jalan_pemicu, jalankan_yang_terlewat,
+        items_trigger_due_date, jalan_trigger, jalankan_yang_terlewat,
     )
-    from puspa.workflow.triggers import pemicu_berikutnya as hitung_berikutnya
+    from puspa.workflow.triggers import next_trigger_at as hitung_berikutnya
 
     sekarang = sekarang or datetime.now(timezone.utc)
     if terlewat:
         due = jalankan_yang_terlewat(dsn=dsn, sekarang=sekarang)
         # jalankan_yang_terlewat sudah memanggil jalan_pemicu; ambil
         # daftar pemicunya dari hasil (pemicu_id + tugas_id).
-        pemicu_due = [(j["pemicu_id"], j) for j in due]
+        trigger_due = [(j["trigger_id"], j) for j in due]
     else:
-        due = daftar_pemicu_jatuh_tempo(dsn=dsn, sekarang=sekarang)
-        pemicu_due = [(p.id, None) for p in due]
+        due = items_trigger_due_date(dsn=dsn, sekarang=sekarang)
+        trigger_due = [(p.id, None) for p in due]
 
-    hasil: list[dict] = []
-    for pemicu_id, jalan_pemicu_hasil in pemicu_due:
+    result: list[dict] = []
+    for trigger_id, jalan_trigger_result in trigger_due:
         # Ambil baris pemicu (untuk user_id + alur + jadwal).
         with _connect(dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT user_id, alur, jadwal FROM pemicu WHERE id = %s",
-                    (pemicu_id,))
-                baris = cur.fetchone()
-        if baris is None or not (baris["jadwal"] or "").startswith("alur:"):
+                    "SELECT user_id, workflow, jadwal FROM triggers WHERE id = %s",
+                    (trigger_id,))
+                rows = cur.fetchone()
+        if rows is None or not (rows["jadwal"] or "").startswith("alur:"):
             continue
-        user_id = str(baris["user_id"])
-        alur_id = baris["alur"]
-        alur = ambil_alur(alur_id, user_id=user_id, dsn=dsn)
-        if alur is None or alur["status"] != "aktif":
+        user_id = str(rows["user_id"])
+        workflow_id = rows["workflows"]
+        workflow = take_workflow(workflow_id, user_id=user_id, dsn=dsn)
+        if workflow is None or workflow["status"] != "active":
             continue
-        if jalan_pemicu_hasil is None:
+        if jalan_trigger_result is None:
             # Tick biasa: klaim idempotensi dulu.
-            from puspa.scheduler.scheduler import Pemicu as PemicuFase2
+            from puspa.scheduler.scheduler import Pemicu as TriggerFase2
 
             with _connect(dsn) as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT pemicu_berikutnya FROM pemicu WHERE id = %s",
-                        (pemicu_id,))
-                    berikut = cur.fetchone()["pemicu_berikutnya"]
-            pemicu_obj = PemicuFase2(
-                id=pemicu_id, user_id=user_id, jenis="jadwal",
-                jadwal=baris["jadwal"], alur=alur_id,
-                pemicu_berikutnya=berikut)
-            jalan_pemicu_hasil = jalan_pemicu(
-                pemicu_obj, dsn=dsn, sekarang=sekarang, terlewat=terlewat)
-            if jalan_pemicu_hasil is None:
+                        "SELECT next_trigger_at FROM triggers WHERE id = %s",
+                        (trigger_id,))
+                    berikut = cur.fetchone()["next_trigger_at"]
+            trigger_obj = TriggerFase2(
+                id=trigger_id, user_id=user_id, jenis="jadwal",
+                jadwal=rows["jadwal"], workflow=workflow_id,
+                next_trigger_at=berikut)
+            jalan_trigger_result = jalan_trigger(
+                trigger_obj, dsn=dsn, sekarang=sekarang, terlewat=terlewat)
+            if jalan_trigger_result is None:
                 continue  # sudah pernah jalan (idempotensi)
         # Perbaiki jadwal berikutnya dari definisi pemicu alur.
         try:
-            berikut_baru = hitung_berikutnya(alur["pemicu"], sekarang)
+            berikut_new = hitung_berikutnya(workflow["triggers"], sekarang)
         except Exception:  # noqa: BLE001
-            berikut_baru = None
-        if berikut_baru is not None:
+            berikut_new = None
+        if berikut_new is not None:
             with _connect(dsn) as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "UPDATE pemicu SET pemicu_berikutnya = %s WHERE id = %s",
-                        (berikut_baru, pemicu_id))
+                        "UPDATE triggers SET next_trigger_at = %s WHERE id = %s",
+                        (berikut_new, trigger_id))
                 conn.commit()
-        jalan = jalankan_alur(alur_id, user_id=user_id, pemicu_jenis="jadwal",
+        jalan = jalankan_workflow(workflow_id, user_id=user_id, trigger_jenis="jadwal",
                               dsn=dsn)
-        _catat_ledger(jalan_pemicu_hasil["tugas_id"], alur["agen_id"],
-                      "pemicu_terlewat" if terlewat else "pemicu_terpicu",
-                      {"alur_id": str(alur_id), "pemicu_id": pemicu_id,
+        _record_ledger(jalan_trigger_result["task_id"], workflow["agent_id"],
+                      "trigger_missed" if terlewat else "trigger_fired",
+                      {"workflow_id": str(workflow_id), "trigger_id": trigger_id,
                        "terlewat": terlewat}, dsn)
-        hasil.append({"pemicu_id": pemicu_id, "alur_id": str(alur_id),
+        result.append({"trigger_id": trigger_id, "workflow_id": str(workflow_id),
                       "terlewat": terlewat, "jalan": jalan})
-    return hasil
+    return result

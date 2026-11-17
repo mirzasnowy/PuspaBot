@@ -7,7 +7,7 @@ Kantor. Bukti, Rencana, Rekor Otonomi, alur, dan modul kustom adalah
 panel di dalam layar yang sudah ada — bukan layar baru.
 
 Login: Google (keputusan 16, fondasi Fase 1 `puspa.auth`); sesi
-cookie httpOnly via `puspa.accounts.sessions`. Di tes, `create_app`
+cookie httpOnly via `puspa.accounts.user_sessions`. Di tes, `create_app`
 menerima `test_user_id` (seam tes saja; di produksi None dan cookie
 wajib). Pesan chat + kejadian demo disimpan di `app.state` (memori
 proses) untuk demo lokal; jalur produksi menulis ke Buku Kerja
@@ -32,7 +32,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_DIR = BASE_DIR / "apps" / "pwa" / "templates"
 STATIC_DIR = BASE_DIR / "apps" / "pwa" / "static"
 
-LAYAR = ("chat", "tugas", "modul", "konektor", "memori", "pengaturan", "kantor")
+LAYAR = ("chat", "tasks", "modules", "connectors", "memory", "settings", "office")
 
 
 def _jinja(template_dir=None):
@@ -48,28 +48,28 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
                                           "dbname=puspa_test user=root host=/var/run/postgresql")
     app.state.test_user_id = test_user_id
     app.state.chat: dict[str, list[dict]] = defaultdict(list)
-    app.state.kejadian: list[dict] = []
-    app.state.persetujuan: dict[str, dict] = {}
-    app.state.waktu_onboarding: list[dict] = []
+    app.state.event: list[dict] = []
+    app.state.approval: dict[str, dict] = {}
+    app.state.time_onboarding: list[dict] = []
 
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-    def pengguna(request: Request):
+    def user(request: Request):
         if app.state.test_user_id:
             return app.state.test_user_id
         token = request.cookies.get("puspa_sesi")
         if not token:
             return None
         try:
-            from puspa.accounts.sessions import validate_session
+            from puspa.accounts.user_sessions import validate_session
 
             return validate_session(token, dsn=app.state.dsn)
         except Exception:
             return None
 
-    def butuh_pengguna(request: Request):
-        user_id = pengguna(request)
+    def need_user(request: Request):
+        user_id = user(request)
         if user_id is None:
             return None
         # Keputusan Fase 2 (a): agen Puspa WAJIB — pastikan terdaftar
@@ -83,10 +83,10 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
             pass
         return user_id
 
-    def render(nama: str, request: Request, konteks: dict | None = None):
-        ctx = {"request": request, "layar": nama.replace(".html", "")}
-        ctx.update(konteks or {})
-        return HTMLResponse(jinja.get_template(nama).render(ctx))
+    def render(name: str, request: Request, context: dict | None = None):
+        ctx = {"request": request, "screen": name.replace(".html", "")}
+        ctx.update(context or {})
+        return HTMLResponse(jinja.get_template(name).render(ctx))
 
     # -- halaman -------------------------------------------------------
     @app.get("/", response_class=HTMLResponse)
@@ -94,7 +94,7 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
         return RedirectResponse("/chat")
 
     @app.get("/masuk", response_class=HTMLResponse)
-    def masuk(request: Request):
+    def login(request: Request):
         client_id = os.environ.get("PUSPA_GOOGLE_CLIENT_ID", "")
         return render("masuk.html", request, {"client_id_ada": bool(client_id)})
 
@@ -115,192 +115,192 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
         return JSONResponse({"catatan": "callback login Google ditangani lengkap di Fase 1"
                                        " (complete_google_login); pasang client_id + client_secret"
                                        " lalu lanjutkan di sini.",
-                             "code_diterima": bool(code)})
+                             "code_accepted": bool(code)})
 
-    for layar in LAYAR:
-        def _buat_halaman(layar=layar):
+    for screen in LAYAR:
+        def _create_halaman(screen=screen):
             def halaman(request: Request):
-                user_id = butuh_pengguna(request)
+                user_id = need_user(request)
                 if user_id is None:
                     return RedirectResponse("/masuk")
-                return render(f"{layar}.html", request, _konteks_layar(layar, user_id))
+                return render(f"{screen}.html", request, _context_screen(screen, user_id))
             return halaman
-        app.get(f"/{layar}", response_class=HTMLResponse)(_buat_halaman())
+        app.get(f"/{screen}", response_class=HTMLResponse)(_create_halaman())
 
-    def _konteks_layar(layar: str, user_id: str) -> dict:
-        from puspa.evidence.projections import kantor as proyeksi_kantor
+    def _context_screen(screen: str, user_id: str) -> dict:
+        from puspa.evidence.projections import office as proyeksi_office
 
         ctx: dict = {"user_id": user_id}
-        if layar == "chat":
-            ctx["pesan"] = app.state.chat[user_id]
-        elif layar == "kantor":
-            ctx["kantor"] = proyeksi_kantor(app.state.kejadian)
-            ctx["handoff"] = [e for e in app.state.kejadian if e.get("jenis", "").startswith("handoff_")]
-        elif layar == "tugas":
-            ctx["persetujuan"] = list(app.state.persetujuan.values())
-        elif layar == "memori":
+        if screen == "chat":
+            ctx["message"] = app.state.chat[user_id]
+        elif screen == "office":
+            ctx["office"] = proyeksi_office(app.state.event)
+            ctx["handoffs"] = [e for e in app.state.event if e.get("type", "").startswith("handoff_")]
+        elif screen == "tasks":
+            ctx["approval"] = list(app.state.approval.values())
+        elif screen == "memory":
             try:
                 from puspa.memory.profile import list_facts
-                ctx["profil"] = list_facts(user_id, dsn=app.state.dsn)
+                ctx["profile"] = list_facts(user_id, dsn=app.state.dsn)
             except Exception:
-                ctx["profil"] = []
-        elif layar == "konektor":
+                ctx["profile"] = []
+        elif screen == "connectors":
             try:
-                from puspa.runtime.agents import daftar_agen
-                ctx["agen"] = daftar_agen(user_id, dsn=app.state.dsn)
+                from puspa.runtime.agents import items_agent
+                ctx["agents"] = items_agent(user_id, dsn=app.state.dsn)
             except Exception:
-                ctx["agen"] = []
+                ctx["agents"] = []
         return ctx
 
     # -- SSE: update live dari proyeksi Buku Kerja ----------------------
     @app.get("/sse")
     def sse(request: Request):
-        user_id = pengguna(request)
+        user_id = user(request)
         if user_id is None:
             return JSONResponse({"galat": "belum masuk"}, status_code=401)
 
         def aliran():
-            from puspa.evidence.projections import kantor as proyeksi_kantor
+            from puspa.evidence.projections import office as proyeksi_office
 
-            yield f"data: {json.dumps({'jenis': 'kantor', 'isi': proyeksi_kantor(app.state.kejadian)}, ensure_ascii=False)}\n\n"
-            yield f"data: {json.dumps({'jenis': 'detak', 'waktu': time.time()}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'office', 'content': proyeksi_office(app.state.event)}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'heartbeat', 'created_at': time.time()}, ensure_ascii=False)}\n\n"
 
         return StreamingResponse(aliran(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache"})
 
     # -- panel Bukti -----------------------------------------------------
-    @app.get("/bukti/{bukti_id}", response_class=HTMLResponse)
-    def panel_bukti(request: Request, bukti_id: str):
-        user_id = butuh_pengguna(request)
+    @app.get("/bukti/{evidence_id}", response_class=HTMLResponse)
+    def panel_evidence(request: Request, evidence_id: str):
+        user_id = need_user(request)
         if user_id is None:
             return RedirectResponse("/masuk")
-        bukti = next((b for b in app.state.kejadian
-                      if b.get("jenis") == "bukti_dicatat"
-                      and (b.get("isi") or {}).get("bukti_id") == bukti_id), None)
-        return render("panel_bukti.html", request, {"bukti": (bukti or {}).get("isi") if bukti else None,
-                                                    "bukti_id": bukti_id})
+        evidence = next((b for b in app.state.event
+                      if b.get("type") == "evidence_recorded"
+                      and (b.get("content") or {}).get("evidence_id") == evidence_id), None)
+        return render("panel_evidence.html", request, {"evidence": (evidence or {}).get("content") if evidence else None,
+                                                    "evidence_id": evidence_id})
 
     # -- API -------------------------------------------------------------
     @app.post("/api/chat")
-    async def kirim_chat(request: Request, teks: str = Form(...)):
-        user_id = butuh_pengguna(request)
+    async def send_chat(request: Request, text: str = Form(...)):
+        user_id = need_user(request)
         if user_id is None:
             return JSONResponse({"galat": "belum masuk"}, status_code=401)
-        pesan = {"dari": "user", "teks": teks, "waktu": time.time()}
-        app.state.chat[user_id].append(pesan)
-        app.state.kejadian.append({"jenis": "pesan_user", "tugas_id": "", "agen_id": "puspa",
-                                   "isi": {"dari": user_id, "teks": teks}, "waktu": time.time()})
-        return {"ok": True, "pesan": pesan}
+        message = {"dari": "users", "text": text, "created_at": time.time()}
+        app.state.chat[user_id].append(message)
+        app.state.event.append({"type": "user_message", "task_id": "", "agent_id": "puspa",
+                                   "content": {"dari": user_id, "text": text}, "created_at": time.time()})
+        return {"ok": True, "message": message}
 
     @app.post("/api/agen")
-    async def api_buat_agen(request: Request, nama: str = Form(...),
-                            peran: str = Form(""), tujuan: str = Form("")):
-        user_id = butuh_pengguna(request)
+    async def api_create_agent(request: Request, name: str = Form(...),
+                            peran: str = Form(""), purpose: str = Form("")):
+        user_id = need_user(request)
         if user_id is None:
             return JSONResponse({"galat": "belum masuk"}, status_code=401)
-        from puspa.runtime.agents import buat_agen
+        from puspa.runtime.agents import create_agent
 
         try:
-            return buat_agen(user_id, nama, peran, tujuan, dsn=app.state.dsn)
+            return create_agent(user_id, name, peran, purpose, dsn=app.state.dsn)
         except Exception as exc:
             return JSONResponse({"galat": str(exc)}, status_code=400)
 
-    @app.delete("/api/agen/{agen_id}")
-    async def api_hapus_agen(request: Request, agen_id: str):
-        user_id = butuh_pengguna(request)
+    @app.delete("/api/agen/{agent_id}")
+    async def api_delete_agent(request: Request, agent_id: str):
+        user_id = need_user(request)
         if user_id is None:
             return JSONResponse({"galat": "belum masuk"}, status_code=401)
-        from puspa.runtime.agents import hapus_agen
+        from puspa.runtime.agents import delete_agent
 
         try:
-            hapus_agen(user_id, agen_id, dsn=app.state.dsn)
+            delete_agent(user_id, agent_id, dsn=app.state.dsn)
             return {"ok": True}
         except Exception as exc:
             return JSONResponse({"galat": str(exc)}, status_code=400)
 
     @app.post("/api/tugas")
-    async def api_buat_tugas(request: Request, tujuan: str = Form(...)):
-        user_id = butuh_pengguna(request)
+    async def api_create_task(request: Request, purpose: str = Form(...)):
+        user_id = need_user(request)
         if user_id is None:
             return JSONResponse({"galat": "belum masuk"}, status_code=401)
-        from puspa.runtime.agents import daftar_agen, ensure_puspa_agent
-        from puspa.runtime.tasks import Task, TaskRunner, buat_tugas_id
+        from puspa.runtime.agents import items_agent, ensure_puspa_agent
+        from puspa.runtime.tasks import Task, TaskRunner, create_task_id
 
-        agen_id = ensure_puspa_agent(user_id, dsn=app.state.dsn)
-        runner = TaskRunner(sink=lambda jenis, isi: app.state.kejadian.append(
-            {"jenis": jenis, "tugas_id": isi.get("tugas_id", ""), "agen_id": agen_id,
-             "isi": isi, "waktu": time.time()}))
-        task = runner.jalankan(Task(tugas_id=buat_tugas_id(), user_id=user_id,
-                                    agen_id=agen_id, tujuan=tujuan))
-        return {"tugas_id": task.tugas_id, "status": task.status, "tahap": task.tahap,
+        agent_id = ensure_puspa_agent(user_id, dsn=app.state.dsn)
+        runner = TaskRunner(sink=lambda jenis, content: app.state.event.append(
+            {"type": jenis, "task_id": content.get("task_id", ""), "agent_id": agent_id,
+             "content": content, "created_at": time.time()}))
+        task = runner.jalankan(Task(task_id=create_task_id(), user_id=user_id,
+                                    agent_id=agent_id, purpose=purpose))
+        return {"task_id": task.task_id, "status": task.status, "tahap": task.tahap,
                 "pertanyaan": task.pertanyaan}
 
-    @app.post("/api/tugas/{tugas_id}/hentikan")
-    async def api_hentikan(request: Request, tugas_id: str):
-        user_id = butuh_pengguna(request)
+    @app.post("/api/tugas/{task_id}/hentikan")
+    async def api_hentikan(request: Request, task_id: str):
+        user_id = need_user(request)
         if user_id is None:
             return JSONResponse({"galat": "belum masuk"}, status_code=401)
         from puspa.runtime.subagents import SubagentPool
 
         kolam = app.state.__dict__.setdefault("kolam", SubagentPool())
-        hasil = kolam.hentikan_tugas(tugas_id)
-        app.state.kejadian.append({"jenis": "tugas_dihentikan", "tugas_id": tugas_id,
-                                   "agen_id": "puspa", "isi": {"alasan": "dihentikan user"},
-                                   "waktu": time.time()})
-        return hasil
+        result = kolam.hentikan_task(task_id)
+        app.state.event.append({"type": "task_stopped", "task_id": task_id,
+                                   "agent_id": "puspa", "content": {"reason": "dihentikan user"},
+                                   "created_at": time.time()})
+        return result
 
     @app.post("/api/persetujuan/{request_id}")
-    async def api_persetujuan(request: Request, request_id: str, setuju: str = Form(...)):
-        user_id = butuh_pengguna(request)
+    async def api_approval(request: Request, request_id: str, setuju: str = Form(...)):
+        user_id = need_user(request)
         if user_id is None:
             return JSONResponse({"galat": "belum masuk"}, status_code=401)
-        item = app.state.persetujuan.get(request_id)
+        item = app.state.approval.get(request_id)
         if item is None:
             return JSONResponse({"galat": "permintaan tidak dikenal"}, status_code=404)
-        item["status"] = "disetujui" if setuju == "ya" else "ditolak"
-        app.state.kejadian.append(
-            {"jenis": "persetujuan_diberikan" if setuju == "ya" else "persetujuan_ditolak",
-             "tugas_id": item.get("tugas_id", ""), "agen_id": "puspa",
-             "isi": {"request_id": request_id}, "waktu": time.time()})
+        item["status"] = "disetujui" if setuju == "ya" else "rejected"
+        app.state.event.append(
+            {"type": "approval_granted" if setuju == "ya" else "approval_rejected",
+             "task_id": item.get("task_id", ""), "agent_id": "puspa",
+             "content": {"request_id": request_id}, "created_at": time.time()})
         return {"ok": True, "status": item["status"]}
 
     @app.post("/api/konektor/{konektor}")
-    async def api_konektor(request: Request, konektor: str,
-                           agen_id: str = Form(...), aksi: str = Form(...)):
-        user_id = butuh_pengguna(request)
+    async def api_connector(request: Request, connector: str,
+                           agent_id: str = Form(...), action: str = Form(...)):
+        user_id = need_user(request)
         if user_id is None:
             return JSONResponse({"galat": "belum masuk"}, status_code=401)
-        from puspa.connectors.grants import beri_konektor, cabut_konektor
+        from puspa.connectors.grants import give_connector, cabut_connector
 
         try:
-            if aksi == "cabut":
-                cabut_konektor(user_id, agen_id, konektor, dsn=app.state.dsn)
+            if action == "cabut":
+                cabut_connector(user_id, agent_id, connector, dsn=app.state.dsn)
                 return {"ok": True, "terhubung": False}
-            return beri_konektor(user_id, agen_id, konektor, dsn=app.state.dsn)
+            return give_connector(user_id, agent_id, connector, dsn=app.state.dsn)
         except Exception as exc:
             return JSONResponse({"galat": str(exc)}, status_code=400)
 
     @app.post("/api/push/langganan")
     async def api_push(request: Request):
-        user_id = butuh_pengguna(request)
+        user_id = need_user(request)
         if user_id is None:
             return JSONResponse({"galat": "belum masuk"}, status_code=401)
         data = await request.json()
-        from puspa.push.push import simpan_langganan
+        from puspa.push.push import save_langganan
 
-        langganan_id = simpan_langganan(
+        langganan_id = save_langganan(
             user_id, endpoint=data["endpoint"], p256dh=data["keys"]["p256dh"],
             auth=data["keys"]["auth"], dsn=app.state.dsn)
         return {"ok": True, "langganan_id": langganan_id}
 
     @app.post("/api/onboarding/waktu")
-    async def api_onboarding_waktu(request: Request):
-        user_id = butuh_pengguna(request)
+    async def api_onboarding_time(request: Request):
+        user_id = need_user(request)
         if user_id is None:
             return JSONResponse({"galat": "belum masuk"}, status_code=401)
         data = await request.json()
-        app.state.waktu_onboarding.append({"user_id": user_id, "detik": data.get("detik"),
-                                           "waktu": time.time()})
+        app.state.time_onboarding.append({"user_id": user_id, "detik": data.get("detik"),
+                                           "created_at": time.time()})
         return {"ok": True}
 
     @app.get("/manifest.json")

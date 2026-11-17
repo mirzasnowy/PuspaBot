@@ -34,15 +34,15 @@ from ..memory import episodic
 from ..memory.schema import resolve_dsn
 from ..persona import choose_style
 
-TARGET_MENIT = 5
+TARGET_MINUTE = 5
 
-TEMPLATE_ALUR_BAWAAN = (
+TEMPLATE_WORKFLOW_BAWAAN = (
     "Tagihan bulanan",
     "Pantau harga barang",
     "Rekap tagihan minggu ini",
 )
 
-JENIS_TUGAS_PERTAMA = ("bandingkan_harga", "cek_tagihan")
+JENIS_TASK_PERTAMA = ("compare_prices", "check_bill")
 
 
 class StubNotifier:
@@ -53,11 +53,11 @@ class StubNotifier:
     """
 
     def __init__(self):
-        self.percobaan = []
+        self.trial = []
 
     def test_send(self, user_id):
         """Kembalikan (terkirim, detail)."""
-        self.percobaan.append({"user_id": str(user_id), "waktu": datetime.now(timezone.utc)})
+        self.trial.append({"user_id": str(user_id), "created_at": datetime.now(timezone.utc)})
         return False, "Web Push belum ada (Fase 2); uji kirim dicatat sebagai percobaan"
 
 
@@ -85,16 +85,16 @@ def start_onboarding(user_id, dsn=None):
 def _row(row):
     return {
         "user_id": str(row["user_id"]),
-        "langkah_saat_ini": row["langkah_saat_ini"],
-        "nama": row["nama"],
-        "gaya": row["gaya"],
-        "notif_uji": row["notif_uji"],
-        "konektor": row["konektor"],
-        "tugas_pertama": row["tugas_pertama"],
-        "hasil_pertama_terbukti": row["hasil_pertama_terbukti"],
-        "dimulai": row["dimulai"],
-        "selesai": row["selesai"],
-        "durasi_detik": float(row["durasi_detik"]) if row["durasi_detik"] is not None else None,
+        "current_step": row["current_step"],
+        "name": row["name"],
+        "style": row["style"],
+        "test_notification": row["test_notification"],
+        "connector": row["connector"],
+        "first_task": row["first_task"],
+        "first_result_verified": row["first_result_verified"],
+        "started_at": row["started_at"],
+        "completed_at": row["completed_at"],
+        "duration_seconds": float(row["duration_seconds"]) if row["duration_seconds"] is not None else None,
     }
 
 
@@ -107,28 +107,28 @@ def get_status(user_id, dsn=None):
     return _row(row) if row else None
 
 
-def complete_step1(user_id, nama, gaya, contoh_pesan=None, dsn=None):
+def complete_step1(user_id, name, style, example_message=None, dsn=None):
     """Langkah 1: nama + gaya bicara (+ opsional contoh pesan)."""
-    if not nama or not isinstance(nama, str):
+    if not name or not isinstance(name, str):
         raise ValueError("nama harus string tak kosong")
-    fact = choose_style(user_id, gaya, dsn=dsn)
-    if contoh_pesan:
+    fact = choose_style(user_id, style, dsn=dsn)
+    if example_message:
         from ..persona import add_style_samples
 
-        add_style_samples(user_id, contoh_pesan, dsn=dsn)
+        add_style_samples(user_id, example_message, dsn=dsn)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE onboarding SET nama = %s, gaya = %s, langkah_saat_ini = 1 "
+                "UPDATE onboarding SET name = %s, style = %s, current_step = 1 "
                 "WHERE user_id = %s RETURNING *",
-                (nama.strip(), gaya, user_id),
+                (name.strip(), style, user_id),
             )
             row = cur.fetchone()
             if row is None:
                 raise KeyError(f"onboarding belum dimulai: {user_id}")
         conn.commit()
     status = _row(row)
-    status["fakta_gaya_id"] = fact["id"]
+    status["fact_gaya_id"] = fact["id"]
     return status
 
 
@@ -136,13 +136,13 @@ def complete_step2(user_id, notifier=None, dsn=None):
     """Langkah 2: izinkan notif + uji kirim (dicatat apa adanya)."""
     notifier = notifier or StubNotifier()
     terkirim, detail = notifier.test_send(user_id)
-    hasil = f"terkirim={terkirim}; {detail}"
+    result = f"terkirim={terkirim}; {detail}"
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE onboarding SET notif_uji = %s, langkah_saat_ini = 2 "
+                "UPDATE onboarding SET test_notification = %s, current_step = 2 "
                 "WHERE user_id = %s RETURNING *",
-                (hasil, user_id),
+                (result, user_id),
             )
             row = cur.fetchone()
             if row is None:
@@ -153,16 +153,16 @@ def complete_step2(user_id, notifier=None, dsn=None):
     return status
 
 
-def complete_step3(user_id, konektor="nanti", dsn=None):
+def complete_step3(user_id, connector="nanti", dsn=None):
     """Langkah 3: sambungkan konektor (boleh 'nanti')."""
-    if konektor not in ("nanti", "gmail", "drive", "calendar", "semua"):
-        raise ValueError(f"konektor tidak dikenal: {konektor!r}")
+    if connector not in ("nanti", "gmail", "drive", "calendar", "all"):
+        raise ValueError(f"konektor tidak dikenal: {connector!r}")
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE onboarding SET konektor = %s, langkah_saat_ini = 3 "
+                "UPDATE onboarding SET connector = %s, current_step = 3 "
                 "WHERE user_id = %s RETURNING *",
-                (konektor, user_id),
+                (connector, user_id),
             )
             row = cur.fetchone()
             if row is None:
@@ -171,7 +171,7 @@ def complete_step3(user_id, konektor="nanti", dsn=None):
     return _row(row)
 
 
-def run_first_task(user_id, jenis, target, dsn=None, ledger=None, agen_id=None):
+def run_first_task(user_id, jenis, target, dsn=None, ledger=None, agent_id=None):
     """Langkah 4: tugas pertama terbimbing — STUB TERUKUR.
 
     Memanggil jalur nyata sebisanya: validasi, tulis Buku Kerja
@@ -179,35 +179,35 @@ def run_first_task(user_id, jenis, target, dsn=None, ledger=None, agen_id=None):
     Hasilnya SELALU `terbukti=False` dengan alasan: wedge-nya Fase 3.
     Tidak ada harga/tagihan yang dikarang.
     """
-    if jenis not in JENIS_TUGAS_PERTAMA:
+    if jenis not in JENIS_TASK_PERTAMA:
         raise ValueError(f"jenis tugas pertama tidak dikenal: {jenis!r}")
     if not target or not isinstance(target, str):
         raise ValueError("target harus string tak kosong")
     mulai = time.monotonic()
     import uuid
 
-    tugas_id = str(uuid.uuid4())
-    kejadian_ids = []
-    if ledger is not None and agen_id is not None:
-        for jenis_kejadian in ("tugas_dibuat", "tugas_selesai"):
+    task_id = str(uuid.uuid4())
+    event_ids = []
+    if ledger is not None and agent_id is not None:
+        for jenis_event in ("task_created", "task_completed"):
             ev = ledger.append_event(
-                tugas_id=tugas_id, agen_id=agen_id, jenis=jenis_kejadian,
-                isi={"tugas": jenis, "target": target, "stub": True},
+                task_id=task_id, agent_id=agent_id, jenis=jenis_event,
+                content={"tasks": jenis, "target": target, "stub": True},
             )
-            kejadian_ids.append(str(ev["id"]))
+            event_ids.append(str(ev["id"]))
     episodic.record_episode(
         user_id,
         f"tugas pertama ({jenis}): {target} — stub, menunggu wedge Fase 3",
-        "tugas_selesai", agen_id=agen_id, tugas_id=tugas_id,
-        kejadian_id=kejadian_ids[-1] if kejadian_ids else None, dsn=dsn,
+        "task_completed", agent_id=agent_id, task_id=task_id,
+        event_id=event_ids[-1] if event_ids else None, dsn=dsn,
     )
     durasi = time.monotonic() - mulai
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE onboarding SET tugas_pertama = %s, "
-                "hasil_pertama_terbukti = false, langkah_saat_ini = 4, "
-                "selesai = now(), durasi_detik = "
+                "UPDATE onboarding SET first_task = %s, "
+                "first_result_verified = false, current_step = 4, "
+                "selesai = now(), duration_seconds = "
                 "EXTRACT(EPOCH FROM (now() - dimulai)) "
                 "WHERE user_id = %s RETURNING *",
                 (f"{jenis}:{target}", user_id),
@@ -219,29 +219,29 @@ def run_first_task(user_id, jenis, target, dsn=None, ledger=None, agen_id=None):
     status = _row(row)
     return {
         "status": status,
-        "tugas_id": tugas_id,
-        "jenis": jenis,
+        "task_id": task_id,
+        "type": jenis,
         "target": target,
         "terbukti": False,
-        "alasan": (
+        "reason": (
             "Wedge bandingkan harga / autopilot tagihan dibangun Fase 3; "
             "tugas pertama di Fase 1 adalah stub terukur (jalur nyata: "
             "Buku Kerja + episodik + ukur waktu)."
         ),
-        "durasi_detik_tugas": durasi,
-        "kejadian_ids": kejadian_ids,
-        "templat_alur_ditawarkan": list(TEMPLATE_ALUR_BAWAAN),
+        "durasi_detik_task": durasi,
+        "event_ids": event_ids,
+        "templat_workflow_ditawarkan": list(TEMPLATE_WORKFLOW_BAWAAN),
     }
 
 
 def measure_onboarding_seconds(status):
     """Durasi onboarding (detik) dari status; None kalau belum selesai."""
-    if status is None or status["durasi_detik"] is None:
+    if status is None or status["duration_seconds"] is None:
         return None
-    return status["durasi_detik"]
+    return status["duration_seconds"]
 
 
 def within_target(status):
     """True kalau onboarding selesai dalam target 5 menit."""
     durasi = measure_onboarding_seconds(status)
-    return durasi is not None and durasi <= TARGET_MENIT * 60
+    return durasi is not None and durasi <= TARGET_MINUTE * 60

@@ -15,19 +15,19 @@ def client(make_user):
         yield c
 
 
-def test_tujuh_layar_ada_dan_200(client):
-    for layar in LAYAR:
-        resp = client.get(f"/{layar}")
-        assert resp.status_code == 200, layar
+def test_tujuh_screen_ada_and_200(client):
+    for screen in LAYAR:
+        resp = client.get(f"/{screen}")
+        assert resp.status_code == 200, screen
         assert "Puspa" in resp.text
 
 
-def test_tidak_ada_layar_kedelapan():
+def test_not_ada_screen_kedelapan():
     assert len(LAYAR) == 7
-    assert set(LAYAR) == {"chat", "tugas", "modul", "konektor", "memori", "pengaturan", "kantor"}
+    assert set(LAYAR) == {"chat", "tasks", "modules", "connectors", "memory", "settings", "office"}
 
 
-def test_tanpa_login_dialihkan_ke_masuk():
+def test_without_login_dialihkan_to_login():
     app = create_app(test_user_id=None)
     with TestClient(app) as c:
         resp = c.get("/chat", follow_redirects=False)
@@ -35,8 +35,8 @@ def test_tanpa_login_dialihkan_ke_masuk():
         assert "/masuk" in resp.headers["location"]
 
 
-def test_kirim_chat_dan_sse(client):
-    resp = client.post("/api/chat", data={"teks": "halo Puspa"})
+def test_send_chat_and_sse(client):
+    resp = client.post("/api/chat", data={"text": "halo Puspa"})
     assert resp.status_code == 200 and resp.json()["ok"] is True
     halaman = client.get("/chat")
     assert "halo Puspa" in halaman.text
@@ -46,30 +46,30 @@ def test_kirim_chat_dan_sse(client):
     assert "data:" in sse.text
 
 
-def test_api_agen_buat_dan_hapus_puspa_ditolak(client, make_user):
-    resp = client.post("/api/agen", data={"nama": "Agen Riset", "peran": "riset", "tujuan": "cari"})
+def test_api_agent_create_and_delete_puspa_rejected(client, make_user):
+    resp = client.post("/api/agen", data={"name": "Agen Riset", "peran": "riset", "purpose": "search"})
     assert resp.status_code == 200
-    agen_id = resp.json()["agen_id"]
-    resp2 = client.post("/api/agen", data={"nama": "Agen Ketiga"})
+    agent_id = resp.json()["agent_id"]
+    resp2 = client.post("/api/agen", data={"name": "Agen Ketiga"})
     assert resp2.status_code == 200
-    resp3 = client.post("/api/agen", data={"nama": "Agen Keempat"})
+    resp3 = client.post("/api/agen", data={"name": "Agen Keempat"})
     assert resp3.status_code == 400  # maks 3
-    hapus = client.delete(f"/api/agen/puspa-{client.user_id}")
-    assert hapus.status_code == 400  # Puspa tidak bisa dihapus
-    hapus2 = client.delete(f"/api/agen/{agen_id}")
+    delete = client.delete(f"/api/agen/puspa-{client.user_id}")
+    assert delete.status_code == 400  # Puspa tidak bisa dihapus
+    hapus2 = client.delete(f"/api/agen/{agent_id}")
     assert hapus2.status_code == 200
 
 
-def test_api_tugas_dan_hentikan(client):
-    resp = client.post("/api/tugas", data={"tujuan": "riset dan rangkum lima artikel"})
+def test_api_task_and_hentikan(client):
+    resp = client.post("/api/tugas", data={"purpose": "riset dan rangkum lima artikel"})
     assert resp.status_code == 200
-    tugas_id = resp.json()["tugas_id"]
-    assert resp.json()["status"] == "selesai"
-    henti = client.post(f"/api/tugas/{tugas_id}/hentikan")
+    task_id = resp.json()["task_id"]
+    assert resp.json()["status"] == "completed"
+    henti = client.post(f"/api/tugas/{task_id}/hentikan")
     assert henti.status_code == 200
     assert henti.json()["dihentikan"] == 0  # tidak ada sub-agen aktif
 
 
-def test_service_worker_dan_manifest(client):
+def test_service_worker_and_manifest(client):
     assert client.get("/sw.js").status_code == 200
     assert client.get("/manifest.json").json()["name"] == "Puspa"

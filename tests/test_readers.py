@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from puspa.pricing.readers import (
-    HttpReader, PlaywrightReader, buat_pembaca, ekstrak_harga_dari_html)
+    HttpReader, PlaywrightReader, create_pembaca, ekstrak_price_dari_html)
 
 HTML_JSONLD = """<html><head><script type="application/ld+json">
 {"@type": "Product", "name": "Samsung Galaxy S24",
@@ -16,64 +16,64 @@ HTML_META = """<html><head>
 </head><body></body></html>"""
 
 
-def test_ekstrak_jsonld_dan_meta():
-    hasil = ekstrak_harga_dari_html(HTML_JSONLD)
-    assert hasil["harga"] == 12499000.0
-    assert "Galaxy S24" in hasil["nama"]
-    assert ekstrak_harga_dari_html(HTML_META)["harga"] == 8999000.0
-    assert ekstrak_harga_dari_html("<html><body>tidak ada harga</body></html>")["harga"] is None
-    assert ekstrak_harga_dari_html("")["harga"] is None
+def test_ekstrak_jsonld_and_meta():
+    result = ekstrak_price_dari_html(HTML_JSONLD)
+    assert result["price"] == 12499000.0
+    assert "Galaxy S24" in result["name"]
+    assert ekstrak_price_dari_html(HTML_META)["price"] == 8999000.0
+    assert ekstrak_price_dari_html("<html><body>tidak ada harga</body></html>")["price"] is None
+    assert ekstrak_price_dari_html("")["price"] is None
 
 
-def _transport_untuk(html: str, status: int = 200):
+def _transport_for(html: str, status: int = 200):
     def _handler(request):
         return httpx.Response(status, text=html)
 
     return httpx.MockTransport(_handler)
 
 
-def test_http_reader_baca_jsonld():
-    client = httpx.Client(transport=_transport_untuk(HTML_JSONLD))
-    hasil = HttpReader("Tokopedia", client=client).baca("https://www.tokopedia.com/toko/produk-1")
-    assert hasil.sukses is True
-    assert hasil.harga == 12499000.0
-    assert hasil.nama == "Samsung Galaxy S24"
+def test_http_reader_read_jsonld():
+    client = httpx.Client(transport=_transport_for(HTML_JSONLD))
+    result = HttpReader("Tokopedia", client=client).read("https://www.tokopedia.com/toko/produk-1")
+    assert result.success is True
+    assert result.price == 12499000.0
+    assert result.name == "Samsung Galaxy S24"
 
 
-def test_http_reader_blokir_dilaporkan_tanpa_menembus():
+def test_http_reader_blokir_dilaporkan_without_menembus():
     for status in (403, 429):
-        client = httpx.Client(transport=_transport_untuk("blocked", status))
-        hasil = HttpReader("Shopee", client=client).baca("https://shopee.co.id/produk-1")
-        assert hasil.sukses is False
-        assert f"http_{status}" in hasil.alasan or "memblokir" in hasil.alasan
+        client = httpx.Client(transport=_transport_for("blocked", status))
+        result = HttpReader("Shopee", client=client).read("https://shopee.co.id/produk-1")
+        assert result.success is False
+        assert f"http_{status}" in result.reason or "memblokir" in result.reason
 
 
-def test_http_reader_captcha_dan_tanpa_harga():
-    client = httpx.Client(transport=_transport_untuk("<html>captcha verification</html>"))
-    hasil = HttpReader("Blibli", client=client).baca("https://www.blibli.com/p/x")
-    assert hasil.sukses is False and hasil.alasan == "captcha_terdeteksi"
-    client = httpx.Client(transport=_transport_untuk("<html>kosong</html>"))
-    hasil = HttpReader("Blibli", client=client).baca("https://www.blibli.com/p/x")
-    assert hasil.sukses is False and hasil.alasan == "harga_tidak_ditemukan"
+def test_http_reader_captcha_and_without_price():
+    client = httpx.Client(transport=_transport_for("<html>captcha verification</html>"))
+    result = HttpReader("Blibli", client=client).read("https://www.blibli.com/p/x")
+    assert result.success is False and result.reason == "captcha_terdeteksi"
+    client = httpx.Client(transport=_transport_for("<html>kosong</html>"))
+    result = HttpReader("Blibli", client=client).read("https://www.blibli.com/p/x")
+    assert result.success is False and result.reason == "price_not_ditemukan"
 
 
-def test_http_reader_domain_di_luar_allowlist_ditolak():
-    client = httpx.Client(transport=_transport_untuk(HTML_JSONLD))
-    hasil = HttpReader("Tokopedia", client=client).baca("https://situs-asing.example/produk")
-    assert hasil.sukses is False and hasil.alasan == "domain_tidak_diizinkan"
+def test_http_reader_domain_di_luar_allowlist_rejected():
+    client = httpx.Client(transport=_transport_for(HTML_JSONLD))
+    result = HttpReader("Tokopedia", client=client).read("https://situs-asing.example/produk")
+    assert result.success is False and result.reason == "domain_not_diizinkan"
 
 
-def test_playwright_reader_tersedia_atau_jujur_tidak():
+def test_playwright_reader_tersedia_or_jujur_not():
     # Di VM ini Playwright terinstal sebagai paket (1.65.2); browser
     # Chromium mungkin belum terunduh — yang diuji: reader tidak
     # mengarang hasil bila browser tidak jalan.
     reader = PlaywrightReader("Tokopedia")
-    hasil = reader.baca("https://situs-asing.example/produk")
-    assert hasil.sukses is False
-    assert hasil.alasan == "domain_tidak_diizinkan"
+    result = reader.read("https://situs-asing.example/produk")
+    assert result.success is False
+    assert result.reason == "domain_not_diizinkan"
 
 
-def test_playwright_reader_baca_situs_uji_bila_browser_ada(monkeypatch):
+def test_playwright_reader_read_situs_test_bila_browser_ada(monkeypatch):
     """Browser read-only sungguhan, ujung-ke-ujung lewat reader: bila
     env PUSPA_CHROMIUM_EXECUTABLE menunjuk ke binary Chrome for
     Testing, PlaywrightReader membaca halaman situs uji lokal dan
@@ -86,18 +86,18 @@ def test_playwright_reader_baca_situs_uji_bila_browser_ada(monkeypatch):
     executable = os.environ.get("PUSPA_CHROMIUM_EXECUTABLE")
     if not executable or not os.path.exists(executable):
         pytest.skip("browser Chromium belum tersedia di host ini")
-    from puspa.billing.fixture import SitusUji
+    from puspa.billing.fixture import SitusTest
     from puspa.pricing import readers as readers_mod
 
     monkeypatch.setenv("PUSPA_CHROMIUM_EXECUTABLE", executable)
     monkeypatch.setattr(readers_mod, "is_allowed", lambda url, allowlist=None: True)
-    with SitusUji() as situs:
-        hasil = PlaywrightReader("Tokopedia").baca(situs.url("pln"))
-    assert hasil.sukses is True
-    assert hasil.harga == 132500.0
+    with SitusTest() as situs:
+        result = PlaywrightReader("Tokopedia").read(situs.url("pln"))
+    assert result.success is True
+    assert result.price == 132500.0
 
 
-def test_buat_pembaca_memilih_jalur():
-    pembaca, jalur = buat_pembaca("Tokopedia")
+def test_create_pembaca_memilih_jalur():
+    pembaca, jalur = create_pembaca("Tokopedia")
     assert jalur in ("playwright", "http")
     assert pembaca.marketplace == "Tokopedia"

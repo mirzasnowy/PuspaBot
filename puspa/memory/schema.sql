@@ -24,188 +24,188 @@
 
 CREATE EXTENSION IF NOT EXISTS vector;
 
-CREATE TABLE IF NOT EXISTS fakta_profil (
+CREATE TABLE IF NOT EXISTS profile_facts (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id        UUID NOT NULL,
-    agen_id        UUID,
-    kunci          TEXT NOT NULL,
-    nilai          TEXT NOT NULL,
-    asal           TEXT NOT NULL CHECK (asal IN ('diucapkan_user', 'dikonfirmasi_user', 'disimpulkan')),
-    status         TEXT NOT NULL DEFAULT 'berlaku'
-                   CHECK (status IN ('usulan', 'berlaku', 'ditolak', 'diganti')),
-    berlaku_dari   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    berlaku_sampai TIMESTAMPTZ,
-    kejadian_id    UUID,
-    dibuat         TIMESTAMPTZ NOT NULL DEFAULT now()
+    agent_id        TEXT,
+    key          TEXT NOT NULL,
+    value          TEXT NOT NULL,
+    source           TEXT NOT NULL CHECK (source IN ('user_stated', 'user_confirmed', 'inferred')),
+    status         TEXT NOT NULL DEFAULT 'active'
+                   CHECK (status IN ('proposed', 'active', 'rejected', 'replaced')),
+    valid_from   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    valid_until TIMESTAMPTZ,
+    event_id    UUID,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_fakta_user_kunci ON fakta_profil(user_id, kunci, status);
+CREATE INDEX IF NOT EXISTS idx_fact_user_key ON profile_facts(user_id, key, status);
 
-CREATE TABLE IF NOT EXISTS episodik (
+CREATE TABLE IF NOT EXISTS episodic (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     UUID NOT NULL,
-    agen_id     UUID,
-    tugas_id    UUID,
-    jenis       TEXT NOT NULL,
-    isi         TEXT NOT NULL,
+    agent_id     TEXT,
+    task_id    UUID,
+    type       TEXT NOT NULL,
+    content         TEXT NOT NULL,
     embedding   vector(384),
-    kejadian_id UUID,
-    dibuat      TIMESTAMPTZ NOT NULL DEFAULT now()
+    event_id UUID,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_episodik_user ON episodik(user_id, dibuat DESC);
+CREATE INDEX IF NOT EXISTS idx_episodik_user ON episodic(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_episodik_embedding
-    ON episodik USING hnsw (embedding vector_cosine_ops);
+    ON episodic USING hnsw (embedding vector_cosine_ops);
 
-CREATE TABLE IF NOT EXISTS prosedur (
+CREATE TABLE IF NOT EXISTS procedures (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id           UUID NOT NULL,
-    layanan           TEXT NOT NULL,
+    service           TEXT NOT NULL,
     versi             INTEGER NOT NULL DEFAULT 1,
-    langkah           JSONB NOT NULL DEFAULT '[]'::jsonb,
-    skema_keluaran    JSONB NOT NULL DEFAULT '{}'::jsonb,
-    pemeriksaan_wajib JSONB NOT NULL DEFAULT '[]'::jsonb,
-    status            TEXT NOT NULL DEFAULT 'percobaan'
-                      CHECK (status IN ('percobaan', 'terverifikasi', 'rusak')),
-    jalan_sukses      INTEGER NOT NULL DEFAULT 0,
-    jalan_gagal       INTEGER NOT NULL DEFAULT 0,
-    jalan_gagal_berturut INTEGER NOT NULL DEFAULT 0,
-    agen_ids          JSONB NOT NULL DEFAULT '[]'::jsonb,
-    kejadian_asal_id  UUID,
-    dibuat            TIMESTAMPTZ NOT NULL DEFAULT now(),
-    diubah            TIMESTAMPTZ NOT NULL DEFAULT now()
+    step           JSONB NOT NULL DEFAULT '[]'::jsonb,
+    output_schema    JSONB NOT NULL DEFAULT '{}'::jsonb,
+    required_checks JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status            TEXT NOT NULL DEFAULT 'trial'
+                      CHECK (status IN ('trial', 'verified', 'broken')),
+    successful_runs      INTEGER NOT NULL DEFAULT 0,
+    failed_runs       INTEGER NOT NULL DEFAULT 0,
+    consecutive_failed_runs INTEGER NOT NULL DEFAULT 0,
+    agent_ids          JSONB NOT NULL DEFAULT '[]'::jsonb,
+    source_event_id  UUID,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_prosedur_user_layanan ON prosedur(user_id, layanan, status);
+CREATE INDEX IF NOT EXISTS idx_prosedur_user_service ON procedures(user_id, service, status);
 
-CREATE TABLE IF NOT EXISTS pemberian_irisan (
+CREATE TABLE IF NOT EXISTS slice_grants (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id      UUID NOT NULL,
-    agen_id      UUID,
-    sub_agen_id  UUID,
+    agent_id      TEXT,
+    subagent_id  TEXT,
     query        TEXT NOT NULL,
     kolom        TEXT[] NOT NULL DEFAULT '{}',
     token_ref    TEXT NOT NULL,
-    kejadian_id  UUID,
-    dibuat       TIMESTAMPTZ NOT NULL DEFAULT now()
+    event_id  UUID,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_irisan_user ON pemberian_irisan(user_id, dibuat DESC);
+CREATE INDEX IF NOT EXISTS idx_irisan_user ON slice_grants(user_id, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS ringkasan (
+CREATE TABLE IF NOT EXISTS summaries (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id       UUID NOT NULL,
-    agen_id       UUID,
-    periode_awal  TIMESTAMPTZ NOT NULL,
-    periode_akhir TIMESTAMPTZ NOT NULL,
-    ringkasan     TEXT NOT NULL,
-    kejadian_ids  UUID[] NOT NULL DEFAULT '{}',
-    dibuat        TIMESTAMPTZ NOT NULL DEFAULT now()
+    agent_id       TEXT,
+    period_start  TIMESTAMPTZ NOT NULL,
+    period_end TIMESTAMPTZ NOT NULL,
+    summary     TEXT NOT NULL,
+    event_ids  UUID[] NOT NULL DEFAULT '{}',
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_ringkasan_user ON ringkasan(user_id, dibuat DESC);
+CREATE INDEX IF NOT EXISTS idx_summary_user ON summaries(user_id, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS contoh_gaya (
+CREATE TABLE IF NOT EXISTS style_examples (
     id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL,
-    teks    TEXT NOT NULL,
-    dibuat  TIMESTAMPTZ NOT NULL DEFAULT now()
+    text    TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_contoh_gaya_user ON contoh_gaya(user_id, dibuat ASC);
+CREATE INDEX IF NOT EXISTS idx_example_gaya_user ON style_examples(user_id, created_at ASC);
 
 CREATE TABLE IF NOT EXISTS onboarding (
     user_id               UUID PRIMARY KEY,
-    langkah_saat_ini      INTEGER NOT NULL DEFAULT 0,
-    nama                  TEXT,
-    gaya                  TEXT,
-    notif_uji             TEXT,
-    konektor              TEXT NOT NULL DEFAULT 'nanti',
-    tugas_pertama         TEXT,
-    hasil_pertama_terbukti BOOLEAN,
-    dimulai               TIMESTAMPTZ NOT NULL DEFAULT now(),
-    selesai               TIMESTAMPTZ,
-    durasi_detik          NUMERIC
+    current_step      INTEGER NOT NULL DEFAULT 0,
+    name                  TEXT,
+    style                  TEXT,
+    test_notification             TEXT,
+    connector              TEXT NOT NULL DEFAULT 'nanti',
+    first_task         TEXT,
+    first_result_verified BOOLEAN,
+    started_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at               TIMESTAMPTZ,
+    duration_seconds          NUMERIC
 );
 
-CREATE TABLE IF NOT EXISTS persetujuan_data (
+CREATE TABLE IF NOT EXISTS data_consents (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id       UUID NOT NULL,
-    versi_teks    TEXT NOT NULL,
-    disetujui_pada TIMESTAMPTZ NOT NULL DEFAULT now(),
-    kejadian_id   UUID
+    text_version    TEXT NOT NULL,
+    approved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    event_id   UUID
 );
-CREATE INDEX IF NOT EXISTS idx_persetujuan_user ON persetujuan_data(user_id, disetujui_pada DESC);
+CREATE INDEX IF NOT EXISTS idx_approval_user ON data_consents(user_id, approved_at DESC);
 
-CREATE TABLE IF NOT EXISTS tautan_email_digunakan (
+CREATE TABLE IF NOT EXISTS used_email_links (
     token_hash  TEXT PRIMARY KEY,
-    dipakai_pada TIMESTAMPTZ NOT NULL DEFAULT now()
+    used_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Izin peran aplikasi (pola Fase 0): puspa_app boleh baca/tulis.
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'puspa_app') THEN
-        GRANT SELECT, INSERT, UPDATE, DELETE ON fakta_profil TO puspa_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON episodik TO puspa_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON prosedur TO puspa_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON pemberian_irisan TO puspa_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON ringkasan TO puspa_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON contoh_gaya TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON profile_facts TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON episodic TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON procedures TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON slice_grants TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON summaries TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON style_examples TO puspa_app;
         GRANT SELECT, INSERT, UPDATE, DELETE ON onboarding TO puspa_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON persetujuan_data TO puspa_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON tautan_email_digunakan TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON data_consents TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON used_email_links TO puspa_app;
     END IF;
 END $$;
 
 -- Row Level Security (pola puspa/accounts/schema.sql).
-ALTER TABLE fakta_profil ENABLE ROW LEVEL SECURITY;
-ALTER TABLE episodik ENABLE ROW LEVEL SECURITY;
-ALTER TABLE prosedur ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pemberian_irisan ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ringkasan ENABLE ROW LEVEL SECURITY;
-ALTER TABLE contoh_gaya ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profile_facts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE episodic ENABLE ROW LEVEL SECURITY;
+ALTER TABLE procedures ENABLE ROW LEVEL SECURITY;
+ALTER TABLE slice_grants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE summaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE style_examples ENABLE ROW LEVEL SECURITY;
 ALTER TABLE onboarding ENABLE ROW LEVEL SECURITY;
-ALTER TABLE persetujuan_data ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tautan_email_digunakan ENABLE ROW LEVEL SECURITY;
+ALTER TABLE data_consents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE used_email_links ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS fakta_profil_milik_sendiri ON fakta_profil;
-CREATE POLICY fakta_profil_milik_sendiri ON fakta_profil FOR ALL
+DROP POLICY IF EXISTS fact_profile_own_own ON profile_facts;
+CREATE POLICY fact_profile_own_own ON profile_facts FOR ALL
     USING (user_id::text = coalesce(current_setting('app.current_user_id', true), ''))
     WITH CHECK (user_id::text = coalesce(current_setting('app.current_user_id', true), ''));
 
-DROP POLICY IF EXISTS episodik_milik_sendiri ON episodik;
-CREATE POLICY episodik_milik_sendiri ON episodik FOR ALL
+DROP POLICY IF EXISTS episodik_own_own ON episodic;
+CREATE POLICY episodik_own_own ON episodic FOR ALL
     USING (user_id::text = coalesce(current_setting('app.current_user_id', true), ''))
     WITH CHECK (user_id::text = coalesce(current_setting('app.current_user_id', true), ''));
 
-DROP POLICY IF EXISTS prosedur_milik_sendiri ON prosedur;
-CREATE POLICY prosedur_milik_sendiri ON prosedur FOR ALL
+DROP POLICY IF EXISTS prosedur_own_own ON procedures;
+CREATE POLICY prosedur_own_own ON procedures FOR ALL
     USING (user_id::text = coalesce(current_setting('app.current_user_id', true), ''))
     WITH CHECK (user_id::text = coalesce(current_setting('app.current_user_id', true), ''));
 
-DROP POLICY IF EXISTS pemberian_irisan_milik_sendiri ON pemberian_irisan;
-CREATE POLICY pemberian_irisan_milik_sendiri ON pemberian_irisan FOR ALL
+DROP POLICY IF EXISTS pemberian_irisan_own_own ON slice_grants;
+CREATE POLICY pemberian_irisan_own_own ON slice_grants FOR ALL
     USING (user_id::text = coalesce(current_setting('app.current_user_id', true), ''))
     WITH CHECK (user_id::text = coalesce(current_setting('app.current_user_id', true), ''));
 
-DROP POLICY IF EXISTS ringkasan_milik_sendiri ON ringkasan;
-CREATE POLICY ringkasan_milik_sendiri ON ringkasan FOR ALL
+DROP POLICY IF EXISTS summary_own_own ON summaries;
+CREATE POLICY summary_own_own ON summaries FOR ALL
     USING (user_id::text = coalesce(current_setting('app.current_user_id', true), ''))
     WITH CHECK (user_id::text = coalesce(current_setting('app.current_user_id', true), ''));
 
-DROP POLICY IF EXISTS contoh_gaya_milik_sendiri ON contoh_gaya;
-CREATE POLICY contoh_gaya_milik_sendiri ON contoh_gaya FOR ALL
+DROP POLICY IF EXISTS example_gaya_own_own ON style_examples;
+CREATE POLICY example_gaya_own_own ON style_examples FOR ALL
     USING (user_id::text = coalesce(current_setting('app.current_user_id', true), ''))
     WITH CHECK (user_id::text = coalesce(current_setting('app.current_user_id', true), ''));
 
-DROP POLICY IF EXISTS onboarding_milik_sendiri ON onboarding;
-CREATE POLICY onboarding_milik_sendiri ON onboarding FOR ALL
+DROP POLICY IF EXISTS onboarding_own_own ON onboarding;
+CREATE POLICY onboarding_own_own ON onboarding FOR ALL
     USING (user_id::text = coalesce(current_setting('app.current_user_id', true), ''))
     WITH CHECK (user_id::text = coalesce(current_setting('app.current_user_id', true), ''));
 
-DROP POLICY IF EXISTS persetujuan_data_milik_sendiri ON persetujuan_data;
-CREATE POLICY persetujuan_data_milik_sendiri ON persetujuan_data FOR ALL
+DROP POLICY IF EXISTS approval_data_own_own ON data_consents;
+CREATE POLICY approval_data_own_own ON data_consents FOR ALL
     USING (user_id::text = coalesce(current_setting('app.current_user_id', true), ''))
     WITH CHECK (user_id::text = coalesce(current_setting('app.current_user_id', true), ''));
 
 -- tautan_email_digunakan tidak punya user_id: hanya server yang
 -- menulis/membaca (cek sekali pakai). Policy menolak semua akses
 -- peran app; penegakan sekali-pakai ada di kode (email_link.py).
-DROP POLICY IF EXISTS tautan_email_tolak_app ON tautan_email_digunakan;
-CREATE POLICY tautan_email_tolak_app ON tautan_email_digunakan FOR ALL
+DROP POLICY IF EXISTS used_email_links_deny_app ON used_email_links;
+CREATE POLICY used_email_links_deny_app ON used_email_links FOR ALL
     USING (false) WITH CHECK (false);

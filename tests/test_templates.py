@@ -2,85 +2,87 @@
 
 import pytest
 
-from puspa.workflow.blocks import periksa_alur
+from puspa.workflow.blocks import periksa_workflow
 from puspa.workflow.runner import (
-    aktifkan_alur, jalankan_alur, uji_kering,
+    aktifkan_workflow, jalankan_workflow, test_dry,
 )
 from puspa.workflow.templates import (
-    TUGAS_ACUAN_ALUR, ambil_templat, buat_dari_templat, daftar_templat,
+    TASK_REFERENCE_WORKFLOW, take_templat, create_dari_templat, items_templat,
 )
-from puspa.workflow.triggers import validasi_pemicu
+from puspa.workflow.triggers import validasi_trigger
 
 
 def test_tepat_3_templat_bawaan():
-    templat = daftar_templat()
+    templat = items_templat()
     assert len(templat) == 3
-    assert {t["kunci"] for t in templat} == {
-        "tagihan_bulanan", "pantau_harga", "rekap_tagihan_mingguan"}
+    assert {t["key"] for t in templat} == {
+        "bill_monthly", "watch_prices", "rekap_bill_weekly"}
 
 
-def test_semua_templat_lolos_validasi():
-    for t in daftar_templat():
-        assert validasi_pemicu(t["pemicu"]) == [], t["kunci"]
-        assert periksa_alur(t["langkah"]) == [], t["kunci"]
+def test_all_templat_passed_validasi():
+    for t in items_templat():
+        assert validasi_trigger(t["triggers"]) == [], t["key"]
+        assert periksa_workflow(t["step"]) == [], t["key"]
 
 
-def test_tugas_acuan_8_dan_9_memetakan_ke_templat():
-    assert TUGAS_ACUAN_ALUR[8] == "tagihan_bulanan"
-    assert TUGAS_ACUAN_ALUR[9] == "rekap_tagihan_mingguan"
+def test_task_reference_8_and_9_memetakan_to_templat():
+    assert TASK_REFERENCE_WORKFLOW[8] == "bill_monthly"
+    assert TASK_REFERENCE_WORKFLOW[9] == "rekap_bill_weekly"
 
 
-def _aktifkan(make_user, test_dsn, izin_user_penuh, kunci, pemicu=None):
-    user_id, agen_id = make_user()
-    alur = buat_dari_templat(kunci, user_id=user_id, agen_id=agen_id,
-                             pemicu=pemicu, dsn=test_dsn)
-    kering = uji_kering(alur["id"], user_id=user_id, dsn=test_dsn)
-    assert kering["sukses"] is True, kering
-    aktifkan_alur(alur["id"], user_id=user_id, izin_user=izin_user_penuh,
-                  hasil_kering=kering, dsn=test_dsn)
-    return user_id, alur
+def _aktifkan(make_user, test_dsn, permission_user_penuh, key, trigger=None):
+    u = make_user()
+    user_id, agent_id = u["user_id"], u["agent_id"]
+    workflow = create_dari_templat(key, user_id=user_id, agent_id=agent_id,
+                             trigger=trigger, dsn=test_dsn)
+    dry = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    assert dry["success"] is True, dry
+    aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
+                  result_dry=dry, dsn=test_dsn)
+    return user_id, workflow
 
 
-def test_tugas_acuan_8_pengingat_tagihan_sebagai_alur(make_user, test_dsn,
-                                                     izin_user_penuh):
+def test_task_reference_8_reminder_bill_sebagai_workflow(make_user, test_dsn,
+                                                     permission_user_penuh):
     # Tugas 8: "Buatkan pengingat untuk tagihan." — pemicu manual.
-    user_id, alur = _aktifkan(make_user, test_dsn, izin_user_penuh,
-                              "tagihan_bulanan", pemicu={"jenis": "manual"})
-    hasil = jalankan_alur(alur["id"], user_id=user_id, pemicu_jenis="manual",
+    user_id, workflow = _aktifkan(make_user, test_dsn, permission_user_penuh,
+                              "bill_monthly", trigger={"type": "manual"})
+    result = jalankan_workflow(workflow["id"], user_id=user_id, trigger_jenis="manual",
                           dsn=test_dsn)
     # Berhenti di siapkan bayar (aksi keluar -> antrean persetujuan).
-    assert hasil["status"] == "menunggu_persetujuan"
-    cek = [l for l in hasil["langkah_hasil"] if l["blok"] == "cek_tagihan"]
-    assert len(cek) == 2
-    assert cek[0]["hasil"]["jumlah"] == 132500  # PLN fixture
-    assert cek[1]["hasil"]["jumlah"] == 87500   # PDAM fixture
-    assert any(l["blok"] == "kirim_notif" and l["sukses"]
-               for l in hasil["langkah_hasil"])
+    assert result["status"] == "pending_approval"
+    check = [l for l in result["step_results"] if l["block"] == "check_bill"]
+    assert len(check) == 2
+    assert check[0]["result"]["amount"] == 132500  # PLN fixture
+    assert check[1]["result"]["amount"] == 87500   # PDAM fixture
+    assert any(l["block"] == "send_notification" and l["success"]
+               for l in result["step_results"])
 
 
-def test_tugas_acuan_9_rekap_mingguan_sebagai_alur(make_user, test_dsn,
-                                                  izin_user_penuh):
+def test_task_reference_9_rekap_weekly_sebagai_workflow(make_user, test_dsn,
+                                                  permission_user_penuh):
     # Tugas 9: "Ingatkan semua tagihan yang jatuh tempo minggu ini."
-    user_id, alur = _aktifkan(make_user, test_dsn, izin_user_penuh,
-                              "rekap_tagihan_mingguan",
-                              pemicu={"jenis": "manual"})
-    hasil = jalankan_alur(alur["id"], user_id=user_id, pemicu_jenis="manual",
+    user_id, workflow = _aktifkan(make_user, test_dsn, permission_user_penuh,
+                              "rekap_bill_weekly",
+                              trigger={"type": "manual"})
+    result = jalankan_workflow(workflow["id"], user_id=user_id, trigger_jenis="manual",
                           dsn=test_dsn)
-    assert hasil["sukses"] is True, hasil
-    cek = [l for l in hasil["langkah_hasil"] if l["blok"] == "cek_tagihan"]
-    assert len(cek) == 4  # PLN, PDAM, pulsa, paket data
-    jumlah = {l["hasil"]["jumlah"] for l in cek}
-    assert jumlah == {132500, 87500, 50000, 75000}
-    assert hasil["langkah_hasil"][-1]["blok"] == "kirim_notif"
+    assert result["success"] is True, result
+    check = [l for l in result["step_results"] if l["block"] == "check_bill"]
+    assert len(check) == 4  # PLN, PDAM, pulsa, paket data
+    amount = {l["result"]["amount"] for l in check}
+    assert amount == {132500, 87500, 50000, 75000}
+    assert result["step_results"][-1]["block"] == "send_notification"
 
 
-def test_templat_pantau_harga_tertahan_gerbang_tos(make_user, test_dsn):
+def test_templat_watch_price_tertahan_gerbang_tos(make_user, test_dsn):
     # Jujur: pantau harga live ditahan keputusan 15 (ToS). Uji kering
     # templat ini GAGAL TERLIHAT dengan alasan syarat layanan — bukan
     # sukses palsu, bukan upaya HTTP.
-    user_id, agen_id = make_user()
-    alur = buat_dari_templat("pantau_harga", user_id=user_id, agen_id=agen_id,
+    u = make_user()
+    user_id, agent_id = u["user_id"], u["agent_id"]
+    workflow = create_dari_templat("watch_prices", user_id=user_id, agent_id=agent_id,
                              dsn=test_dsn)
-    hasil = uji_kering(alur["id"], user_id=user_id, dsn=test_dsn)
-    assert hasil["sukses"] is False
-    assert "keputusan 15" in hasil["alasan"]
+    result = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    assert result["success"] is False
+    assert "keputusan 15" in result["reason"]

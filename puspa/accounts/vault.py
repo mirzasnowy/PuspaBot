@@ -81,7 +81,7 @@ def put(user_id, name, value, dsn=None):
             cur.execute(
                 "INSERT INTO vault (user_id, name, ciphertext) VALUES (%s, %s, %s) "
                 "ON CONFLICT (user_id, name) DO UPDATE "
-                "SET ciphertext = EXCLUDED.ciphertext, diubah = now()",
+                "SET ciphertext = EXCLUDED.ciphertext, updated_at = now()",
                 (user_id, name, ciphertext),
             )
         conn.commit()

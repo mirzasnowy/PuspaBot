@@ -5,7 +5,7 @@
  */
 const CACHE = 'puspa-v1';
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/chat', '/kantor'])));
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/chat', '/office'])));
 });
 self.addEventListener('fetch', (event) => {
   event.respondWith(

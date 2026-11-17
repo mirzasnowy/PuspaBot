@@ -1,156 +1,156 @@
 -- Skema Postgres Fase 2 (idempotent; jalankan lewat puspa.runtime.create_schema).
 -- Prasyarat: skema Fase 0 (pengguna, agen, kejadian) sudah ada.
 
-CREATE TABLE IF NOT EXISTS agen_meta (
-    agen_id TEXT PRIMARY KEY REFERENCES agen(agen_id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
-    nama TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS agent_meta (
+    agent_id TEXT PRIMARY KEY REFERENCES agents(agent_id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
     peran TEXT NOT NULL DEFAULT '',
-    tujuan TEXT NOT NULL DEFAULT '',
-    wajib BOOLEAN NOT NULL DEFAULT FALSE,
-    dibuat TIMESTAMPTZ NOT NULL DEFAULT now()
+    purpose TEXT NOT NULL DEFAULT '',
+    required BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_agen_meta_user_id ON agen_meta(user_id);
+CREATE INDEX IF NOT EXISTS idx_agent_meta_user_id ON agent_meta(user_id);
 
-CREATE TABLE IF NOT EXISTS tugas (
+CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
-    agen_id TEXT NOT NULL REFERENCES agen(agen_id) ON DELETE CASCADE,
-    tujuan TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'diterima',
-    biaya_rp INTEGER NOT NULL DEFAULT 0,
-    langkah INTEGER NOT NULL DEFAULT 0,
-    dibuat TIMESTAMPTZ NOT NULL DEFAULT now(),
-    selesai TIMESTAMPTZ
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+    purpose TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'accepted',
+    cost_rp INTEGER NOT NULL DEFAULT 0,
+    step INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at TIMESTAMPTZ
 );
-CREATE INDEX IF NOT EXISTS idx_tugas_user_id ON tugas(user_id);
+CREATE INDEX IF NOT EXISTS idx_task_user_id ON tasks(user_id);
 
-CREATE TABLE IF NOT EXISTS handoff (
+CREATE TABLE IF NOT EXISTS handoffs (
     id TEXT PRIMARY KEY,
-    tugas_id TEXT NOT NULL REFERENCES tugas(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
+    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     dari_id TEXT NOT NULL,
-    ke_id TEXT NOT NULL,
-    tujuan TEXT NOT NULL,
+    to_id TEXT NOT NULL,
+    purpose TEXT NOT NULL,
     masukan JSONB NOT NULL DEFAULT '{}',
-    keluaran_diharapkan JSONB NOT NULL DEFAULT '{}',
-    batas_waktu_detik INTEGER NOT NULL DEFAULT 45,
+    expected_output JSONB NOT NULL DEFAULT '{}',
+    timeout_seconds INTEGER NOT NULL DEFAULT 45,
     anggaran JSONB NOT NULL DEFAULT '{}',
-    kelas_izin TEXT NOT NULL,
-    definisi_selesai TEXT NOT NULL,
-    kunci_idempotensi TEXT NOT NULL UNIQUE,
-    status TEXT NOT NULL DEFAULT 'diajukan',
-    percobaan INTEGER NOT NULL DEFAULT 1,
-    detak_terakhir TIMESTAMPTZ,
-    dibuat TIMESTAMPTZ NOT NULL DEFAULT now(),
-    diserahkan TIMESTAMPTZ
+    permission_class TEXT NOT NULL,
+    completion_definition TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'proposed',
+    trial INTEGER NOT NULL DEFAULT 1,
+    last_heartbeat TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    handed_over_at TIMESTAMPTZ
 );
-CREATE INDEX IF NOT EXISTS idx_handoff_tugas_id ON handoff(tugas_id);
+CREATE INDEX IF NOT EXISTS idx_handoff_task_id ON handoffs(task_id);
 
-CREATE TABLE IF NOT EXISTS bukti (
-    bukti_id TEXT PRIMARY KEY,
-    tugas_id TEXT NOT NULL,
-    user_id UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS evidence (
+    evidence_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     klaim TEXT NOT NULL,
-    nilai NUMERIC NOT NULL,
-    satuan TEXT NOT NULL DEFAULT 'Rp',
+    value NUMERIC NOT NULL,
+    unit TEXT NOT NULL DEFAULT 'Rp',
     sumber_url TEXT NOT NULL,
-    waktu_ambil TIMESTAMPTZ NOT NULL DEFAULT now(),
-    potongan_teks TEXT NOT NULL DEFAULT '',
-    hash_halaman TEXT NOT NULL DEFAULT '',
-    tangkapan_layar TEXT,
-    id_pembaca TEXT NOT NULL DEFAULT '',
-    id_pemeriksa TEXT,
-    vonis TEXT NOT NULL DEFAULT 'Belum pasti'
+    time_take TIMESTAMPTZ NOT NULL DEFAULT now(),
+    text_excerpt TEXT NOT NULL DEFAULT '',
+    page_hash TEXT NOT NULL DEFAULT '',
+    screenshot TEXT,
+    reader_id TEXT NOT NULL DEFAULT '',
+    verifier_id TEXT,
+    vonis TEXT NOT NULL DEFAULT 'Uncertain'
 );
-CREATE INDEX IF NOT EXISTS idx_bukti_tugas_id ON bukti(tugas_id);
-CREATE INDEX IF NOT EXISTS idx_bukti_user_id ON bukti(user_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_task_id ON evidence(task_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_user_id ON evidence(user_id);
 
-CREATE TABLE IF NOT EXISTS pemicu (
+CREATE TABLE IF NOT EXISTS triggers (
     id TEXT PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
-    jenis TEXT NOT NULL,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
     jadwal TEXT NOT NULL DEFAULT '',
-    alur TEXT NOT NULL DEFAULT '',
-    pemicu_berikutnya TIMESTAMPTZ NOT NULL,
-    aktif BOOLEAN NOT NULL DEFAULT TRUE,
-    dibuat TIMESTAMPTZ NOT NULL DEFAULT now()
+    workflow TEXT NOT NULL DEFAULT '',
+    next_trigger_at TIMESTAMPTZ NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_pemicu_berikutnya ON pemicu(pemicu_berikutnya) WHERE aktif;
+CREATE INDEX IF NOT EXISTS idx_trigger_berikutnya ON triggers(next_trigger_at) WHERE active;
 
-CREATE TABLE IF NOT EXISTS pemicu_jalan (
-    kunci_idempotensi TEXT PRIMARY KEY,
-    pemicu_id TEXT NOT NULL REFERENCES pemicu(id) ON DELETE CASCADE,
-    tugas_id TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS trigger_runs (
+    idempotency_key TEXT PRIMARY KEY,
+    trigger_id TEXT NOT NULL REFERENCES triggers(id) ON DELETE CASCADE,
+    task_id TEXT NOT NULL,
     terlewat BOOLEAN NOT NULL DEFAULT FALSE,
     jalan_pada TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS konektor_agen (
-    user_id UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
-    agen_id TEXT NOT NULL REFERENCES agen(agen_id) ON DELETE CASCADE,
-    konektor TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS agent_connectors (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+    connector TEXT NOT NULL,
     scope TEXT[] NOT NULL DEFAULT '{}',
     terhubung BOOLEAN NOT NULL DEFAULT FALSE,
-    dibuat TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (user_id, agen_id, konektor)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, agent_id, connector)
 );
 
-CREATE TABLE IF NOT EXISTS kaset (
+CREATE TABLE IF NOT EXISTS cassettes (
     id TEXT PRIMARY KEY,
-    tugas_id TEXT NOT NULL,
-    user_id UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
-    nama TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
     berkas TEXT NOT NULL,
-    dibuat TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_kaset_tugas_id ON kaset(tugas_id);
+CREATE INDEX IF NOT EXISTS idx_cassette_task_id ON cassettes(task_id);
 
-CREATE TABLE IF NOT EXISTS langganan_push (
+CREATE TABLE IF NOT EXISTS push_subscriptions (
     id TEXT PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     endpoint TEXT NOT NULL,
     p256dh TEXT NOT NULL,
     auth TEXT NOT NULL,
-    dibuat TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_push_user_id ON langganan_push(user_id);
+CREATE INDEX IF NOT EXISTS idx_push_user_id ON push_subscriptions(user_id);
 
-CREATE TABLE IF NOT EXISTS detak_sistem (
+CREATE TABLE IF NOT EXISTS system_heartbeats (
     komponen TEXT PRIMARY KEY,
-    waktu TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Penolakan hapus Puspa di level DATABASE (bukan hanya API/UI):
 -- baris agen_meta dengan wajib=TRUE tidak bisa di-DELETE.
-CREATE OR REPLACE FUNCTION tolak_hapus_puspa() RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION tolak_delete_puspa() RETURNS trigger AS $$
 BEGIN
-    IF OLD.wajib THEN
+    IF OLD.required THEN
         RAISE EXCEPTION 'Puspa tidak bisa dihapus';
     END IF;
     RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;
-DROP TRIGGER IF EXISTS trg_tolak_hapus_puspa ON agen_meta;
-CREATE TRIGGER trg_tolak_hapus_puspa BEFORE DELETE ON agen_meta
-FOR EACH ROW EXECUTE FUNCTION tolak_hapus_puspa();
+DROP TRIGGER IF EXISTS trg_tolak_delete_puspa ON agent_meta;
+CREATE TRIGGER trg_tolak_delete_puspa BEFORE DELETE ON agent_meta
+FOR EACH ROW EXECUTE FUNCTION tolak_delete_puspa();
 
 -- RLS (pola yang sama seperti Fase 0/1: app.current_user_id).
 -- Penegakan nyata hanya untuk koneksi sebagai puspa_app.
-ALTER TABLE agen_meta ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tugas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE handoff ENABLE ROW LEVEL SECURITY;
-ALTER TABLE bukti ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pemicu ENABLE ROW LEVEL SECURITY;
-ALTER TABLE konektor_agen ENABLE ROW LEVEL SECURITY;
-ALTER TABLE kaset ENABLE ROW LEVEL SECURITY;
-ALTER TABLE langganan_push ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agent_meta ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE handoffs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE evidence ENABLE ROW LEVEL SECURITY;
+ALTER TABLE triggers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agent_connectors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cassettes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE
     t TEXT;
 BEGIN
-    FOREACH t IN ARRAY ARRAY['agen_meta','tugas','handoff','bukti','pemicu','konektor_agen','kaset','langganan_push'] LOOP
+    FOREACH t IN ARRAY ARRAY['agent_meta','tasks','handoffs','evidence','triggers','agent_connectors','cassettes','push_subscriptions'] LOOP
         EXECUTE format('DROP POLICY IF EXISTS %I ON %I', 'isolasi_' || t, t);
         EXECUTE format(
             'CREATE POLICY %I ON %I USING (current_setting(%L, true) = user_id::text) WITH CHECK (current_setting(%L, true) = user_id::text)',

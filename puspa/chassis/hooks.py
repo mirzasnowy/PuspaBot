@@ -36,56 +36,56 @@ from nanobot.agent.hook import AgentHook, AgentTurnHookContext
 
 __all__ = ["PuspaHook", "make_puspa_hook_factory"]
 
-_MAX_PESAN_CHARS = 2000
+_MAX_MESSAGE_CHARS = 2000
 
 
 class PuspaHook(AgentHook):
     """Hook observasi: siklus tugas + pesan akhir ke Buku Kerja."""
 
-    def __init__(self, *, tugas_id: str, agen_id: str, log=None) -> None:
+    def __init__(self, *, task_id: str, agent_id: str, log=None) -> None:
         super().__init__()
-        self.tugas_id = tugas_id
-        self.agen_id = agen_id
+        self.task_id = task_id
+        self.agent_id = agent_id
         self._log = log
 
-    def _log_event(self, jenis: str, isi: dict) -> None:
+    def _log_event(self, jenis: str, content: dict) -> None:
         if self._log is None:
             return
         try:
-            self._log(jenis, isi)
+            self._log(jenis, content)
         except Exception:
             pass
 
     async def before_run(self, context) -> None:
         self._log_event(
-            "tugas_dibuat",
-            {"tugas_id": self.tugas_id, "agen_id": self.agen_id},
+            "task_created",
+            {"task_id": self.task_id, "agent_id": self.agent_id},
         )
 
     async def after_run(self, context) -> None:
-        isi = {"tugas_id": self.tugas_id, "agen_id": self.agen_id}
-        final = (context.final_content or "")[:_MAX_PESAN_CHARS]
+        content = {"task_id": self.task_id, "agent_id": self.agent_id}
+        final = (context.final_content or "")[:_MAX_MESSAGE_CHARS]
         if final:
-            isi["ringkasan"] = final
-        self._log_event("tugas_selesai", isi)
+            content["summaries"] = final
+        self._log_event("task_completed", content)
         if final:
-            self._log_event("pesan_agen", {"isi": final})
+            self._log_event("agent_message", {"content": final})
 
     async def on_error(self, context) -> None:
         self._log_event(
-            "tugas_gagal",
+            "task_failed",
             {
-                "tugas_id": self.tugas_id,
-                "agen_id": self.agen_id,
-                "alasan": str(context.error or context.exception or ""),
+                "task_id": self.task_id,
+                "agent_id": self.agent_id,
+                "reason": str(context.error or context.exception or ""),
             },
         )
 
 
-def make_puspa_hook_factory(tugas_id: str, agen_id: str, log=None):
+def make_puspa_hook_factory(task_id: str, agent_id: str, log=None):
     """Factory per-turn (``AgentTurnHookFactory``) untuk ``PuspaHook``."""
 
     def factory(turn_ctx: AgentTurnHookContext) -> AgentHook | None:
-        return PuspaHook(tugas_id=tugas_id, agen_id=agen_id, log=log)
+        return PuspaHook(task_id=task_id, agent_id=agent_id, log=log)
 
     return factory

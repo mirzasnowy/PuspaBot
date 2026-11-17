@@ -13,18 +13,18 @@ from __future__ import annotations
 from puspa.workflow.runner import evaluasi_ungkapan
 
 
-def evaluasi_notif(manifes: dict, data: dict) -> list[dict]:
+def evaluasi_notif(manifest: dict, data: dict) -> list[dict]:
     """Kembalikan daftar notif yang harus dikirim:
     [{tabel, baris, pesan}]."""
-    keluar = []
-    for aturan in manifes.get("notif", []) or []:
-        tabel = aturan.get("tabel")
-        baris_list = data.get(tabel, []) if tabel else []
-        for baris in baris_list:
+    logout = []
+    for aturan in manifest.get("notif", []) or []:
+        table = aturan.get("table")
+        rows_list = data.get(table, []) if table else []
+        for rows in rows_list:
             try:
-                if evaluasi_ungkapan(aturan.get("kondisi", ""), dict(baris)):
-                    keluar.append({"tabel": tabel, "baris": baris,
-                                   "pesan": aturan.get("pesan", "")})
+                if evaluasi_ungkapan(aturan.get("condition", ""), dict(rows)):
+                    logout.append({"table": table, "rows": rows,
+                                   "message": aturan.get("message", "")})
             except Exception:  # noqa: BLE001 — kondisi rusak = tidak memicu
                 continue
-    return keluar
+    return logout

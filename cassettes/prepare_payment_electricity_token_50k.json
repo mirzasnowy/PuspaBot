@@ -1,0 +1,14 @@
+{
+  "task_id": "tugas-acuan-prepare_payment_electricity_token_50k",
+  "name": "prepare_payment_electricity_token_50k",
+  "recording": [
+    {
+      "tool": "prepare_payment",
+      "output": {
+        "jenis": "pay",
+        "value": 50000,
+        "status": "pending_approval"
+      }
+    }
+  ]
+}

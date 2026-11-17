@@ -63,11 +63,11 @@ def test_resolve_provider_dari_prefix_model(model, provider):
     assert resolve_provider_name(None, model) == provider
 
 
-def test_resolve_provider_nama_eksplisit_menang():
+def test_resolve_provider_name_eksplisit_menang():
     assert resolve_provider_name("openai", "anthropic/claude-sonnet-4-6") == "openai"
 
 
-def test_resolve_provider_prefix_tak_dikenal_gagal_terlihat():
+def test_resolve_provider_prefix_tak_dikenal_failed_terlihat():
     with pytest.raises(ValueError, match="provider tidak bisa ditebak"):
         resolve_provider_name(None, "model-tanpa-prefix-jelas")
 
@@ -100,7 +100,7 @@ def test_build_groq_deepseek_dari_registry_nanobot():
     assert deepseek.api_base == "https://api.deepseek.com"
 
 
-def test_build_together_bukti_satu_baris_config():
+def test_build_together_evidence_satu_rows_config():
     # "together" TIDAK ada di registry nanobot; cukup satu baris
     # register_provider di byok_provider.py untuk masuk factory.
     from nanobot.providers.registry import find_by_name
@@ -111,9 +111,9 @@ def test_build_together_bukti_satu_baris_config():
     assert prov.api_base == "https://api.together.xyz/v1"
 
 
-def test_register_provider_baru_satu_baris():
-    nama = register_provider("vendor-contoh-tes", "https://api.vendor.example/v1")
-    prov = build_byok_provider(nama, "model-contoh", key=MOCK_KEY)
+def test_register_provider_new_satu_rows():
+    name = register_provider("vendor-contoh-tes", "https://api.vendor.example/v1")
+    prov = build_byok_provider(name, "model-contoh", key=MOCK_KEY)
     assert prov.api_base == "https://api.vendor.example/v1"
     with pytest.raises(ValueError, match="harus http"):
         register_provider("vendor-buruk", "bukan-url")
@@ -127,13 +127,13 @@ def test_build_anthropic_native():
     assert prov.provider_name == "anthropic"
 
 
-def test_build_ollama_tanpa_kunci():
+def test_build_ollama_without_key():
     prov = build_byok_provider("ollama", "llama3.1:8b")
     assert prov.provider_name == "ollama"
     assert prov.api_base == "http://localhost:11434/v1"
 
 
-def test_build_openai_compatible_generik_butuh_base_url():
+def test_build_openai_compatible_generik_need_base_url():
     with pytest.raises(ValueError, match="butuh base_url"):
         build_byok_provider("openai_compatible", "m", key=MOCK_KEY)
     prov = build_byok_provider("openai_compatible", "m", key=MOCK_KEY,
@@ -141,41 +141,41 @@ def test_build_openai_compatible_generik_butuh_base_url():
     assert prov.api_base == "https://api.x.ai/v1"
 
 
-def test_build_azure_butuh_endpoint():
+def test_build_azure_need_endpoint():
     with pytest.raises(ValueError, match="butuh base_url"):
         build_byok_provider("azure_openai", "dep-mock", key=MOCK_KEY)
 
 
-def test_build_provider_tak_dikenal_gagal_terlihat():
+def test_build_provider_tak_dikenal_failed_terlihat():
     with pytest.raises(ValueError, match="tidak dikenal"):
-        build_byok_provider("vendor_tidak_ada", "model-x", key=MOCK_KEY)
+        build_byok_provider("vendor_not_ada", "model-x", key=MOCK_KEY)
 
 
-def test_build_tanpa_kunci_gagal_terlihat(monkeypatch):
+def test_build_without_key_failed_terlihat(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with pytest.raises(KeyError, match="kunci provider 'openai' belum ada"):
         build_byok_provider("openai", "gpt-4o-mini")
 
 
-def test_build_model_kosong_gagal():
+def test_build_model_kosong_failed():
     with pytest.raises(ValueError, match="model tidak boleh kosong"):
         build_byok_provider("openai", "  ", key=MOCK_KEY)
 
 
 # --- OAuth + Bedrock: konstruksi tanpa kredensial ------------------------------
 
-@pytest.mark.parametrize("nama,model,kelas", [
+@pytest.mark.parametrize("name,model,klass", [
     ("xai", "xai-grok/grok-4.6", "XAIGrokProvider"),
     ("github_copilot", "github-copilot/gpt-4.1", "GitHubCopilotProvider"),
     ("openai_codex", "openai-codex/gpt-5.6-sol", "OpenAICodexProvider"),
 ])
-def test_build_oauth_konstruksi_tanpa_kredensial(nama, model, kelas):
-    prov = build_byok_provider(nama, model)
+def test_build_oauth_konstruksi_without_kredensial(name, model, klass):
+    prov = build_byok_provider(name, model)
     assert isinstance(prov, LLMProvider)
-    assert type(prov).__name__ == kelas
+    assert type(prov).__name__ == klass
 
 
-def test_build_bedrock_tanpa_boto3_gagal_di_konstruksi():
+def test_build_bedrock_without_boto3_failed_di_konstruksi():
     # boto3 tidak terpasang di venv ini: konstruksi tanpa client inject
     # harus gagal jelas (bukan klaim mock). Dengan fake client, jalan.
     with pytest.raises(RuntimeError, match="boto3"):
@@ -225,66 +225,66 @@ def test_wrapper_openrouter_provider():
 
 def test_mock_openai_chat_completions():
     with MockProviderServer() as server:
-        ringkas = asyncio.run(check_openai_compat("openai", "gpt-4o-mini", server))
-    assert ringkas["hasil"] == "mock lolos"
-    assert ringkas["endpoint"] == "/v1/chat/completions"
+        summarize = asyncio.run(check_openai_compat("openai", "gpt-4o-mini", server))
+    assert summarize["result"] == "mock lolos"
+    assert summarize["endpoint"] == "/v1/chat/completions"
 
 
 def test_mock_gemini_via_compat():
     with MockProviderServer() as server:
-        ringkas = asyncio.run(check_openai_compat("gemini", "gemini-2.5-flash", server))
-    assert ringkas["hasil"] == "mock lolos"
+        summarize = asyncio.run(check_openai_compat("gemini", "gemini-2.5-flash", server))
+    assert summarize["result"] == "mock lolos"
 
 
 def test_mock_groq_deepseek():
     with MockProviderServer() as server:
-        assert asyncio.run(check_openai_compat("groq", "llama-3.1-8b-instant", server))["hasil"] == "mock lolos"
-        assert asyncio.run(check_openai_compat("deepseek", "deepseek-chat", server))["hasil"] == "mock lolos"
+        assert asyncio.run(check_openai_compat("groq", "llama-3.1-8b-instant", server))["result"] == "mock lolos"
+        assert asyncio.run(check_openai_compat("deepseek", "deepseek-chat", server))["result"] == "mock lolos"
 
 
-def test_mock_together_satu_baris_config():
+def test_mock_together_satu_rows_config():
     with MockProviderServer() as server:
-        ringkas = asyncio.run(check_openai_compat(
+        summarize = asyncio.run(check_openai_compat(
             "together", "meta-llama/Llama-3.1-8b-Instruct", server))
-    assert ringkas["hasil"] == "mock lolos"
+    assert summarize["result"] == "mock lolos"
 
 
 def test_mock_openai_compatible_generik():
     with MockProviderServer() as server:
-        ringkas = asyncio.run(check_openai_compat("openai_compatible", "model-generik-mock", server))
-    assert ringkas["hasil"] == "mock lolos"
+        summarize = asyncio.run(check_openai_compat("openai_compatible", "model-generik-mock", server))
+    assert summarize["result"] == "mock lolos"
 
 
 def test_mock_ollama_lokal():
     with MockProviderServer() as server:
-        ringkas = asyncio.run(check_openai_compat("ollama", "llama3.1:8b", server))
-    assert ringkas["hasil"] == "mock lolos"
+        summarize = asyncio.run(check_openai_compat("ollama", "llama3.1:8b", server))
+    assert summarize["result"] == "mock lolos"
 
 
 def test_mock_anthropic_messages():
     with MockProviderServer() as server:
-        ringkas = asyncio.run(check_anthropic(server))
-    assert ringkas["hasil"] == "mock lolos"
-    assert ringkas["endpoint"] == "/v1/messages"
+        summarize = asyncio.run(check_anthropic(server))
+    assert summarize["result"] == "mock lolos"
+    assert summarize["endpoint"] == "/v1/messages"
 
 
 def test_mock_azure_responses():
     with MockProviderServer() as server:
-        ringkas = asyncio.run(check_azure(server))
-    assert ringkas["hasil"] == "mock lolos"
-    assert ringkas["endpoint"] == "/openai/v1/responses"
+        summarize = asyncio.run(check_azure(server))
+    assert summarize["result"] == "mock lolos"
+    assert summarize["endpoint"] == "/openai/v1/responses"
 
 
 def test_mock_bedrock_fake_client():
-    ringkas = asyncio.run(check_bedrock_fake_client())
-    assert ringkas["hasil"] == "mock lolos (fake client)"
+    summarize = asyncio.run(check_bedrock_fake_client())
+    assert summarize["result"] == "mock lolos (fake client)"
 
 
-def test_mock_semua_provider_sekaligus(tmp_path):
-    hasil = asyncio.run(run_mock_checks(tmp_path))
-    assert len(hasil) == 10
-    assert all("lolos" in h["hasil"] for h in hasil)
-    assert {h["provider"] for h in hasil} == {
+def test_mock_all_provider_sekaligus(tmp_path):
+    result = asyncio.run(run_mock_checks(tmp_path))
+    assert len(result) == 10
+    assert all("passed" in h["result"] for h in result)
+    assert {h["provider"] for h in result} == {
         "openai", "gemini", "groq", "deepseek", "together", "ollama",
         "openai_compatible", "anthropic", "azure_openai", "bedrock",
     }

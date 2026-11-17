@@ -30,8 +30,8 @@ def _reset_revocation():
 def stub_log():
     events = []
 
-    def log(jenis, isi):
-        events.append((jenis, isi))
+    def log(jenis, content):
+        events.append((jenis, content))
 
     log.events = events
     return log
@@ -41,12 +41,12 @@ def _payload(**overrides):
     now = int(time.time())
     payload = {
         "user_id": "user-1",
-        "agen_id": "agen-puspa",
-        "sub_agen_id": None,
-        "tools": ["gmail.kirim", "calendar.buat_event", "siapkan_bayar"],
+        "agent_id": "agen-puspa",
+        "subagent_id": None,
+        "tools": ["gmail.kirim", "calendar.create_event", "prepare_payment"],
         "domains": ["tokopedia.com"],
-        "konektor": {"gmail": ["baca", "kirim"], "calendar": ["baca", "buat_event"]},
-        "anggaran": {"langkah_max": 25, "token_max": 100000, "rupiah_max": 1000000},
+        "connectors": {"gmail": ["read", "send"], "calendar": ["read", "create_event"]},
+        "anggaran": {"step_max": 25, "token_max": 100000, "rupiah_max": 1000000},
         "exp": now + 3600,
         "iat": now,
         "parent": None,
@@ -72,26 +72,26 @@ def test_request_approve_execute_ok(ephemeral_keys, stub_log):
     token = _token(ephemeral_keys)
     req = gate.request_approval(
         user_id="user-1",
-        agen_id="agen-puspa",
+        agent_id="agen-puspa",
         token=token,
-        kind="kirim",
-        isi={"penerima": "a@contoh.id", "judul": "Halo", "isi": "tes"},
+        kind="send",
+        content={"penerima": "a@contoh.id", "title": "Halo", "content": "tes"},
     )
     assert req.status == "diminta"
-    assert ("persetujuan_diminta", req.request_id) in [
+    assert ("approval_requested", req.request_id) in [
         (j, i.get("request_id")) for j, i in stub_log.events
     ]
     # Belum disetujui: tidak boleh dieksekusi.
     calls = []
     with pytest.raises(GateDenied):
-        gate.execute(req.request_id, executor=lambda isi: calls.append(isi))
+        gate.execute(req.request_id, executor=lambda content: calls.append(content))
     assert calls == []
 
     gate.approve(req.request_id, "user-1")
     assert req.status == "disetujui"
-    assert any(j == "persetujuan_diberikan" for j, _ in stub_log.events)
+    assert any(j == "approval_granted" for j, _ in stub_log.events)
 
-    result = gate.execute(req.request_id, executor=lambda isi: {"terkirim": isi["penerima"]})
+    result = gate.execute(req.request_id, executor=lambda content: {"terkirim": content["penerima"]})
     assert result == {"terkirim": "a@contoh.id"}
     assert req.status == "dieksekusi"
 
@@ -99,8 +99,8 @@ def test_request_approve_execute_ok(ephemeral_keys, stub_log):
 def test_approve_only_owner(ephemeral_keys, stub_log):
     gate = _gate(ephemeral_keys, stub_log)
     req = gate.request_approval(
-        user_id="user-1", agen_id="agen-puspa", token=_token(ephemeral_keys),
-        kind="kirim", isi={"penerima": "a@contoh.id"},
+        user_id="user-1", agent_id="agen-puspa", token=_token(ephemeral_keys),
+        kind="send", content={"penerima": "a@contoh.id"},
     )
     with pytest.raises(GateDenied):
         gate.approve(req.request_id, "user-2")
@@ -111,11 +111,11 @@ def test_approve_only_owner(ephemeral_keys, stub_log):
 
 def test_request_kind_not_allowed_by_token(ephemeral_keys, stub_log):
     gate = _gate(ephemeral_keys, stub_log)
-    token = _token(ephemeral_keys, tools=["baca_harga"], konektor={})
+    token = _token(ephemeral_keys, tools=["read_price"], connector={})
     with pytest.raises(GateDenied):
         gate.request_approval(
-            user_id="user-1", agen_id="agen-puspa", token=token,
-            kind="kirim", isi={"penerima": "a@contoh.id"},
+            user_id="user-1", agent_id="agen-puspa", token=token,
+            kind="send", content={"penerima": "a@contoh.id"},
         )
 
 
@@ -124,8 +124,8 @@ def test_request_expired_token_denied(ephemeral_keys, stub_log):
     token = _token(ephemeral_keys, exp=int(time.time()) - 5)
     with pytest.raises(GateDenied):
         gate.request_approval(
-            user_id="user-1", agen_id="agen-puspa", token=token,
-            kind="kirim", isi={"penerima": "a@contoh.id"},
+            user_id="user-1", agent_id="agen-puspa", token=token,
+            kind="send", content={"penerima": "a@contoh.id"},
         )
 
 
@@ -133,8 +133,8 @@ def test_request_unknown_kind_denied(ephemeral_keys, stub_log):
     gate = _gate(ephemeral_keys, stub_log)
     with pytest.raises(GateDenied):
         gate.request_approval(
-            user_id="user-1", agen_id="agen-puspa", token=_token(ephemeral_keys),
-            kind="telepon", isi={},
+            user_id="user-1", agent_id="agen-puspa", token=_token(ephemeral_keys),
+            kind="phone", content={},
         )
 
 
@@ -143,18 +143,18 @@ def test_request_unknown_kind_denied(ephemeral_keys, stub_log):
 def test_changed_content_voids_approval(ephemeral_keys, stub_log):
     gate = _gate(ephemeral_keys, stub_log)
     req = gate.request_approval(
-        user_id="user-1", agen_id="agen-puspa", token=_token(ephemeral_keys),
-        kind="siapkan_bayar",
-        isi={"tujuan": "PLN", "nominal": 50000},
+        user_id="user-1", agent_id="agen-puspa", token=_token(ephemeral_keys),
+        kind="prepare_payment",
+        content={"purpose": "PLN", "nominal": 50000},
     )
     gate.approve(req.request_id, "user-1")
     # Isi diubah setelah disetujui (mis. nominal diganti).
-    req.isi["nominal"] = 500000
+    req.content["nominal"] = 500000
     calls = []
     with pytest.raises(GateDenied):
-        gate.execute(req.request_id, executor=lambda isi: calls.append(isi))
+        gate.execute(req.request_id, executor=lambda content: calls.append(content))
     assert calls == []
-    assert any(j == "persetujuan_ditolak" for j, _ in stub_log.events)
+    assert any(j == "approval_rejected" for j, _ in stub_log.events)
 
 
 # --- Eksekusi tepat sekali -------------------------------------------------
@@ -162,15 +162,15 @@ def test_changed_content_voids_approval(ephemeral_keys, stub_log):
 def test_double_execute_runs_once(ephemeral_keys, stub_log):
     gate = _gate(ephemeral_keys, stub_log)
     req = gate.request_approval(
-        user_id="user-1", agen_id="agen-puspa", token=_token(ephemeral_keys),
-        kind="buat_event",
-        isi={"judul": "Rapat", "waktu": "2026-11-20T10:00:00+07:00"},
+        user_id="user-1", agent_id="agen-puspa", token=_token(ephemeral_keys),
+        kind="create_event",
+        content={"title": "Rapat", "created_at": "2026-11-20T10:00:00+07:00"},
     )
     gate.approve(req.request_id, "user-1")
     calls = []
 
-    def executor(isi):
-        calls.append(dict(isi))
+    def executor(content):
+        calls.append(dict(content))
         return {"event_id": "evt-1"}
 
     assert gate.execute(req.request_id, executor=executor) == {"event_id": "evt-1"}
@@ -189,13 +189,13 @@ def test_spending_limit_default_zero_blocks_payment(ephemeral_keys, stub_log):
 
     gate = _gate(ephemeral_keys, stub_log, spending=spending)
     req = gate.request_approval(
-        user_id="user-1", agen_id="agen-puspa", token=_token(ephemeral_keys),
-        kind="siapkan_bayar", isi={"tujuan": "PLN", "nominal": 50000},
+        user_id="user-1", agent_id="agen-puspa", token=_token(ephemeral_keys),
+        kind="prepare_payment", content={"purpose": "PLN", "nominal": 50000},
     )
     gate.approve(req.request_id, "user-1")
     calls = []
     with pytest.raises(GateDenied):
-        gate.execute(req.request_id, executor=lambda isi: calls.append(isi))
+        gate.execute(req.request_id, executor=lambda content: calls.append(content))
     assert calls == []
 
 
@@ -207,11 +207,11 @@ def test_spending_limit_raised_allows_payment(ephemeral_keys, stub_log):
 
     gate = _gate(ephemeral_keys, stub_log, spending=spending)
     req = gate.request_approval(
-        user_id="user-1", agen_id="agen-puspa", token=_token(ephemeral_keys),
-        kind="siapkan_bayar", isi={"tujuan": "PLN", "nominal": 50000},
+        user_id="user-1", agent_id="agen-puspa", token=_token(ephemeral_keys),
+        kind="prepare_payment", content={"purpose": "PLN", "nominal": 50000},
     )
     gate.approve(req.request_id, "user-1")
-    assert gate.execute(req.request_id, executor=lambda isi: "lunas") == "lunas"
+    assert gate.execute(req.request_id, executor=lambda content: "paid_off") == "paid_off"
 
 
 def test_approval_without_limit_still_blocked_and_vice_versa(ephemeral_keys, stub_log):
@@ -220,12 +220,12 @@ def test_approval_without_limit_still_blocked_and_vice_versa(ephemeral_keys, stu
     spending.set_limit(100000)
     gate = _gate(ephemeral_keys, stub_log, spending=spending)
     req = gate.request_approval(
-        user_id="user-1", agen_id="agen-puspa", token=_token(ephemeral_keys),
-        kind="siapkan_bayar", isi={"tujuan": "PLN", "nominal": 1000},
+        user_id="user-1", agent_id="agen-puspa", token=_token(ephemeral_keys),
+        kind="prepare_payment", content={"purpose": "PLN", "nominal": 1000},
     )
     calls = []
     with pytest.raises(GateDenied):
-        gate.execute(req.request_id, executor=lambda isi: calls.append(isi))
+        gate.execute(req.request_id, executor=lambda content: calls.append(content))
     assert calls == []
 
 
@@ -247,14 +247,14 @@ def test_revoked_token_rejected_at_execute(ephemeral_keys, stub_log):
     gate = _gate(ephemeral_keys, stub_log)
     token = _token(ephemeral_keys)
     req = gate.request_approval(
-        user_id="user-1", agen_id="agen-puspa", token=token,
-        kind="kirim", isi={"penerima": "a@contoh.id"},
+        user_id="user-1", agent_id="agen-puspa", token=token,
+        kind="send", content={"penerima": "a@contoh.id"},
     )
     gate.approve(req.request_id, "user-1")
     revoke(token_id(token))
     calls = []
     with pytest.raises(GateDenied):
-        gate.execute(req.request_id, executor=lambda isi: calls.append(isi))
+        gate.execute(req.request_id, executor=lambda content: calls.append(content))
     assert calls == []
 
 
@@ -264,8 +264,8 @@ def test_revoked_token_rejected_at_request(ephemeral_keys, stub_log):
     revoke(token)
     with pytest.raises(GateDenied):
         gate.request_approval(
-            user_id="user-1", agen_id="agen-puspa", token=token,
-            kind="kirim", isi={"penerima": "a@contoh.id"},
+            user_id="user-1", agent_id="agen-puspa", token=token,
+            kind="send", content={"penerima": "a@contoh.id"},
         )
 
 
@@ -273,6 +273,6 @@ def test_gate_without_public_key_rejects_string_token(ephemeral_keys, stub_log):
     gate = Gate(log=stub_log, spending=None)  # tanpa public_key
     with pytest.raises(GateDenied):
         gate.request_approval(
-            user_id="user-1", agen_id="agen-puspa", token=_token(ephemeral_keys),
-            kind="kirim", isi={"penerima": "a@contoh.id"},
+            user_id="user-1", agent_id="agen-puspa", token=_token(ephemeral_keys),
+            kind="send", content={"penerima": "a@contoh.id"},
         )

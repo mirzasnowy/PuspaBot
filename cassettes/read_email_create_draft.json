@@ -1,0 +1,32 @@
+{
+  "task_id": "tugas-acuan-read_email_create_draft",
+  "name": "read_email_create_draft",
+  "recording": [
+    {
+      "tool": "gmail_search",
+      "output": {
+        "jenis": "email",
+        "amount": 1,
+        "id": [
+          "m-uji-1"
+        ]
+      }
+    },
+    {
+      "tool": "gmail_read",
+      "output": {
+        "jenis": "email",
+        "value": 1,
+        "text": "[DATA: Halo, tolong kirim laporan minggu ini.]"
+      }
+    },
+    {
+      "tool": "gmail_create_draft",
+      "output": {
+        "jenis": "draft",
+        "value": 1,
+        "id": "draf-uji-1"
+      }
+    }
+  ]
+}

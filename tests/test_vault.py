@@ -106,7 +106,7 @@ def test_master_key_never_in_database(test_dsn, vault_master_key):
         columns = [d.name for d in conn.execute("SELECT * FROM vault LIMIT 0").description]
     assert rows, "tabel vault harus berisi entri yang baru ditulis"
     # Tidak ada kolom bernama master/kunci.
-    assert not any("master" in c.lower() or "kunci" in c.lower() for c in columns)
+    assert not any("master" in c.lower() or "key" in c.lower() for c in columns)
     # Tidak ada nilai di tabel yang memuat bytes kunci master (mentah
     # maupun bentuk base64-nya yang dipakai di env).
     blob = b"\n".join(str(v).encode() for row in rows for v in row)

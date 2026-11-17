@@ -22,7 +22,7 @@ dengan subclassing ``SkillsLoader`` dan meng-override ``_load_skill``
 Skill Puspa = direktori dengan ``SKILL.md`` (frontmatter agentskills
 untuk nanobot) + ``manifest.json`` Puspa (``{name, version, tools[],
 domains[], konektor{}, author, signature}``, ditandatangani dengan
-``puspa.policy.skills.sign_skill``). Isi yang lolos verifikasi lalu
+``puspa.policy.skill_signing.sign_skill``). Isi yang lolos verifikasi lalu
 mengalir ke prompt seperti skill nanobot biasa.
 """
 
@@ -32,7 +32,7 @@ from pathlib import Path
 
 from nanobot.agent.skills import SkillsLoader
 
-from puspa.policy.skills import verify_skill
+from puspa.policy.skill_signing import verify_skill
 
 __all__ = ["PuspaSkillsLoader"]
 

@@ -56,12 +56,12 @@ if str(_NANOBOT_LOCAL) not in sys.path and (_NANOBOT_LOCAL / "nanobot" / "__init
 from byok_provider import MOCK_KEY, build_byok_provider  # noqa: E402
 
 #: Tool kalengan yang dipakai di semua format protokol.
-TOOL_NAME = "baca_file"
+TOOL_NAME = "read_file"
 TOOL_ARGS = {"path": "/tmp/contoh.txt"}
 TOOL_ARGS_JSON = json.dumps(TOOL_ARGS, ensure_ascii=False)
 
 #: Pesan + tool standar untuk setiap panggilan mock.
-MOCK_MESSAGES = [{"role": "user", "content": "Baca /tmp/contoh.txt dengan tool baca_file."}]
+MOCK_MESSAGES = [{"role": "users", "content": "Baca /tmp/contoh.txt dengan tool read_file."}]
 MOCK_TOOLS = [{
     "type": "function",
     "function": {
@@ -168,7 +168,7 @@ class MockProviderServer:
                 try:
                     body = json.loads(raw.decode("utf-8")) if raw else None
                 except Exception:
-                    body = {"_raw_tidak_json": raw.decode("utf-8", "replace")}
+                    body = {"_raw_not_json": raw.decode("utf-8", "replace")}
                 record = {
                     "method": self.command,
                     "path": self.path,
@@ -287,7 +287,7 @@ async def check_openai_compat(provider: str, model: str, server: MockProviderSer
     assert body.get("tools"), f"{provider}: body tanpa tools"
     return {"provider": provider, "model": model, "endpoint": req["path"],
             "auth_header": "Authorization: Bearer <mock-key>",
-            "pesan_format": "openai chat-completions", "hasil": "mock lolos"}
+            "message_format": "openai chat-completions", "result": "mock lolos"}
 
 
 async def check_anthropic(server: MockProviderServer, *, key: str = MOCK_KEY) -> dict[str, Any]:
@@ -310,7 +310,7 @@ async def check_anthropic(server: MockProviderServer, *, key: str = MOCK_KEY) ->
     assert isinstance(body.get("messages"), list), "anthropic: body tanpa messages"
     return {"provider": "anthropic", "model": model, "endpoint": req["path"],
             "auth_header": "x-api-key: <mock-key> (+ anthropic-version)",
-            "pesan_format": "anthropic messages", "hasil": "mock lolos"}
+            "message_format": "anthropic messages", "result": "mock lolos"}
 
 
 async def check_azure(server: MockProviderServer, *, key: str = MOCK_KEY) -> dict[str, Any]:
@@ -331,7 +331,7 @@ async def check_azure(server: MockProviderServer, *, key: str = MOCK_KEY) -> dic
     assert body.get("model") == model, f"azure: body model={body.get('model')!r}"
     return {"provider": "azure_openai", "model": model, "endpoint": req["path"],
             "auth_header": "Authorization: Bearer <mock-key>",
-            "pesan_format": "openai responses", "hasil": "mock lolos"}
+            "message_format": "openai responses", "result": "mock lolos"}
 
 
 async def check_bedrock_fake_client() -> dict[str, Any]:
@@ -352,12 +352,12 @@ async def check_bedrock_fake_client() -> dict[str, Any]:
     assert kwargs.get("toolConfig", {}).get("tools"), "bedrock: kwargs tanpa toolConfig.tools"
     return {"provider": "bedrock", "model": model, "endpoint": "converse (fake client, bukan HTTP)",
             "auth_header": "kredensial AWS (SigV4) — tidak lewat HTTP mock",
-            "pesan_format": "bedrock converse", "hasil": "mock lolos (fake client)"}
+            "message_format": "bedrock converse", "result": "mock lolos (fake client)"}
 
 
 async def run_mock_checks(out_dir: str | Path | None = None) -> list[dict[str, Any]]:
     """Jalankan SEMUA cek mock, simpan log request per provider, kembalikan ringkasan."""
-    hasil: list[dict[str, Any]] = []
+    result: list[dict[str, Any]] = []
     out = Path(out_dir) if out_dir else _DEMO_DIR / "mock_logs"
     out.mkdir(parents=True, exist_ok=True)
     with MockProviderServer() as server:
@@ -371,30 +371,30 @@ async def run_mock_checks(out_dir: str | Path | None = None) -> list[dict[str, A
             ("ollama", "llama3.1:8b"),
             ("openai_compatible", "model-generik-mock"),
         ]
-        for nama, model in compat_cases:
+        for name, model in compat_cases:
             sebelum = len(server.requests)
-            ringkas = await check_openai_compat(nama, model, server)
-            ringkas["request_log"] = str(out / f"{nama}.json")
-            hasil.append(ringkas)
+            summarize = await check_openai_compat(name, model, server)
+            summarize["request_log"] = str(out / f"{name}.json")
+            result.append(summarize)
             # Simpan HANYA request milik cek ini.
-            (out / f"{nama}.json").write_text(
+            (out / f"{name}.json").write_text(
                 json.dumps(server.requests[sebelum:], indent=2, ensure_ascii=False), encoding="utf-8")
         sebelum = len(server.requests)
-        ringkas = await check_anthropic(server)
-        ringkas["request_log"] = str(out / "anthropic.json")
-        hasil.append(ringkas)
+        summarize = await check_anthropic(server)
+        summarize["request_log"] = str(out / "anthropic.json")
+        result.append(summarize)
         (out / "anthropic.json").write_text(
             json.dumps(server.requests[sebelum:], indent=2, ensure_ascii=False), encoding="utf-8")
         sebelum = len(server.requests)
-        ringkas = await check_azure(server)
-        ringkas["request_log"] = str(out / "azure_openai.json")
-        hasil.append(ringkas)
+        summarize = await check_azure(server)
+        summarize["request_log"] = str(out / "azure_openai.json")
+        result.append(summarize)
         (out / "azure_openai.json").write_text(
             json.dumps(server.requests[sebelum:], indent=2, ensure_ascii=False), encoding="utf-8")
-    ringkas = await check_bedrock_fake_client()
-    ringkas["request_log"] = "(fake client boto3 — kwargs converse, bukan HTTP; lihat tes)"
-    hasil.append(ringkas)
-    return hasil
+    summarize = await check_bedrock_fake_client()
+    summarize["request_log"] = "(fake client boto3 — kwargs converse, bukan HTTP; lihat tes)"
+    result.append(summarize)
+    return result
 
 
 def main() -> int:
@@ -403,10 +403,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Mock harness BYOK (tanpa kunci, tanpa internet).")
     parser.add_argument("--out", default=str(_DEMO_DIR / "mock_logs"))
     args = parser.parse_args()
-    hasil = asyncio.run(run_mock_checks(args.out))
-    print(f"Mock BYOK: {len(hasil)}/{len(hasil)} provider lolos")
-    for h in hasil:
-        print(f"  - {h['provider']:18s} {h['model']:35s} {h['endpoint']}  [{h['hasil']}]")
+    result = asyncio.run(run_mock_checks(args.out))
+    print(f"Mock BYOK: {len(result)}/{len(result)} provider lolos")
+    for h in result:
+        print(f"  - {h['provider']:18s} {h['model']:35s} {h['endpoint']}  [{h['result']}]")
     print(f"Log request per provider: {args.out}/<provider>.json")
     return 0
 

@@ -2,111 +2,111 @@
 -- Tabel fase 0/1/2/3 tidak disentuh. RLS mengikuti pola fase 0/1/2/3:
 -- kebijakan `isolasi_<tabel>` memakai current_setting('app.current_user_id').
 
-CREATE TABLE IF NOT EXISTS alur (
+CREATE TABLE IF NOT EXISTS workflows (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
-    agen_id TEXT NOT NULL,
-    nama TEXT NOT NULL,
-    pemicu JSONB NOT NULL DEFAULT '{}'::jsonb,
-    langkah JSONB NOT NULL DEFAULT '[]'::jsonb,
-    status TEXT NOT NULL DEFAULT 'draf',
-    versi_aktif INTEGER NOT NULL DEFAULT 1,
-    gagal_berturut INTEGER NOT NULL DEFAULT 0,
-    jalan_sukses INTEGER NOT NULL DEFAULT 0,
-    dibuat TIMESTAMPTZ NOT NULL DEFAULT now(),
-    diubah TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT alur_status_cek CHECK (status IN ('draf', 'aktif', 'dijeda', 'dihapus'))
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    trigger JSONB NOT NULL DEFAULT '{}'::jsonb,
+    step JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status TEXT NOT NULL DEFAULT 'draft',
+    active_version INTEGER NOT NULL DEFAULT 1,
+    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+    successful_runs INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT workflow_status_check CHECK (status IN ('draft', 'active', 'paused', 'deleted'))
 );
 
-CREATE TABLE IF NOT EXISTS alur_versi (
+CREATE TABLE IF NOT EXISTS workflow_versions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    alur_id UUID NOT NULL REFERENCES alur(id) ON DELETE CASCADE,
+    workflow_id UUID NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
     versi INTEGER NOT NULL,
-    pemicu JSONB NOT NULL DEFAULT '{}'::jsonb,
-    langkah JSONB NOT NULL DEFAULT '[]'::jsonb,
-    dibuat TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (alur_id, versi)
+    trigger JSONB NOT NULL DEFAULT '{}'::jsonb,
+    step JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (workflow_id, versi)
 );
 
-CREATE TABLE IF NOT EXISTS jalan_alur (
+CREATE TABLE IF NOT EXISTS workflow_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    alur_id UUID NOT NULL REFERENCES alur(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
-    tugas_id TEXT NOT NULL,
-    pemicu_jenis TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'selesai',
-    biaya_rp INTEGER NOT NULL DEFAULT 0,
-    langkah_hasil JSONB NOT NULL DEFAULT '[]'::jsonb,
-    alasan TEXT NOT NULL DEFAULT '',
-    dimulai TIMESTAMPTZ NOT NULL DEFAULT now(),
-    selesai TIMESTAMPTZ
+    workflow_id UUID NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    task_id TEXT NOT NULL,
+    trigger_jenis TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'completed',
+    cost_rp INTEGER NOT NULL DEFAULT 0,
+    step_results JSONB NOT NULL DEFAULT '[]'::jsonb,
+    reason TEXT NOT NULL DEFAULT '',
+    started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at TIMESTAMPTZ
 );
 
-CREATE TABLE IF NOT EXISTS persetujuan_alur (
+CREATE TABLE IF NOT EXISTS workflow_approvals (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    jalan_id UUID NOT NULL REFERENCES jalan_alur(id) ON DELETE CASCADE,
-    alur_id UUID NOT NULL REFERENCES alur(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
-    aksi JSONB NOT NULL,
-    isi_hash TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'menunggu',
-    dibuat TIMESTAMPTZ NOT NULL DEFAULT now(),
-    kedaluwarsa TIMESTAMPTZ NOT NULL,
-    CONSTRAINT persetujuan_alur_status_cek
-        CHECK (status IN ('menunggu', 'diberikan', 'ditolak', 'kedaluwarsa', 'dibatalkan'))
+    jalan_id UUID NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
+    workflow_id UUID NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    action JSONB NOT NULL,
+    content_hash TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT approval_workflow_status_check
+        CHECK (status IN ('pending', 'granted', 'rejected', 'expired', 'cancelled'))
 );
 
-CREATE TABLE IF NOT EXISTS modul (
+CREATE TABLE IF NOT EXISTS modules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
-    nama TEXT NOT NULL,
-    manifes JSONB NOT NULL,
-    status TEXT NOT NULL DEFAULT 'draf',
-    versi_aktif INTEGER NOT NULL DEFAULT 1,
-    dibuat TIMESTAMPTZ NOT NULL DEFAULT now(),
-    diubah TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT modul_status_cek CHECK (status IN ('draf', 'aktif', 'dijeda', 'dihapus'))
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    manifest JSONB NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    active_version INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT module_status_check CHECK (status IN ('draft', 'active', 'paused', 'deleted'))
 );
 
-CREATE TABLE IF NOT EXISTS modul_versi (
+CREATE TABLE IF NOT EXISTS module_versions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    modul_id UUID NOT NULL REFERENCES modul(id) ON DELETE CASCADE,
+    module_id UUID NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
     versi INTEGER NOT NULL,
-    manifes JSONB NOT NULL,
-    dibuat TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (modul_id, versi)
+    manifest JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (module_id, versi)
 );
 
-CREATE TABLE IF NOT EXISTS tabel_modul (
+CREATE TABLE IF NOT EXISTS module_tables (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    modul_id UUID NOT NULL REFERENCES modul(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
-    nama TEXT NOT NULL,
+    module_id UUID NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
     kolom JSONB NOT NULL DEFAULT '[]'::jsonb,
-    UNIQUE (modul_id, nama)
+    UNIQUE (module_id, name)
 );
 
-CREATE TABLE IF NOT EXISTS baris_modul (
+CREATE TABLE IF NOT EXISTS module_rows (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tabel_id UUID NOT NULL REFERENCES tabel_modul(id) ON DELETE CASCADE,
-    modul_id UUID NOT NULL REFERENCES modul(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
+    table_id UUID NOT NULL REFERENCES module_tables(id) ON DELETE CASCADE,
+    module_id UUID NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     data JSONB NOT NULL DEFAULT '{}'::jsonb,
-    dibuat TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_alur_user ON alur(user_id, status);
-CREATE INDEX IF NOT EXISTS idx_jalan_alur_alur ON jalan_alur(alur_id, dimulai DESC);
-CREATE INDEX IF NOT EXISTS idx_persetujuan_alur_jalan ON persetujuan_alur(jalan_id, status);
-CREATE INDEX IF NOT EXISTS idx_modul_user ON modul(user_id, status);
-CREATE INDEX IF NOT EXISTS idx_baris_modul_tabel ON baris_modul(tabel_id, dibuat DESC);
+CREATE INDEX IF NOT EXISTS idx_workflow_user ON workflows(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_jalan_workflow_workflow ON workflow_runs(workflow_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_approval_workflow_jalan ON workflow_approvals(jalan_id, status);
+CREATE INDEX IF NOT EXISTS idx_module_user ON modules(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_rows_module_table ON module_rows(table_id, created_at DESC);
 
-ALTER TABLE alur ENABLE ROW LEVEL SECURITY;
-ALTER TABLE jalan_alur ENABLE ROW LEVEL SECURITY;
-ALTER TABLE persetujuan_alur ENABLE ROW LEVEL SECURITY;
-ALTER TABLE modul ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tabel_modul ENABLE ROW LEVEL SECURITY;
-ALTER TABLE baris_modul ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workflows ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workflow_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workflow_approvals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE modules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE module_tables ENABLE ROW LEVEL SECURITY;
+ALTER TABLE module_rows ENABLE ROW LEVEL SECURITY;
 -- alur_versi / modul_versi TIDAK memakai RLS (tidak punya user_id
 -- sendiri): isolasinya lewat pemilik alur/modul, dicek kode aplikasi
 -- di setiap baca/tulis versi (lihat puspa/workflow/runner.py dan
@@ -116,8 +116,8 @@ DO $$
 DECLARE
     t TEXT;
 BEGIN
-    FOREACH t IN ARRAY ARRAY['alur', 'jalan_alur', 'persetujuan_alur',
-                             'modul', 'tabel_modul', 'baris_modul'] LOOP
+    FOREACH t IN ARRAY ARRAY['workflows', 'workflow_runs', 'workflow_approvals',
+                             'modules', 'module_tables', 'module_rows'] LOOP
         EXECUTE format('DROP POLICY IF EXISTS %I ON %I', 'isolasi_' || t, t);
         EXECUTE format(
             'CREATE POLICY %I ON %I USING (current_setting(%L, true) = user_id::text) WITH CHECK (current_setting(%L, true) = user_id::text)',

@@ -28,9 +28,9 @@ from psycopg.rows import dict_row
 
 from .schema import resolve_dsn
 
-ASAL_VALUES = ("diucapkan_user", "dikonfirmasi_user", "disimpulkan")
-STATUS_BERLAKU = "berlaku"
-STATUS_USULAN = "usulan"
+SOURCE_VALUES = ("user_stated", "user_confirmed", "inferred")
+STATUS_ACTIVE = "active"
+STATUS_PROPOSED = "proposed"
 
 
 def _connect(dsn=None):
@@ -41,54 +41,54 @@ def _row_to_fact(row):
     return {
         "id": str(row["id"]),
         "user_id": str(row["user_id"]),
-        "agen_id": str(row["agen_id"]) if row["agen_id"] else None,
-        "kunci": row["kunci"],
-        "nilai": row["nilai"],
-        "asal": row["asal"],
+        "agent_id": str(row["agent_id"]) if row["agent_id"] else None,
+        "key": row["key"],
+        "value": row["value"],
+        "source": row["source"],
         "status": row["status"],
-        "berlaku_dari": row["berlaku_dari"],
-        "berlaku_sampai": row["berlaku_sampai"],
-        "kejadian_id": str(row["kejadian_id"]) if row["kejadian_id"] else None,
-        "dibuat": row["dibuat"],
+        "valid_from": row["valid_from"],
+        "valid_until": row["valid_until"],
+        "event_id": str(row["event_id"]) if row["event_id"] else None,
+        "created_at": row["created_at"],
     }
 
 
-def add_fact(user_id, kunci, nilai, asal, agen_id=None, kejadian_id=None, dsn=None):
+def add_fact(user_id, key, value, source, agent_id=None, event_id=None, dsn=None):
     """Tambah fakta. Kembalikan dict fakta + `konflik_dengan` (id atau None).
 
     - `asal='disimpulkan'` -> status `usulan` (tidak masuk profil).
     - `asal` lain -> status `berlaku`; fakta aktif dengan kunci (+agen)
       yang sama diganti (status `diganti`, `berlaku_sampai`=now).
     """
-    if asal not in ASAL_VALUES:
-        raise ValueError(f"asal tidak dikenal: {asal!r}")
-    if not kunci or not isinstance(kunci, str):
+    if source not in SOURCE_VALUES:
+        raise ValueError(f"asal tidak dikenal: {source!r}")
+    if not key or not isinstance(key, str):
         raise ValueError("kunci harus string tak kosong")
-    if not isinstance(nilai, str) or nilai == "":
+    if not isinstance(value, str) or value == "":
         raise ValueError("nilai harus string tak kosong")
-    status = STATUS_USULAN if asal == "disimpulkan" else STATUS_BERLAKU
+    status = STATUS_PROPOSED if source == "inferred" else STATUS_ACTIVE
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             konflik_dengan = None
-            if status == STATUS_BERLAKU:
+            if status == STATUS_ACTIVE:
                 cur.execute(
-                    "SELECT id, nilai FROM fakta_profil WHERE user_id = %s "
-                    "AND kunci = %s AND status = 'berlaku' "
-                    "AND (agen_id IS NOT DISTINCT FROM %s)",
-                    (user_id, kunci, agen_id),
+                    "SELECT id, value FROM profile_facts WHERE user_id = %s "
+                    "AND key = %s AND status = 'active' "
+                    "AND (agent_id IS NOT DISTINCT FROM %s)",
+                    (user_id, key, agent_id),
                 )
                 for old in cur.fetchall():
                     konflik_dengan = str(old["id"])
                     cur.execute(
-                        "UPDATE fakta_profil SET status = 'diganti', "
-                        "berlaku_sampai = now() WHERE id = %s",
+                        "UPDATE profile_facts SET status = 'replaced', "
+                        "valid_until = now() WHERE id = %s",
                         (old["id"],),
                     )
             cur.execute(
-                "INSERT INTO fakta_profil (user_id, agen_id, kunci, nilai, "
-                "asal, status, kejadian_id) VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                "INSERT INTO profile_facts (user_id, agent_id, key, value, "
+                "source, status, event_id) VALUES (%s, %s, %s, %s, %s, %s, %s) "
                 "RETURNING *",
-                (user_id, agen_id, kunci, nilai, asal, status, kejadian_id),
+                (user_id, agent_id, key, value, source, status, event_id),
             )
             row = cur.fetchone()
         conn.commit()
@@ -97,7 +97,7 @@ def add_fact(user_id, kunci, nilai, asal, agen_id=None, kejadian_id=None, dsn=No
     return fact
 
 
-def get_profile(user_id, agen_id=None, dsn=None):
+def get_profile(user_id, agent_id=None, dsn=None):
     """Profil aktif: dict kunci -> nilai.
 
     Selalu memuat profil inti (agen_id NULL, milik Puspa); ditambah
@@ -105,43 +105,43 @@ def get_profile(user_id, agen_id=None, dsn=None):
     """
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            if agen_id is None:
+            if agent_id is None:
                 cur.execute(
-                    "SELECT kunci, nilai FROM fakta_profil WHERE user_id = %s "
-                    "AND agen_id IS NULL AND status = 'berlaku'",
+                    "SELECT key, value FROM profile_facts WHERE user_id = %s "
+                    "AND agent_id IS NULL AND status = 'active'",
                     (user_id,),
                 )
             else:
                 cur.execute(
-                    "SELECT kunci, nilai FROM fakta_profil WHERE user_id = %s "
-                    "AND (agen_id IS NULL OR agen_id = %s) AND status = 'berlaku'",
-                    (user_id, agen_id),
+                    "SELECT key, value FROM profile_facts WHERE user_id = %s "
+                    "AND (agent_id IS NULL OR agent_id = %s) AND status = 'active'",
+                    (user_id, agent_id),
                 )
-            return {r["kunci"]: r["nilai"] for r in cur.fetchall()}
+            return {r["key"]: r["value"] for r in cur.fetchall()}
 
 
-def list_facts(user_id, kunci=None, status=None, include_history=False, dsn=None):
+def list_facts(user_id, key=None, status=None, include_history=False, dsn=None):
     """Daftar fakta user; `include_history=True` memuat versi `diganti`."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            query = "SELECT * FROM fakta_profil WHERE user_id = %s"
+            query = "SELECT * FROM profile_facts WHERE user_id = %s"
             params = [user_id]
-            if kunci is not None:
-                query += " AND kunci = %s"
-                params.append(kunci)
+            if key is not None:
+                query += " AND key = %s"
+                params.append(key)
             if status is not None:
                 query += " AND status = %s"
                 params.append(status)
             elif not include_history:
                 query += " AND status IN ('berlaku', 'usulan')"
-            query += " ORDER BY dibuat ASC"
+            query += " ORDER BY created_at ASC"
             cur.execute(query, params)
             return [_row_to_fact(r) for r in cur.fetchall()]
 
 
 def list_proposals(user_id, dsn=None):
     """Usulan: fakta disimpulkan yang menunggu konfirmasi user."""
-    return list_facts(user_id, status=STATUS_USULAN, dsn=dsn)
+    return list_facts(user_id, status=STATUS_PROPOSED, dsn=dsn)
 
 
 def confirm_proposal(fact_id, user_id, dsn=None):
@@ -153,7 +153,7 @@ def confirm_proposal(fact_id, user_id, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT * FROM fakta_profil WHERE id = %s AND user_id = %s "
+                "SELECT * FROM profile_facts WHERE id = %s AND user_id = %s "
                 "AND status = 'usulan'",
                 (fact_id, user_id),
             )
@@ -161,13 +161,13 @@ def confirm_proposal(fact_id, user_id, dsn=None):
             if row is None:
                 raise KeyError(f"usulan tidak ditemukan: {fact_id}")
             cur.execute(
-                "UPDATE fakta_profil SET status = 'diganti', "
-                "berlaku_sampai = now() WHERE user_id = %s AND kunci = %s "
-                "AND status = 'berlaku' AND (agen_id IS NOT DISTINCT FROM %s)",
-                (user_id, row["kunci"], row["agen_id"]),
+                "UPDATE profile_facts SET status = 'replaced', "
+                "valid_until = now() WHERE user_id = %s AND key = %s "
+                "AND status = 'active' AND (agent_id IS NOT DISTINCT FROM %s)",
+                (user_id, row["key"], row["agent_id"]),
             )
             cur.execute(
-                "UPDATE fakta_profil SET status = 'berlaku', asal = 'dikonfirmasi_user' "
+                "UPDATE profile_facts SET status = 'active', source = 'user_confirmed' "
                 "WHERE id = %s RETURNING *",
                 (fact_id,),
             )
@@ -181,8 +181,8 @@ def reject_proposal(fact_id, user_id, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE fakta_profil SET status = 'ditolak', berlaku_sampai = now() "
-                "WHERE id = %s AND user_id = %s AND status = 'usulan' RETURNING *",
+                "UPDATE profile_facts SET status = 'rejected', valid_until = now() "
+                "WHERE id = %s AND user_id = %s AND status = 'proposed' RETURNING *",
                 (fact_id, user_id),
             )
             row = cur.fetchone()
@@ -192,11 +192,11 @@ def reject_proposal(fact_id, user_id, dsn=None):
     return _row_to_fact(row)
 
 
-def correct_fact(user_id, kunci, nilai, agen_id=None, kejadian_id=None, dsn=None):
+def correct_fact(user_id, key, value, agent_id=None, event_id=None, dsn=None):
     """Koreksi user: sama dengan tambah fakta `dikonfirmasi_user`."""
     return add_fact(
-        user_id, kunci, nilai, "dikonfirmasi_user",
-        agen_id=agen_id, kejadian_id=kejadian_id, dsn=dsn,
+        user_id, key, value, "user_confirmed",
+        agent_id=agent_id, event_id=event_id, dsn=dsn,
     )
 
 
@@ -208,8 +208,8 @@ def delete_fact(fact_id, user_id, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE fakta_profil SET status = 'ditolak', berlaku_sampai = now() "
-                "WHERE id = %s AND user_id = %s AND status IN ('berlaku', 'usulan') "
+                "UPDATE profile_facts SET status = 'rejected', valid_until = now() "
+                "WHERE id = %s AND user_id = %s AND status IN ('active', 'proposed') "
                 "RETURNING *",
                 (fact_id, user_id),
             )

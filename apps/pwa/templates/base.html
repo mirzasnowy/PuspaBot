@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f766e">
-<title>Puspa - {{ layar | capitalize }}</title>
+<title>Puspa - {{ screen | capitalize }}</title>
 <link rel="manifest" href="/manifest.json">
 <script src="https://unpkg.com/htmx.org@1.9.12"></script>
 <style>
@@ -23,15 +23,15 @@ input, select { padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; }
 <body>
 <header>
 <strong>Puspa</strong>
-<a href="/chat" class="{% if layar == 'chat' %}aktif{% endif %}">Chat</a>
-<a href="/tugas" class="{% if layar == 'tugas' %}aktif{% endif %}">Tugas</a>
-<a href="/modul" class="{% if layar == 'modul' %}aktif{% endif %}">Modul</a>
-<a href="/konektor" class="{% if layar == 'konektor' %}aktif{% endif %}">Konektor</a>
-<a href="/memori" class="{% if layar == 'memori' %}aktif{% endif %}">Memori</a>
-<a href="/pengaturan" class="{% if layar == 'pengaturan' %}aktif{% endif %}">Pengaturan</a>
-<a href="/kantor" class="{% if layar == 'kantor' %}aktif{% endif %}">Kantor</a>
+<a href="/chat" class="{% if screen == 'chat' %}aktif{% endif %}">Chat</a>
+<a href="/tugas" class="{% if screen == 'task' %}aktif{% endif %}">Tugas</a>
+<a href="/modul" class="{% if screen == 'module' %}aktif{% endif %}">Modul</a>
+<a href="/konektor" class="{% if screen == 'connector' %}aktif{% endif %}">Konektor</a>
+<a href="/memori" class="{% if screen == 'memory' %}aktif{% endif %}">Memori</a>
+<a href="/pengaturan" class="{% if screen == 'settings' %}aktif{% endif %}">Pengaturan</a>
+<a href="/kantor" class="{% if screen == 'office' %}aktif{% endif %}">Kantor</a>
 </header>
-<main>{% block isi %}{% endblock %}</main>
+<main>{% block content %}{% endblock %}</main>
 <script>
 if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(function(){}); }
 </script>

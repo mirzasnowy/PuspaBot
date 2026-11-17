@@ -11,8 +11,8 @@ from pathlib import Path
 import psycopg
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
-TABEL = ("alur", "alur_versi", "jalan_alur", "persetujuan_alur",
-         "modul", "modul_versi", "tabel_modul", "baris_modul")
+TABEL = ("workflows", "workflow_versi", "jalan_workflow", "approval_workflow",
+         "modules", "module_versi", "table_module", "rows_module")
 
 
 def _connect(dsn=None):

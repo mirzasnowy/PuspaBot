@@ -35,7 +35,7 @@ __all__ = [
     "is_revoked",
     "is_subset",
     "revoke",
-    "revoke_all_for_tugas",
+    "revoke_all_for_task",
     "token_id",
     "verify_token",
 ]
@@ -50,11 +50,11 @@ class TokenError(Exception):
 REQUIRED_FIELDS = frozenset(
     {
         "user_id",
-        "agen_id",
-        "sub_agen_id",
+        "agent_id",
+        "subagent_id",
         "tools",
         "domains",
-        "konektor",
+        "connectors",
         "anggaran",
         "exp",
         "iat",
@@ -63,7 +63,7 @@ REQUIRED_FIELDS = frozenset(
 )
 
 # Field wajib di dalam anggaran.
-ANGGARAN_FIELDS = frozenset({"langkah_max", "token_max", "rupiah_max"})
+ANGGARAN_FIELDS = frozenset({"step_max", "token_max", "rupiah_max"})
 
 # Registri in-memory: token_id -> payload (untuk revoke_all_for_tugas).
 _issued: dict[str, dict] = {}
@@ -116,9 +116,9 @@ def _normalize_id(token_or_id: str) -> str:
 def _validate_payload(payload: dict) -> None:
     if not isinstance(payload, dict):
         raise TokenError("payload token harus dict")
-    hilang = REQUIRED_FIELDS - set(payload)
-    if hilang:
-        raise TokenError(f"payload token kehilangan field: {sorted(hilang)}")
+    missing = REQUIRED_FIELDS - set(payload)
+    if missing:
+        raise TokenError(f"payload token kehilangan field: {sorted(missing)}")
     if not isinstance(payload["tools"], list) or not all(
         isinstance(t, str) for t in payload["tools"]
     ):
@@ -127,25 +127,25 @@ def _validate_payload(payload: dict) -> None:
         isinstance(d, str) for d in payload["domains"]
     ):
         raise TokenError("field domains harus list[str]")
-    if not isinstance(payload["konektor"], dict) or not all(
+    if not isinstance(payload["connectors"], dict) or not all(
         isinstance(k, str) and isinstance(v, list) and all(isinstance(s, str) for s in v)
-        for k, v in payload["konektor"].items()
+        for k, v in payload["connectors"].items()
     ):
         raise TokenError("field konektor harus {nama: [scope]}")
     anggaran = payload["anggaran"]
     if not isinstance(anggaran, dict):
         raise TokenError("field anggaran harus dict")
-    hilang_anggaran = ANGGARAN_FIELDS - set(anggaran)
-    if hilang_anggaran:
-        raise TokenError(f"anggaran kehilangan field: {sorted(hilang_anggaran)}")
-    for kunci in ANGGARAN_FIELDS:
-        if not isinstance(anggaran[kunci], (int, float)) or isinstance(anggaran[kunci], bool):
-            raise TokenError(f"anggaran.{kunci} harus angka")
-    for kunci in ("exp", "iat"):
-        if not isinstance(payload[kunci], int) or isinstance(payload[kunci], bool):
-            raise TokenError(f"field {kunci} harus unix timestamp (int)")
-    if payload["sub_agen_id"] is not None and not isinstance(payload["sub_agen_id"], str):
-        raise TokenError("field sub_agen_id harus str atau null")
+    missing_anggaran = ANGGARAN_FIELDS - set(anggaran)
+    if missing_anggaran:
+        raise TokenError(f"anggaran kehilangan field: {sorted(missing_anggaran)}")
+    for key in ANGGARAN_FIELDS:
+        if not isinstance(anggaran[key], (int, float)) or isinstance(anggaran[key], bool):
+            raise TokenError(f"anggaran.{key} harus angka")
+    for key in ("exp", "iat"):
+        if not isinstance(payload[key], int) or isinstance(payload[key], bool):
+            raise TokenError(f"field {key} harus unix timestamp (int)")
+    if payload["subagent_id"] is not None and not isinstance(payload["subagent_id"], str):
+        raise TokenError("field subagent_id harus str atau null")
     if payload["parent"] is not None and not isinstance(payload["parent"], str):
         raise TokenError("field parent harus str atau null")
 
@@ -156,11 +156,11 @@ def issue_token(payload: dict, signing_key: Ed25519PrivateKey) -> str:
     Payload pemanggil tidak diubah; salinannya yang ditandatangani.
     """
     _validate_payload(payload)
-    salinan = json.loads(canonical_json(payload).decode("utf-8"))
-    raw = canonical_json(salinan)
+    copy = json.loads(canonical_json(payload).decode("utf-8"))
+    raw = canonical_json(copy)
     signature = signing_key.sign(raw)
     token = f"{_b64url_encode(raw)}.{_b64url_encode(signature)}"
-    _issued[token_id(token)] = salinan
+    _issued[token_id(token)] = copy
     return token
 
 
@@ -223,22 +223,22 @@ def is_subset(child: dict, parent: dict) -> bool:
     try:
         if child["user_id"] != parent["user_id"]:
             return False
-        if child["agen_id"] != parent["agen_id"]:
+        if child["agent_id"] != parent["agent_id"]:
             return False
         if set(child["tools"]) - set(parent["tools"]):
             return False
         if set(child["domains"]) - set(parent["domains"]):
             return False
-        for nama, scopes in child["konektor"].items():
-            if set(scopes) - set(parent["konektor"].get(nama, [])):
+        for name, scopes in child["connectors"].items():
+            if set(scopes) - set(parent["connectors"].get(name, [])):
                 return False
-        for kunci in ANGGARAN_FIELDS:
-            if child["anggaran"][kunci] > parent["anggaran"][kunci]:
+        for key in ANGGARAN_FIELDS:
+            if child["anggaran"][key] > parent["anggaran"][key]:
                 return False
         if child["exp"] > parent["exp"]:
             return False
         # Sub-agen tidak bisa membuat sub-agen (satu level saja, 2.2).
-        if child.get("sub_agen_id") is not None and parent.get("sub_agen_id") is not None:
+        if child.get("subagent_id") is not None and parent.get("subagent_id") is not None:
             return False
         return True
     except (KeyError, TypeError, AttributeError):
@@ -255,9 +255,9 @@ def issue_child(parent_token: str, requested_payload: dict, signing_key, public_
     _validate_payload(requested_payload)
     if not is_subset(requested_payload, parent_payload):
         raise TokenError("payload anak bukan himpunan bagian dari token induk")
-    anak = json.loads(canonical_json(requested_payload).decode("utf-8"))
-    anak["parent"] = token_id(parent_token)
-    return issue_token(anak, signing_key)
+    child = json.loads(canonical_json(requested_payload).decode("utf-8"))
+    child["parent"] = token_id(parent_token)
+    return issue_token(child, signing_key)
 
 
 def revoke(token_or_id) -> None:
@@ -270,16 +270,16 @@ def is_revoked(token_or_id) -> bool:
     return _normalize_id(token_or_id) in _revoked
 
 
-def revoke_all_for_tugas(tugas_id: str) -> list[str]:
+def revoke_all_for_task(task_id: str) -> list[str]:
     """Cabut semua token terdaftar yang membawa ``tugas_id`` ini.
 
     Dipakai saat Hentikan (2.2/2.6): token kedaluwarsa saat tugas
     selesai atau dihentikan. Token yang tidak membawa tugas_id tidak
     tersentuh. Kembalikan daftar token_id yang dicabut.
     """
-    dicabut = []
+    revoked = []
     for tid, payload in list(_issued.items()):
-        if payload.get("tugas_id") == tugas_id and tid not in _revoked:
+        if payload.get("task_id") == task_id and tid not in _revoked:
             _revoked.add(tid)
-            dicabut.append(tid)
-    return dicabut
+            revoked.append(tid)
+    return revoked

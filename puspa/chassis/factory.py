@@ -41,8 +41,8 @@ __all__ = ["PuspaChassis", "assemble", "build_hook_factory", "build_registry"]
 class PuspaChassis:
     """Semua yang dibutuhkan wiring Puspa (dibuat sekali saat startup)."""
 
-    tugas_id: str = "tugas-utama"
-    agen_id: str = "agen-puspa"
+    task_id: str = "tugas-utama"
+    agent_id: str = "agen-puspa"
     ledger: Any = None  # puspa.ledger.Ledger atau None (tanpa audit persisten)
     gate: Any = None  # puspa.policy.Gate atau None (tanpa gerbang -> aksi keluar ditolak)
     public_key: Any = None  # verifikasi token + skill (Ed25519 public key)
@@ -56,7 +56,7 @@ class PuspaChassis:
             return self.log
         if self.ledger is not None:
             return make_ledger_sink(
-                self.ledger, tugas_id=self.tugas_id, agen_id=self.agen_id
+                self.ledger, task_id=self.task_id, agent_id=self.agent_id
             )
         return None
 
@@ -76,14 +76,14 @@ def build_registry(chassis: PuspaChassis) -> PuspaRegistry:
 def build_hook_factory(chassis: PuspaChassis):
     """Factory per-turn untuk PuspaHook (siklus tugas -> Buku Kerja)."""
     return make_puspa_hook_factory(
-        chassis.tugas_id, chassis.agen_id, log=chassis.sink()
+        chassis.task_id, chassis.agent_id, log=chassis.sink()
     )
 
 
 def build_hook(chassis: PuspaChassis) -> PuspaHook:
     """Satu instance PuspaHook (untuk ``hooks=[...]`` di AgentLoop)."""
     return PuspaHook(
-        tugas_id=chassis.tugas_id, agen_id=chassis.agen_id, log=chassis.sink()
+        task_id=chassis.task_id, agent_id=chassis.agent_id, log=chassis.sink()
     )
 
 

@@ -51,29 +51,29 @@
 -- agen -> pemilik). RLS untuk kejadian butuh pemetaan itu di DB;
 -- dicatat sebagai pertanyaan fase 2.
 
-CREATE TABLE IF NOT EXISTS pengguna (
+CREATE TABLE IF NOT EXISTS users (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email         TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
-    dibuat        TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS sesi (
+CREATE TABLE IF NOT EXISTS sessions (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token_hash      TEXT NOT NULL UNIQUE,
     device_label    TEXT,
-    dibuat          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    terakhir_dilihat TIMESTAMPTZ NOT NULL DEFAULT now(),
-    dicabut         BOOLEAN NOT NULL DEFAULT false
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    revoked         BOOLEAN NOT NULL DEFAULT false
 );
-CREATE INDEX IF NOT EXISTS idx_sesi_user_id ON sesi(user_id);
+CREATE INDEX IF NOT EXISTS idx_sesi_user_id ON sessions(user_id);
 
 CREATE TABLE IF NOT EXISTS vault (
-    user_id    UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
+    user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name       TEXT NOT NULL,
     ciphertext TEXT NOT NULL,
-    diubah     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, name)
 );
 
@@ -85,8 +85,8 @@ CREATE TABLE IF NOT EXISTS vault (
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'puspa_app') THEN
-        GRANT SELECT, INSERT, UPDATE, DELETE ON pengguna TO puspa_app;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON sesi TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON users TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON sessions TO puspa_app;
         GRANT SELECT, INSERT, UPDATE, DELETE ON vault TO puspa_app;
     END IF;
 END $$;
@@ -94,42 +94,42 @@ END $$;
 -- Row Level Security -------------------------------------------------------
 -- Idempotent: jalankan ulang skema ini aman (DROP POLICY IF EXISTS).
 
-ALTER TABLE pengguna ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sesi ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vault ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS pengguna_lihat_milik_sendiri ON pengguna;
-CREATE POLICY pengguna_lihat_milik_sendiri ON pengguna
+DROP POLICY IF EXISTS users_view_own ON users;
+CREATE POLICY users_view_own ON users
     FOR SELECT
     USING (id::text = coalesce(current_setting('app.current_user_id', true), ''));
 
-DROP POLICY IF EXISTS pengguna_daftar_atau_milik_sendiri ON pengguna;
-CREATE POLICY pengguna_daftar_atau_milik_sendiri ON pengguna
+DROP POLICY IF EXISTS users_register_or_own ON users;
+CREATE POLICY users_register_or_own ON users
     FOR INSERT
     WITH CHECK (
         coalesce(current_setting('app.current_user_id', true), '') = ''
         OR id::text = coalesce(current_setting('app.current_user_id', true), '')
     );
 
-DROP POLICY IF EXISTS pengguna_ubah_milik_sendiri ON pengguna;
-CREATE POLICY pengguna_ubah_milik_sendiri ON pengguna
+DROP POLICY IF EXISTS users_update_own ON users;
+CREATE POLICY users_update_own ON users
     FOR UPDATE
     USING (id::text = coalesce(current_setting('app.current_user_id', true), ''))
     WITH CHECK (id::text = coalesce(current_setting('app.current_user_id', true), ''));
 
-DROP POLICY IF EXISTS pengguna_hapus_milik_sendiri ON pengguna;
-CREATE POLICY pengguna_hapus_milik_sendiri ON pengguna
+DROP POLICY IF EXISTS users_delete_own ON users;
+CREATE POLICY users_delete_own ON users
     FOR DELETE
     USING (id::text = coalesce(current_setting('app.current_user_id', true), ''));
 
-DROP POLICY IF EXISTS sesi_milik_sendiri ON sesi;
-CREATE POLICY sesi_milik_sendiri ON sesi
+DROP POLICY IF EXISTS sessions_own ON sessions;
+CREATE POLICY sessions_own ON sessions
     FOR ALL
     USING (user_id::text = coalesce(current_setting('app.current_user_id', true), ''))
     WITH CHECK (user_id::text = coalesce(current_setting('app.current_user_id', true), ''));
 
-DROP POLICY IF EXISTS vault_milik_sendiri ON vault;
-CREATE POLICY vault_milik_sendiri ON vault
+DROP POLICY IF EXISTS vault_own ON vault;
+CREATE POLICY vault_own ON vault
     FOR ALL
     USING (user_id::text = coalesce(current_setting('app.current_user_id', true), ''))
     WITH CHECK (user_id::text = coalesce(current_setting('app.current_user_id', true), ''));

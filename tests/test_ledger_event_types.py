@@ -18,7 +18,7 @@ import psycopg
 import pytest
 from psycopg import errors as pg_errors
 
-from puspa.ledger import GENESIS, JENIS_KEJADIAN, Ledger
+from puspa.ledger import GENESIS, JENIS_EVENT, Ledger
 from puspa.ledger.errors import InvalidEventTypeError
 
 DSN = os.environ.get(
@@ -27,42 +27,42 @@ DSN = os.environ.get(
 AGEN = "agen-tes"
 
 #: 9 jenis baru revisi 7 (definisi 2.3, daftar harfiah).
-JENIS_BARU = [
-    "alur_diajukan",
-    "alur_diaktifkan",
-    "alur_dijeda",
-    "pemicu_terpicu",
-    "pemicu_terlewat",
-    "modul_diajukan",
-    "modul_diaktifkan",
-    "laporan_salah",
-    "persetujuan_data",
+JENIS_NEW = [
+    "workflow_proposed",
+    "workflow_activated",
+    "workflow_paused",
+    "trigger_fired",
+    "trigger_missed",
+    "module_proposed",
+    "module_activated",
+    "false_reports",
+    "data_consents",
 ]
 
 #: 22 jenis lama — harus tetap ada semua (tidak ada yang hilang/berubah).
-JENIS_LAMA = [
-    "tugas_dibuat",
-    "rencana_dibuat",
-    "subagen_dibuat",
-    "handoff_diajukan",
-    "handoff_diterima",
-    "handoff_diserahkan",
-    "handoff_ditolak",
-    "handoff_kedaluwarsa",
-    "detak",
-    "tool_dipanggil",
-    "tool_selesai",
-    "bukti_dicatat",
-    "pemeriksaan_selesai",
-    "persetujuan_diminta",
-    "persetujuan_diberikan",
-    "persetujuan_ditolak",
-    "pesan_user",
-    "pesan_agen",
-    "anggaran_habis",
-    "tugas_selesai",
-    "tugas_gagal",
-    "tugas_dihentikan",
+JENIS_OLD = [
+    "task_created",
+    "plan_created",
+    "subagent_created",
+    "handoff_proposed",
+    "handoff_accepted",
+    "handoff_handed_over",
+    "handoff_rejected",
+    "handoff_expired",
+    "heartbeat",
+    "tool_called",
+    "tool_completed",
+    "evidence_recorded",
+    "verification_completed",
+    "approval_requested",
+    "approval_granted",
+    "approval_rejected",
+    "user_message",
+    "agent_message",
+    "budget_exhausted",
+    "task_completed",
+    "task_failed",
+    "task_stopped",
 ]
 
 
@@ -75,103 +75,103 @@ def ledger():
 
 
 @pytest.fixture
-def tugas_id(ledger):
+def task_id(ledger):
     """tugas_id unik per tes; barisnya dibersihkan setelah tes selesai."""
     tid = f"tes-{uuid.uuid4().hex[:12]}"
     yield tid
     with psycopg.connect(DSN, autocommit=True) as conn:
-        conn.execute("DELETE FROM kejadian WHERE tugas_id = %s", (tid,))
+        conn.execute("DELETE FROM events WHERE task_id = %s", (tid,))
 
 
 def test_himpunan_tertutup_31_jenis():
-    assert len(JENIS_LAMA) == 22
-    assert len(JENIS_BARU) == 9
-    assert set(JENIS_LAMA).isdisjoint(JENIS_BARU)
-    assert JENIS_KEJADIAN == set(JENIS_LAMA) | set(JENIS_BARU)
-    assert len(JENIS_KEJADIAN) == 31
+    assert len(JENIS_OLD) == 22
+    assert len(JENIS_NEW) == 9
+    assert set(JENIS_OLD).isdisjoint(JENIS_NEW)
+    assert JENIS_EVENT == set(JENIS_OLD) | set(JENIS_NEW)
+    assert len(JENIS_EVENT) == 31
 
 
-@pytest.mark.parametrize("jenis", JENIS_BARU)
-def test_append_jenis_baru_dan_baca_kembali(ledger, tugas_id, jenis):
+@pytest.mark.parametrize("type", JENIS_NEW)
+def test_append_jenis_new_and_read_kembali(ledger, task_id, jenis):
     ev = ledger.append_event(
-        tugas_id=tugas_id, agen_id=AGEN, jenis=jenis, isi={"jenis": jenis}
+        task_id=task_id, agent_id=AGEN, jenis=jenis, content={"type": jenis}
     )
-    assert ev["jenis"] == jenis
-    assert ev["tugas_id"] == tugas_id
-    assert ev["hash_sebelumnya"] == GENESIS  # kejadian pertama tugas ini
+    assert ev["type"] == jenis
+    assert ev["task_id"] == task_id
+    assert ev["previous_hash"] == GENESIS  # kejadian pertama tugas ini
     assert len(ev["hash"]) == 64
 
-    dibaca = ledger.events(tugas_id)
+    dibaca = ledger.events(task_id)
     assert len(dibaca) == 1
     assert dibaca[0] == ev
     # Filter jenis mengembalikan kejadian yang sama.
-    assert [e["id"] for e in ledger.events(tugas_id, jenis=jenis)] == [ev["id"]]
+    assert [e["id"] for e in ledger.events(task_id, jenis=jenis)] == [ev["id"]]
 
 
-def test_rantai_hash_campuran_lama_dan_baru_tetap_utuh(ledger, tugas_id):
+def test_rantai_hash_campuran_old_and_new_tetap_utuh(ledger, task_id):
     # Campuran jenis lama + baru dalam satu tugas, urut append.
     urutan = [
-        "tugas_dibuat",
-        "alur_diajukan",
-        "alur_diaktifkan",
-        "pemicu_terpicu",
-        "modul_diajukan",
-        "modul_diaktifkan",
-        "detak",
-        "pemicu_terlewat",
-        "alur_dijeda",
-        "laporan_salah",
-        "persetujuan_data",
-        "tugas_selesai",
+        "task_created",
+        "workflow_proposed",
+        "workflow_activated",
+        "trigger_fired",
+        "module_proposed",
+        "module_activated",
+        "heartbeat",
+        "trigger_missed",
+        "workflow_paused",
+        "false_reports",
+        "data_consents",
+        "task_completed",
     ]
-    dibuat = [
+    created_at = [
         ledger.append_event(
-            tugas_id=tugas_id, agen_id=AGEN, jenis=j, isi={"urutan": i}
+            task_id=task_id, agent_id=AGEN, jenis=j, content={"urutan": i}
         )
         for i, j in enumerate(urutan)
     ]
-    for sebelum, sesudah in zip(dibuat, dibuat[1:]):
-        assert sesudah["hash_sebelumnya"] == sebelum["hash"]
-    assert [e["jenis"] for e in ledger.events(tugas_id)] == urutan
+    for sebelum, sesudah in zip(created_at, created_at[1:]):
+        assert sesudah["previous_hash"] == sebelum["hash"]
+    assert [e["type"] for e in ledger.events(task_id)] == urutan
 
-    ok, putus = ledger.verify_chain(tugas_id)
+    ok, putus = ledger.verify_chain(task_id)
     assert ok is True
     assert putus == []
 
 
-def test_jenis_tak_dikenal_ditolak_python_dan_db(ledger, tugas_id):
+def test_jenis_tak_dikenal_rejected_python_and_db(ledger, task_id):
     # Level Python: append dan filter events menolak jenis sembarang.
     with pytest.raises(InvalidEventTypeError):
         ledger.append_event(
-            tugas_id=tugas_id, agen_id=AGEN, jenis="jenis_ngawur", isi={}
+            task_id=task_id, agent_id=AGEN, jenis="jenis_ngawur", content={}
         )
     with pytest.raises(InvalidEventTypeError):
-        ledger.events(tugas_id, jenis="jenis_ngawur")
-    assert ledger.events(tugas_id) == []
+        ledger.events(task_id, jenis="jenis_ngawur")
+    assert ledger.events(task_id) == []
 
     # Level DB: INSERT langsung via SQL dengan jenis sembarang gagal
     # karena CHECK constraint — walau melewati validasi Python.
     with psycopg.connect(DSN, autocommit=True) as conn:
         with pytest.raises(pg_errors.CheckViolation):
             conn.execute(
-                "INSERT INTO kejadian "
-                "(tugas_id, agen_id, jenis, isi, hash_sebelumnya, hash) "
+                "INSERT INTO events "
+                "(task_id, agent_id, type, content, previous_hash, hash) "
                 "VALUES (%s, %s, 'jenis_ngawur', '{}'::jsonb, %s, %s)",
-                (tugas_id, AGEN, GENESIS, uuid.uuid4().hex),
+                (task_id, AGEN, GENESIS, uuid.uuid4().hex),
             )
-    assert ledger.events(tugas_id) == []
+    assert ledger.events(task_id) == []
 
 
-@pytest.mark.parametrize("jenis", JENIS_BARU)
-def test_check_db_menerima_jenis_baru_insert_langsung(ledger, tugas_id, jenis):
+@pytest.mark.parametrize("type", JENIS_NEW)
+def test_check_db_menerima_jenis_new_insert_langsung(ledger, task_id, jenis):
     # INSERT langsung via SQL (tanpa Ledger) dengan tiap jenis baru harus
     # lolos CHECK — membuktikan schema.sql, bukan hanya JENIS_KEJADIAN.
     with psycopg.connect(DSN, autocommit=True) as conn:
         row = conn.execute(
-            "INSERT INTO kejadian "
-            "(tugas_id, agen_id, jenis, isi, hash_sebelumnya, hash) "
-            "VALUES (%s, %s, %s, '{}'::jsonb, %s, %s) RETURNING id, jenis",
-            (tugas_id, AGEN, jenis, GENESIS, uuid.uuid4().hex),
+            "INSERT INTO events "
+            "(task_id, agent_id, type, content, previous_hash, hash) "
+            "VALUES (%s, %s, %s, '{}'::jsonb, %s, %s) RETURNING id, type",
+            (task_id, AGEN, jenis, GENESIS, uuid.uuid4().hex),
         ).fetchone()
     assert row[1] == jenis
-    assert [e["jenis"] for e in ledger.events(tugas_id)] == [jenis]
+    assert [e["type"] for e in ledger.events(task_id)] == [jenis]

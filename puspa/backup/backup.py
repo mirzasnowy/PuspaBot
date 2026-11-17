@@ -68,8 +68,8 @@ def _pg_env(dsn):
     env = dict(os.environ)
     if parts.get("host"):
         env["PGHOST"] = parts["host"]
-    if parts.get("user"):
-        env["PGUSER"] = parts["user"]
+    if parts.get("users"):
+        env["PGUSER"] = parts["users"]
     if parts.get("port"):
         env["PGPORT"] = parts["port"]
     return env
@@ -105,7 +105,7 @@ def create_backup(dsn=None, backup_dir=None, pg_dump_cmd="pg_dump", now=None):
     manifest = {
         "file": path.name,
         "database": db,
-        "dibuat": now.isoformat(),
+        "created_at": now.isoformat(),
         "ukuran_terenkripsi": path.stat().st_size,
         "ukuran_dump": len(plaintext),
     }
@@ -113,7 +113,7 @@ def create_backup(dsn=None, backup_dir=None, pg_dump_cmd="pg_dump", now=None):
         json.dumps(manifest, indent=2), encoding="utf-8"
     )
     pruned = prune_backups(backup_dir)
-    manifest["dihapus_retensi"] = pruned
+    manifest["deleted_retensi"] = pruned
     return {"path": str(path), "manifest": manifest}
 
 
@@ -138,9 +138,9 @@ def prune_backups(backup_dir=None, retention_days=RETENTION_DAYS, now=None):
     backup_dir = Path(backup_dir or Path(__file__).resolve().parent.parent.parent / "backups")
     now = now or datetime.now(timezone.utc)
     batas = now - timedelta(days=retention_days)
-    dihapus = []
+    deleted = []
     if not backup_dir.exists():
-        return dihapus
+        return deleted
     for path in backup_dir.glob(f"{BACKUP_PREFIX}*{BACKUP_SUFFIX}"):
         match = re.search(r"(\d{8})-(\d{6})", path.name)
         if not match:
@@ -151,8 +151,8 @@ def prune_backups(backup_dir=None, retention_days=RETENTION_DAYS, now=None):
         if stamp < batas:
             path.unlink(missing_ok=True)
             Path(str(path) + ".json").unlink(missing_ok=True)
-            dihapus.append(path.name)
-    return dihapus
+            deleted.append(path.name)
+    return deleted
 
 
 def restore_backup(backup_path, target_dsn, pg_restore_cmd="pg_restore"):
@@ -185,7 +185,7 @@ def restore_backup(backup_path, target_dsn, pg_restore_cmd="pg_restore"):
                 "ORDER BY tablename"
             )
             tabels = [r[0] for r in cur.fetchall()]
-    return {"database": _db_name(target_dsn), "tabel": tabels}
+    return {"database": _db_name(target_dsn), "table": tabels}
 
 
 def verify_restored_counts(target_dsn, tables):
@@ -195,7 +195,7 @@ def verify_restored_counts(target_dsn, tables):
     out = {}
     with psycopg.connect(resolve_dsn(target_dsn)) as conn:
         with conn.cursor() as cur:
-            for tabel in tables:
-                cur.execute(f"SELECT COUNT(*) FROM {tabel}")
-                out[tabel] = cur.fetchone()[0]
+            for table in tables:
+                cur.execute(f"SELECT COUNT(*) FROM {table}")
+                out[table] = cur.fetchone()[0]
     return out

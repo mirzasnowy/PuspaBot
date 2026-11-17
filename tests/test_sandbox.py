@@ -30,7 +30,7 @@ def test_allowlist_terima_domain_default():
     assert "pln.co.id" in DEFAULT_ALLOWLIST
 
 
-def test_allowlist_tolak_domain_di_luar_daftar():
+def test_allowlist_tolak_domain_di_luar_items():
     assert not is_allowed("https://evil.com/x")
     assert not is_allowed("https://example.com/")
     assert not is_allowed("https://tokopedia.com.evil.com/x")
@@ -39,7 +39,7 @@ def test_allowlist_tolak_domain_di_luar_daftar():
     assert not is_allowed("")
 
 
-def test_allowlist_subdomain_diterima():
+def test_allowlist_subdomain_accepted():
     assert is_allowed("https://api.tokopedia.com/v1")
     assert is_allowed("https://www.shopee.co.id/cart")
 
@@ -50,7 +50,7 @@ def test_allowlist_pdam_per_daerah():
     assert not is_allowed("https://pdamphishing.com/")
 
 
-def test_allowlist_localhost_hanya_untuk_test_double():
+def test_allowlist_localhost_hanya_for_test_double():
     assert not is_allowed("http://localhost:8000/x")
     assert not is_allowed("http://127.0.0.1:9000/x")
     test_only = Allowlist(allow_test_localhost=True)
@@ -62,7 +62,7 @@ def test_allowlist_localhost_hanya_untuk_test_double():
 # --- fail-closed: Docker tidak tersedia --------------------------------------
 
 
-def test_run_tanpa_binary_docker_raise_dan_tidak_mengeksekusi(monkeypatch, tmp_path):
+def test_run_without_binary_docker_raise_and_not_mengeksekusi(monkeypatch, tmp_path):
     """PATH tanpa docker -> SandboxUnavailable; kode tulis-file tidak jalan."""
     monkeypatch.setenv("PATH", str(tmp_path))
     if os.path.exists(PROBE_HOST):
@@ -74,7 +74,7 @@ def test_run_tanpa_binary_docker_raise_dan_tidak_mengeksekusi(monkeypatch, tmp_p
     assert not os.path.exists(PROBE_HOST)
 
 
-def test_run_dengan_daemon_mati_raise_dan_tidak_mengeksekusi(monkeypatch):
+def test_run_dengan_daemon_mati_raise_and_not_mengeksekusi(monkeypatch):
     """DOCKER_HOST ke endpoint mati -> SandboxUnavailable; tanpa eksekusi."""
     monkeypatch.setenv("DOCKER_HOST", "tcp://127.0.0.1:9")
     if os.path.exists(PROBE_HOST):
@@ -86,7 +86,7 @@ def test_run_dengan_daemon_mati_raise_dan_tidak_mengeksekusi(monkeypatch):
     assert not os.path.exists(PROBE_HOST)
 
 
-def test_run_validasi_input_tanpa_menyentuh_docker():
+def test_run_validasi_input_without_menyentuh_docker():
     sandbox = Sandbox()
     with pytest.raises(TypeError):
         sandbox.run(123)
@@ -103,24 +103,24 @@ def test_run_print_ok_di_container():
     sandbox = Sandbox()
     if not sandbox.check_available():
         pytest.skip("Docker tidak bisa mengeksekusi di VM ini (fail-closed aktif)")
-    hasil = sandbox.run('print("ok")')
-    assert hasil["ok"] is True
-    assert hasil["stdout"].strip() == "ok"
-    assert hasil["exit_code"] == 0
-    assert hasil["timed_out"] is False
+    result = sandbox.run('print("ok")')
+    assert result["ok"] is True
+    assert result["stdout"].strip() == "ok"
+    assert result["exit_code"] == 0
+    assert result["timed_out"] is False
 
 
-def test_run_kode_gagal_tetap_hasil_bukan_unavailable():
+def test_run_kode_failed_tetap_result_bukan_unavailable():
     sandbox = Sandbox()
     if not sandbox.check_available():
         pytest.skip("Docker tidak bisa mengeksekusi di VM ini (fail-closed aktif)")
-    hasil = sandbox.run("raise RuntimeError('boom')")
-    assert hasil["ok"] is False
-    assert hasil["exit_code"] == 1
-    assert "RuntimeError" in hasil["stderr"]
+    result = sandbox.run("raise RuntimeError('boom')")
+    assert result["ok"] is False
+    assert result["exit_code"] == 1
+    assert "RuntimeError" in result["stderr"]
 
 
-def test_run_jaringan_ke_domain_luar_allowlist_ditolak():
+def test_run_jaringan_to_domain_luar_allowlist_rejected():
     sandbox = Sandbox()
     if not sandbox.check_available():
         pytest.skip("Docker tidak bisa mengeksekusi di VM ini (fail-closed aktif)")
@@ -129,17 +129,17 @@ def test_run_jaringan_ke_domain_luar_allowlist_ditolak():
         "urllib.request.urlopen('https://example.com/', timeout=5)\n"
         "print('jaringan-lolos')"
     )
-    hasil = sandbox.run(kode)
-    assert hasil["ok"] is False
-    assert "jaringan-lolos" not in hasil["stdout"]
+    result = sandbox.run(kode)
+    assert result["ok"] is False
+    assert "jaringan-lolos" not in result["stdout"]
 
 
-def test_run_tidak_bisa_menulis_ke_host():
+def test_run_not_can_menulis_to_host():
     sandbox = Sandbox()
     if not sandbox.check_available():
         pytest.skip("Docker tidak bisa mengeksekusi di VM ini (fail-closed aktif)")
     if os.path.exists(PROBE_HOST):
         os.remove(PROBE_HOST)
-    hasil = sandbox.run(KODE_TULIS_HOST)
-    assert hasil["ok"] is False
+    result = sandbox.run(KODE_TULIS_HOST)
+    assert result["ok"] is False
     assert not os.path.exists(PROBE_HOST)

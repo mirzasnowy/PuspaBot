@@ -44,7 +44,7 @@ from typing import Any
 from nanobot.agent.tools.base import Tool, ToolResult
 
 from puspa.policy.gate import KIND_TOOLS, GateDenied
-from puspa.policy.skills import SkillRejected, check_tool
+from puspa.policy.skill_signing import SkillRejected, check_tool
 from puspa.quarantine.injection import scan
 
 from .context import resolve_token_payload
@@ -129,11 +129,11 @@ class PuspaTool(Tool):
         return getattr(self._wrapped, name)
 
     # -- pencatatan ---------------------------------------------------------
-    def _log_event(self, jenis: str, isi: dict) -> None:
+    def _log_event(self, jenis: str, content: dict) -> None:
         if self._log is None:
             return
         try:
-            self._log(jenis, isi)
+            self._log(jenis, content)
         except Exception:
             pass
 
@@ -142,14 +142,14 @@ class PuspaTool(Tool):
         name = self.name
         payload = resolve_token_payload()
 
-        def _tolak(alasan: str):
+        def _tolak(reason: str):
             self._log_event(
-                "tool_dipanggil", {"tool": name, "status": "ditolak", "alasan": alasan}
+                "tool_called", {"tool": name, "status": "rejected", "reason": reason}
             )
             self._log_event(
-                "tool_selesai", {"tool": name, "status": "ditolak", "alasan": alasan}
+                "tool_completed", {"tool": name, "status": "rejected", "reason": reason}
             )
-            return ToolResult.error(f"Ditolak Puspa: {alasan}")
+            return ToolResult.error(f"Ditolak Puspa: {reason}")
 
         if payload is None:
             return _tolak("tidak ada token izin Puspa untuk turn ini")
@@ -168,18 +168,18 @@ class PuspaTool(Tool):
             try:
                 request = self._gate.request_approval(
                     user_id=payload["user_id"],
-                    agen_id=payload["agen_id"],
+                    agent_id=payload["agent_id"],
                     token=payload,
                     kind=kind,
-                    isi=dict(kwargs),
+                    content=dict(kwargs),
                 )
             except GateDenied as exc:
                 return _tolak(f"gerbang menolak aksi {kind!r}: {exc}")
             self._log_event(
-                "tool_dipanggil",
+                "tool_called",
                 {
                     "tool": name,
-                    "status": "menunggu_persetujuan",
+                    "status": "pending_approval",
                     "request_id": request.request_id,
                 },
             )
@@ -188,19 +188,19 @@ class PuspaTool(Tool):
                 f"(request {request.request_id}); aksi belum dijalankan."
             )
 
-        self._log_event("tool_dipanggil", {"tool": name})
+        self._log_event("tool_called", {"tool": name})
         try:
             result = await self._wrapped.execute(**kwargs)
         except Exception:
-            self._log_event("tool_selesai", {"tool": name, "status": "error"})
+            self._log_event("tool_completed", {"tool": name, "status": "error"})
             raise
         status = "error" if isinstance(result, ToolResult) and result.is_error else "ok"
-        isi_selesai: dict[str, Any] = {"tool": name, "status": status}
+        content_completed: dict[str, Any] = {"tool": name, "status": status}
         if isinstance(result, str) and result:
             temuan = scan(result)
             if temuan:
-                isi_selesai["injeksi"] = [
-                    {"pola": t.pola, "tingkat": t.tingkat} for t in temuan
+                content_completed["injeksi"] = [
+                    {"pattern": t.pattern, "level": t.level} for t in temuan
                 ]
-        self._log_event("tool_selesai", isi_selesai)
+        self._log_event("tool_completed", content_completed)
         return result
