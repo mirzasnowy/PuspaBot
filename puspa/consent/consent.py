@@ -21,31 +21,31 @@ from ..memory.schema import resolve_dsn
 
 TEKS_VERSI = "v1-2026-11-17"
 
-TEKS_APPROVAL = """Persetujuan data Puspa (versi v1-2026-11-17)
+TEXT_APPROVAL = """Puspa data consent (version v1-2026-11-17)
 
-Data yang disimpan: chat dengan agen, memori (profil, riwayat,
-prosedur), nomor pelanggan yang Anda berikan, token Gmail, Drive,
-dan Calendar Anda.
+What data is stored: chats with your agent, memory (profile, history,
+procedures), the customer numbers you grant, and your Gmail, Drive,
+and Calendar tokens.
 
-Di mana: di server Puspa (PostgreSQL + vault terenkripsi). Token
-disimpan terenkripsi; kunci master tidak ada di database.
+Where: on the Puspa server (PostgreSQL + encrypted vault). Tokens are
+stored encrypted; the master key does not exist in the database.
 
-Berapa lama: selama akun Anda aktif. Cadangan disimpan 14 hari.
-Tangkapan layar bukti dihapus setelah 30 hari.
+How long: for as long as your account is active. Backups are kept for
+14 days. Evidence screenshots are deleted after 30 days.
 
-Siapa bisa melihat: hanya Anda dan agen Anda. Operator hanya melihat
-metadata dan biaya, bukan isi chat atau memori. Akses dukungan butuh
-izin Anda per kasus dan dicatat.
+Who can see it: only you and your agent. Operators only see metadata
+and cost, not chat content or memory. Support access needs your
+permission per case and is recorded.
 
-Ekspor dan hapus: Anda bisa mengekspor semua data Anda kapan saja,
-dan menghapus akun Anda (memori, alur, modul, dan token ikut terhapus;
-catatan audit tetap sebagai tombstone tanpa isi).
+Export and delete: you can export all your data at any time, and
+delete your account (memory, workflows, modules, and tokens are
+deleted with it; audit records remain as tombstones without content).
 
-Graf bersama: fakta harga publik dari perbandingan Anda masuk graf
-bersama TANPA identitas Anda.
+Shared graph: public price facts from your comparisons go into the
+shared graph WITHOUT your identity.
 
-Dengan menyetujui, Anda mengizinkan Puspa menyimpan dan memakai data
-di atas untuk menjalankan tugas Anda.
+By agreeing, you allow Puspa to store and use the data above to run
+your tasks.
 """
 
 

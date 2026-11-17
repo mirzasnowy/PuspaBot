@@ -110,7 +110,7 @@ class GoogleConnector:
                     disetujui: bool = False, request_id: str = "") -> dict:
         """Kirim email — HANYA setelah persetujuan (gerbang tunggal)."""
         if not disetujui:
-            raise ConnectorError("kirim email butuh persetujuan user (gerbang tunggal)")
+            raise ConnectorError("sending email needs user approval (single gate)")
         import base64
 
         mentah = base64.urlsafe_b64encode(
@@ -145,7 +145,7 @@ class GoogleConnector:
                             disetujui: bool = False) -> dict:
         """Buat event — HANYA setelah persetujuan."""
         if not disetujui:
-            raise ConnectorError("buat event butuh persetujuan user (gerbang tunggal)")
+            raise ConnectorError("creating an event needs user approval (single gate)")
         return self._post("https://www.googleapis.com/calendar/v3/calendars/primary/events",
                           {"summaries": summary,
                            "start": {"dateTime": mulai}, "end": {"dateTime": completed_at},

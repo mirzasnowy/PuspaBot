@@ -3,7 +3,7 @@
 import pytest
 
 from puspa.consent import (
-    TEKS_APPROVAL,
+    TEXT_APPROVAL,
     TEKS_VERSI,
     delete_account,
     export_account,
@@ -16,14 +16,14 @@ from puspa.memory import episodic, procedural, profile
 
 def test_teks_approval_memuat_6_hal_required():
     for frasa in (
-        "Data yang disimpan",
-        "Di mana",
-        "Berapa lama",
-        "Siapa bisa melihat",
-        "Ekspor dan hapus",
-        "Graf bersama",
+        "What data is stored",
+        "Where",
+        "How long",
+        "Who can see it",
+        "Export and delete",
+        "Shared graph",
     ):
-        assert frasa in TEKS_APPROVAL
+        assert frasa in TEXT_APPROVAL
 
 
 def test_approval_dicatat_table_and_book_kerja(make_user, test_dsn, ledger):
