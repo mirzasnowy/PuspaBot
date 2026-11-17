@@ -12,53 +12,53 @@ from datetime import datetime, timezone
 import psycopg
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
-KREDIT_GRATIS_PER_BULAN = 15
-BIAYA_CEK_DETAIL = 1
+CREDIT_FREE_PER_MONTH = 15
+COST_CHECK_DETAIL = 1
 
 
-class KreditError(Exception):
+class CreditError(Exception):
     """Kredit tidak cukup / tidak bisa dipakai."""
 
 
-def _bulan_ini() -> str:
+def _month_ini() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m")
 
 
-def sisa_kredit(user_id: str, dsn=None, bulan: str | None = None) -> int:
+def sisa_credit(user_id: str, dsn=None, month: str | None = None) -> int:
     """Sisa kredit bulan ini (default 15 bila belum ada baris)."""
-    bulan = bulan or _bulan_ini()
+    month = month or _month_ini()
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT sisa FROM kredit_bulanan WHERE user_id = %s AND bulan = %s",
-                (user_id, bulan))
+                "SELECT sisa FROM monthly_credits WHERE user_id = %s AND month = %s",
+                (user_id, month))
             row = cur.fetchone()
-    return int(row[0]) if row else KREDIT_GRATIS_PER_BULAN
+    return int(row[0]) if row else CREDIT_FREE_PER_MONTH
 
 
-def pakai_kredit(user_id: str, *, jumlah: int = BIAYA_CEK_DETAIL,
-                 dsn=None, bulan: str | None = None) -> int:
+def use_credit(user_id: str, *, amount: int = COST_CHECK_DETAIL,
+                 dsn=None, month: str | None = None) -> int:
     """Pakai kredit; kembalikan sisa. Habis -> KreditError (bukan
     utang diam-diam)."""
-    bulan = bulan or _bulan_ini()
+    month = month or _month_ini()
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO kredit_bulanan (user_id, bulan, sisa)"
+                "INSERT INTO monthly_credits (user_id, month, sisa)"
                 " VALUES (%s, %s, %s)"
                 " ON CONFLICT (user_id, bulan) DO NOTHING",
-                (user_id, bulan, KREDIT_GRATIS_PER_BULAN))
+                (user_id, month, CREDIT_FREE_PER_MONTH))
             cur.execute(
-                "SELECT sisa FROM kredit_bulanan WHERE user_id = %s AND bulan = %s"
-                " FOR UPDATE", (user_id, bulan))
+                "SELECT sisa FROM monthly_credits WHERE user_id = %s AND month = %s"
+                " FOR UPDATE", (user_id, month))
             sisa = int(cur.fetchone()[0])
-            if sisa < jumlah:
-                raise KreditError(
-                    f"kredit tidak cukup: sisa {sisa}, butuh {jumlah}")
+            if sisa < amount:
+                raise CreditError(
+                    f"kredit tidak cukup: sisa {sisa}, butuh {amount}")
             cur.execute(
-                "UPDATE kredit_bulanan SET sisa = sisa - %s WHERE user_id = %s AND bulan = %s",
-                (jumlah, user_id, bulan))
+                "UPDATE monthly_credits SET sisa = sisa - %s WHERE user_id = %s AND month = %s",
+                (amount, user_id, month))
         conn.commit()
-    return sisa - jumlah
+    return sisa - amount

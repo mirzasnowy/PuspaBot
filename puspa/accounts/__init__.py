@@ -9,7 +9,7 @@ from pathlib import Path
 
 import psycopg
 
-from .sessions import (
+from .user_sessions import (
     SessionError,
     create_session,
     list_sessions,

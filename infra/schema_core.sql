@@ -82,6 +82,6 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'puspa_test')
 \ir ../puspa/accounts/schema.sql
 
 -- Verifikasi singkat (gagal kalau ada yang tidak terbentuk).
-SELECT 'pengguna RLS: ' || (relrowsecurity::text) FROM pg_class WHERE relname = 'pengguna';
-SELECT 'sesi RLS: ' || (relrowsecurity::text) FROM pg_class WHERE relname = 'sesi';
+SELECT 'pengguna RLS: ' || (relrowsecurity::text) FROM pg_class WHERE relname = 'users';
+SELECT 'sesi RLS: ' || (relrowsecurity::text) FROM pg_class WHERE relname = 'sessions';
 SELECT 'vault RLS: ' || (relrowsecurity::text) FROM pg_class WHERE relname = 'vault';

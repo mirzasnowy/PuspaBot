@@ -24,11 +24,11 @@ from puspa.evidence.evidence import EvidenceRecord
 from puspa.sandbox.allowlist import is_allowed
 
 
-def _normalisasi_nama(nama: str) -> str:
-    return " ".join(str(nama).lower().split())
+def _normalisasi_name(name: str) -> str:
+    return " ".join(str(name).lower().split())
 
 
-def periksa(bukti: EvidenceRecord, *, baca_ulang, keputusan_model=None,
+def periksa(evidence: EvidenceRecord, *, reread, keputusan_model=None,
             pembacaan_lain: list[float] | None = None) -> EvidenceRecord:
     """Periksa satu rekaman bukti; isi `id_pemeriksa` + `vonis`.
 
@@ -37,56 +37,56 @@ def periksa(bukti: EvidenceRecord, *, baca_ulang, keputusan_model=None,
     -> bool` menjawab "barang yang sama?".
     """
     # Lapis 1 — deterministik.
-    if not is_allowed(bukti.sumber_url):
-        bukti.vonis = "Tidak bisa dipastikan"
-        return bukti
+    if not is_allowed(evidence.sumber_url):
+        evidence.vonis = "Cannot be determined"
+        return evidence
     if pembacaan_lain:
         tengah = sorted(pembacaan_lain)[len(pembacaan_lain) // 2]
-        if tengah and abs(bukti.nilai - tengah) / tengah > 0.5:
-            bukti.vonis = "Tidak bisa dipastikan"
-            return bukti
+        if tengah and abs(evidence.value - tengah) / tengah > 0.5:
+            evidence.vonis = "Cannot be determined"
+            return evidence
     # Lapis 2 — baca ulang independen.
     try:
-        ulang = baca_ulang(bukti.sumber_url)
+        ulang = reread(evidence.sumber_url)
     except Exception:
-        bukti.vonis = "Tidak bisa dipastikan"
-        return bukti
-    if ulang is None or "nilai" not in ulang:
-        bukti.vonis = "Tidak bisa dipastikan"
-        return bukti
+        evidence.vonis = "Cannot be determined"
+        return evidence
+    if ulang is None or "value" not in ulang:
+        evidence.vonis = "Cannot be determined"
+        return evidence
     try:
-        nilai_ulang = float(ulang["nilai"])
+        value_ulang = float(ulang["value"])
     except (TypeError, ValueError):
-        bukti.vonis = "Tidak bisa dipastikan"
-        return bukti
+        evidence.vonis = "Cannot be determined"
+        return evidence
     # Lapis 3 — keputusan berbahasa (barang yang sama?).
-    nama_klaim = bukti.klaim
-    nama_ulang = ulang.get("nama", "")
-    if nama_klaim and nama_ulang:
-        sama = (keputusan_model(nama_klaim, nama_ulang) if keputusan_model
-                else _normalisasi_nama(nama_klaim) == _normalisasi_nama(nama_ulang))
-        if not sama:
-            bukti.vonis = "Tidak bisa dipastikan"
-            return bukti
-    if nilai_ulang == bukti.nilai:
-        bukti.vonis = "Terverifikasi"
+    name_klaim = evidence.klaim
+    name_ulang = ulang.get("name", "")
+    if name_klaim and name_ulang:
+        same = (keputusan_model(name_klaim, name_ulang) if keputusan_model
+                else _normalisasi_name(name_klaim) == _normalisasi_name(name_ulang))
+        if not same:
+            evidence.vonis = "Cannot be determined"
+            return evidence
+    if value_ulang == evidence.value:
+        evidence.vonis = "Verified"
     else:
         # Nilai beda tapi stempel waktu menunjukkan sumber berubah di
         # antara dua pembacaan -> Belum pasti (bukan langsung gagal).
-        waktu_ulang = ulang.get("waktu_ambil")
-        if isinstance(waktu_ulang, datetime) and waktu_ulang > bukti.waktu_ambil:
-            bukti.vonis = "Belum pasti"
-        elif nilai_ulang and abs(nilai_ulang - bukti.nilai) / max(abs(nilai_ulang), 1) <= 0.01:
-            bukti.vonis = "Terverifikasi"
+        time_ulang = ulang.get("time_take")
+        if isinstance(time_ulang, datetime) and time_ulang > evidence.time_take:
+            evidence.vonis = "Uncertain"
+        elif value_ulang and abs(value_ulang - evidence.value) / max(abs(value_ulang), 1) <= 0.01:
+            evidence.vonis = "Verified"
         else:
-            bukti.vonis = "Belum pasti"
-    return bukti
+            evidence.vonis = "Uncertain"
+    return evidence
 
 
-def periksa_suntikan(bukti: EvidenceRecord, *, nilai_salah: float, baca_ulang) -> str:
+def periksa_suntikan(evidence: EvidenceRecord, *, value_wrong: float, reread) -> str:
     """Uji suntik harga salah (gerbang 11): ubah nilai pembacaan awal
     menjadi `nilai_salah`, Pemeriksa harus TIDAK memvonis Terverifikasi.
     Kembalikan vonis yang dihasilkan.
     """
-    bukti.nilai = nilai_salah
-    return periksa(bukti, baca_ulang=baca_ulang).vonis
+    evidence.value = value_wrong
+    return periksa(evidence, reread=reread).vonis

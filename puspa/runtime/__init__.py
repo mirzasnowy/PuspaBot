@@ -34,8 +34,8 @@ import psycopg
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 TABLES_FASE2 = (
-    "agen_meta", "tugas", "handoff", "bukti", "pemicu", "pemicu_jalan",
-    "konektor_agen", "kaset", "langganan_push", "detak_sistem",
+    "agent_meta", "tasks", "handoffs", "evidence", "triggers", "trigger_jalan",
+    "connector_agent", "cassettes", "push_subscriptions", "heartbeat_sistem",
 )
 
 

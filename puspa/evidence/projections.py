@@ -16,83 +16,83 @@ Proyeksi:
 from __future__ import annotations
 
 
-def thread_chat(kejadian: list[dict]) -> list[dict]:
+def thread_chat(event: list[dict]) -> list[dict]:
     """Thread chat: pesan + handoff + hasil, urut waktu."""
-    keluar = []
-    for ev in kejadian:
-        jenis = ev.get("jenis", "")
-        isi = ev.get("isi") or {}
-        if jenis in ("pesan_user", "pesan_agen"):
-            keluar.append({"jenis": "pesan", "dari": isi.get("dari", ev.get("agen_id", "")),
-                           "teks": isi.get("teks", ""), "waktu": str(ev.get("waktu", ""))})
+    logout = []
+    for ev in event:
+        jenis = ev.get("type", "")
+        content = ev.get("content") or {}
+        if jenis in ("user_message", "agent_message"):
+            logout.append({"type": "message", "dari": content.get("dari", ev.get("agent_id", "")),
+                           "text": content.get("text", ""), "created_at": str(ev.get("created_at", ""))})
         elif jenis.startswith("handoff_"):
-            keluar.append({"jenis": "handoff", "status": jenis[len("handoff_"):],
-                           "dari": isi.get("dari", ""), "ke": isi.get("ke", ""),
-                           "tujuan": isi.get("tujuan", ""), "waktu": str(ev.get("waktu", ""))})
-        elif jenis in ("tugas_selesai", "tugas_gagal"):
-            keluar.append({"jenis": "hasil", "status": jenis,
-                           "tugas_id": ev.get("tugas_id", ""), "waktu": str(ev.get("waktu", ""))})
-    return keluar
+            logout.append({"type": "handoffs", "status": jenis[len("handoff_"):],
+                           "dari": content.get("dari", ""), "to": content.get("to", ""),
+                           "purpose": content.get("purpose", ""), "created_at": str(ev.get("created_at", ""))})
+        elif jenis in ("task_completed", "task_failed"):
+            logout.append({"type": "result", "status": jenis,
+                           "task_id": ev.get("task_id", ""), "created_at": str(ev.get("created_at", ""))})
+    return logout
 
 
-def kantor(kejadian: list[dict]) -> dict:
+def office(event: list[dict]) -> dict:
     """Status live tim: kejadian terakhir tiap agen/sub-agen + biaya."""
-    agen: dict[str, dict] = {}
-    for ev in kejadian:
-        aid = ev.get("agen_id", "")
+    agent: dict[str, dict] = {}
+    for ev in event:
+        aid = ev.get("agent_id", "")
         if not aid:
             continue
-        info = agen.setdefault(aid, {"agen_id": aid, "status": "idle",
-                                     "tugas_terakhir": "", "biaya_rp": 0,
-                                     "sub_agen": {}})
-        jenis = ev.get("jenis", "")
-        isi = ev.get("isi") or {}
-        if jenis == "tugas_dibuat":
+        info = agent.setdefault(aid, {"agent_id": aid, "status": "idle",
+                                     "task_terakhir": "", "cost_rp": 0,
+                                     "sub_agent": {}})
+        jenis = ev.get("type", "")
+        content = ev.get("content") or {}
+        if jenis == "task_created":
             info["status"] = "bekerja"
-            info["tugas_terakhir"] = ev.get("tugas_id", "")
-        elif jenis in ("tugas_selesai", "tugas_gagal", "tugas_dihentikan"):
+            info["task_terakhir"] = ev.get("task_id", "")
+        elif jenis in ("task_completed", "task_failed", "task_stopped"):
             info["status"] = "idle"
-        elif jenis == "subagen_dibuat":
-            sub = isi.get("sub_agen_id") or ev.get("sub_agen_id") or ""
-            info["sub_agen"][sub] = {"status": "bekerja", "kelas_izin": isi.get("kelas_izin", "")}
-        elif jenis == "detak":
-            sub = ev.get("sub_agen_id") or ""
-            if sub in info["sub_agen"]:
-                info["sub_agen"][sub]["status"] = "bekerja"
-        if isinstance(isi.get("biaya_rp"), (int, float)):
-            info["biaya_rp"] += int(isi["biaya_rp"])
-    for info in agen.values():
-        info["sub_agen"] = list(info["sub_agen"].values())
-    return {"agen": list(agen.values())}
+        elif jenis == "subagent_created":
+            sub = content.get("subagent_id") or ev.get("subagent_id") or ""
+            info["sub_agent"][sub] = {"status": "bekerja", "permission_class": content.get("permission_class", "")}
+        elif jenis == "heartbeat":
+            sub = ev.get("subagent_id") or ""
+            if sub in info["sub_agent"]:
+                info["sub_agent"][sub]["status"] = "bekerja"
+        if isinstance(content.get("cost_rp"), (int, float)):
+            info["cost_rp"] += int(content["cost_rp"])
+    for info in agent.values():
+        info["sub_agent"] = list(info["sub_agent"].values())
+    return {"agents": list(agent.values())}
 
 
-def audit(kejadian: list[dict]) -> list[dict]:
+def audit(event: list[dict]) -> list[dict]:
     """Semua tool call + persetujuan (Pengaturan)."""
-    return [ev for ev in kejadian
-            if ev.get("jenis", "") in ("tool_dipanggil", "tool_selesai",
-                                       "persetujuan_diminta", "persetujuan_diberikan",
-                                       "persetujuan_ditolak")]
+    return [ev for ev in event
+            if ev.get("type", "") in ("tool_called", "tool_completed",
+                                       "approval_requested", "approval_granted",
+                                       "approval_rejected")]
 
 
-def daftar_bukti(kejadian: list[dict]) -> list[dict]:
+def items_evidence(event: list[dict]) -> list[dict]:
     """Bukti + vonis pemeriksaan (panel Bukti)."""
-    bukti = {}
-    for ev in kejadian:
-        isi = ev.get("isi") or {}
-        if ev.get("jenis") == "bukti_dicatat" and isi.get("bukti_id"):
-            bukti[isi["bukti_id"]] = {"bukti_id": isi["bukti_id"], "klaim": isi.get("klaim", ""),
-                                      "nilai": isi.get("nilai"), "vonis": "Belum pasti"}
-        elif ev.get("jenis") == "pemeriksaan_selesai" and isi.get("bukti_id") in bukti:
-            bukti[isi["bukti_id"]]["vonis"] = isi.get("vonis", bukti[isi["bukti_id"]]["vonis"])
-    return list(bukti.values())
+    evidence = {}
+    for ev in event:
+        content = ev.get("content") or {}
+        if ev.get("type") == "evidence_recorded" and content.get("evidence_id"):
+            evidence[content["evidence_id"]] = {"evidence_id": content["evidence_id"], "klaim": content.get("klaim", ""),
+                                      "value": content.get("value"), "vonis": "Uncertain"}
+        elif ev.get("type") == "verification_completed" and content.get("evidence_id") in evidence:
+            evidence[content["evidence_id"]]["vonis"] = content.get("vonis", evidence[content["evidence_id"]]["vonis"])
+    return list(evidence.values())
 
 
-def biaya(kejadian: list[dict]) -> dict:
+def cost(event: list[dict]) -> dict:
     """Total biaya per tugas + total keseluruhan."""
-    per_tugas: dict[str, int] = {}
-    for ev in kejadian:
-        isi = ev.get("isi") or {}
-        if isinstance(isi.get("biaya_rp"), (int, float)):
-            tid = ev.get("tugas_id", "?")
-            per_tugas[tid] = per_tugas.get(tid, 0) + int(isi["biaya_rp"])
-    return {"per_tugas": per_tugas, "total_rp": sum(per_tugas.values())}
+    per_task: dict[str, int] = {}
+    for ev in event:
+        content = ev.get("content") or {}
+        if isinstance(content.get("cost_rp"), (int, float)):
+            tid = ev.get("task_id", "?")
+            per_task[tid] = per_task.get(tid, 0) + int(content["cost_rp"])
+    return {"per_task": per_task, "total_rp": sum(per_task.values())}

@@ -1,0 +1,14 @@
+{
+  "task_id": "tugas-acuan-bill_reminder",
+  "name": "bill_reminder",
+  "recording": [
+    {
+      "tool": "create_trigger",
+      "output": {
+        "jenis": "triggers",
+        "value": 1,
+        "jadwal": "harian 07:00"
+      }
+    }
+  ]
+}

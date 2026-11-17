@@ -31,7 +31,7 @@ import httpx
 
 from puspa.sandbox.allowlist import is_allowed
 
-POTONGAN_MAX = 200
+EXCERPT_MAX = 200
 
 
 class ReaderError(Exception):
@@ -39,41 +39,41 @@ class ReaderError(Exception):
 
 
 @dataclass
-class HasilBaca:
+class ResultRead:
     """Satu hasil baca listing oleh satu Pembaca."""
 
-    sukses: bool
+    success: bool
     marketplace: str
     listing_url: str
-    harga: float | None = None
-    ongkir: float | None = None
-    rating_toko: float | None = None
-    nama: str = ""
-    stok: str = "tidak_diketahui"
-    alasan: str = ""
-    potongan_teks: str = ""
-    hash_halaman: str = ""
+    price: float | None = None
+    shipping: float | None = None
+    store_rating: float | None = None
+    name: str = ""
+    stock: str = "unknown"
+    reason: str = ""
+    text_excerpt: str = ""
+    page_hash: str = ""
 
 
-def _tandai_data(teks: str) -> str:
+def _tandai_data(text: str) -> str:
     """Tandai teks bebas dari konten tak tepercaya sebagai data (§2.6)."""
-    return "[DATA: " + " ".join(str(teks).split())[:POTONGAN_MAX] + "]"
+    return "[DATA: " + " ".join(str(text).split())[:EXCERPT_MAX] + "]"
 
 
-def _parse_rupiah(teks: str) -> float | None:
+def _parse_rupiah(text: str) -> float | None:
     """Parse angka Rupiah dari teks ("Rp12.499.000" -> 12499000.0)."""
-    if not teks:
+    if not text:
         return None
-    cocok = re.search(r"Rp\s*([\d.,]+)", str(teks))
-    if not cocok:
+    match = re.search(r"Rp\s*([\d.,]+)", str(text))
+    if not match:
         return None
     try:
-        return float(cocok.group(1).replace(".", "").replace(",", "."))
+        return float(match.group(1).replace(".", "").replace(",", "."))
     except ValueError:
         return None
 
 
-def ekstrak_harga_dari_html(html: str) -> dict:
+def ekstrak_price_dari_html(html: str) -> dict:
     """Ekstrak harga/nama dari HTML lewat JSON-LD + meta generik.
 
     Kembalikan {"harga": float|None, "nama": str, "potongan": str}.
@@ -81,13 +81,13 @@ def ekstrak_harga_dari_html(html: str) -> dict:
     harga None.
     """
     if not html:
-        return {"harga": None, "nama": "", "potongan": ""}
+        return {"price": None, "name": "", "excerpt": ""}
     # JSON-LD Product/Offer.
-    for cocok in re.finditer(
+    for match in re.finditer(
             r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',
             html, re.DOTALL | re.IGNORECASE):
         try:
-            data = json.loads(cocok.group(1).strip())
+            data = json.loads(match.group(1).strip())
         except (ValueError, TypeError):
             continue
         for item in (data if isinstance(data, list) else [data]):
@@ -96,25 +96,25 @@ def ekstrak_harga_dari_html(html: str) -> dict:
             offers = item.get("offers") or {}
             if isinstance(offers, list):
                 offers = offers[0] if offers else {}
-            harga = offers.get("price") if isinstance(offers, dict) else None
-            if harga is not None:
+            price = offers.get("price") if isinstance(offers, dict) else None
+            if price is not None:
                 try:
-                    return {"harga": float(harga),
-                            "nama": str(item.get("name", ""))[:POTONGAN_MAX],
-                            "potongan": _tandai_data(item.get("name", ""))}
+                    return {"price": float(price),
+                            "name": str(item.get("name", ""))[:EXCERPT_MAX],
+                            "excerpt": _tandai_data(item.get("name", ""))}
                 except (TypeError, ValueError):
                     pass
     # Meta product:price:amount.
-    cocok = re.search(
+    match = re.search(
         r'property="product:price:amount"\s+content="([\d.]+)"', html)
-    if cocok:
-        return {"harga": float(cocok.group(1)), "nama": "",
-                "potongan": _tandai_data(cocok.group(0))}
+    if match:
+        return {"price": float(match.group(1)), "name": "",
+                "excerpt": _tandai_data(match.group(0))}
     # Pola teks "Rp..." pertama sebagai jalan terakhir yang jujur:
     # hanya dipakai bila halaman memuat SATU harga yang jelas.
-    harga = _parse_rupiah(html)
-    return {"harga": harga, "nama": "",
-            "potongan": _tandai_data(html[:POTONGAN_MAX]) if harga else ""}
+    price = _parse_rupiah(html)
+    return {"price": price, "name": "",
+            "excerpt": _tandai_data(html[:EXCERPT_MAX]) if price else ""}
 
 
 @dataclass
@@ -124,12 +124,12 @@ class HttpReader:
     marketplace: str
     client: httpx.Client | None = None
 
-    def baca(self, listing_url: str) -> HasilBaca:
+    def read(self, listing_url: str) -> ResultRead:
         """Baca satu listing. Blokir (403/429/captcha) -> gagal terlihat,
         TANPA upaya menembus (§11)."""
         if not is_allowed(listing_url):
-            return HasilBaca(sukses=False, marketplace=self.marketplace,
-                             listing_url=listing_url, alasan="domain_tidak_diizinkan")
+            return ResultRead(success=False, marketplace=self.marketplace,
+                             listing_url=listing_url, reason="domain_not_diizinkan")
         client = self.client or httpx.Client(timeout=15.0)
         try:
             resp = client.get(listing_url, headers={
@@ -137,30 +137,30 @@ class HttpReader:
                 "Accept-Language": "id-ID",
             })
         except httpx.HTTPError as exc:
-            return HasilBaca(sukses=False, marketplace=self.marketplace,
-                             listing_url=listing_url, alasan=f"jaringan_gagal: {exc!r}"[:200])
+            return ResultRead(success=False, marketplace=self.marketplace,
+                             listing_url=listing_url, reason=f"jaringan_gagal: {exc!r}"[:200])
         if resp.status_code in (403, 429):
-            return HasilBaca(sukses=False, marketplace=self.marketplace,
+            return ResultRead(success=False, marketplace=self.marketplace,
                              listing_url=listing_url,
-                             alasan=f"sumber_memblokir_http_{resp.status_code}")
+                             reason=f"sumber_memblokir_http_{resp.status_code}")
         if resp.status_code != 200:
-            return HasilBaca(sukses=False, marketplace=self.marketplace,
+            return ResultRead(success=False, marketplace=self.marketplace,
                              listing_url=listing_url,
-                             alasan=f"http_{resp.status_code}")
+                             reason=f"http_{resp.status_code}")
         if "captcha" in resp.text.lower()[:2000]:
-            return HasilBaca(sukses=False, marketplace=self.marketplace,
-                             listing_url=listing_url, alasan="captcha_terdeteksi")
-        ekstrak = ekstrak_harga_dari_html(resp.text)
-        if ekstrak["harga"] is None:
-            return HasilBaca(sukses=False, marketplace=self.marketplace,
-                             listing_url=listing_url, alasan="harga_tidak_ditemukan")
+            return ResultRead(success=False, marketplace=self.marketplace,
+                             listing_url=listing_url, reason="captcha_terdeteksi")
+        ekstrak = ekstrak_price_dari_html(resp.text)
+        if ekstrak["price"] is None:
+            return ResultRead(success=False, marketplace=self.marketplace,
+                             listing_url=listing_url, reason="price_not_ditemukan")
         import hashlib
 
-        return HasilBaca(
-            sukses=True, marketplace=self.marketplace, listing_url=listing_url,
-            harga=ekstrak["harga"], nama=ekstrak["nama"],
-            potongan_teks=ekstrak["potongan"],
-            hash_halaman=hashlib.sha256(resp.text.encode("utf-8")).hexdigest())
+        return ResultRead(
+            success=True, marketplace=self.marketplace, listing_url=listing_url,
+            price=ekstrak["price"], name=ekstrak["name"],
+            text_excerpt=ekstrak["excerpt"],
+            page_hash=hashlib.sha256(resp.text.encode("utf-8")).hexdigest())
 
 
 @dataclass
@@ -182,16 +182,16 @@ class PlaywrightReader:
             return False
         return True
 
-    def baca(self, listing_url: str) -> HasilBaca:
+    def read(self, listing_url: str) -> ResultRead:
         if not is_allowed(listing_url):
-            return HasilBaca(sukses=False, marketplace=self.marketplace,
-                             listing_url=listing_url, alasan="domain_tidak_diizinkan")
+            return ResultRead(success=False, marketplace=self.marketplace,
+                             listing_url=listing_url, reason="domain_not_diizinkan")
         try:
             from playwright.sync_api import sync_playwright
         except ImportError:
-            return HasilBaca(sukses=False, marketplace=self.marketplace,
+            return ResultRead(success=False, marketplace=self.marketplace,
                              listing_url=listing_url,
-                             alasan="playwright_tidak_tersedia")
+                             reason="playwright_not_tersedia")
         # Seam host: bila CDN Playwright diblokir proxy egress, browser
         # Chrome for Testing bisa diunduh dari storage.googleapis.com
         # dan ditunjuk lewat env PUSPA_CHROMIUM_EXECUTABLE (lihat
@@ -209,22 +209,22 @@ class PlaywrightReader:
                 finally:
                     browser.close()
         except Exception as exc:  # noqa: BLE001 — gagal browser = gagal terlihat
-            return HasilBaca(sukses=False, marketplace=self.marketplace,
+            return ResultRead(success=False, marketplace=self.marketplace,
                              listing_url=listing_url,
-                             alasan=f"browser_gagal: {exc!r}"[:200])
-        ekstrak = ekstrak_harga_dari_html(html)
-        if ekstrak["harga"] is None:
-            return HasilBaca(sukses=False, marketplace=self.marketplace,
-                             listing_url=listing_url, alasan="harga_tidak_ditemukan")
+                             reason=f"browser_gagal: {exc!r}"[:200])
+        ekstrak = ekstrak_price_dari_html(html)
+        if ekstrak["price"] is None:
+            return ResultRead(success=False, marketplace=self.marketplace,
+                             listing_url=listing_url, reason="price_not_ditemukan")
         import hashlib
 
-        return HasilBaca(sukses=True, marketplace=self.marketplace,
-                         listing_url=listing_url, harga=ekstrak["harga"],
-                         nama=ekstrak["nama"], potongan_teks=ekstrak["potongan"],
-                         hash_halaman=hashlib.sha256(html.encode("utf-8")).hexdigest())
+        return ResultRead(success=True, marketplace=self.marketplace,
+                         listing_url=listing_url, price=ekstrak["price"],
+                         name=ekstrak["name"], text_excerpt=ekstrak["excerpt"],
+                         page_hash=hashlib.sha256(html.encode("utf-8")).hexdigest())
 
 
-def buat_pembaca(marketplace: str, *, client: httpx.Client | None = None):
+def create_pembaca(marketplace: str, *, client: httpx.Client | None = None):
     """Pabrik Pembaca: Playwright bila tersedia, kalau tidak HTTP fetch.
     Kembalikan (pembaca, jalur) dengan jalur 'playwright'/'http'/'tidak_tersedia'.
     """

@@ -31,7 +31,7 @@ def _connect(dsn=None):
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
-def skor_sumber(sumber: str, kategori: str = "", dsn=None) -> dict:
+def skor_sumber(sumber: str, category: str = "", dsn=None) -> dict:
     """Skor Keandalan satu sumber (marketplace x kategori).
 
     Kembalikan {"persen_terverifikasi", "jumlah", "turunkan_vonis",
@@ -41,19 +41,19 @@ def skor_sumber(sumber: str, kategori: str = "", dsn=None) -> dict:
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT vonis, waktu FROM pembacaan_sumber"
+                "SELECT vonis, created_at FROM source_readings"
                 " WHERE sumber = %s AND kategori = %s"
-                " ORDER BY waktu DESC LIMIT 50",
-                (sumber, kategori))
+                " ORDER BY created_at DESC LIMIT 50",
+                (sumber, category))
             rows = cur.fetchall()
     if not rows:
-        return {"persen_terverifikasi": None, "jumlah": 0,
+        return {"persen_verified": None, "amount": 0,
                 "turunkan_vonis": False, "umur_pembacaan_terakhir_detik": None}
     # skor_keandalan memakai 50 TERAKHIR dalam urutan kronologis.
-    hasil = skor_keandalan([r["vonis"] for r in reversed(rows)])
-    umur = (datetime.now(timezone.utc) - rows[0]["waktu"]).total_seconds()
-    hasil["umur_pembacaan_terakhir_detik"] = round(umur, 1)
-    return hasil
+    result = skor_keandalan([r["vonis"] for r in reversed(rows)])
+    umur = (datetime.now(timezone.utc) - rows[0]["created_at"]).total_seconds()
+    result["umur_pembacaan_terakhir_detik"] = round(umur, 1)
+    return result
 
 
 def skor_prosedur(prosedur_id: str, user_id: str, dsn=None) -> dict:
@@ -62,27 +62,27 @@ def skor_prosedur(prosedur_id: str, user_id: str, dsn=None) -> dict:
     Di sini: % jalan sukses dari 50 jalan terakhir (canary + jalan
     prosedur tercatat di `prosedur`). Tanpa jalan -> persen None.
     """
-    from puspa.graphs.service import ambil_prosedur
+    from puspa.graphs.service import take_prosedur
 
     try:
-        prosedur = ambil_prosedur(prosedur_id, user_id, dsn=dsn)
+        prosedur = take_prosedur(prosedur_id, user_id, dsn=dsn)
     except KeyError:
-        return {"persen_terverifikasi": None, "jumlah": 0, "turunkan_vonis": False}
-    total = prosedur["jalan_sukses"] + prosedur["jalan_gagal"]
+        return {"persen_verified": None, "amount": 0, "turunkan_vonis": False}
+    total = prosedur["successful_runs"] + prosedur["failed_runs"]
     if total == 0:
-        return {"persen_terverifikasi": None, "jumlah": 0, "turunkan_vonis": False}
-    persen = round(prosedur["jalan_sukses"] / total * 100, 1)
-    return {"persen_terverifikasi": persen, "jumlah": total,
+        return {"persen_verified": None, "amount": 0, "turunkan_vonis": False}
+    persen = round(prosedur["successful_runs"] / total * 100, 1)
+    return {"persen_verified": persen, "amount": total,
             "turunkan_vonis": persen < 80.0,
             "status": prosedur["status"]}
 
 
-def label_panel(sumber: str, kategori: str = "", dsn=None) -> str:
+def label_panel(sumber: str, category: str = "", dsn=None) -> str:
     """Label jujur untuk panel Bukti, mis. "Shopee, kategori TV: 92%
     terverifikasi dari 50 pembacaan terakhir"."""
-    skor = skor_sumber(sumber, kategori, dsn=dsn)
-    if skor["jumlah"] == 0:
-        return f"{sumber}, kategori {kategori or '-'}: belum ada pembacaan"
-    return (f"{sumber}, kategori {kategori or '-'}: "
-            f"{skor['persen_terverifikasi']}% terverifikasi dari "
-            f"{skor['jumlah']} pembacaan terakhir")
+    skor = skor_sumber(sumber, category, dsn=dsn)
+    if skor["amount"] == 0:
+        return f"{sumber}, kategori {category or '-'}: belum ada pembacaan"
+    return (f"{sumber}, kategori {category or '-'}: "
+            f"{skor['persen_verified']}% terverifikasi dari "
+            f"{skor['amount']} pembacaan terakhir")

@@ -32,47 +32,47 @@ from datetime import datetime, timezone
 
 import psycopg
 
-from puspa.evidence.evidence import catat_bukti
+from puspa.evidence.evidence import record_evidence
 from puspa.evidence.verifier import periksa
 from puspa.graphs.identity import (
-    catat_harga, cocokkan_otomatis, harga_terkini, riwayat_harga,
+    record_price, cocokkan_automatic, price_terkini, riwayat_price,
     tautkan_listing)
-from puspa.pricing import cache as cache_bukti
-from puspa.pricing import credits as kredit
+from puspa.pricing import cache as cache_evidence
+from puspa.pricing import credits as credit
 from puspa.pricing.catalog import di_luar_scope, penolakan_scope
-from puspa.pricing.readers import HasilBaca
-from puspa.pricing.tos import boleh_baca
+from puspa.pricing.readers import ResultRead
+from puspa.pricing.tos import boleh_read
 
 MARKETPLACE = ("Tokopedia", "Shopee", "Blibli")
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 
-def _catat_pembacaan(user_id: str, sumber: str, kategori: str, vonis: str, dsn=None) -> None:
+def _record_pembacaan(user_id: str, sumber: str, category: str, vonis: str, dsn=None) -> None:
     """Tulis satu pembacaan ke `pembacaan_sumber` (bahan Skor Keandalan)."""
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO pembacaan_sumber (user_id, sumber, kategori, vonis)"
-                " VALUES (%s, %s, %s, %s)", (user_id, sumber, kategori, vonis))
+                "INSERT INTO source_readings (user_id, sumber, category, vonis)"
+                " VALUES (%s, %s, %s, %s)", (user_id, sumber, category, vonis))
         conn.commit()
 
 
-def _catat_token(tugas_id: str, user_id: str, token: int, dsn=None) -> None:
+def _record_token(task_id: str, user_id: str, token: int, dsn=None) -> None:
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO metrik_token (tugas_id, user_id, jenis, token)"
-                " VALUES (%s, %s, 'bandingkan_harga', %s)", (tugas_id, user_id, token))
+                "INSERT INTO token_metrics (task_id, user_id, type, token)"
+                " VALUES (%s, %s, 'compare_prices', %s)", (task_id, user_id, token))
         conn.commit()
 
 
-def bandingkan_harga(*, user_id: str, agen_id: str, nomor_model: str,
-                     merek: str | None = None, kategori: str,
+def compare_price(*, user_id: str, agent_id: str, model_number: str,
+                     brand: str | None = None, category: str,
                      listing_urls: dict[str, str],
-                     pembaca: dict[str, object], baca_ulang,
-                     tugas_id: str | None = None, token: int = 0,
+                     pembaca: dict[str, object], reread,
+                     task_id: str | None = None, token: int = 0,
                      mode: str = "live", dsn=None) -> dict:
     """Bandingkan harga satu barang di 3 marketplace.
 
@@ -85,104 +85,104 @@ def bandingkan_harga(*, user_id: str, agen_id: str, nomor_model: str,
     (harga/ongkir/rating/bukti_id/vonis atau `tidak_bisa_dicek` +
     alasan), `termurah`, `selisih`, dan `perlu_tanya` bila ragu.
     """
-    tugas_id = tugas_id or f"tugas-{uuid.uuid4().hex[:12]}"
-    if di_luar_scope(kategori):
-        return {"sukses": False, "alasan": "di_luar_scope",
-                "pesan": penolakan_scope(kategori)}
-    cocok = cocokkan_otomatis(nomor_model=nomor_model, merek=merek, dsn=dsn)
-    if cocok["perlu_tanya"]:
-        return {"sukses": False, "alasan": "perlu_tanya",
-                "pesan": "barang belum pasti cocok — pilih dari kandidat sebelum membandingkan",
-                "kandidat": cocok["kandidat"], "perlu_tanya": True}
-    produk = cocok["cocok"]
-    hasil: dict[str, dict] = {}
+    task_id = task_id or f"tugas-{uuid.uuid4().hex[:12]}"
+    if di_luar_scope(category):
+        return {"success": False, "reason": "di_luar_scope",
+                "message": penolakan_scope(category)}
+    match = cocokkan_automatic(model_number=model_number, brand=brand, dsn=dsn)
+    if match["perlu_ask"]:
+        return {"success": False, "reason": "perlu_ask",
+                "message": "barang belum pasti cocok — pilih dari kandidat sebelum membandingkan",
+                "kandidat": match["kandidat"], "perlu_ask": True}
+    product = match["match"]
+    result: dict[str, dict] = {}
     for pasar in MARKETPLACE:
         url = listing_urls.get(pasar)
         if not url:
-            hasil[pasar] = {"tidak_bisa_dicek": True,
-                            "alasan": "tautan_tidak_diberikan"}
+            result[pasar] = {"not_can_dicek": True,
+                            "reason": "tautan_not_granted"}
             continue
-        if mode == "live" and not boleh_baca(pasar, mode="live"):
-            hasil[pasar] = {
-                "tidak_bisa_dicek": True,
-                "alasan": "syarat_layanan_menunggu_keputusan_nero",
-                "pesan": f"{pasar} melarang pembacaan otomatis di syarat layanannya; "
+        if mode == "live" and not boleh_read(pasar, mode="live"):
+            result[pasar] = {
+                "not_can_dicek": True,
+                "reason": "syarat_service_pending_keputusan_nero",
+                "message": f"{pasar} melarang pembacaan otomatis di syarat layanannya; "
                          "Puspa tidak membaca sampai Nero memutuskan lanjut atau ganti sumber "
                          "(keputusan 15)."}
-            _catat_pembacaan(user_id, pasar, kategori, "Tidak bisa dipastikan", dsn)
+            _record_pembacaan(user_id, pasar, category, "Cannot be determined", dsn)
             continue
         # Cache bukti bersama: hanya jalur Pembaca.
-        kunci_cache = f"{pasar}:{url}"
-        dari_cache = cache_bukti.ambil(kunci_cache, dsn=dsn) if mode == "live" else None
+        key_cache = f"{pasar}:{url}"
+        dari_cache = cache_evidence.take(key_cache, dsn=dsn) if mode == "live" else None
         if dari_cache is not None:
-            nilai = dari_cache["nilai"]
-            baca = HasilBaca(sukses=True, marketplace=pasar, listing_url=url,
-                             harga=nilai.get("harga"), ongkir=nilai.get("ongkir", 0),
-                             rating_toko=nilai.get("rating_toko"),
-                             nama=nilai.get("nama", ""), potongan_teks="[DATA: cache]",
-                             hash_halaman="")
+            value = dari_cache["value"]
+            read = ResultRead(success=True, marketplace=pasar, listing_url=url,
+                             price=value.get("price"), shipping=value.get("shipping", 0),
+                             store_rating=value.get("store_rating"),
+                             name=value.get("name", ""), text_excerpt="[DATA: cache]",
+                             page_hash="")
             cache_hit = True
         else:
-            baca = pembaca[pasar].baca(url)
+            read = pembaca[pasar].read(url)
             cache_hit = False
-        if not baca.sukses or baca.harga is None:
-            hasil[pasar] = {"tidak_bisa_dicek": True,
-                            "alasan": baca.alasan or "tidak_bisa_dibaca",
-                            "pesan": f"{pasar} tidak bisa dicek: {baca.alasan or 'tidak bisa dibaca'}"}
-            _catat_pembacaan(user_id, pasar, kategori, "Tidak bisa dipastikan", dsn)
+        if not read.success or read.price is None:
+            result[pasar] = {"not_can_dicek": True,
+                            "reason": read.reason or "not_can_dibaca",
+                            "message": f"{pasar} tidak bisa dicek: {read.reason or 'tidak bisa dibaca'}"}
+            _record_pembacaan(user_id, pasar, category, "Cannot be determined", dsn)
             continue
         # Bukti + Pemeriksa independen (baca ulang LANGSUNG, tanpa cache).
-        bukti = catat_bukti(
-            tugas_id=tugas_id, klaim=baca.nama or f"{merek or ''} {nomor_model}",
-            nilai=baca.harga, satuan="Rp", sumber_url=url,
-            potongan_teks=baca.potongan_teks or str(baca.harga),
-            halaman="", id_pembaca=f"pembaca-{pasar.lower()}")
-        bukti = periksa(bukti, baca_ulang=baca_ulang)
+        evidence = record_evidence(
+            task_id=task_id, klaim=read.name or f"{brand or ''} {model_number}",
+            value=read.price, unit="Rp", sumber_url=url,
+            text_excerpt=read.text_excerpt or str(read.price),
+            halaman="", reader_id=f"pembaca-{pasar.lower()}")
+        evidence = periksa(evidence, reread=reread)
         # Skor Keandalan: sumber < 80% -> maksimal Belum pasti (§3.4).
         from puspa.moat.reliability import skor_sumber
 
-        skor = skor_sumber(pasar, kategori, dsn=dsn)
-        if skor["turunkan_vonis"] and bukti.vonis == "Terverifikasi":
-            bukti.vonis = "Belum pasti"
-        _catat_pembacaan(user_id, pasar, kategori, bukti.vonis, dsn)
+        skor = skor_sumber(pasar, category, dsn=dsn)
+        if skor["turunkan_vonis"] and evidence.vonis == "Verified":
+            evidence.vonis = "Uncertain"
+        _record_pembacaan(user_id, pasar, category, evidence.vonis, dsn)
         # Tulis ke graf (hanya hasil yang lolos periksa — vonis
         # "Tidak bisa dipastikan" tidak ditulis).
-        bukti_id = bukti.bukti_id
-        if bukti.vonis != "Tidak bisa dipastikan":
-            tautan = tautkan_listing(produk_id=produk["id"], user_id=user_id,
+        evidence_id = evidence.evidence_id
+        if evidence.vonis != "Cannot be determined":
+            tautan = tautkan_listing(product_id=product["id"], user_id=user_id,
                                      marketplace=pasar, listing_url=url, dsn=dsn)
-            catat_harga(tautan_id=tautan["id"], user_id=user_id, harga=baca.harga,
-                        ongkir=baca.ongkir or 0, rating_toko=baca.rating_toko,
-                        stok=baca.stok, bukti_id=bukti_id, dsn=dsn)
+            record_price(tautan_id=tautan["id"], user_id=user_id, price=read.price,
+                        shipping=read.shipping or 0, store_rating=read.store_rating,
+                        stock=read.stock, evidence_id=evidence_id, dsn=dsn)
             if not cache_hit:
-                cache_bukti.simpan(kunci_cache, sumber=pasar,
-                                   nilai={"harga": baca.harga, "ongkir": baca.ongkir or 0,
-                                          "rating_toko": baca.rating_toko,
-                                          "nama": baca.nama},
-                                   bukti_id=bukti_id, dsn=dsn)
-        hasil[pasar] = {
-            "harga": baca.harga, "ongkir": baca.ongkir or 0,
-            "rating_toko": baca.rating_toko, "listing_url": url,
-            "bukti_id": bukti_id, "vonis": bukti.vonis,
-            "waktu_ambil": bukti.waktu_ambil.isoformat(),
+                cache_evidence.save(key_cache, sumber=pasar,
+                                   value={"price": read.price, "shipping": read.shipping or 0,
+                                          "store_rating": read.store_rating,
+                                          "name": read.name},
+                                   evidence_id=evidence_id, dsn=dsn)
+        result[pasar] = {
+            "price": read.price, "shipping": read.shipping or 0,
+            "store_rating": read.store_rating, "listing_url": url,
+            "evidence_id": evidence_id, "vonis": evidence.vonis,
+            "time_take": evidence.time_take.isoformat(),
             "dari_cache": cache_hit,
         }
-    harga_ok = {p: h["harga"] for p, h in hasil.items() if "harga" in h}
-    termurah = min(harga_ok, key=harga_ok.get) if harga_ok else None
-    selisih = (max(harga_ok.values()) - min(harga_ok.values())) if len(harga_ok) > 1 else 0
-    _catat_token(tugas_id, user_id, token, dsn)
-    return {"sukses": True, "produk": produk, "hasil": hasil,
+    price_ok = {p: h["price"] for p, h in result.items() if "price" in h}
+    termurah = min(price_ok, key=price_ok.get) if price_ok else None
+    selisih = (max(price_ok.values()) - min(price_ok.values())) if len(price_ok) > 1 else 0
+    _record_token(task_id, user_id, token, dsn)
+    return {"success": True, "product": product, "result": result,
             "termurah": termurah, "selisih": selisih,
-            "tugas_id": tugas_id, "mode": mode}
+            "task_id": task_id, "mode": mode}
 
 
-def cek_detail(*, user_id: str, produk_id: str, dsn=None) -> dict:
+def check_detail(*, user_id: str, product_id: str, dsn=None) -> dict:
     """Cek detail (riwayat 30 hari + harga terkini) = 1 kredit (§4.1).
 
     Kredit dipotong DULU; gagal -> KreditError, tidak ada angka yang
     tampil tanpa bukti (riwayat dari graf selalu ber-bukti_id).
     """
-    sisa = kredit.pakai_kredit(user_id, dsn=dsn)
-    return {"sisa_kredit": sisa,
-            "harga_terkini": harga_terkini(produk_id, dsn=dsn),
-            "riwayat_30_hari": riwayat_harga(produk_id, hari=30, dsn=dsn)}
+    sisa = credit.use_credit(user_id, dsn=dsn)
+    return {"sisa_credit": sisa,
+            "price_terkini": price_terkini(product_id, dsn=dsn),
+            "riwayat_30_day": riwayat_price(product_id, day=30, dsn=dsn)}

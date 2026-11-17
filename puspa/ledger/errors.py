@@ -11,6 +11,6 @@ class InvalidEventTypeError(LedgerError):
     def __init__(self, jenis):
         super().__init__(
             f"jenis kejadian tidak dikenal: {jenis!r} "
-            "(harus salah satu dari 31 jenis tertutup di definisi 2.3)"
+            "(must wrong satu dari 31 type tertutup di definisi 2.3)"
         )
         self.jenis = jenis

@@ -27,8 +27,8 @@ from .factory import PuspaChassis, assemble, build_hook_factory, build_registry
 from .hooks import PuspaHook, make_puspa_hook_factory
 from .registry import PuspaRegistry
 from .sandbox_tool import SandboxTool
-from .session import bind_turn, payload_from_token
-from .skills import PuspaSkillsLoader
+from .agent_session import bind_turn, payload_from_token
+from .skill_loader import PuspaSkillsLoader
 from .tools import PuspaTool, kind_for_tool
 
 __all__ = [

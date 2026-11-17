@@ -16,8 +16,8 @@ import psycopg
 from psycopg.rows import dict_row
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
-TARGET_PENGGUNA_AKTIF = 5
-TARGET_JALAN_TANPA_CAMPUR = 50.0
+TARGET_USER_ACTIVE = 5
+TARGET_JALAN_WITHOUT_CAMPUR = 50.0
 
 
 def _connect(dsn=None):
@@ -25,33 +25,33 @@ def _connect(dsn=None):
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
-def metrik_alur(dsn=None) -> dict:
+def metrik_workflow(dsn=None) -> dict:
     """Hitung metrik alur dari tabel Fase 4 + pustaka Fase 3."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT COUNT(DISTINCT user_id) AS n FROM alur WHERE status = 'aktif'")
-            pengguna_aktif = int(cur.fetchone()["n"])
-            cur.execute("SELECT status, COUNT(*) AS n FROM jalan_alur GROUP BY status")
+                "SELECT COUNT(DISTINCT user_id) AS n FROM workflows WHERE status = 'active'")
+            user_active = int(cur.fetchone()["n"])
+            cur.execute("SELECT status, COUNT(*) AS n FROM workflow_runs GROUP BY status")
             jalan = {r["status"]: int(r["n"]) for r in cur.fetchall()}
             cur.execute(
-                "SELECT blok, COUNT(*) AS n FROM permintaan_blok"
+                "SELECT block, COUNT(*) AS n FROM block_requests"
                 " GROUP BY blok ORDER BY n DESC")
-            permintaan = [(r["blok"], int(r["n"])) for r in cur.fetchall()]
+            permintaan = [(r["block"], int(r["n"])) for r in cur.fetchall()]
     total_jalan = sum(jalan.values())
-    selesai = jalan.get("selesai", 0)
-    tanpa_campur = round(selesai / total_jalan * 100, 1) if total_jalan else None
+    completed_at = jalan.get("completed", 0)
+    without_campur = round(completed_at / total_jalan * 100, 1) if total_jalan else None
     return {
-        "pengguna_dengan_alur_aktif": pengguna_aktif,
-        "target_pengguna_aktif": TARGET_PENGGUNA_AKTIF,
-        "status_pengguna_aktif": (
-            "tertunda" if pengguna_aktif < TARGET_PENGGUNA_AKTIF else "lolos"),
-        "alasan_pengguna_aktif": (
+        "user_dengan_workflow_active": user_active,
+        "target_user_active": TARGET_USER_ACTIVE,
+        "status_user_active": (
+            "tertunda" if user_active < TARGET_USER_ACTIVE else "passed"),
+        "reason_user_active": (
             "butuh pengguna uji (10 orang) + masa uji 2 minggu"
-            if pengguna_aktif < TARGET_PENGGUNA_AKTIF else ""),
+            if user_active < TARGET_USER_ACTIVE else ""),
         "jalan_total": total_jalan,
-        "jalan_selesai_tanpa_campur": selesai,
-        "persen_jalan_tanpa_campur": tanpa_campur,
-        "target_jalan_tanpa_campur": TARGET_JALAN_TANPA_CAMPUR,
-        "permintaan_blok": [{"blok": b, "jumlah": n} for b, n in permintaan],
+        "jalan_completed_without_campur": completed_at,
+        "persen_jalan_without_campur": without_campur,
+        "target_jalan_without_campur": TARGET_JALAN_WITHOUT_CAMPUR,
+        "permintaan_block": [{"block": b, "amount": n} for b, n in permintaan],
     }

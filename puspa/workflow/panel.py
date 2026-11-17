@@ -16,55 +16,55 @@ from __future__ import annotations
 import html
 
 
-def _esc(teks) -> str:
-    return html.escape(str(teks), quote=True)
+def _esc(text) -> str:
+    return html.escape(str(text), quote=True)
 
 
-def kartu_langkah_html(kartu: dict) -> str:
+def card_step_html(card: dict) -> str:
     """Satu kartu langkah: judul, blok, kelas izin, lencana aksi keluar."""
     lencana = ""
-    if kartu.get("aksi_keluar"):
+    if card.get("action_logout"):
         lencana = ' <span class="lencana-aksi">butuh persetujuan</span>'
     return (
-        f'<div class="kartu-langkah" data-blok="{_esc(kartu.get("blok", ""))}">'
-        f'<h4>{_esc(kartu.get("judul", ""))}</h4>'
-        f'<p>{_esc(kartu.get("deskripsi", ""))}</p>'
-        f'<p class="meta">Blok: <code>{_esc(kartu.get("blok", ""))}</code>'
-        f' · Kelas: {_esc(kartu.get("kelas_izin", ""))}{lencana}</p>'
+        f'<div class="kartu-langkah" data-blok="{_esc(card.get("block", ""))}">'
+        f'<h4>{_esc(card.get("title", ""))}</h4>'
+        f'<p>{_esc(card.get("deskripsi", ""))}</p>'
+        f'<p class="meta">Blok: <code>{_esc(card.get("block", ""))}</code>'
+        f' · Kelas: {_esc(card.get("permission_class", ""))}{lencana}</p>'
         f'</div>'
     )
 
 
-def panel_alur_html(*, nama: str, pemicu: dict, kartu: list[dict],
-                    manifes_teks: str = "", pesan: str = "") -> str:
+def panel_workflow_html(*, name: str, trigger: dict, card: list[dict],
+                    manifest_teks: str = "", message: str = "") -> str:
     """Panel draf alur: nama + pemicu + kartu langkah + manifes izin."""
-    kartu_html = "\n".join(kartu_langkah_html(k) for k in kartu)
-    pemicu_teks = _esc(pemicu.get("jenis", "manual"))
-    pesan_html = f'<p class="pesan">{_esc(pesan)}</p>' if pesan else ""
-    manifes_html = (f'<pre class="manifes">{_esc(manifes_teks)}</pre>'
-                    if manifes_teks else "")
+    card_html = "\n".join(card_step_html(k) for k in card)
+    trigger_teks = _esc(trigger.get("type", "manual"))
+    message_html = f'<p class="pesan">{_esc(message)}</p>' if message else ""
+    manifest_html = (f'<pre class="manifes">{_esc(manifest_teks)}</pre>'
+                    if manifest_teks else "")
     return (
-        f'<section class="panel-alur"><h3>{_esc(nama)}</h3>'
-        f'<p>Pemicu: {pemicu_teks}</p>{pesan_html}'
-        f'<div class="daftar-langkah">{kartu_html}</div>'
-        f'{manifes_html}</section>'
+        f'<section class="panel-alur"><h3>{_esc(name)}</h3>'
+        f'<p>Pemicu: {trigger_teks}</p>{message_html}'
+        f'<div class="daftar-langkah">{card_html}</div>'
+        f'{manifest_html}</section>'
     )
 
 
-def hasil_jalan_html(hasil: dict) -> str:
+def result_jalan_html(result: dict) -> str:
     """Hasil jalan / uji kering: tiap langkah + status + biaya + alasan."""
-    baris = []
-    for l in hasil.get("langkah_hasil", []):
-        status = "berhasil" if l.get("sukses") else (
-            "menunggu" if l.get("sukses") is None else "gagal")
+    rows = []
+    for l in result.get("step_results", []):
+        status = "successful" if l.get("success") else (
+            "pending" if l.get("success") is None else "failed")
         if l.get("simulasi"):
             status = "simulasi (uji kering)"
-        baris.append(f'<li>{_esc(l.get("blok", "?"))} — {status}</li>')
-    alasan = hasil.get("alasan") or ""
+        rows.append(f'<li>{_esc(l.get("block", "?"))} — {status}</li>')
+    reason = result.get("reason") or ""
     return (
-        f'<section class="hasil-jalan"><p>Status: {_esc(hasil.get("status", ""))}</p>'
-        f'<ul>{"".join(baris)}</ul>'
-        f'<p>Biaya: Rp{int(hasil.get("biaya_rp", 0)):,}</p>'.replace(",", ".")
-        + (f'<p>Alasan: {_esc(alasan)}</p>' if alasan else "")
+        f'<section class="hasil-jalan"><p>Status: {_esc(result.get("status", ""))}</p>'
+        f'<ul>{"".join(rows)}</ul>'
+        f'<p>Biaya: Rp{int(result.get("cost_rp", 0)):,}</p>'.replace(",", ".")
+        + (f'<p>Alasan: {_esc(reason)}</p>' if reason else "")
         + '</section>'
     )

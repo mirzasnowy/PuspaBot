@@ -18,7 +18,7 @@ import psycopg
 import pytest
 from psycopg import errors as pg_errors
 
-from puspa.ledger import APP_ROLE, GENESIS, JENIS_KEJADIAN, Ledger
+from puspa.ledger import APP_ROLE, GENESIS, JENIS_EVENT, Ledger
 from puspa.ledger.errors import InvalidEventTypeError
 
 DSN = os.environ.get(
@@ -36,159 +36,159 @@ def ledger():
 
 
 @pytest.fixture
-def tugas_id(ledger):
+def task_id(ledger):
     """tugas_id unik per tes; barisnya dibersihkan setelah tes selesai."""
     tid = f"tes-{uuid.uuid4().hex[:12]}"
     yield tid
     with psycopg.connect(DSN, autocommit=True) as conn:
-        conn.execute("DELETE FROM kejadian WHERE tugas_id = %s", (tid,))
+        conn.execute("DELETE FROM events WHERE task_id = %s", (tid,))
 
 
-def _append(ledger, tugas_id, jenis="detak", isi=None, **kwargs):
+def _append(ledger, task_id, jenis="heartbeat", content=None, **kwargs):
     return ledger.append_event(
-        tugas_id=tugas_id,
-        agen_id=AGEN,
+        task_id=task_id,
+        agent_id=AGEN,
         jenis=jenis,
-        isi=isi if isi is not None else {"n": 1},
+        content=content if content is not None else {"n": 1},
         **kwargs,
     )
 
 
-def test_append_dan_baca_kembali(ledger, tugas_id):
-    ev = _append(ledger, tugas_id, jenis="tugas_dibuat", isi={"tujuan": "cek harga"})
+def test_append_and_read_kembali(ledger, task_id):
+    ev = _append(ledger, task_id, jenis="task_created", content={"purpose": "cek harga"})
     assert ev["id"]
-    assert ev["tugas_id"] == tugas_id
-    assert ev["agen_id"] == AGEN
-    assert ev["sub_agen_id"] is None
-    assert ev["jenis"] == "tugas_dibuat"
-    assert ev["isi"] == {"tujuan": "cek harga"}
-    assert ev["waktu"] is not None  # waktu dari DB, bukan dari memori
-    assert ev["hash_sebelumnya"] == GENESIS
+    assert ev["task_id"] == task_id
+    assert ev["agent_id"] == AGEN
+    assert ev["subagent_id"] is None
+    assert ev["type"] == "task_created"
+    assert ev["content"] == {"purpose": "cek harga"}
+    assert ev["created_at"] is not None  # waktu dari DB, bukan dari memori
+    assert ev["previous_hash"] == GENESIS
     assert len(ev["hash"]) == 64  # sha256 hex
 
-    dibaca = ledger.events(tugas_id)
+    dibaca = ledger.events(task_id)
     assert len(dibaca) == 1
     assert dibaca[0] == ev
 
 
-def test_rantai_hash_utuh(ledger, tugas_id):
-    pertama = _append(ledger, tugas_id, jenis="tugas_dibuat", isi={"a": 1})
+def test_rantai_hash_utuh(ledger, task_id):
+    pertama = _append(ledger, task_id, jenis="task_created", content={"a": 1})
     kedua = _append(
-        ledger, tugas_id, jenis="rencana_dibuat", isi={"b": 2}, id_induk=pertama["id"]
+        ledger, task_id, jenis="plan_created", content={"b": 2}, parent_id=pertama["id"]
     )
-    ketiga = _append(ledger, tugas_id, jenis="detak", isi={"c": 3})
+    ketiga = _append(ledger, task_id, jenis="heartbeat", content={"c": 3})
 
-    assert kedua["hash_sebelumnya"] == pertama["hash"]
-    assert ketiga["hash_sebelumnya"] == kedua["hash"]
-    assert kedua["id_induk"] == pertama["id"]
+    assert kedua["previous_hash"] == pertama["hash"]
+    assert ketiga["previous_hash"] == kedua["hash"]
+    assert kedua["parent_id"] == pertama["id"]
 
-    ok, putus = ledger.verify_chain(tugas_id)
+    ok, putus = ledger.verify_chain(task_id)
     assert ok is True
     assert putus == []
 
     # Filter jenis mengembalikan hanya kejadian yang cocok.
-    assert [e["id"] for e in ledger.events(tugas_id, jenis="detak")] == [ketiga["id"]]
+    assert [e["id"] for e in ledger.events(task_id, jenis="heartbeat")] == [ketiga["id"]]
 
 
-def test_verify_chain_mendeteksi_perubahan_diam_diam(ledger, tugas_id):
-    _append(ledger, tugas_id, jenis="tugas_dibuat", isi={"a": 1})
-    korban = _append(ledger, tugas_id, jenis="bukti_dicatat", isi={"harga": 100})
-    _append(ledger, tugas_id, jenis="tugas_selesai", isi={"ok": True})
+def test_verify_chain_mendeteksi_perubahan_diam_diam(ledger, task_id):
+    _append(ledger, task_id, jenis="task_created", content={"a": 1})
+    korban = _append(ledger, task_id, jenis="evidence_recorded", content={"price": 100})
+    _append(ledger, task_id, jenis="task_completed", content={"ok": True})
 
-    ok, _ = ledger.verify_chain(tugas_id)
+    ok, _ = ledger.verify_chain(task_id)
     assert ok is True
 
     # Ubah satu isi lewat SQL langsung sebagai pemilik DB (superuser/owner
     # bisa UPDATE; peran aplikasi tidak — lihat tes izin di bawah).
     with psycopg.connect(DSN, autocommit=True) as conn:
         conn.execute(
-            "UPDATE kejadian SET isi = %s::jsonb WHERE id = %s",
-            (json.dumps({"harga": 999}), korban["id"]),
+            "UPDATE events SET content = %s::jsonb WHERE id = %s",
+            (json.dumps({"price": 999}), korban["id"]),
         )
 
-    ok, putus = ledger.verify_chain(tugas_id)
+    ok, putus = ledger.verify_chain(task_id)
     assert ok is False
     assert putus == [korban["id"]]  # hanya kejadian yang diubah yang putus
 
 
-def test_jenis_di_luar_himpunan_tertutup_ditolak(ledger, tugas_id):
-    assert len(JENIS_KEJADIAN) == 31  # definisi 2.3 revisi 7: 22 lama + 9 baru
+def test_jenis_di_luar_himpunan_tertutup_rejected(ledger, task_id):
+    assert len(JENIS_EVENT) == 31  # definisi 2.3 revisi 7: 22 lama + 9 baru
     with pytest.raises(InvalidEventTypeError):
-        _append(ledger, tugas_id, jenis="jenis_ngawur", isi={})
+        _append(ledger, task_id, jenis="jenis_ngawur", content={})
     with pytest.raises(InvalidEventTypeError):
-        ledger.events(tugas_id, jenis="jenis_ngawur")
-    assert ledger.events(tugas_id) == []  # tidak ada baris yang masuk
+        ledger.events(task_id, jenis="jenis_ngawur")
+    assert ledger.events(task_id) == []  # tidak ada baris yang masuk
 
 
-def test_update_delete_ditolak_peran_aplikasi(ledger, tugas_id):
-    ev = _append(ledger, tugas_id, jenis="tugas_dibuat", isi={"a": 1})
+def test_update_delete_rejected_peran_aplikasi(ledger, task_id):
+    ev = _append(ledger, task_id, jenis="task_created", content={"a": 1})
     # INSERT peran aplikasi diuji di tugas terpisah, supaya baris mentah itu
     # tidak mencemari rantai tugas yang sedang diverifikasi.
-    tugas_sisip = f"{tugas_id}-sisip"
+    task_sisip = f"{task_id}-sisip"
 
     with psycopg.connect(DSN, autocommit=True) as conn:
         conn.execute(f"SET ROLE {APP_ROLE}")
         try:
             # SELECT dan INSERT diizinkan untuk peran aplikasi.
             row = conn.execute(
-                "SELECT id FROM kejadian WHERE id = %s", (ev["id"],)
+                "SELECT id FROM events WHERE id = %s", (ev["id"],)
             ).fetchone()
             assert row is not None
             conn.execute(
-                "INSERT INTO kejadian "
-                "(tugas_id, agen_id, jenis, isi, hash_sebelumnya, hash) "
-                "VALUES (%s, %s, 'detak', '{}'::jsonb, %s, %s)",
-                (tugas_sisip, AGEN, GENESIS, uuid.uuid4().hex),
+                "INSERT INTO events "
+                "(task_id, agent_id, type, content, previous_hash, hash) "
+                "VALUES (%s, %s, 'heartbeat', '{}'::jsonb, %s, %s)",
+                (task_sisip, AGEN, GENESIS, uuid.uuid4().hex),
             )
             # UPDATE dan DELETE ditolak oleh izin DB.
             with pytest.raises(pg_errors.InsufficientPrivilege):
                 conn.execute(
-                    "UPDATE kejadian SET isi = '{}'::jsonb WHERE id = %s",
+                    "UPDATE events SET content = '{}'::jsonb WHERE id = %s",
                     (ev["id"],),
                 )
             with pytest.raises(pg_errors.InsufficientPrivilege):
-                conn.execute("DELETE FROM kejadian WHERE id = %s", (ev["id"],))
+                conn.execute("DELETE FROM events WHERE id = %s", (ev["id"],))
         finally:
             conn.execute("RESET ROLE")
 
     # Baris asli tetap utuh dan rantai tetap valid.
-    ok, _ = ledger.verify_chain(tugas_id)
+    ok, _ = ledger.verify_chain(task_id)
     assert ok is True
     with psycopg.connect(DSN, autocommit=True) as conn:
-        conn.execute("DELETE FROM kejadian WHERE tugas_id = %s", (tugas_sisip,))
+        conn.execute("DELETE FROM events WHERE task_id = %s", (task_sisip,))
 
 
-def test_dua_tugas_punya_rantai_independen(ledger, tugas_id):
-    tugas_lain = f"tes-{uuid.uuid4().hex[:12]}"
+def test_dua_task_punya_rantai_independen(ledger, task_id):
+    task_lain = f"tes-{uuid.uuid4().hex[:12]}"
     try:
-        a1 = _append(ledger, tugas_id, jenis="tugas_dibuat", isi={"tugas": "A"})
-        b1 = _append(ledger, tugas_lain, jenis="tugas_dibuat", isi={"tugas": "B"})
-        a2 = _append(ledger, tugas_id, jenis="detak", isi={"tugas": "A"})
-        b2 = _append(ledger, tugas_lain, jenis="detak", isi={"tugas": "B"})
+        a1 = _append(ledger, task_id, jenis="task_created", content={"tasks": "A"})
+        b1 = _append(ledger, task_lain, jenis="task_created", content={"tasks": "B"})
+        a2 = _append(ledger, task_id, jenis="heartbeat", content={"tasks": "A"})
+        b2 = _append(ledger, task_lain, jenis="heartbeat", content={"tasks": "B"})
 
-        assert a1["hash_sebelumnya"] == GENESIS
-        assert b1["hash_sebelumnya"] == GENESIS
-        assert a2["hash_sebelumnya"] == a1["hash"]  # bukan hash tugas B
-        assert b2["hash_sebelumnya"] == b1["hash"]  # bukan hash tugas A
+        assert a1["previous_hash"] == GENESIS
+        assert b1["previous_hash"] == GENESIS
+        assert a2["previous_hash"] == a1["hash"]  # bukan hash tugas B
+        assert b2["previous_hash"] == b1["hash"]  # bukan hash tugas A
 
-        ok_a, _ = ledger.verify_chain(tugas_id)
-        ok_b, _ = ledger.verify_chain(tugas_lain)
+        ok_a, _ = ledger.verify_chain(task_id)
+        ok_b, _ = ledger.verify_chain(task_lain)
         assert ok_a is True
         assert ok_b is True
     finally:
         with psycopg.connect(DSN, autocommit=True) as conn:
-            conn.execute("DELETE FROM kejadian WHERE tugas_id = %s", (tugas_lain,))
+            conn.execute("DELETE FROM events WHERE task_id = %s", (task_lain,))
 
 
-def test_tombstone_hapus_tugas_tanpa_update(ledger, tugas_id):
-    _append(ledger, tugas_id, jenis="tugas_dibuat", isi={"tujuan": "dibuang"})
-    _append(ledger, tugas_id, jenis="detak", isi={"n": 1})
+def test_tombstone_delete_task_without_update(ledger, task_id):
+    _append(ledger, task_id, jenis="task_created", content={"purpose": "dibuang"})
+    _append(ledger, task_id, jenis="heartbeat", content={"n": 1})
     kubur = _append(
-        ledger, tugas_id, jenis="tugas_dihentikan", isi={"dihapus": True}
+        ledger, task_id, jenis="task_stopped", content={"deleted": True}
     )
 
     # Hapus = append tombstone; rantai hash tetap utuh, tidak ada UPDATE.
-    ok, _ = ledger.verify_chain(tugas_id)
+    ok, _ = ledger.verify_chain(task_id)
     assert ok is True
-    assert kubur["isi"] == {"dihapus": True}
-    assert ledger.events(tugas_id)[-1]["jenis"] == "tugas_dihentikan"
+    assert kubur["content"] == {"deleted": True}
+    assert ledger.events(task_id)[-1]["type"] == "task_stopped"

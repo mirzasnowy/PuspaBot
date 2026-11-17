@@ -48,9 +48,9 @@ def _read_manifest(dirpath) -> dict:
 
 def _unsigned_manifest(manifest: dict) -> dict:
     """Salinan manifes tanpa field signature (yang ditandatangani)."""
-    salinan = dict(manifest)
-    salinan.pop("signature", None)
-    return salinan
+    copy = dict(manifest)
+    copy.pop("signature", None)
+    return copy
 
 
 def _verify_manifest_dict(manifest: dict, public_key) -> bool:

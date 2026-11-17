@@ -5,7 +5,7 @@ dan batas belanja.
 """
 
 from .gate import ApprovalRequest, Gate, GateDenied
-from .skills import SkillRejected, check_tool, load_skill, sign_skill, verify_skill
+from .skill_signing import SkillRejected, check_tool, load_skill, sign_skill, verify_skill
 from .spending import SpendingLimit
 from .tokens import (
     TokenError,
@@ -14,7 +14,7 @@ from .tokens import (
     is_revoked,
     is_subset,
     revoke,
-    revoke_all_for_tugas,
+    revoke_all_for_task,
     token_id,
     verify_token,
 )
@@ -33,7 +33,7 @@ __all__ = [
     "is_subset",
     "load_skill",
     "revoke",
-    "revoke_all_for_tugas",
+    "revoke_all_for_task",
     "sign_skill",
     "token_id",
     "verify_skill",

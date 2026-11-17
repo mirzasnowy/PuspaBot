@@ -3,79 +3,79 @@
 import psycopg
 import pytest
 
-from puspa.graphs.identity import tambah_produk
-from puspa.pricing import cache as cache_bukti
+from puspa.graphs.identity import add_product
+from puspa.pricing import cache as cache_evidence
 from puspa.pricing import watchlist
 
 
-def _produk(make_user, test_dsn, nomor_model="SM-S921B"):
+def _product(make_user, test_dsn, model_number="SM-S921B"):
     user = make_user()
-    produk = tambah_produk(merek="Samsung", nomor_model=nomor_model,
-                           kategori="HP", dsn=test_dsn)
-    return user, produk
+    product = add_product(brand="Samsung", model_number=model_number,
+                           category="phone", dsn=test_dsn)
+    return user, product
 
 
-def test_watchlist_tambah_dan_daftar(make_user, test_dsn):
-    user, produk = _produk(make_user, test_dsn)
-    hasil = watchlist.tambah_watchlist(user_id=user["user_id"], produk_id=produk["id"],
-                                       ambang_harga=12000000, dsn=test_dsn)
-    assert hasil["aktif"] is True
-    daftar = watchlist.daftar_watchlist(user["user_id"], dsn=test_dsn)
-    assert len(daftar) == 1 and daftar[0]["ambang_harga"] == 12000000.0
+def test_watchlist_add_and_items(make_user, test_dsn):
+    user, product = _product(make_user, test_dsn)
+    result = watchlist.add_watchlist(user_id=user["user_id"], product_id=product["id"],
+                                       price_threshold=12000000, dsn=test_dsn)
+    assert result["active"] is True
+    items = watchlist.items_watchlist(user["user_id"], dsn=test_dsn)
+    assert len(items) == 1 and items[0]["price_threshold"] == 12000000.0
 
 
-def test_sampler_menghormati_anggaran_20_per_hari(make_user, test_dsn):
-    user, produk = _produk(make_user, test_dsn)
-    watchlist.tambah_watchlist(user_id=user["user_id"], produk_id=produk["id"], dsn=test_dsn)
-    assert watchlist.sisa_anggaran_baca(user["user_id"], dsn=test_dsn) == 20
-    hasil = watchlist.jalankan_sampler(
-        user_id=user["user_id"], agen_id=user["agen_id"],
-        baca_harga=lambda b: {"harga": 12499000, "bukti_id": "bukti-x",
+def test_sampler_menghormati_anggaran_20_per_day(make_user, test_dsn):
+    user, product = _product(make_user, test_dsn)
+    watchlist.add_watchlist(user_id=user["user_id"], product_id=product["id"], dsn=test_dsn)
+    assert watchlist.sisa_anggaran_read(user["user_id"], dsn=test_dsn) == 20
+    result = watchlist.jalankan_sampler(
+        user_id=user["user_id"], agent_id=user["agent_id"],
+        read_price=lambda b: {"price": 12499000, "evidence_id": "bukti-x",
                               "tautan_id": "t-x"},
         dsn=test_dsn)
-    assert hasil["dibaca"] == [produk["id"]]
-    assert hasil["sisa_anggaran"] == 19
+    assert result["dibaca"] == [product["id"]]
+    assert result["sisa_anggaran"] == 19
     # Habiskan anggaran -> sampler melewati barang, bukan membaca diam-diam.
     with psycopg.connect(test_dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE anggaran_baca SET jumlah = 20 WHERE user_id = %s",
+                "UPDATE read_budgets SET amount = 20 WHERE user_id = %s",
                 (user["user_id"],))
         conn.commit()
-    hasil = watchlist.jalankan_sampler(
-        user_id=user["user_id"], agen_id=user["agen_id"],
-        baca_harga=lambda b: {"harga": 1, "bukti_id": "b", "tautan_id": "t"},
+    result = watchlist.jalankan_sampler(
+        user_id=user["user_id"], agent_id=user["agent_id"],
+        read_price=lambda b: {"price": 1, "evidence_id": "b", "tautan_id": "t"},
         dsn=test_dsn)
-    assert hasil["dibaca"] == []
-    assert hasil["dilewati"][0]["alasan"] == "anggaran_baca_harian_habis"
+    assert result["dibaca"] == []
+    assert result["dilewati"][0]["reason"] == "anggaran_read_daily_habis"
 
 
-def test_sampler_alert_harga_turun_di_bawah_ambang(make_user, test_dsn):
-    user, produk = _produk(make_user, test_dsn)
-    watchlist.tambah_watchlist(user_id=user["user_id"], produk_id=produk["id"],
-                               ambang_harga=13000000, dsn=test_dsn)
-    hasil = watchlist.jalankan_sampler(
-        user_id=user["user_id"], agen_id=user["agen_id"],
-        baca_harga=lambda b: {"harga": 12499000, "bukti_id": "bukti-x",
+def test_sampler_alert_price_turun_di_bawah_ambang(make_user, test_dsn):
+    user, product = _product(make_user, test_dsn)
+    watchlist.add_watchlist(user_id=user["user_id"], product_id=product["id"],
+                               price_threshold=13000000, dsn=test_dsn)
+    result = watchlist.jalankan_sampler(
+        user_id=user["user_id"], agent_id=user["agent_id"],
+        read_price=lambda b: {"price": 12499000, "evidence_id": "bukti-x",
                               "tautan_id": "t-x"},
         dsn=test_dsn)
-    assert len(hasil["alert"]) == 1
-    assert hasil["alert"][0]["harga"] == 12499000
+    assert len(result["alert"]) == 1
+    assert result["alert"][0]["price"] == 12499000
 
 
-def test_cache_bukti_ttl_30_menit_dan_statistik(test_dsn):
-    cache_bukti.simpan("Tokopedia:https://x", sumber="Tokopedia",
-                       nilai={"harga": 1000}, bukti_id="bukti-1", dsn=test_dsn)
-    assert cache_bukti.ambil("Tokopedia:https://x", dsn=test_dsn)["bukti_id"] == "bukti-1"
-    assert cache_bukti.ambil("Tokopedia:https://tidak-ada", dsn=test_dsn) is None
+def test_cache_evidence_ttl_30_minute_and_statistics(test_dsn):
+    cache_evidence.save("Tokopedia:https://x", sumber="Tokopedia",
+                       value={"price": 1000}, evidence_id="bukti-1", dsn=test_dsn)
+    assert cache_evidence.take("Tokopedia:https://x", dsn=test_dsn)["evidence_id"] == "bukti-1"
+    assert cache_evidence.take("Tokopedia:https://tidak-ada", dsn=test_dsn) is None
     # Kedaluwarsa -> None (pemanggil wajib baca ulang sumber).
     with psycopg.connect(test_dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE cache_bukti SET kedaluwarsa = now() - INTERVAL '1 hour'"
-                " WHERE kunci = 'Tokopedia:https://x'")
+                "UPDATE evidence_cache SET expires_at = now() - INTERVAL '1 hour'"
+                " WHERE key = 'Tokopedia:https://x'")
         conn.commit()
-    assert cache_bukti.ambil("Tokopedia:https://x", dsn=test_dsn) is None
-    statistik = cache_bukti.statistik_hit(dsn=test_dsn)
-    assert statistik["total_hit"] == 1
-    assert statistik["entri_cache"] == 1
+    assert cache_evidence.take("Tokopedia:https://x", dsn=test_dsn) is None
+    statistics = cache_evidence.statistics_hit(dsn=test_dsn)
+    assert statistics["total_hit"] == 1
+    assert statistics["entri_cache"] == 1

@@ -8,10 +8,10 @@
 -- Dibuat SETELAH tabel `pengguna` ada (FK ke pengguna(id)).
 -- Hapus pengguna menghapus baris agennya (ON DELETE CASCADE).
 
-CREATE TABLE IF NOT EXISTS agen (
-    agen_id TEXT PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE,
-    dibuat  TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE IF NOT EXISTS agents (
+    agent_id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_agen_user_id ON agen(user_id);
+CREATE INDEX IF NOT EXISTS idx_agent_user_id ON agents(user_id);

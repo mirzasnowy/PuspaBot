@@ -32,15 +32,15 @@ def _connect(dsn=None):
 
 def export_account(user_id, dsn=None):
     """Ekspor penuh data pengguna sebagai dict (siap JSON)."""
-    from puspa.accounts.sessions import list_sessions
+    from puspa.accounts.user_sessions import list_sessions
 
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT teks FROM contoh_gaya WHERE user_id = %s ORDER BY dibuat ASC",
+                "SELECT text FROM style_examples WHERE user_id = %s ORDER BY created_at ASC",
                 (user_id,),
             )
-            contoh = [r["teks"] for r in cur.fetchall()]
+            example = [r["text"] for r in cur.fetchall()]
             cur.execute(
                 "SELECT * FROM onboarding WHERE user_id = %s", (user_id,)
             )
@@ -51,28 +51,28 @@ def export_account(user_id, dsn=None):
     ]
     return {
         "user_id": str(user_id),
-        "profil": profile.get_profile(user_id, dsn=dsn),
-        "fakta_riwayat": profile.list_facts(user_id, include_history=True, dsn=dsn),
-        "usulan": profile.list_proposals(user_id, dsn=dsn),
-        "episodik": episodic.list_episodes(user_id, limit=1000, dsn=dsn),
-        "prosedur": procedural.list_procedures(user_id, dsn=dsn),
-        "ringkasan": consolidate.list_summaries(user_id, dsn=dsn),
-        "contoh_gaya": contoh,
-        "persetujuan": list_consents(user_id, dsn=dsn),
+        "profile": profile.get_profile(user_id, dsn=dsn),
+        "fact_history": profile.list_facts(user_id, include_history=True, dsn=dsn),
+        "proposed": profile.list_proposals(user_id, dsn=dsn),
+        "episodic": episodic.list_episodes(user_id, limit=1000, dsn=dsn),
+        "procedures": procedural.list_procedures(user_id, dsn=dsn),
+        "summaries": consolidate.list_summaries(user_id, dsn=dsn),
+        "style_examples": example,
+        "approval": list_consents(user_id, dsn=dsn),
         "onboarding": (
             {
-                "langkah_saat_ini": onb["langkah_saat_ini"],
-                "nama": onb["nama"],
-                "gaya": onb["gaya"],
-                "konektor": onb["konektor"],
-                "tugas_pertama": onb["tugas_pertama"],
-                "dimulai": str(onb["dimulai"]),
-                "selesai": str(onb["selesai"]) if onb["selesai"] else None,
-                "durasi_detik": float(onb["durasi_detik"]) if onb["durasi_detik"] is not None else None,
+                "current_step": onb["current_step"],
+                "name": onb["name"],
+                "style": onb["style"],
+                "connector": onb["connector"],
+                "first_task": onb["first_task"],
+                "started_at": str(onb["started_at"]),
+                "completed_at": str(onb["completed_at"]) if onb["completed_at"] else None,
+                "duration_seconds": float(onb["duration_seconds"]) if onb["duration_seconds"] is not None else None,
             }
             if onb else None
         ),
-        "sesi": sesi,
+        "sessions": sesi,
     }
 
 
@@ -84,15 +84,24 @@ def delete_account(user_id, dsn=None):
     counts = {}
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            for tabel in (
-                "fakta_profil", "episodik", "prosedur", "pemberian_irisan",
-                "ringkasan", "contoh_gaya", "onboarding", "persetujuan_data",
+            for table in (
+                "profile_facts", "episodic", "procedures", "slice_grants",
+                "summaries", "style_examples", "onboarding", "data_consents",
             ):
-                cur.execute(f"DELETE FROM {tabel} WHERE user_id = %s", (user_id,))
-                counts[tabel] = cur.rowcount
+                cur.execute(f"DELETE FROM {table} WHERE user_id = %s", (user_id,))
+                counts[table] = cur.rowcount
+            # Account deletion is the one sanctioned path that removes
+            # the mandatory Puspa agent: the database trigger blocks
+            # deleting a mandatory agent row, and deleting the user row
+            # would cascade into it. Un-mark it first (the account
+            # itself is going away); a direct agent delete stays blocked.
+            cur.execute(
+                "UPDATE agent_meta SET required = FALSE WHERE user_id = %s",
+                (user_id,),
+            )
         conn.commit()
     from puspa.accounts.users import delete_user
 
     delete_user(user_id, dsn=dsn)
-    counts["pengguna"] = 1
+    counts["users"] = 1
     return counts

@@ -23,14 +23,14 @@ from . import episodic, profile
 from .schema import resolve_dsn
 
 #: Kolom yang BOLEH diberikan sebagai irisan (himpunan tertutup).
-ALLOWED_COLUMNS = frozenset({"profil", "episodik", "prosedur"})
+ALLOWED_COLUMNS = frozenset({"profile", "episodic", "procedures"})
 
 
 def _connect(dsn=None):
     return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
-def grant_slice(user_id, agen_id, sub_agen_id, query, kolom, token_ref,
+def grant_slice(user_id, agent_id, subagent_id, query, kolom, token_ref,
                 dsn=None):
     """Beri irisan memori ke satu sub-agen; kembalikan data irisannya.
 
@@ -52,37 +52,37 @@ def grant_slice(user_id, agen_id, sub_agen_id, query, kolom, token_ref,
     if not token_ref or not isinstance(token_ref, str):
         raise ValueError("token_ref harus string tak kosong")
     data = {}
-    if "profil" in kolom:
-        profil = profile.get_profile(user_id, agen_id=agen_id, dsn=dsn)
+    if "profile" in kolom:
+        profile = profile.get_profile(user_id, agent_id=agent_id, dsn=dsn)
         query_lower = query.lower()
-        data["profil"] = {
-            k: v for k, v in profil.items()
+        data["profile"] = {
+            k: v for k, v in profile.items()
             if query_lower in k.lower() or query_lower in v.lower()
-        } or profil
-    if "episodik" in kolom:
-        data["episodik"] = episodic.search_episodes(
-            user_id, query, limit=5, agen_id=agen_id, dsn=dsn
+        } or profile
+    if "episodic" in kolom:
+        data["episodic"] = episodic.search_episodes(
+            user_id, query, limit=5, agent_id=agent_id, dsn=dsn
         )
-    if "prosedur" in kolom:
+    if "procedures" in kolom:
         from . import procedural
 
         semua = procedural.list_procedures(user_id, dsn=dsn)
         query_lower = query.lower()
-        data["prosedur"] = [
-            p for p in semua if query_lower in p["layanan"].lower()
+        data["procedures"] = [
+            p for p in semua if query_lower in p["service"].lower()
         ]
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO pemberian_irisan (user_id, agen_id, sub_agen_id, "
+                "INSERT INTO slice_grants (user_id, agent_id, subagent_id, "
                 "query, kolom, token_ref) VALUES (%s, %s, %s, %s, %s, %s) "
-                "RETURNING id, dibuat",
-                (user_id, agen_id, sub_agen_id, query, list(kolom), token_ref),
+                "RETURNING id, created_at",
+                (user_id, agent_id, subagent_id, query, list(kolom), token_ref),
             )
             row = cur.fetchone()
         conn.commit()
     data["_irisan_id"] = str(row["id"])
-    data["_dicatat_pada"] = row["dibuat"]
+    data["_dicatat_pada"] = row["created_at"]
     return data
 
 
@@ -91,22 +91,22 @@ def list_grants(user_id, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, user_id, agen_id, sub_agen_id, query, kolom, "
-                "token_ref, kejadian_id, dibuat FROM pemberian_irisan "
-                "WHERE user_id = %s ORDER BY dibuat DESC",
+                "SELECT id, user_id, agent_id, subagent_id, query, kolom, "
+                "token_ref, event_id, created_at FROM slice_grants "
+                "WHERE user_id = %s ORDER BY created_at DESC",
                 (user_id,),
             )
             return [
                 {
                     "id": str(r["id"]),
                     "user_id": str(r["user_id"]),
-                    "agen_id": str(r["agen_id"]) if r["agen_id"] else None,
-                    "sub_agen_id": str(r["sub_agen_id"]) if r["sub_agen_id"] else None,
+                    "agent_id": str(r["agent_id"]) if r["agent_id"] else None,
+                    "subagent_id": str(r["subagent_id"]) if r["subagent_id"] else None,
                     "query": r["query"],
                     "kolom": list(r["kolom"]),
                     "token_ref": r["token_ref"],
-                    "kejadian_id": str(r["kejadian_id"]) if r["kejadian_id"] else None,
-                    "dibuat": r["dibuat"],
+                    "event_id": str(r["event_id"]) if r["event_id"] else None,
+                    "created_at": r["created_at"],
                 }
                 for r in cur.fetchall()
             ]

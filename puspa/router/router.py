@@ -38,26 +38,26 @@ KATALOG = (
 
 
 @dataclass(frozen=True)
-class PilihanModel:
+class ChoiceModel:
     provider: str
     model: str
-    keluarga: str
+    family: str
     rp_per_1k_input: int
     rp_per_1k_output: int
     vision: bool
 
 
-def _pilihan(baris) -> PilihanModel:
-    provider, model, keluarga, masuk, keluar, vision, _lolos = baris
-    return PilihanModel(provider, model, keluarga, masuk, keluar, vision)
+def _choice(rows) -> ChoiceModel:
+    provider, model, family, login, logout, vision, _passed = rows
+    return ChoiceModel(provider, model, family, login, logout, vision)
 
 
-def _termurah(kandidat) -> PilihanModel:
-    return min((_pilihan(b) for b in kandidat),
+def _termurah(kandidat) -> ChoiceModel:
+    return min((_choice(b) for b in kandidat),
                key=lambda p: p.rp_per_1k_input + p.rp_per_1k_output)
 
 
-def pilih(peran: str, *, keluarga_pembuat: str | None = None) -> PilihanModel | None:
+def pilih(peran: str, *, family_pembuat: str | None = None) -> ChoiceModel | None:
     """Pilih (provider, model) termurah untuk satu peran.
 
     Peran: 'perencana' | 'penyaji' | 'pembaca' | 'pencari' |
@@ -70,7 +70,7 @@ def pilih(peran: str, *, keluarga_pembuat: str | None = None) -> PilihanModel | 
     if peran in ("pembaca", "pencari"):
         return _termurah(KATALOG)
     if peran == "pemeriksa":
-        kandidat = [b for b in KATALOG if b[2] != keluarga_pembuat] if keluarga_pembuat else list(KATALOG)
+        kandidat = [b for b in KATALOG if b[2] != family_pembuat] if family_pembuat else list(KATALOG)
         if not kandidat:  # hanya satu keluarga di katalog: pakai termurah
             kandidat = list(KATALOG)
         return _termurah(kandidat)
@@ -80,12 +80,12 @@ def pilih(peran: str, *, keluarga_pembuat: str | None = None) -> PilihanModel | 
     raise ValueError(f"peran tidak dikenal: {peran!r}")
 
 
-def hitung_biaya(pilihan: PilihanModel, token_masuk: int, token_keluar: int) -> int:
+def hitung_cost(choice: ChoiceModel, token_login: int, token_logout: int) -> int:
     """Biaya Rupiah (dibulatkan ke bawah) untuk satu panggilan."""
-    return (token_masuk * pilihan.rp_per_1k_input + token_keluar * pilihan.rp_per_1k_output) // 1000
+    return (token_login * choice.rp_per_1k_input + token_logout * choice.rp_per_1k_output) // 1000
 
 
-def build_provider(peran: str, *, keluarga_pembuat: str | None = None,
+def build_provider(peran: str, *, family_pembuat: str | None = None,
                    user_id: str | None = None, dsn: str | None = None):
     """Bangun provider nanobot untuk peran lewat factory BYOK Fase 0.
 
@@ -94,8 +94,8 @@ def build_provider(peran: str, *, keluarga_pembuat: str | None = None,
     yang jujur (bukan kunci karangan). Vision yang tidak tersedia
     melempar ValueError supaya pemanggil meminta nama barang ke user.
     """
-    pilihan = pilih(peran, keluarga_pembuat=keluarga_pembuat)
-    if pilihan is None:
+    choice = pilih(peran, family_pembuat=family_pembuat)
+    if choice is None:
         raise ValueError("tidak ada model vision di router; minta user menulis nama barang")
     import sys
     from pathlib import Path
@@ -105,5 +105,5 @@ def build_provider(peran: str, *, keluarga_pembuat: str | None = None,
         sys.path.insert(0, str(demo_dir))
     from demo.byok_provider import build_byok_provider  # noqa: E402
 
-    return build_byok_provider(pilihan.provider, pilihan.model,
+    return build_byok_provider(choice.provider, choice.model,
                                user_id=user_id, dsn=dsn)

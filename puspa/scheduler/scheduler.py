@@ -26,9 +26,9 @@ from datetime import datetime, timedelta, timezone
 import psycopg
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
-DETAK_MATI_DETIK = 120
-JENIS_PEMICU = ("jadwal", "jatuh_tempo_tagihan", "harga_turun", "manual",
-                "backup_harian", "konsolidasi")
+HEARTBEAT_MATI_DETIK = 120
+JENIS_TRIGGER = ("jadwal", "due_date_bill", "price_turun", "manual",
+                "backup_daily", "konsolidasi")
 
 
 class SchedulerError(Exception):
@@ -47,55 +47,55 @@ class Pemicu:
     user_id: str
     jenis: str
     jadwal: str = ""
-    alur: str = ""
-    pemicu_berikutnya: datetime = field(default_factory=_sekarang)
-    aktif: bool = True
+    workflow: str = ""
+    next_trigger_at: datetime = field(default_factory=_sekarang)
+    active: bool = True
 
 
 def _connect(dsn=None):
     return psycopg.connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN))
 
 
-def buat_pemicu(user_id: str, jenis: str, pemicu_berikutnya: datetime,
-                jadwal: str = "", alur: str = "", dsn=None) -> Pemicu:
+def create_trigger(user_id: str, jenis: str, next_trigger_at: datetime,
+                jadwal: str = "", workflow: str = "", dsn=None) -> Pemicu:
     """Buat pemicu baru (idempotent per id yang dibuat di sini)."""
-    if jenis not in JENIS_PEMICU:
+    if jenis not in JENIS_TRIGGER:
         raise SchedulerError(f"jenis pemicu tidak dikenal: {jenis!r}")
-    pemicu = Pemicu(id=f"pemicu-{uuid.uuid4().hex[:12]}", user_id=str(user_id),
-                    jenis=jenis, jadwal=jadwal, alur=alur,
-                    pemicu_berikutnya=pemicu_berikutnya)
+    trigger = Pemicu(id=f"pemicu-{uuid.uuid4().hex[:12]}", user_id=str(user_id),
+                    jenis=jenis, jadwal=jadwal, workflow=workflow,
+                    next_trigger_at=next_trigger_at)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO pemicu (id, user_id, jenis, jadwal, alur, pemicu_berikutnya, aktif)"
+                "INSERT INTO triggers (id, user_id, type, jadwal, workflow, next_trigger_at, active)"
                 " VALUES (%s, %s, %s, %s, %s, %s, TRUE)",
-                (pemicu.id, pemicu.user_id, pemicu.jenis, pemicu.jadwal,
-                 pemicu.alur, pemicu.pemicu_berikutnya),
+                (trigger.id, trigger.user_id, trigger.jenis, trigger.jadwal,
+                 trigger.workflow, trigger.next_trigger_at),
             )
         conn.commit()
-    return pemicu
+    return trigger
 
 
-def daftar_pemicu_jatuh_tempo(dsn=None, sekarang: datetime | None = None) -> list[Pemicu]:
+def items_trigger_due_date(dsn=None, sekarang: datetime | None = None) -> list[Pemicu]:
     """Pemicu aktif yang sudah jatuh tempo, diklaim SKIP LOCKED."""
     sekarang = sekarang or _sekarang()
     with _connect(dsn) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute(
-                "SELECT id, user_id, jenis, jadwal, alur, pemicu_berikutnya, aktif"
-                " FROM pemicu WHERE aktif AND pemicu_berikutnya <= %s"
-                " ORDER BY pemicu_berikutnya ASC FOR UPDATE SKIP LOCKED",
+                "SELECT id, user_id, type, jadwal, workflow, next_trigger_at, active"
+                " FROM triggers WHERE active AND next_trigger_at <= %s"
+                " ORDER BY next_trigger_at ASC FOR UPDATE SKIP LOCKED",
                 (sekarang,),
             )
             rows = cur.fetchall()
         conn.commit()
-    return [Pemicu(id=r["id"], user_id=str(r["user_id"]), jenis=r["jenis"],
-                   jadwal=r["jadwal"] or "", alur=r["alur"] or "",
-                   pemicu_berikutnya=r["pemicu_berikutnya"], aktif=r["aktif"])
+    return [Pemicu(id=r["id"], user_id=str(r["user_id"]), jenis=r["type"],
+                   jadwal=r["jadwal"] or "", workflow=r["workflows"] or "",
+                   next_trigger_at=r["next_trigger_at"], active=r["active"])
             for r in rows]
 
 
-def jalan_pemicu(pemicu: Pemicu, *, sink=None, terlewat: bool = False,
+def jalan_trigger(trigger: Pemicu, *, sink=None, terlewat: bool = False,
                  dsn=None, sekarang: datetime | None = None) -> dict | None:
     """Jalankan satu pemicu (sekali, idempotent).
 
@@ -105,33 +105,33 @@ def jalan_pemicu(pemicu: Pemicu, *, sink=None, terlewat: bool = False,
     `pemicu_terlewat`) ke Buku Kerja lewat `sink(jenis, isi)`.
     """
     sekarang = sekarang or _sekarang()
-    kunci = f"{pemicu.id}:{pemicu.pemicu_berikutnya.isoformat()}"
-    tugas_id = f"tugas-{uuid.uuid4().hex[:12]}"
+    key = f"{trigger.id}:{trigger.next_trigger_at.isoformat()}"
+    task_id = f"tugas-{uuid.uuid4().hex[:12]}"
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM pemicu_jalan WHERE kunci_idempotensi = %s", (kunci,))
+            cur.execute("SELECT 1 FROM trigger_runs WHERE idempotency_key = %s", (key,))
             if cur.fetchone() is not None:
                 return None
             cur.execute(
-                "INSERT INTO pemicu_jalan (kunci_idempotensi, pemicu_id, tugas_id, terlewat)"
+                "INSERT INTO trigger_runs (idempotency_key, trigger_id, task_id, terlewat)"
                 " VALUES (%s, %s, %s, %s)",
-                (kunci, pemicu.id, tugas_id, terlewat),
+                (key, trigger.id, task_id, terlewat),
             )
             # Jadwal berikutnya: geser 1 hari (jadwal harian; jadwal
             # cron penuh adalah peningkatan Fase 4 — dicatat di STATUS).
             cur.execute(
-                "UPDATE pemicu SET pemicu_berikutnya = pemicu_berikutnya + INTERVAL '1 day'"
-                " WHERE id = %s", (pemicu.id,),
+                "UPDATE triggers SET next_trigger_at = next_trigger_at + INTERVAL '1 day'"
+                " WHERE id = %s", (trigger.id,),
             )
         conn.commit()
     if sink is not None:
         try:
-            sink("pemicu_terlewat" if terlewat else "pemicu_terpicu",
-                 {"pemicu_id": pemicu.id, "tugas_id": tugas_id,
-                  "jenis": pemicu.jenis, "terlewat": terlewat})
+            sink("trigger_missed" if terlewat else "trigger_fired",
+                 {"trigger_id": trigger.id, "task_id": task_id,
+                  "type": trigger.jenis, "terlewat": terlewat})
         except Exception:
             pass
-    return {"pemicu_id": pemicu.id, "tugas_id": tugas_id, "terlewat": terlewat}
+    return {"trigger_id": trigger.id, "task_id": task_id, "terlewat": terlewat}
 
 
 def jalankan_yang_terlewat(*, sink=None, dsn=None,
@@ -147,30 +147,30 @@ def jalankan_yang_terlewat(*, sink=None, dsn=None,
     with _connect(dsn) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute(
-                "SELECT id, user_id, jenis, jadwal, alur, pemicu_berikutnya, aktif"
-                " FROM pemicu WHERE aktif AND pemicu_berikutnya <= %s"
-                " ORDER BY pemicu_berikutnya ASC",
+                "SELECT id, user_id, type, jadwal, workflow, next_trigger_at, active"
+                " FROM triggers WHERE active AND next_trigger_at <= %s"
+                " ORDER BY next_trigger_at ASC",
                 (batas,),
             )
             rows = cur.fetchall()
-    hasil = []
+    result = []
     for r in rows:
-        pemicu = Pemicu(id=r["id"], user_id=str(r["user_id"]), jenis=r["jenis"],
-                        jadwal=r["jadwal"] or "", alur=r["alur"] or "",
-                        pemicu_berikutnya=r["pemicu_berikutnya"], aktif=r["aktif"])
-        jalan = jalan_pemicu(pemicu, sink=sink, terlewat=True, dsn=dsn, sekarang=sekarang)
+        trigger = Pemicu(id=r["id"], user_id=str(r["user_id"]), jenis=r["type"],
+                        jadwal=r["jadwal"] or "", workflow=r["workflows"] or "",
+                        next_trigger_at=r["next_trigger_at"], active=r["active"])
+        jalan = jalan_trigger(trigger, sink=sink, terlewat=True, dsn=dsn, sekarang=sekarang)
         if jalan is not None:
-            hasil.append(jalan)
-    return hasil
+            result.append(jalan)
+    return result
 
 
-def detak(dsn=None, sekarang: datetime | None = None) -> None:
+def heartbeat(dsn=None, sekarang: datetime | None = None) -> None:
     """Kirim detak penjadwal (ditulis ke `detak_sistem`)."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO detak_sistem (komponen, waktu) VALUES ('penjadwal', %s)"
-                " ON CONFLICT (komponen) DO UPDATE SET waktu = EXCLUDED.waktu",
+                "INSERT INTO system_heartbeats (komponen, created_at) VALUES ('penjadwal', %s)"
+                " ON CONFLICT (komponen) DO UPDATE SET created_at = EXCLUDED.created_at",
                 (sekarang or _sekarang(),),
             )
         conn.commit()
@@ -181,32 +181,32 @@ def sehat(dsn=None, sekarang: datetime | None = None) -> bool:
     sekarang = sekarang or _sekarang()
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT waktu FROM detak_sistem WHERE komponen = 'penjadwal'")
+            cur.execute("SELECT created_at FROM system_heartbeats WHERE komponen = 'penjadwal'")
             row = cur.fetchone()
     if row is None:
         return False
-    return (sekarang - row[0]).total_seconds() < DETAK_MATI_DETIK
+    return (sekarang - row[0]).total_seconds() < HEARTBEAT_MATI_DETIK
 
 
 def tick(*, sink=None, dsn=None, sekarang: datetime | None = None) -> list[dict]:
     """Satu putaran penjadwal: detak + jalankan pemicu jatuh tempo."""
-    detak(dsn=dsn, sekarang=sekarang)
-    hasil = []
-    for pemicu in daftar_pemicu_jatuh_tempo(dsn=dsn, sekarang=sekarang):
-        jalan = jalan_pemicu(pemicu, sink=sink, dsn=dsn, sekarang=sekarang)
+    heartbeat(dsn=dsn, sekarang=sekarang)
+    result = []
+    for trigger in items_trigger_due_date(dsn=dsn, sekarang=sekarang):
+        jalan = jalan_trigger(trigger, sink=sink, dsn=dsn, sekarang=sekarang)
         if jalan is not None:
-            hasil.append(jalan)
-    return hasil
+            result.append(jalan)
+    return result
 
 
-def jadwalkan_backup_harian(user_id: str, *, jam: int = 3, dsn=None) -> Pemicu:
+def schedule_backup_daily(user_id: str, *, jam: int = 3, dsn=None) -> Pemicu:
     """Daftarkan job backup harian Fase 1 (C126) sebagai pemicu.
 
     Jalan pemicu ini memanggil `puspa.backup.create_backup`; penjadwal
     yang menjalankan job memakai `jalankan_job_terjadwal` di bawah.
     """
     besok = (_sekarang() + timedelta(days=1)).replace(hour=jam, minute=0, second=0, microsecond=0)
-    return buat_pemicu(user_id, "backup_harian", besok, jadwal=f"harian {jam:02d}:00", dsn=dsn)
+    return create_trigger(user_id, "backup_daily", besok, jadwal=f"harian {jam:02d}:00", dsn=dsn)
 
 
 def jalankan_job_terjadwal(jalan: dict, *, dsn=None) -> dict:
@@ -218,19 +218,19 @@ def jalankan_job_terjadwal(jalan: dict, *, dsn=None) -> dict:
     """
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT jenis, user_id FROM pemicu WHERE id = %s", (jalan["pemicu_id"],))
+            cur.execute("SELECT type, user_id FROM triggers WHERE id = %s", (jalan["trigger_id"],))
             row = cur.fetchone()
     if row is None:
-        return {"job": "tidak_dikenal", "hasil": None}
+        return {"job": "not_dikenal", "result": None}
     jenis, user_id = row
-    if jenis == "backup_harian":
+    if jenis == "backup_daily":
         from puspa.backup.backup import create_backup
 
-        hasil = create_backup(dsn=dsn)
-        return {"job": "backup_harian", "hasil": str(hasil)}
+        result = create_backup(dsn=dsn)
+        return {"job": "backup_daily", "result": str(result)}
     if jenis == "konsolidasi":
         from puspa.memory.consolidate import consolidate_idle
 
-        hasil = consolidate_idle(str(user_id), dsn=dsn)
-        return {"job": "konsolidasi", "hasil": hasil}
-    return {"job": "tugas_biasa", "hasil": jalan["tugas_id"]}
+        result = consolidate_idle(str(user_id), dsn=dsn)
+        return {"job": "konsolidasi", "result": result}
+    return {"job": "task_biasa", "result": jalan["task_id"]}

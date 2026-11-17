@@ -1,6 +1,6 @@
 {
   "user_id": "3fd43a36-19b2-4f1a-8b52-70cbfa46356e",
-  "gaya": "santai",
+  "style": "santai",
   "direktif": [
     "tanpa_gue"
   ],
@@ -107,7 +107,7 @@
       "nomor": 20
     }
   ],
-  "jumlah_juri": 0,
+  "amount_juri": 0,
   "jawaban_juri": [],
-  "hasil": null
+  "result": null
 }

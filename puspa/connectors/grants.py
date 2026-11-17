@@ -13,11 +13,11 @@ import os
 import psycopg
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
-KONEKTOR_DIIZINKAN = ("gmail", "drive", "calendar")
-SCOPE_PER_KONEKTOR = {
-    "gmail": ["baca", "buat_draf", "kirim"],
-    "drive": ["baca"],
-    "calendar": ["baca", "buat_event"],
+CONNECTOR_DIIZINKAN = ("gmail", "drive", "calendar")
+SCOPE_PER_CONNECTOR = {
+    "gmail": ["read", "create_draft", "send"],
+    "drive": ["read"],
+    "calendar": ["read", "create_event"],
 }
 
 
@@ -29,52 +29,52 @@ def _connect(dsn=None):
     return psycopg.connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN))
 
 
-def beri_konektor(user_id: str, agen_id: str, konektor: str, dsn=None) -> dict:
+def give_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> dict:
     """Beri konektor ke satu agen (scope minimal bawaan konektor)."""
-    if konektor not in KONEKTOR_DIIZINKAN:
-        raise GrantError(f"konektor tidak dikenal: {konektor!r}")
+    if connector not in CONNECTOR_DIIZINKAN:
+        raise GrantError(f"konektor tidak dikenal: {connector!r}")
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM agen_meta WHERE agen_id = %s AND user_id = %s",
-                        (agen_id, user_id))
+            cur.execute("SELECT 1 FROM agent_meta WHERE agent_id = %s AND user_id = %s",
+                        (agent_id, user_id))
             if cur.fetchone() is None:
                 raise GrantError("agen tidak dikenal / bukan milik pengguna")
             cur.execute(
-                "INSERT INTO konektor_agen (user_id, agen_id, konektor, scope, terhubung)"
+                "INSERT INTO agent_connectors (user_id, agent_id, connector, scope, terhubung)"
                 " VALUES (%s, %s, %s, %s, TRUE)"
-                " ON CONFLICT (user_id, agen_id, konektor) DO UPDATE"
+                " ON CONFLICT (user_id, agent_id, connector) DO UPDATE"
                 " SET scope = EXCLUDED.scope, terhubung = TRUE",
-                (user_id, agen_id, konektor, SCOPE_PER_KONEKTOR[konektor]),
+                (user_id, agent_id, connector, SCOPE_PER_CONNECTOR[connector]),
             )
         conn.commit()
-    return {"agen_id": agen_id, "konektor": konektor,
-            "scope": SCOPE_PER_KONEKTOR[konektor], "terhubung": True}
+    return {"agent_id": agent_id, "connectors": connector,
+            "scope": SCOPE_PER_CONNECTOR[connector], "terhubung": True}
 
 
-def cabut_konektor(user_id: str, agen_id: str, konektor: str, dsn=None) -> None:
+def cabut_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> None:
     """Cabut konektor dari satu agen."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM konektor_agen WHERE user_id = %s AND agen_id = %s AND konektor = %s",
-                (user_id, agen_id, konektor),
+                "DELETE FROM agent_connectors WHERE user_id = %s AND agent_id = %s AND connector = %s",
+                (user_id, agent_id, connector),
             )
         conn.commit()
 
 
-def daftar_konektor(user_id: str, agen_id: str, dsn=None) -> list[dict]:
+def items_connector(user_id: str, agent_id: str, dsn=None) -> list[dict]:
     """Konektor + scope + status terhubung untuk satu agen."""
     with _connect(dsn) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute(
-                "SELECT konektor, scope, terhubung FROM konektor_agen"
-                " WHERE user_id = %s AND agen_id = %s ORDER BY konektor",
-                (user_id, agen_id),
+                "SELECT connector, scope, terhubung FROM agent_connectors"
+                " WHERE user_id = %s AND agent_id = %s ORDER BY connector",
+                (user_id, agent_id),
             )
             return [dict(r) for r in cur.fetchall()]
 
 
-def punya_konektor(user_id: str, agen_id: str, konektor: str, dsn=None) -> bool:
+def punya_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> bool:
     """True bila agen ini terhubung ke konektor itu."""
-    return any(k["konektor"] == konektor and k["terhubung"]
-               for k in daftar_konektor(user_id, agen_id, dsn=dsn))
+    return any(k["connectors"] == connector and k["terhubung"]
+               for k in items_connector(user_id, agent_id, dsn=dsn))

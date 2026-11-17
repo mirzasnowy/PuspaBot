@@ -22,24 +22,24 @@ import os
 import psycopg
 from psycopg.rows import dict_row
 
-from puspa.workflow.blocks import periksa_alur
-from puspa.workflow.manifest import hitung_manifes, subset_izin
-from puspa.workflow.triggers import validasi_pemicu
+from puspa.workflow.blocks import periksa_workflow
+from puspa.workflow.manifest import hitung_manifest, subset_permission
+from puspa.workflow.triggers import validasi_trigger
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
-KOMPONEN_DIIZINKAN = ("kartu", "tabel", "daftar", "form", "angka",
-                      "grafik_garis", "tombol_aksi")
-TIPE_KOLOM = ("teks", "angka", "Rupiah", "tanggal", "pilihan")
+KOMPONEN_DIIZINKAN = ("card", "table", "items", "form", "number",
+                      "grafik_garis", "tombol_action")
+TIPE_KOLOM = ("text", "number", "Rupiah", "tanggal", "choice")
 MAKS_TAMPILAN = 3
-MAKS_TABEL = 5
-MAKS_KOLOM_PER_TABEL = 10
-MAKS_UKURAN_MANIFES_BYTE = 65536
-MAKS_MODUL_AKTIF = 3
+MAKS_TABLE = 5
+MAKS_KOLOM_PER_TABLE = 10
+MAKS_UKURAN_MANIFEST_BYTE = 65536
+MAKS_MODULE_ACTIVE = 3
 
 # Pola yang menandakan kode (bukan data) di dalam manifes. Manifes yang
 # memuatnya DITOLAK di gerbang 2 — bukan dibersihkan diam-diam.
-POLA_KODE_DILARANG = (
+PATTERN_KODE_DILARANG = (
     "<script", "</script", "<iframe", "javascript:", "onerror=",
     "onclick=", "SELECT ", "INSERT ", "UPDATE ", "DELETE ", "DROP ",
     "--", "/*",
@@ -65,100 +65,100 @@ def _row(row: dict) -> dict:
 
 # ---------------------------------------------------------------- gerbang
 
-def gerbang_skema(manifes: dict) -> list[str]:
+def gerbang_skema(manifest: dict) -> list[str]:
     """Gerbang 1: validasi skema."""
     masalah: list[str] = []
-    if not isinstance(manifes, dict):
+    if not isinstance(manifest, dict):
         return ["manifes harus objek"]
-    if not isinstance(manifes.get("nama"), str) or not manifes["nama"].strip():
+    if not isinstance(manifest.get("name"), str) or not manifest["name"].strip():
         masalah.append("manifes: 'nama' wajib teks tak kosong")
-    tampilan = manifes.get("tampilan")
+    tampilan = manifest.get("tampilan")
     if not isinstance(tampilan, list) or not tampilan:
         masalah.append("manifes: 'tampilan' wajib daftar tak kosong")
-    tabel = manifes.get("tabel", [])
-    if not isinstance(tabel, list):
+    table = manifest.get("table", [])
+    if not isinstance(table, list):
         masalah.append("manifes: 'tabel' harus daftar")
     else:
-        for t in tabel:
-            if not isinstance(t, dict) or not t.get("nama"):
+        for t in table:
+            if not isinstance(t, dict) or not t.get("name"):
                 masalah.append("manifes: tiap tabel wajib punya 'nama'")
                 continue
             kolom = t.get("kolom")
             if not isinstance(kolom, list) or not kolom:
-                masalah.append(f"tabel {t['nama']!r}: 'kolom' wajib daftar tak kosong")
+                masalah.append(f"tabel {t['name']!r}: 'kolom' wajib daftar tak kosong")
                 continue
             for k in kolom:
-                if not isinstance(k, dict) or not k.get("nama") or not k.get("tipe"):
-                    masalah.append(f"tabel {t['nama']!r}: tiap kolom wajib 'nama' + 'tipe'")
-    alur = manifes.get("alur")
-    if alur is not None:
-        if not isinstance(alur, dict):
+                if not isinstance(k, dict) or not k.get("name") or not k.get("tipe"):
+                    masalah.append(f"tabel {t['name']!r}: tiap kolom wajib 'nama' + 'tipe'")
+    workflow = manifest.get("workflows")
+    if workflow is not None:
+        if not isinstance(workflow, dict):
             masalah.append("manifes: 'alur' harus objek")
         else:
-            masalah += validasi_pemicu(alur.get("pemicu", {}))
-            masalah += periksa_alur(alur.get("langkah", []))
-    notif = manifes.get("notif", [])
+            masalah += validasi_trigger(workflow.get("triggers", {}))
+            masalah += periksa_workflow(workflow.get("step", []))
+    notif = manifest.get("notif", [])
     if not isinstance(notif, list):
         masalah.append("manifes: 'notif' harus daftar")
     else:
         for n in notif:
-            if not isinstance(n, dict) or not n.get("kondisi") or not n.get("pesan"):
+            if not isinstance(n, dict) or not n.get("condition") or not n.get("message"):
                 masalah.append("manifes: tiap aturan notif wajib 'kondisi' + 'pesan'")
-    contoh = manifes.get("contoh_data", {})
-    if not isinstance(contoh, dict):
-        masalah.append("manifes: 'contoh_data' harus objek")
+    example = manifest.get("example_data", {})
+    if not isinstance(example, dict):
+        masalah.append("manifes: 'example_data' harus objek")
     return masalah
 
 
-def gerbang_pemindai(manifes: dict) -> list[str]:
+def gerbang_pemindai(manifest: dict) -> list[str]:
     """Gerbang 2: pemindai komponen dan tipe yang diizinkan + larangan kode."""
     masalah: list[str] = []
-    for t in manifes.get("tampilan", []) or []:
+    for t in manifest.get("tampilan", []) or []:
         if not isinstance(t, dict):
             masalah.append("tampilan: tiap tampilan harus objek")
             continue
-        if t.get("jenis") not in KOMPONEN_DIIZINKAN:
+        if t.get("type") not in KOMPONEN_DIIZINKAN:
             masalah.append(
-                f"tampilan: komponen {t.get('jenis')!r} tidak diizinkan "
+                f"tampilan: komponen {t.get('type')!r} tidak diizinkan "
                 f"(yang boleh: {', '.join(KOMPONEN_DIIZINKAN)})")
-    for t in manifes.get("tabel", []) or []:
+    for t in manifest.get("table", []) or []:
         for k in (t.get("kolom") or []):
             if k.get("tipe") not in TIPE_KOLOM:
                 masalah.append(
-                    f"tabel {t.get('nama')!r}: tipe kolom {k.get('tipe')!r} "
+                    f"tabel {t.get('name')!r}: tipe kolom {k.get('tipe')!r} "
                     f"tidak diizinkan (yang boleh: {', '.join(TIPE_KOLOM)})")
-            if k.get("tipe") == "pilihan" and not isinstance(k.get("pilihan"), list):
+            if k.get("tipe") == "choice" and not isinstance(k.get("choice"), list):
                 masalah.append(
-                    f"tabel {t.get('nama')!r} kolom {k.get('nama')!r}: "
+                    f"tabel {t.get('name')!r} kolom {k.get('name')!r}: "
                     "tipe 'pilihan' wajib punya daftar 'pilihan'")
     # Pindai seluruh manifes (sebagai JSON) untuk pola kode.
-    teks = json.dumps(manifes, ensure_ascii=False)
-    for pola in POLA_KODE_DILARANG:
-        if pola.lower() in teks.lower():
-            masalah.append(f"manifes memuat kode yang dilarang: {pola!r}")
+    text = json.dumps(manifest, ensure_ascii=False)
+    for pattern in PATTERN_KODE_DILARANG:
+        if pattern.lower() in text.lower():
+            masalah.append(f"manifes memuat kode yang dilarang: {pattern!r}")
             break
     return masalah
 
 
-def gerbang_izin(manifes: dict) -> dict:
+def gerbang_permission(manifest: dict) -> dict:
     """Gerbang 3: manifes izin turunan dari blok yang dipakai di alur
     modul. Modul tanpa alur -> izin kosong."""
-    alur = manifes.get("alur")
-    if not alur:
-        return {"konektor": [], "scope": [], "domain": [],
-                "batas_belanja": 0, "blok": []}
-    return hitung_manifes(alur.get("langkah", []))
+    workflow = manifest.get("workflows")
+    if not workflow:
+        return {"connectors": [], "scope": [], "domain": [],
+                "batas_belanja": 0, "block": []}
+    return hitung_manifest(workflow.get("step", []))
 
 
-def gerbang_uji_kering(manifes: dict, dsn=None) -> list[str]:
+def gerbang_test_dry(manifest: dict, dsn=None) -> list[str]:
     """Gerbang 4: uji kering dengan data contoh — alur modul dijalankan
     mode kering (bila ada), dan tiap tampilan dirender dengan data
     contoh. Masalah = alasan gagal."""
-    from puspa.modules.views import render_modul
+    from puspa.modules.views import render_module
 
     masalah: list[str] = []
-    alur = manifes.get("alur")
-    if alur:
+    workflow = manifest.get("workflows")
+    if workflow:
         from puspa.workflow.runner import WorkflowError  # noqa: F401
         # Uji kering alur butuh baris alur di DB — dilakukan di
         # aktifkan_modul (setelah modul dibuat). Di sini: periksa
@@ -166,219 +166,219 @@ def gerbang_uji_kering(manifes: dict, dsn=None) -> list[str]:
         # di sana. Jadi gerbang 4 di level manifes = render tampilan.
         pass
     try:
-        render_modul(manifes)
+        render_module(manifest)
     except Exception as exc:  # noqa: BLE001
         masalah.append(f"pratinjau gagal dirender dengan data contoh: {exc}")
     return masalah
 
 
-def gerbang_ukuran(manifes: dict) -> list[str]:
+def gerbang_ukuran(manifest: dict) -> list[str]:
     """Gerbang 5: batas ukuran."""
     masalah: list[str] = []
-    if len(manifes.get("tampilan", []) or []) > MAKS_TAMPILAN:
-        masalah.append(f"tampilan {len(manifes['tampilan'])} — maks {MAKS_TAMPILAN} per modul")
-    if len(manifes.get("tabel", []) or []) > MAKS_TABEL:
-        masalah.append(f"tabel {len(manifes['tabel'])} — maks {MAKS_TABEL} per modul")
-    for t in manifes.get("tabel", []) or []:
-        if len(t.get("kolom", []) or []) > MAKS_KOLOM_PER_TABEL:
+    if len(manifest.get("tampilan", []) or []) > MAKS_TAMPILAN:
+        masalah.append(f"tampilan {len(manifest['tampilan'])} — maks {MAKS_TAMPILAN} per modul")
+    if len(manifest.get("table", []) or []) > MAKS_TABLE:
+        masalah.append(f"tabel {len(manifest['table'])} — maks {MAKS_TABLE} per modul")
+    for t in manifest.get("table", []) or []:
+        if len(t.get("kolom", []) or []) > MAKS_KOLOM_PER_TABLE:
             masalah.append(
-                f"tabel {t.get('nama')!r}: {len(t['kolom'])} kolom — "
-                f"maks {MAKS_KOLOM_PER_TABEL}")
-    ukuran = len(json.dumps(manifes, ensure_ascii=False).encode("utf-8"))
-    if ukuran > MAKS_UKURAN_MANIFES_BYTE:
-        masalah.append(f"manifes {ukuran} byte — maks {MAKS_UKURAN_MANIFES_BYTE}")
-    alur = manifes.get("alur")
-    if alur and len(alur.get("langkah", []) or []) > 10:
+                f"tabel {t.get('name')!r}: {len(t['kolom'])} kolom — "
+                f"maks {MAKS_KOLOM_PER_TABLE}")
+    ukuran = len(json.dumps(manifest, ensure_ascii=False).encode("utf-8"))
+    if ukuran > MAKS_UKURAN_MANIFEST_BYTE:
+        masalah.append(f"manifes {ukuran} byte — maks {MAKS_UKURAN_MANIFEST_BYTE}")
+    workflow = manifest.get("workflows")
+    if workflow and len(workflow.get("step", []) or []) > 10:
         masalah.append("alur modul: maks 10 langkah")
     return masalah
 
 
-def jalankan_gerbang(manifes: dict, dsn=None) -> dict:
+def jalankan_gerbang(manifest: dict, dsn=None) -> dict:
     """Jalankan kelima gerbang. Kembalikan {lolos, masalah, manifes_izin}."""
-    masalah = gerbang_skema(manifes)
-    masalah += gerbang_pemindai(manifes)
-    masalah += gerbang_ukuran(manifes)
-    masalah += gerbang_uji_kering(manifes, dsn=dsn)
+    masalah = gerbang_skema(manifest)
+    masalah += gerbang_pemindai(manifest)
+    masalah += gerbang_ukuran(manifest)
+    masalah += gerbang_test_dry(manifest, dsn=dsn)
     try:
-        manifes_izin = gerbang_izin(manifes)
+        permission_manifest = gerbang_permission(manifest)
     except Exception as exc:  # noqa: BLE001
         masalah.append(f"manifes izin turunan gagal dihitung: {exc}")
-        manifes_izin = {"konektor": [], "scope": [], "domain": [],
-                        "batas_belanja": 0, "blok": []}
-    return {"lolos": not masalah, "masalah": masalah,
-            "manifes_izin": manifes_izin}
+        permission_manifest = {"connectors": [], "scope": [], "domain": [],
+                        "batas_belanja": 0, "block": []}
+    return {"passed": not masalah, "masalah": masalah,
+            "permission_manifest": permission_manifest}
 
 
 # ---------------------------------------------------------------- CRUD
 
-def buat_modul(*, user_id: str, manifes: dict, dsn=None) -> dict:
+def create_module(*, user_id: str, manifest: dict, dsn=None) -> dict:
     """Buat modul draf (versi 1). Gerbang 1-2-5 harus lolos saat dibuat;
     gerbang 3-4 dicek penuh saat aktivasi."""
-    hasil = jalankan_gerbang(manifes, dsn=dsn)
-    if hasil["masalah"]:
-        raise ModuleError("manifes tidak lolos gerbang: " + "; ".join(hasil["masalah"]))
+    result = jalankan_gerbang(manifest, dsn=dsn)
+    if result["masalah"]:
+        raise ModuleError("manifes tidak lolos gerbang: " + "; ".join(result["masalah"]))
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO modul (user_id, nama, manifes, status)"
-                " VALUES (%s, %s, %s, 'draf') RETURNING *",
-                (user_id, manifes["nama"], json.dumps(manifes)))
+                "INSERT INTO modules (user_id, name, manifest, status)"
+                " VALUES (%s, %s, %s, 'draft') RETURNING *",
+                (user_id, manifest["name"], json.dumps(manifest)))
             row = dict(cur.fetchone())
             cur.execute(
-                "INSERT INTO modul_versi (modul_id, versi, manifes)"
-                " VALUES (%s, 1, %s)", (row["id"], json.dumps(manifes)))
+                "INSERT INTO module_versions (module_id, versi, manifest)"
+                " VALUES (%s, 1, %s)", (row["id"], json.dumps(manifest)))
             # Buat tabel milik modul dari manifes.
-            from puspa.modules.tables import buat_tabel
+            from puspa.modules.tables import create_table
 
-            for t in manifes.get("tabel", []) or []:
-                buat_tabel(modul_id=str(row["id"]), user_id=user_id,
-                           nama=t["nama"], kolom=t["kolom"], dsn=dsn,
+            for t in manifest.get("table", []) or []:
+                create_table(module_id=str(row["id"]), user_id=user_id,
+                           name=t["name"], kolom=t["kolom"], dsn=dsn,
                            _conn=conn)
         conn.commit()
     return _row(row)
 
 
-def ambil_modul(modul_id: str, *, user_id: str, dsn=None) -> dict | None:
+def take_module(module_id: str, *, user_id: str, dsn=None) -> dict | None:
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM modul WHERE id = %s AND user_id = %s",
-                        (modul_id, user_id))
+            cur.execute("SELECT * FROM modules WHERE id = %s AND user_id = %s",
+                        (module_id, user_id))
             row = cur.fetchone()
     return _row(row) if row else None
 
 
-def daftar_modul(user_id: str, *, status: str | None = None, dsn=None) -> list[dict]:
+def items_module(user_id: str, *, status: str | None = None, dsn=None) -> list[dict]:
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             if status:
-                cur.execute("SELECT * FROM modul WHERE user_id = %s AND status = %s"
-                            " ORDER BY dibuat", (user_id, status))
+                cur.execute("SELECT * FROM modules WHERE user_id = %s AND status = %s"
+                            " ORDER BY created_at", (user_id, status))
             else:
-                cur.execute("SELECT * FROM modul WHERE user_id = %s ORDER BY dibuat",
+                cur.execute("SELECT * FROM modules WHERE user_id = %s ORDER BY created_at",
                             (user_id,))
             return [_row(r) for r in cur.fetchall()]
 
 
-def aktifkan_modul(modul_id: str, *, user_id: str, izin_user: dict,
+def aktifkan_module(module_id: str, *, user_id: str, permission_user: dict,
                    dsn=None) -> dict:
     """Aktifkan modul: kelima gerbang + izin turunan himpunan bagian
     dari izin user + maks 3 modul aktif + uji kering alur modul
     (bila ada) dengan data contoh."""
-    modul = ambil_modul(modul_id, user_id=user_id, dsn=dsn)
-    if modul is None:
+    module = take_module(module_id, user_id=user_id, dsn=dsn)
+    if module is None:
         raise ModuleError("modul tidak ditemukan")
-    if modul["status"] == "dihapus":
+    if module["status"] == "deleted":
         raise ModuleError("modul sudah dihapus")
-    hasil = jalankan_gerbang(modul["manifes"], dsn=dsn)
-    if not hasil["lolos"]:
-        raise ModuleError("manifes tidak lolos gerbang: " + "; ".join(hasil["masalah"]))
-    lolos, kurang = subset_izin(hasil["manifes_izin"], izin_user)
-    if not lolos:
-        raise ModuleError("manifes izin di luar izin user: " + "; ".join(kurang))
-    aktif = [m for m in daftar_modul(user_id, status="aktif", dsn=dsn)
-             if str(m["id"]) != str(modul_id)]
-    if len(aktif) >= MAKS_MODUL_AKTIF:
-        raise ModuleError(f"sudah ada {MAKS_MODUL_AKTIF} modul aktif — maks di MVP")
+    result = jalankan_gerbang(module["manifest"], dsn=dsn)
+    if not result["passed"]:
+        raise ModuleError("manifes tidak lolos gerbang: " + "; ".join(result["masalah"]))
+    passed, less = subset_permission(result["permission_manifest"], permission_user)
+    if not passed:
+        raise ModuleError("manifes izin di luar izin user: " + "; ".join(less))
+    active = [m for m in items_module(user_id, status="active", dsn=dsn)
+             if str(m["id"]) != str(module_id)]
+    if len(active) >= MAKS_MODULE_ACTIVE:
+        raise ModuleError(f"sudah ada {MAKS_MODULE_ACTIVE} modul aktif — maks di MVP")
     # Gerbang 4 (jalan): uji kering alur modul bila ada.
-    alur = modul["manifes"].get("alur")
-    if alur:
-        from puspa.workflow.runner import buat_alur, jalankan_alur, uji_kering
+    workflow = module["manifest"].get("workflows")
+    if workflow:
+        from puspa.workflow.runner import create_workflow, jalankan_workflow, test_dry
 
-        alur_sementara = buat_alur(
-            user_id=user_id, agen_id="puspa",
-            nama=f"uji kering modul {modul['nama']}",
-            pemicu=alur.get("pemicu", {"jenis": "manual"}),
-            langkah=alur.get("langkah", []), dsn=dsn)
+        workflow_sementara = create_workflow(
+            user_id=user_id, agent_id="puspa",
+            name=f"uji kering modul {module['name']}",
+            trigger=workflow.get("triggers", {"type": "manual"}),
+            step=workflow.get("step", []), dsn=dsn)
         try:
-            hasil_kering = uji_kering(str(alur_sementara["id"]), user_id=user_id, dsn=dsn)
+            result_dry = test_dry(str(workflow_sementara["id"]), user_id=user_id, dsn=dsn)
         finally:
-            from puspa.workflow.runner import hapus_alur
+            from puspa.workflow.runner import delete_workflow
 
-            hapus_alur(str(alur_sementara["id"]), user_id=user_id, dsn=dsn)
-        if not hasil_kering.get("sukses"):
+            delete_workflow(str(workflow_sementara["id"]), user_id=user_id, dsn=dsn)
+        if not result_dry.get("success"):
             raise ModuleError(
-                "uji kering alur modul gagal: " + (hasil_kering.get("alasan") or ""))
+                "uji kering alur modul gagal: " + (result_dry.get("reason") or ""))
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE modul SET status = 'aktif', diubah = now()"
-                " WHERE id = %s RETURNING *", (modul_id,))
+                "UPDATE modules SET status = 'active', updated_at = now()"
+                " WHERE id = %s RETURNING *", (module_id,))
             row = dict(cur.fetchone())
         conn.commit()
     return _row(row)
 
 
-def ubah_modul(modul_id: str, *, user_id: str, manifes: dict, dsn=None) -> dict:
+def change_module(module_id: str, *, user_id: str, manifest: dict, dsn=None) -> dict:
     """Ubah manifes (hanya lewat sesi penyusunan user). Versi baru;
     gerbang 1-2-5 dicek ulang, gerbang 3-4 saat aktivasi ulang."""
-    modul = ambil_modul(modul_id, user_id=user_id, dsn=dsn)
-    if modul is None:
+    module = take_module(module_id, user_id=user_id, dsn=dsn)
+    if module is None:
         raise ModuleError("modul tidak ditemukan")
-    if modul["status"] == "dihapus":
+    if module["status"] == "deleted":
         raise ModuleError("modul sudah dihapus")
-    hasil = jalankan_gerbang(manifes, dsn=dsn)
-    if hasil["masalah"]:
-        raise ModuleError("manifes tidak lolos gerbang: " + "; ".join(hasil["masalah"]))
-    versi_baru = int(modul["versi_aktif"]) + 1
+    result = jalankan_gerbang(manifest, dsn=dsn)
+    if result["masalah"]:
+        raise ModuleError("manifes tidak lolos gerbang: " + "; ".join(result["masalah"]))
+    versi_new = int(module["active_version"]) + 1
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE modul SET manifes = %s, versi_aktif = %s, status = 'draf',"
-                " diubah = now() WHERE id = %s RETURNING *",
-                (json.dumps(manifes), versi_baru, modul_id))
+                "UPDATE modules SET manifest = %s, active_version = %s, status = 'draft',"
+                " updated_at = now() WHERE id = %s RETURNING *",
+                (json.dumps(manifest), versi_new, module_id))
             row = dict(cur.fetchone())
             cur.execute(
-                "INSERT INTO modul_versi (modul_id, versi, manifes)"
+                "INSERT INTO module_versions (module_id, versi, manifest)"
                 " VALUES (%s, %s, %s)",
-                (modul_id, versi_baru, json.dumps(manifes)))
+                (module_id, versi_new, json.dumps(manifest)))
         conn.commit()
     return _row(row)
 
 
-def rollback_modul(modul_id: str, *, user_id: str, versi: int, dsn=None) -> dict:
+def rollback_module(module_id: str, *, user_id: str, versi: int, dsn=None) -> dict:
     """Pulihkan versi lama (menjadi versi baru)."""
-    modul = ambil_modul(modul_id, user_id=user_id, dsn=dsn)
-    if modul is None:
+    module = take_module(module_id, user_id=user_id, dsn=dsn)
+    if module is None:
         raise ModuleError("modul tidak ditemukan")
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT manifes FROM modul_versi WHERE modul_id = %s AND versi = %s",
-                (modul_id, versi))
-            lama = cur.fetchone()
-            if lama is None:
+                "SELECT manifest FROM module_versions WHERE module_id = %s AND versi = %s",
+                (module_id, versi))
+            old = cur.fetchone()
+            if old is None:
                 raise ModuleError(f"versi {versi} tidak ada")
-    return ubah_modul(modul_id, user_id=user_id, manifes=lama["manifes"], dsn=dsn)
+    return change_module(module_id, user_id=user_id, manifest=old["manifest"], dsn=dsn)
 
 
-def ekspor_data_modul(modul_id: str, *, user_id: str, dsn=None) -> dict:
+def export_data_module(module_id: str, *, user_id: str, dsn=None) -> dict:
     """Ekspor seluruh data tabel milik modul (JSON) — ditawarkan
     sebelum hapus (§2.13)."""
-    from puspa.modules.tables import daftar_tabel, baca_tabel
+    from puspa.modules.tables import items_table, read_table
 
-    modul = ambil_modul(modul_id, user_id=user_id, dsn=dsn)
-    if modul is None:
+    module = take_module(module_id, user_id=user_id, dsn=dsn)
+    if module is None:
         raise ModuleError("modul tidak ditemukan")
-    ekspor = {"modul": modul["nama"], "tabel": {}}
-    for t in daftar_tabel(modul_id, user_id=user_id, dsn=dsn):
-        ekspor["tabel"][t["nama"]] = baca_tabel(
+    export = {"modules": module["name"], "table": {}}
+    for t in items_table(module_id, user_id=user_id, dsn=dsn):
+        export["table"][t["name"]] = read_table(
             t["id"], user_id=user_id, dsn=dsn)
-    return ekspor
+    return export
 
 
-def hapus_modul(modul_id: str, *, user_id: str, dsn=None) -> dict:
+def delete_module(module_id: str, *, user_id: str, dsn=None) -> dict:
     """Hapus modul. Kembalikan ekspor datanya dulu (pemanggil
     menampilkannya ke user sebelum benar-benar menghapus — di sini
     ekspor dikembalikan bersama hasil hapus)."""
-    ekspor = ekspor_data_modul(modul_id, user_id=user_id, dsn=dsn)
+    export = export_data_module(module_id, user_id=user_id, dsn=dsn)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE modul SET status = 'dihapus', diubah = now()"
+                "UPDATE modules SET status = 'deleted', updated_at = now()"
                 " WHERE id = %s AND user_id = %s RETURNING *",
-                (modul_id, user_id))
+                (module_id, user_id))
             row = cur.fetchone()
-            cur.execute("DELETE FROM baris_modul WHERE modul_id = %s", (modul_id,))
-            cur.execute("DELETE FROM tabel_modul WHERE modul_id = %s", (modul_id,))
+            cur.execute("DELETE FROM module_rows WHERE module_id = %s", (module_id,))
+            cur.execute("DELETE FROM module_tables WHERE module_id = %s", (module_id,))
         conn.commit()
-    return {"dihapus": _row(dict(row)) if row else None, "ekspor": ekspor}
+    return {"deleted": _row(dict(row)) if row else None, "export": export}

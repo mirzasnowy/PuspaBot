@@ -19,11 +19,11 @@ import psycopg
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 TABLES_FASE3 = (
-    "produk_kanonik", "tautan_listing", "harga_seri", "watchlist",
-    "anggaran_baca", "cache_bukti", "pembacaan_sumber", "prosedur_versi",
-    "pemakaian_prosedur", "canary_jalan", "laporan_salah",
-    "kredit_bulanan", "metrik_token", "pustaka_alur", "permintaan_blok",
-    "cek_syarat_layanan",
+    "product_kanonik", "listing_links", "price_series", "watchlist",
+    "anggaran_read", "cache_evidence", "source_readings", "procedure_versions",
+    "procedure_uses", "canary_runs", "false_reports",
+    "credit_monthly", "token_metrics", "pustaka_workflow", "permintaan_block",
+    "check_syarat_service",
 )
 
 

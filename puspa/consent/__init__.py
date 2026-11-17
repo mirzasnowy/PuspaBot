@@ -2,7 +2,7 @@
 
 from .account import delete_account, export_account
 from .consent import (
-    TEKS_PERSETUJUAN,
+    TEKS_APPROVAL,
     TEKS_VERSI,
     has_consented,
     list_consents,
@@ -10,7 +10,7 @@ from .consent import (
 )
 
 __all__ = [
-    "TEKS_PERSETUJUAN",
+    "TEKS_APPROVAL",
     "TEKS_VERSI",
     "delete_account",
     "export_account",

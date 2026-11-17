@@ -4,60 +4,60 @@
 -- skema ini, karena peran pemilik DB tidak punya CREATEROLE); blok DO di bawah
 -- hanya memberi izin kalau peran itu sudah ada.
 
-CREATE TABLE IF NOT EXISTS kejadian (
+CREATE TABLE IF NOT EXISTS events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    waktu TIMESTAMPTZ NOT NULL DEFAULT now(),
-    tugas_id TEXT NOT NULL,
-    agen_id TEXT NOT NULL,
-    sub_agen_id TEXT,
-    jenis TEXT NOT NULL CHECK (jenis IN (
-        'tugas_dibuat', 'rencana_dibuat', 'subagen_dibuat',
-        'handoff_diajukan', 'handoff_diterima', 'handoff_diserahkan',
-        'handoff_ditolak', 'handoff_kedaluwarsa', 'detak',
-        'tool_dipanggil', 'tool_selesai', 'bukti_dicatat',
-        'pemeriksaan_selesai', 'persetujuan_diminta', 'persetujuan_diberikan',
-        'persetujuan_ditolak', 'pesan_user', 'pesan_agen', 'anggaran_habis',
-        'tugas_selesai', 'tugas_gagal', 'tugas_dihentikan',
-        'alur_diajukan', 'alur_diaktifkan', 'alur_dijeda',
-        'pemicu_terpicu', 'pemicu_terlewat',
-        'modul_diajukan', 'modul_diaktifkan',
-        'laporan_salah', 'persetujuan_data'
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    task_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    subagent_id TEXT,
+    type TEXT NOT NULL CHECK (type IN (
+        'task_created', 'plan_created', 'subagent_created',
+        'handoff_proposed', 'handoff_accepted', 'handoff_handed_over',
+        'handoff_rejected', 'handoff_expired', 'heartbeat',
+        'tool_called', 'tool_completed', 'evidence_recorded',
+        'verification_completed', 'approval_requested', 'approval_granted',
+        'approval_rejected', 'user_message', 'agent_message', 'budget_exhausted',
+        'task_completed', 'task_failed', 'task_stopped',
+        'workflow_proposed', 'workflow_activated', 'workflow_paused',
+        'trigger_fired', 'trigger_missed',
+        'module_proposed', 'module_activated',
+        'false_reports', 'data_consents'
     )),
-    isi JSONB NOT NULL DEFAULT '{}',
-    id_induk UUID REFERENCES kejadian(id),
-    hash_sebelumnya TEXT NOT NULL,
+    content JSONB NOT NULL DEFAULT '{}',
+    parent_id UUID REFERENCES events(id),
+    previous_hash TEXT NOT NULL,
     hash TEXT NOT NULL UNIQUE
 );
 
-CREATE INDEX IF NOT EXISTS idx_kejadian_tugas_id_id ON kejadian (tugas_id, id);
-CREATE INDEX IF NOT EXISTS idx_kejadian_jenis ON kejadian (jenis);
-CREATE INDEX IF NOT EXISTS idx_kejadian_waktu ON kejadian (waktu);
+CREATE INDEX IF NOT EXISTS idx_event_task_id_id ON events (task_id, id);
+CREATE INDEX IF NOT EXISTS idx_event_jenis ON events (type);
+CREATE INDEX IF NOT EXISTS idx_event_time ON events (created_at);
 
 -- Migrasi CHECK jenis: CREATE TABLE IF NOT EXISTS di atas tidak mengubah
 -- constraint tabel yang sudah ada (mis. dibuat saat himpunan masih 22 jenis),
 -- jadi constraint lama diganti dengan daftar 31 jenis revisi 7 di sini.
 -- Idempotent: DROP IF EXISTS lalu ADD dengan nama constraint yang sama.
-ALTER TABLE kejadian DROP CONSTRAINT IF EXISTS kejadian_jenis_check;
-ALTER TABLE kejadian ADD CONSTRAINT kejadian_jenis_check CHECK (jenis IN (
-    'tugas_dibuat', 'rencana_dibuat', 'subagen_dibuat',
-    'handoff_diajukan', 'handoff_diterima', 'handoff_diserahkan',
-    'handoff_ditolak', 'handoff_kedaluwarsa', 'detak',
-    'tool_dipanggil', 'tool_selesai', 'bukti_dicatat',
-    'pemeriksaan_selesai', 'persetujuan_diminta', 'persetujuan_diberikan',
-    'persetujuan_ditolak', 'pesan_user', 'pesan_agen', 'anggaran_habis',
-    'tugas_selesai', 'tugas_gagal', 'tugas_dihentikan',
-    'alur_diajukan', 'alur_diaktifkan', 'alur_dijeda',
-    'pemicu_terpicu', 'pemicu_terlewat',
-    'modul_diajukan', 'modul_diaktifkan',
-    'laporan_salah', 'persetujuan_data'
+ALTER TABLE events DROP CONSTRAINT IF EXISTS event_jenis_check;
+ALTER TABLE events ADD CONSTRAINT event_jenis_check CHECK (type IN (
+    'task_created', 'plan_created', 'subagent_created',
+    'handoff_proposed', 'handoff_accepted', 'handoff_handed_over',
+    'handoff_rejected', 'handoff_expired', 'heartbeat',
+    'tool_called', 'tool_completed', 'evidence_recorded',
+    'verification_completed', 'approval_requested', 'approval_granted',
+    'approval_rejected', 'user_message', 'agent_message', 'budget_exhausted',
+    'task_completed', 'task_failed', 'task_stopped',
+    'workflow_proposed', 'workflow_activated', 'workflow_paused',
+    'trigger_fired', 'trigger_missed',
+    'module_proposed', 'module_activated',
+    'false_reports', 'data_consents'
 ));
 
 -- Izin: peran aplikasi hanya INSERT + SELECT. Tanpa UPDATE/DELETE.
-REVOKE UPDATE, DELETE ON kejadian FROM PUBLIC;
+REVOKE UPDATE, DELETE ON events FROM PUBLIC;
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'puspa_app') THEN
-        GRANT SELECT, INSERT ON kejadian TO puspa_app;
-        REVOKE UPDATE, DELETE ON kejadian FROM puspa_app;
+        GRANT SELECT, INSERT ON events TO puspa_app;
+        REVOKE UPDATE, DELETE ON events FROM puspa_app;
     END IF;
 END $$;

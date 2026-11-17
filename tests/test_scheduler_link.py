@@ -5,72 +5,73 @@ idempotensi."""
 
 from datetime import datetime, timezone
 
-from puspa.workflow.runner import aktifkan_alur, tick_alur, uji_kering
-from puspa.workflow.templates import buat_dari_templat
-from puspa.workflow.triggers import simpan_ke_penjadwal
+from puspa.workflow.runner import aktifkan_workflow, tick_workflow, test_dry
+from puspa.workflow.templates import create_dari_templat
+from puspa.workflow.triggers import save_to_penjadwal
 
 
-def _alur_tagihan_aktif(make_user, test_dsn, izin_user_penuh):
-    user_id, agen_id = make_user()
-    alur = buat_dari_templat("tagihan_bulanan", user_id=user_id, agen_id=agen_id,
+def _workflow_bill_active(make_user, test_dsn, permission_user_penuh):
+    u = make_user()
+    user_id, agent_id = u["user_id"], u["agent_id"]
+    workflow = create_dari_templat("bill_monthly", user_id=user_id, agent_id=agent_id,
                              dsn=test_dsn)
-    kering = uji_kering(alur["id"], user_id=user_id, dsn=test_dsn)
-    aktifkan_alur(alur["id"], user_id=user_id, izin_user=izin_user_penuh,
-                  hasil_kering=kering, dsn=test_dsn)
-    pemicu = simpan_ke_penjadwal(
-        user_id=user_id, alur_id=str(alur["id"]),
-        pemicu={"jenis": "jadwal", "mode": "tanggal", "tanggal": 25,
+    dry = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
+                  result_dry=dry, dsn=test_dsn)
+    trigger = save_to_penjadwal(
+        user_id=user_id, workflow_id=str(workflow["id"]),
+        trigger={"type": "jadwal", "mode": "tanggal", "tanggal": 25,
                 "jam_mulai": "07:00"},
         sekarang=datetime(2026, 11, 17, 12, 0, tzinfo=timezone.utc),
         dsn=test_dsn)
-    return user_id, alur, pemicu
+    return user_id, workflow, trigger
 
 
-def test_tick_jalankan_alur_jadwal_dan_geser_ke_bulan_depan(
-        make_user, test_dsn, izin_user_penuh):
-    user_id, alur, pemicu = _alur_tagihan_aktif(make_user, test_dsn,
-                                               izin_user_penuh)
-    hasil = tick_alur(
+def test_tick_jalankan_workflow_jadwal_and_geser_to_month_next(
+        make_user, test_dsn, permission_user_penuh):
+    user_id, workflow, trigger = _workflow_bill_active(make_user, test_dsn,
+                                               permission_user_penuh)
+    result = tick_workflow(
         dsn=test_dsn,
         sekarang=datetime(2026, 11, 25, 7, 5, tzinfo=timezone.utc))
-    assert len(hasil) == 1
-    assert hasil[0]["alur_id"] == str(alur["id"])
-    assert hasil[0]["terlewat"] is False
+    assert len(result) == 1
+    assert result[0]["workflow_id"] == str(workflow["id"])
+    assert result[0]["terlewat"] is False
     # Jalan alur tercatat (berhenti di siapkan bayar -> menunggu persetujuan).
-    assert hasil[0]["jalan"]["status"] == "menunggu_persetujuan"
+    assert result[0]["jalan"]["status"] == "pending_approval"
     # Jadwal berikutnya = 25 Desember (bukan 26 November / +1 hari).
     import psycopg
 
     with psycopg.connect(test_dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT pemicu_berikutnya FROM pemicu WHERE id = %s",
-                        (pemicu.id,))
+            cur.execute("SELECT next_trigger_at FROM triggers WHERE id = %s",
+                        (trigger.id,))
             berikut = cur.fetchone()[0]
     assert (berikut.year, berikut.month, berikut.day) == (2026, 12, 25)
 
 
-def test_tick_idempotent_tidak_jalan_dua_kali(make_user, test_dsn,
-                                            izin_user_penuh):
-    user_id, alur, pemicu = _alur_tagihan_aktif(make_user, test_dsn,
-                                               izin_user_penuh)
+def test_tick_idempotent_not_jalan_dua_kali(make_user, test_dsn,
+                                            permission_user_penuh):
+    user_id, workflow, trigger = _workflow_bill_active(make_user, test_dsn,
+                                               permission_user_penuh)
     sekarang = datetime(2026, 11, 25, 7, 5, tzinfo=timezone.utc)
-    assert len(tick_alur(dsn=test_dsn, sekarang=sekarang)) == 1
-    assert tick_alur(dsn=test_dsn, sekarang=sekarang) == []
+    assert len(tick_workflow(dsn=test_dsn, sekarang=sekarang)) == 1
+    assert tick_workflow(dsn=test_dsn, sekarang=sekarang) == []
 
 
-def test_tick_terlewat_dijalankan_sekali_dan_dilaporkan(make_user, test_dsn,
-                                                       izin_user_penuh):
-    user_id, alur, pemicu = _alur_tagihan_aktif(make_user, test_dsn,
-                                               izin_user_penuh)
+def test_tick_terlewat_dijalankan_sekali_and_dilaporkan(make_user, test_dsn,
+                                                       permission_user_penuh):
+    user_id, workflow, trigger = _workflow_bill_active(make_user, test_dsn,
+                                               permission_user_penuh)
     # Host "mati" 2 hari: bangun 27 Nov — pemicu 25 Nov terlewat.
-    hasil = tick_alur(
+    result = tick_workflow(
         dsn=test_dsn,
         sekarang=datetime(2026, 11, 27, 7, 5, tzinfo=timezone.utc),
         terlewat=True)
-    assert len(hasil) == 1
-    assert hasil[0]["terlewat"] is True
+    assert len(result) == 1
+    assert result[0]["terlewat"] is True
     # Dijalankan sekali (bukan berkali-kali): tick terlewat kedua kosong.
-    assert tick_alur(
+    assert tick_workflow(
         dsn=test_dsn,
         sekarang=datetime(2026, 11, 27, 7, 6, tzinfo=timezone.utc),
         terlewat=True) == []
@@ -79,5 +80,5 @@ def test_tick_terlewat_dijalankan_sekali_dan_dilaporkan(make_user, test_dsn,
 
     with psycopg.connect(test_dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM kejadian WHERE jenis = 'pemicu_terlewat'")
+            cur.execute("SELECT COUNT(*) FROM events WHERE type = 'trigger_missed'")
             assert cur.fetchone()[0] >= 1

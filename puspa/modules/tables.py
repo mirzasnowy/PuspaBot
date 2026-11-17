@@ -18,7 +18,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
-TIPE_KOLOM = ("teks", "angka", "Rupiah", "tanggal", "pilihan")
+TIPE_KOLOM = ("text", "number", "Rupiah", "tanggal", "choice")
 
 
 class TableError(Exception):
@@ -30,7 +30,7 @@ def _connect(dsn=None):
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
-def buat_tabel(*, modul_id: str, user_id: str, nama: str, kolom: list,
+def create_table(*, module_id: str, user_id: str, name: str, kolom: list,
                dsn=None, _conn=None) -> dict:
     """Buat satu tabel milik modul. Dipanggil dari buat_modul (dalam
     transaksi yang sama) atau langsung."""
@@ -42,17 +42,17 @@ def buat_tabel(*, modul_id: str, user_id: str, nama: str, kolom: list,
     if _conn is not None:
         with _conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO tabel_modul (modul_id, user_id, nama, kolom)"
-                " VALUES (%s, %s, %s, %s) RETURNING id, modul_id, user_id, nama, kolom",
-                (modul_id, user_id, nama, json.dumps(kolom)))
+                "INSERT INTO module_tables (module_id, user_id, name, kolom)"
+                " VALUES (%s, %s, %s, %s) RETURNING id, module_id, user_id, name, kolom",
+                (module_id, user_id, name, json.dumps(kolom)))
             row = dict(cur.fetchone())
         return _row(row)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO tabel_modul (modul_id, user_id, nama, kolom)"
-                " VALUES (%s, %s, %s, %s) RETURNING id, modul_id, user_id, nama, kolom",
-                (modul_id, user_id, nama, json.dumps(kolom)))
+                "INSERT INTO module_tables (module_id, user_id, name, kolom)"
+                " VALUES (%s, %s, %s, %s) RETURNING id, module_id, user_id, name, kolom",
+                (module_id, user_id, name, json.dumps(kolom)))
             row = dict(cur.fetchone())
         conn.commit()
     return _row(row)
@@ -60,110 +60,110 @@ def buat_tabel(*, modul_id: str, user_id: str, nama: str, kolom: list,
 
 def _row(row: dict) -> dict:
     row = dict(row)
-    for k in ("id", "modul_id", "user_id", "tabel_id"):
+    for k in ("id", "module_id", "user_id", "table_id"):
         if k in row and row[k] is not None:
             row[k] = str(row[k])
     return row
 
 
-def daftar_tabel(modul_id: str, *, user_id: str, dsn=None) -> list[dict]:
+def items_table(module_id: str, *, user_id: str, dsn=None) -> list[dict]:
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT * FROM tabel_modul WHERE modul_id = %s AND user_id = %s"
-                " ORDER BY nama", (modul_id, user_id))
+                "SELECT * FROM module_tables WHERE module_id = %s AND user_id = %s"
+                " ORDER BY name", (module_id, user_id))
             return [_row(r) for r in cur.fetchall()]
 
 
-def _ambil_tabel(tabel_id: str, dsn=None) -> dict | None:
+def _take_table(table_id: str, dsn=None) -> dict | None:
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM tabel_modul WHERE id = %s", (tabel_id,))
+            cur.execute("SELECT * FROM module_tables WHERE id = %s", (table_id,))
             row = cur.fetchone()
     return _row(row) if row else None
 
 
-def periksa_nilai(kolom: dict, nilai) -> str | None:
+def periksa_value(kolom: dict, value) -> str | None:
     """Periksa satu nilai terhadap tipe kolom. Kembalikan pesan masalah
     atau None bila lolos. `Rupiah` = angka >= 0."""
     tipe = kolom.get("tipe")
-    nama = kolom.get("nama")
-    if tipe == "teks":
-        return None if isinstance(nilai, str) else f"kolom {nama!r} harus teks"
-    if tipe in ("angka", "Rupiah"):
-        if not isinstance(nilai, (int, float)) or isinstance(nilai, bool):
-            return f"kolom {nama!r} harus angka"
-        if tipe == "Rupiah" and nilai < 0:
-            return f"kolom {nama!r} (Rupiah) tidak boleh negatif"
+    name = kolom.get("name")
+    if tipe == "text":
+        return None if isinstance(value, str) else f"kolom {name!r} harus teks"
+    if tipe in ("number", "Rupiah"):
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return f"kolom {name!r} harus angka"
+        if tipe == "Rupiah" and value < 0:
+            return f"kolom {name!r} (Rupiah) tidak boleh negatif"
         return None
     if tipe == "tanggal":
-        if isinstance(nilai, str):
+        if isinstance(value, str):
             try:
-                date.fromisoformat(nilai)
+                date.fromisoformat(value)
                 return None
             except ValueError:
-                return f"kolom {nama!r} harus tanggal ISO (YYYY-MM-DD)"
-        return f"kolom {nama!r} harus tanggal ISO (YYYY-MM-DD)"
-    if tipe == "pilihan":
-        pilihan = kolom.get("pilihan") or []
-        return None if nilai in pilihan else (
-            f"kolom {nama!r} harus salah satu {pilihan}")
+                return f"kolom {name!r} harus tanggal ISO (YYYY-MM-DD)"
+        return f"kolom {name!r} harus tanggal ISO (YYYY-MM-DD)"
+    if tipe == "choice":
+        choice = kolom.get("choice") or []
+        return None if value in choice else (
+            f"kolom {name!r} harus salah satu {choice}")
     return f"tipe kolom {tipe!r} tidak dikenal"
 
 
-def tambah_baris(tabel_id: str, *, user_id: str, data: dict, dsn=None) -> dict:
+def add_rows(table_id: str, *, user_id: str, data: dict, dsn=None) -> dict:
     """Tambah satu baris ke tabel milik modul. Nilai diperiksa terhadap
     tipe kolom; kolom yang tidak ada di skema ditolak."""
-    tabel = _ambil_tabel(tabel_id, dsn=dsn)
-    if tabel is None:
+    table = _take_table(table_id, dsn=dsn)
+    if table is None:
         raise TableError("tabel tidak ditemukan")
-    if str(tabel["user_id"]) != str(user_id):
+    if str(table["user_id"]) != str(user_id):
         raise TableError("tabel milik pengguna lain — isolasi menolak")
-    kolom = {k["nama"]: k for k in tabel["kolom"]}
-    for kunci in data:
-        if kunci not in kolom:
-            raise TableError(f"kolom {kunci!r} tidak ada di tabel {tabel['nama']!r}")
+    kolom = {k["name"]: k for k in table["kolom"]}
+    for key in data:
+        if key not in kolom:
+            raise TableError(f"kolom {key!r} tidak ada di tabel {table['name']!r}")
     masalah = [m for k, v in data.items()
-               if (m := periksa_nilai(kolom[k], v)) is not None]
+               if (m := periksa_value(kolom[k], v)) is not None]
     if masalah:
         raise TableError("; ".join(masalah))
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO baris_modul (tabel_id, modul_id, user_id, data)"
+                "INSERT INTO module_rows (table_id, module_id, user_id, data)"
                 " VALUES (%s, %s, %s, %s) RETURNING id, data",
-                (tabel_id, tabel["modul_id"], user_id,
+                (table_id, table["module_id"], user_id,
                  json.dumps(data)))
             row = dict(cur.fetchone())
         conn.commit()
     return {"id": str(row["id"]), "data": row["data"]}
 
 
-def baca_tabel(tabel_id: str, *, user_id: str, dsn=None) -> list[dict]:
+def read_table(table_id: str, *, user_id: str, dsn=None) -> list[dict]:
     """Baca semua baris satu tabel — hanya milik user + modul itu."""
-    tabel = _ambil_tabel(tabel_id, dsn=dsn)
-    if tabel is None:
+    table = _take_table(table_id, dsn=dsn)
+    if table is None:
         raise TableError("tabel tidak ditemukan")
-    if str(tabel["user_id"]) != str(user_id):
+    if str(table["user_id"]) != str(user_id):
         raise TableError("tabel milik pengguna lain — isolasi menolak")
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT data FROM baris_modul WHERE tabel_id = %s AND user_id = %s"
-                " ORDER BY dibuat", (tabel_id, user_id))
+                "SELECT data FROM module_rows WHERE table_id = %s AND user_id = %s"
+                " ORDER BY created_at", (table_id, user_id))
             return [r["data"] for r in cur.fetchall()]
 
 
-def baca_tabel_modul_lain(tabel_id: str, *, modul_id_peminta: str,
+def read_table_module_lain(table_id: str, *, module_id_peminta: str,
                           user_id: str, dsn=None) -> list[dict]:
     """Modul A mencoba membaca tabel milik modul B — SELALU ditolak
     (§2.13). Pengecualian hanya lewat irisan yang diberikan user
     secara eksplisit (belum ada di MVP — dicatat sebagai batas)."""
-    tabel = _ambil_tabel(tabel_id, dsn=dsn)
-    if tabel is None:
+    table = _take_table(table_id, dsn=dsn)
+    if table is None:
         raise TableError("tabel tidak ditemukan")
-    if str(tabel["modul_id"]) != str(modul_id_peminta):
+    if str(table["module_id"]) != str(module_id_peminta):
         raise TableError(
             "modul tidak bisa membaca data modul lain (§2.13) — "
             "kecuali lewat irisan yang diberikan user")
-    return baca_tabel(tabel_id, user_id=user_id, dsn=dsn)
+    return read_table(table_id, user_id=user_id, dsn=dsn)

@@ -21,7 +21,7 @@ from ..memory.schema import resolve_dsn
 
 TEKS_VERSI = "v1-2026-11-17"
 
-TEKS_PERSETUJUAN = """Persetujuan data Puspa (versi v1-2026-11-17)
+TEKS_APPROVAL = """Persetujuan data Puspa (versi v1-2026-11-17)
 
 Data yang disimpan: chat dengan agen, memori (profil, riwayat,
 prosedur), nomor pelanggan yang Anda berikan, token Gmail, Drive,
@@ -53,33 +53,33 @@ def _connect(dsn=None):
     return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
-def record_consent(user_id, dsn=None, ledger=None, agen_id=None, tugas_id=None):
+def record_consent(user_id, dsn=None, ledger=None, agent_id=None, task_id=None):
     """Catat persetujuan user: tabel + (kalau ledger diberi) Buku Kerja.
 
     Kembalikan dict {persetujuan_id, kejadian_id, versi_teks}.
     """
-    kejadian_id = None
+    event_id = None
     if ledger is not None:
-        if agen_id is None or tugas_id is None:
-            raise ValueError("ledger butuh agen_id + tugas_id")
+        if agent_id is None or task_id is None:
+            raise ValueError("ledger butuh agent_id + task_id")
         ev = ledger.append_event(
-            tugas_id=tugas_id, agen_id=agen_id, jenis="persetujuan_data",
-            isi={"versi_teks": TEKS_VERSI, "user_id": str(user_id)},
+            task_id=task_id, agent_id=agent_id, jenis="data_consents",
+            content={"text_version": TEKS_VERSI, "user_id": str(user_id)},
         )
-        kejadian_id = str(ev["id"])
+        event_id = str(ev["id"])
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO persetujuan_data (user_id, versi_teks, kejadian_id) "
+                "INSERT INTO data_consents (user_id, text_version, event_id) "
                 "VALUES (%s, %s, %s) RETURNING id",
-                (user_id, TEKS_VERSI, kejadian_id),
+                (user_id, TEKS_VERSI, event_id),
             )
             row = cur.fetchone()
         conn.commit()
     return {
-        "persetujuan_id": str(row["id"]),
-        "kejadian_id": kejadian_id,
-        "versi_teks": TEKS_VERSI,
+        "approval_id": str(row["id"]),
+        "event_id": event_id,
+        "text_version": TEKS_VERSI,
     }
 
 
@@ -88,7 +88,7 @@ def has_consented(user_id, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT 1 FROM persetujuan_data WHERE user_id = %s LIMIT 1",
+                "SELECT 1 FROM data_consents WHERE user_id = %s LIMIT 1",
                 (user_id,),
             )
             return cur.fetchone() is not None
@@ -99,18 +99,18 @@ def list_consents(user_id, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, user_id, versi_teks, disetujui_pada, kejadian_id "
-                "FROM persetujuan_data WHERE user_id = %s "
-                "ORDER BY disetujui_pada DESC",
+                "SELECT id, user_id, text_version, approved_at, event_id "
+                "FROM data_consents WHERE user_id = %s "
+                "ORDER BY approved_at DESC",
                 (user_id,),
             )
             return [
                 {
                     "id": str(r["id"]),
                     "user_id": str(r["user_id"]),
-                    "versi_teks": r["versi_teks"],
-                    "disetujui_pada": r["disetujui_pada"],
-                    "kejadian_id": str(r["kejadian_id"]) if r["kejadian_id"] else None,
+                    "text_version": r["text_version"],
+                    "approved_at": r["approved_at"],
+                    "event_id": str(r["event_id"]) if r["event_id"] else None,
                 }
                 for r in cur.fetchall()
             ]

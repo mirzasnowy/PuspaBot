@@ -14,266 +14,266 @@ from __future__ import annotations
 # Kelas izin sub-agen (§2.2): Pembaca membaca konten tak tepercaya
 # tanpa alat tulis; Pelaksana memakai alat/konektor dengan masukan
 # ber-skema; Pemeriksa membaca ulang sumber secara independen.
-KELAS_IZIN = ("Pembaca", "Pelaksana", "Pemeriksa")
+KLASS_PERMISSION = ("Pembaca", "Pelaksana", "Pemeriksa")
 
 # Blok yang memicu aksi keluar (§2.6): kirim, buat event, siapkan
 # bayar. Ketiganya WAJIB lewat antrean persetujuan di runner.
-BLOK_AKSI_KELUAR = ("buat_event", "siapkan_bayar")
+BLOCK_ACTION_LOGOUT = ("create_event", "prepare_payment")
 
 # Domain yang boleh dibaca tiap blok baca (allowlist, §2.6). Tidak ada
 # panggilan HTTP bebas di alur (§2.12): blok di luar daftar ini tidak
 # boleh memanggil HTTP sama sekali.
-DOMAIN_BLOK = {
-    "bandingkan_harga": ("tokopedia.com", "shopee.co.id", "blibli.com"),
-    "pantau_harga": ("tokopedia.com", "shopee.co.id", "blibli.com"),
-    "cek_tagihan": ("situs_provider_tagihan",),
+DOMAIN_BLOCK = {
+    "compare_prices": ("tokopedia.com", "shopee.co.id", "blibli.com"),
+    "watch_prices": ("tokopedia.com", "shopee.co.id", "blibli.com"),
+    "check_bill": ("situs_provider_bill",),
 }
 
 # Satu definisi per blok. `masukan`/`keluaran`: nama field -> tipe
 # sederhana ("teks", "angka", "tanggal", "pilihan", "daftar", "uang",
 # "ya_tidak"). `izin`: konektor, scope, domain, batas_belanja (Rp).
 BLOK = {
-    "cek_tagihan": {
-        "masukan": {"provider": "pilihan", "nomor_pelanggan": "teks"},
-        "keluaran": {"jumlah": "uang", "jatuh_tempo": "tanggal",
-                     "status": "pilihan", "bukti_id": "teks", "vonis": "pilihan"},
-        "kelas_izin": "Pembaca",
-        "izin": {"konektor": [], "scope": [], "domain": ["situs_provider_tagihan"],
+    "check_bill": {
+        "masukan": {"provider": "choice", "number_pelanggan": "text"},
+        "output": {"amount": "uang", "due_date": "tanggal",
+                     "status": "choice", "evidence_id": "text", "vonis": "choice"},
+        "permission_class": "Pembaca",
+        "permission": {"connectors": [], "scope": [], "domain": ["situs_provider_bill"],
                  "batas_belanja": 0},
-        "aksi_keluar": False,
-        "biaya_rp": 0,
+        "action_logout": False,
+        "cost_rp": 0,
         "deskripsi": "Cek jumlah + jatuh tempo + status tagihan satu provider.",
     },
-    "bandingkan_harga": {
-        "masukan": {"nama_barang": "teks"},
-        "keluaran": {"termurah": "uang", "harga": "daftar", "selisih": "uang",
-                     "vonis": "pilihan"},
-        "kelas_izin": "Pembaca",
-        "izin": {"konektor": [], "scope": [],
+    "compare_prices": {
+        "masukan": {"name_product": "text"},
+        "output": {"termurah": "uang", "price": "items", "selisih": "uang",
+                     "vonis": "choice"},
+        "permission_class": "Pembaca",
+        "permission": {"connectors": [], "scope": [],
                  "domain": ["tokopedia.com", "shopee.co.id", "blibli.com"],
                  "batas_belanja": 0},
-        "aksi_keluar": False,
-        "biaya_rp": 0,
+        "action_logout": False,
+        "cost_rp": 0,
         "deskripsi": "Bandingkan harga barang baru di Tokopedia, Shopee, Blibli.",
     },
-    "pantau_harga": {
-        "masukan": {"produk_id": "teks", "ambang_harga": "uang"},
-        "keluaran": {"harga_kini": "uang", "di_bawah_ambang": "ya_tidak",
-                     "bukti_id": "teks"},
-        "kelas_izin": "Pembaca",
-        "izin": {"konektor": [], "scope": [],
+    "watch_prices": {
+        "masukan": {"product_id": "text", "price_threshold": "uang"},
+        "output": {"price_kini": "uang", "di_bawah_ambang": "ya_not",
+                     "evidence_id": "text"},
+        "permission_class": "Pembaca",
+        "permission": {"connectors": [], "scope": [],
                  "domain": ["tokopedia.com", "shopee.co.id", "blibli.com"],
                  "batas_belanja": 0},
-        "aksi_keluar": False,
-        "biaya_rp": 0,
+        "action_logout": False,
+        "cost_rp": 0,
         "deskripsi": "Baca harga barang di watchlist; benar bila di bawah ambang.",
     },
-    "cari_email": {
-        "masukan": {"kata_kunci": "teks"},
-        "keluaran": {"email": "daftar"},
-        "kelas_izin": "Pembaca",
-        "izin": {"konektor": ["gmail"], "scope": ["gmail.readonly"],
+    "search_email": {
+        "masukan": {"kata_key": "text"},
+        "output": {"email": "items"},
+        "permission_class": "Pembaca",
+        "permission": {"connectors": ["gmail"], "scope": ["gmail.readonly"],
                  "domain": [], "batas_belanja": 0},
-        "aksi_keluar": False,
-        "biaya_rp": 0,
+        "action_logout": False,
+        "cost_rp": 0,
         "deskripsi": "Cari email berdasarkan kata kunci (hanya metadata + ringkasan).",
     },
-    "baca_email": {
-        "masukan": {"email_id": "teks"},
-        "keluaran": {"pengirim": "teks", "subjek": "teks", "isi": "teks"},
-        "kelas_izin": "Pembaca",
-        "izin": {"konektor": ["gmail"], "scope": ["gmail.readonly"],
+    "read_email": {
+        "masukan": {"email_id": "text"},
+        "output": {"pengirim": "text", "subjek": "text", "content": "text"},
+        "permission_class": "Pembaca",
+        "permission": {"connectors": ["gmail"], "scope": ["gmail.readonly"],
                  "domain": [], "batas_belanja": 0},
-        "aksi_keluar": False,
-        "biaya_rp": 0,
+        "action_logout": False,
+        "cost_rp": 0,
         "deskripsi": "Baca satu email lewat Pembaca terkarantina (§2.6).",
     },
-    "buat_draf": {
-        "masukan": {"penerima": "teks", "subjek": "teks", "isi": "teks"},
-        "keluaran": {"draf_id": "teks"},
-        "kelas_izin": "Pelaksana",
-        "izin": {"konektor": ["gmail"], "scope": ["gmail.compose"],
+    "create_draft": {
+        "masukan": {"penerima": "text", "subjek": "text", "content": "text"},
+        "output": {"draft_id": "text"},
+        "permission_class": "Pelaksana",
+        "permission": {"connectors": ["gmail"], "scope": ["gmail.compose"],
                  "domain": [], "batas_belanja": 0},
-        "aksi_keluar": False,
-        "biaya_rp": 0,
+        "action_logout": False,
+        "cost_rp": 0,
         "deskripsi": "Buat draf balasan email. Draf BUKAN kirim; kirim tetap butuh persetujuan.",
     },
-    "buat_event": {
-        "masukan": {"judul": "teks", "waktu": "tanggal", "peserta": "daftar"},
-        "keluaran": {"event_id": "teks"},
-        "kelas_izin": "Pelaksana",
-        "izin": {"konektor": ["calendar"], "scope": ["calendar.events"],
+    "create_event": {
+        "masukan": {"title": "text", "created_at": "tanggal", "peserta": "items"},
+        "output": {"event_id": "text"},
+        "permission_class": "Pelaksana",
+        "permission": {"connectors": ["calendar"], "scope": ["calendar.events"],
                  "domain": [], "batas_belanja": 0},
-        "aksi_keluar": True,
-        "biaya_rp": 0,
+        "action_logout": True,
+        "cost_rp": 0,
         "deskripsi": "Buat event Calendar. Aksi keluar: masuk antrean persetujuan.",
     },
-    "siapkan_bayar": {
-        "masukan": {"provider": "pilihan", "jumlah": "uang", "tujuan": "teks"},
-        "keluaran": {"draf_bayar_id": "teks", "isi_hash": "teks"},
-        "kelas_izin": "Pelaksana",
-        "izin": {"konektor": [], "scope": [], "domain": [],
+    "prepare_payment": {
+        "masukan": {"provider": "choice", "amount": "uang", "purpose": "text"},
+        "output": {"draft_pay_id": "text", "content_hash": "text"},
+        "permission_class": "Pelaksana",
+        "permission": {"connectors": [], "scope": [], "domain": [],
                  "batas_belanja": 0},
-        "aksi_keluar": True,
-        "biaya_rp": 0,
+        "action_logout": True,
+        "cost_rp": 0,
         "deskripsi": "Siapkan bayar mode aman: DRAF saja, user menyetujui di bank/e-wallet sendiri.",
     },
-    "kirim_notif": {
-        "masukan": {"pesan": "teks"},
-        "keluaran": {"terkirim": "ya_tidak"},
-        "kelas_izin": "Pelaksana",
-        "izin": {"konektor": [], "scope": [], "domain": [], "batas_belanja": 0},
-        "aksi_keluar": False,
-        "biaya_rp": 0,
+    "send_notification": {
+        "masukan": {"message": "text"},
+        "output": {"terkirim": "ya_not"},
+        "permission_class": "Pelaksana",
+        "permission": {"connectors": [], "scope": [], "domain": [], "batas_belanja": 0},
+        "action_logout": False,
+        "cost_rp": 0,
         "deskripsi": "Kirim pengingat dalam aplikasi (Web Push). Bukan kirim email/SMS.",
     },
-    "tanya_user": {
-        "masukan": {"pertanyaan": "teks"},
-        "keluaran": {"jawaban": "teks"},
-        "kelas_izin": "Pelaksana",
-        "izin": {"konektor": [], "scope": [], "domain": [], "batas_belanja": 0},
-        "aksi_keluar": False,
-        "biaya_rp": 0,
+    "ask_user": {
+        "masukan": {"pertanyaan": "text"},
+        "output": {"jawaban": "text"},
+        "permission_class": "Pelaksana",
+        "permission": {"connectors": [], "scope": [], "domain": [], "batas_belanja": 0},
+        "action_logout": False,
+        "cost_rp": 0,
         "deskripsi": "Berhenti dan bertanya ke user; jalan alur lanjut setelah dijawab.",
     },
-    "tunggu_persetujuan": {
-        "masukan": {"aksi": "teks"},
-        "keluaran": {"disetujui": "ya_tidak"},
-        "kelas_izin": "Pelaksana",
-        "izin": {"konektor": [], "scope": [], "domain": [], "batas_belanja": 0},
-        "aksi_keluar": False,
-        "biaya_rp": 0,
+    "wait_for_approval": {
+        "masukan": {"action": "text"},
+        "output": {"disetujui": "ya_not"},
+        "permission_class": "Pelaksana",
+        "permission": {"connectors": [], "scope": [], "domain": [], "batas_belanja": 0},
+        "action_logout": False,
+        "cost_rp": 0,
         "deskripsi": "Tunggu persetujuan user atas satu aksi yang antre.",
     },
-    "kondisi": {
-        "masukan": {"ungkapan": "teks"},
-        "keluaran": {"benar": "ya_tidak"},
-        "kelas_izin": "Pelaksana",
-        "izin": {"konektor": [], "scope": [], "domain": [], "batas_belanja": 0},
-        "aksi_keluar": False,
-        "biaya_rp": 0,
-        "deskripsi": "Percabangan: jalankan langkah `maka` bila benar, `kalau_tidak` bila salah.",
+    "condition": {
+        "masukan": {"ungkapan": "text"},
+        "output": {"correct": "ya_not"},
+        "permission_class": "Pelaksana",
+        "permission": {"connectors": [], "scope": [], "domain": [], "batas_belanja": 0},
+        "action_logout": False,
+        "cost_rp": 0,
+        "deskripsi": "Percabangan: jalankan langkah `maka` bila benar, `kalau_not` bila salah.",
     },
-    "untuk_tiap": {
-        "masukan": {"daftar": "daftar"},
-        "keluaran": {"jumlah_item": "angka"},
-        "kelas_izin": "Pelaksana",
-        "izin": {"konektor": [], "scope": [], "domain": [], "batas_belanja": 0},
-        "aksi_keluar": False,
-        "biaya_rp": 0,
+    "for_each": {
+        "masukan": {"items": "items"},
+        "output": {"amount_item": "number"},
+        "permission_class": "Pelaksana",
+        "permission": {"connectors": [], "scope": [], "domain": [], "batas_belanja": 0},
+        "action_logout": False,
+        "cost_rp": 0,
         "deskripsi": "Ulangi langkah dalam untuk tiap item (maks 20 item).",
     },
-    "simpan_memori": {
-        "masukan": {"fakta": "teks", "asal": "pilihan"},
-        "keluaran": {"tersimpan": "ya_tidak"},
-        "kelas_izin": "Pelaksana",
-        "izin": {"konektor": [], "scope": [], "domain": [], "batas_belanja": 0},
-        "aksi_keluar": False,
-        "biaya_rp": 0,
-        "deskripsi": "Simpan fakta ke profil/episodik (asal: diucapkan_user).",
+    "save_memory": {
+        "masukan": {"fact": "text", "source": "choice"},
+        "output": {"tersimpan": "ya_not"},
+        "permission_class": "Pelaksana",
+        "permission": {"connectors": [], "scope": [], "domain": [], "batas_belanja": 0},
+        "action_logout": False,
+        "cost_rp": 0,
+        "deskripsi": "Simpan fakta ke profil/episodik (asal: user_stated).",
     },
-    "simpan_ke_tabel_modul": {
-        "masukan": {"modul": "teks", "tabel": "teks", "baris": "daftar"},
-        "keluaran": {"tersimpan": "angka"},
-        "kelas_izin": "Pelaksana",
-        "izin": {"konektor": [], "scope": [], "domain": [], "batas_belanja": 0},
-        "aksi_keluar": False,
-        "biaya_rp": 0,
+    "save_to_module_table": {
+        "masukan": {"modules": "text", "table": "text", "rows": "items"},
+        "output": {"tersimpan": "number"},
+        "permission_class": "Pelaksana",
+        "permission": {"connectors": [], "scope": [], "domain": [], "batas_belanja": 0},
+        "action_logout": False,
+        "cost_rp": 0,
         "deskripsi": "Simpan baris ke tabel milik modul (modul itu sendiri).",
     },
 }
 
 # Batas MVP (§2.12).
-MAKS_LANGKAH = 10
+MAKS_STEP = 10
 MAKS_CABANG = 2
-MAKS_ITEM_UNTUK_TIAP = 20
-MAKS_ALUR_AKTIF = 5
-PLAFON_BIAYA_JALAN_RP = 5000
+MAKS_ITEM_FOR_EACH = 20
+MAKS_WORKFLOW_ACTIVE = 5
+CEILING_COST_JALAN_RP = 5000
 
 
 class BlockError(Exception):
     """Blok tidak dikenal, masukan tidak lolos skema, atau batas dilanggar."""
 
 
-def daftar_blok() -> list[str]:
+def items_block() -> list[str]:
     """Nama 15 blok pustaka, terurut."""
     return sorted(BLOK)
 
 
-def definisi_blok(nama: str) -> dict:
+def definisi_block(name: str) -> dict:
     """Definisi satu blok; `BlockError` bila nama tidak ada di pustaka."""
-    if nama not in BLOK:
-        raise BlockError(f"blok {nama!r} tidak ada di pustaka (15 blok MVP)")
-    return BLOK[nama]
+    if name not in BLOK:
+        raise BlockError(f"blok {name!r} tidak ada di pustaka (15 blok MVP)")
+    return BLOK[name]
 
 
-def periksa_masukan(nama: str, masukan: dict) -> list[str]:
+def periksa_masukan(name: str, masukan: dict) -> list[str]:
     """Periksa masukan langkah terhadap skema blok. Kembalikan daftar
     field yang hilang (kosong = lolos). Tipe nilai tidak dicek di sini
     (nilai datang dari data alur, dicek lagi saat jalan)."""
-    definisi = definisi_blok(nama)
+    definisi = definisi_block(name)
     if not isinstance(masukan, dict):
         return ["masukan harus objek"]
     return [f for f in definisi["masukan"] if f not in masukan]
 
 
-def periksa_langkah(langkah: dict) -> list[str]:
+def periksa_step(step: dict) -> list[str]:
     """Periksa satu langkah alur: blok dikenal + masukan lengkap +
     percabangan berstruktur benar. Kembalikan daftar masalah."""
     masalah: list[str] = []
-    if not isinstance(langkah, dict):
+    if not isinstance(step, dict):
         return ["langkah harus objek"]
-    nama = langkah.get("blok")
-    if not isinstance(nama, str) or nama not in BLOK:
-        return [f"blok {nama!r} tidak ada di pustaka"]
-    for f in periksa_masukan(nama, langkah.get("masukan", {})):
-        masalah.append(f"langkah {nama}: masukan kurang {f!r}")
-    if nama == "kondisi":
-        for cabang in ("maka", "kalau_tidak"):
-            isi = langkah.get(cabang, [])
-            if not isinstance(isi, list):
+    name = step.get("block")
+    if not isinstance(name, str) or name not in BLOK:
+        return [f"blok {name!r} tidak ada di pustaka"]
+    for f in periksa_masukan(name, step.get("masukan", {})):
+        masalah.append(f"langkah {name}: masukan kurang {f!r}")
+    if name == "condition":
+        for cabang in ("maka", "kalau_not"):
+            content = step.get(cabang, [])
+            if not isinstance(content, list):
                 masalah.append(f"langkah kondisi: {cabang!r} harus daftar langkah")
             else:
-                for sub in isi:
-                    masalah += periksa_langkah(sub)
-    if nama == "untuk_tiap":
-        isi = langkah.get("langkah_dalam", [])
-        if not isinstance(isi, list):
-            masalah.append("langkah untuk_tiap: 'langkah_dalam' harus daftar langkah")
+                for sub in content:
+                    masalah += periksa_step(sub)
+    if name == "for_each":
+        content = step.get("step_dalam", [])
+        if not isinstance(content, list):
+            masalah.append("langkah for_each: 'step_dalam' harus daftar langkah")
         else:
-            for sub in isi:
-                masalah += periksa_langkah(sub)
+            for sub in content:
+                masalah += periksa_step(sub)
     return masalah
 
 
-def kedalaman_cabang(langkah: list) -> int:
+def kedalaman_cabang(step: list) -> int:
     """Tingkat percabangan terdalam (kondisi di dalam kondisi, dst.)."""
     dalam = 0
-    for l in langkah:
+    for l in step:
         if not isinstance(l, dict):
             continue
-        if l.get("blok") == "kondisi":
+        if l.get("block") == "condition":
             cabang = max(
                 [kedalaman_cabang(l.get("maka", [])),
-                 kedalaman_cabang(l.get("kalau_tidak", []))] or [0])
+                 kedalaman_cabang(l.get("kalau_not", []))] or [0])
             dalam = max(dalam, 1 + cabang)
-        elif l.get("blok") == "untuk_tiap":
-            dalam = max(dalam, kedalaman_cabang(l.get("langkah_dalam", [])))
+        elif l.get("block") == "for_each":
+            dalam = max(dalam, kedalaman_cabang(l.get("step_dalam", [])))
     return dalam
 
 
-def periksa_alur(langkah: list) -> list[str]:
+def periksa_workflow(step: list) -> list[str]:
     """Periksa seluruh daftar langkah alur terhadap batas MVP.
     Kembalikan daftar masalah (kosong = lolos)."""
     masalah: list[str] = []
-    if not isinstance(langkah, list) or not langkah:
+    if not isinstance(step, list) or not step:
         return ["alur harus punya minimal 1 langkah"]
-    if len(langkah) > MAKS_LANGKAH:
+    if len(step) > MAKS_STEP:
         masalah.append(
-            f"alur punya {len(langkah)} langkah, maks {MAKS_LANGKAH} di MVP")
-    for l in langkah:
-        masalah += periksa_langkah(l)
-    cabang = kedalaman_cabang(langkah)
+            f"alur punya {len(step)} langkah, maks {MAKS_STEP} di MVP")
+    for l in step:
+        masalah += periksa_step(l)
+    cabang = kedalaman_cabang(step)
     if cabang > MAKS_CABANG:
         masalah.append(
             f"percabangan {cabang} tingkat, maks {MAKS_CABANG} di MVP")

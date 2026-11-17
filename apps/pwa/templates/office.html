@@ -1,20 +1,20 @@
 {% extends "base.html" %}
-{% block isi %}
+{% block content %}
 <h1>Kantor</h1>
 <p class="pesan-sub">Tim yang sedang bekerja. Sumbernya Buku Kerja, bukan animasi: status, progress, biaya, dan log adalah proyeksi dari log kejadian.</p>
 <div id="strip-kerja" class="kartu">
-{% for a in kantor.agen %}
-<strong>{{ a.agen_id }}</strong> - {{ a.status }} - biaya berjalan Rp{{ a.biaya_rp }}
+{% for a in office.agent %}
+<strong>{{ a.agent_id }}</strong> - {{ a.status }} - biaya berjalan Rp{{ a.cost_rp }}
 {% else %}
 Tidak ada agen bekerja saat ini.
 {% endfor %}
 </div>
-{% for a in kantor.agen %}
-<div class="kartu"><strong>{{ a.agen_id }}</strong><br>Status: {{ a.status }}<br>Tugas: {{ a.tugas_terakhir }}<br>Biaya: Rp{{ a.biaya_rp }} dari plafon Rp2000<br>Sub-agen: {{ a.sub_agen | length }}</div>
+{% for a in office.agent %}
+<div class="kartu"><strong>{{ a.agent_id }}</strong><br>Status: {{ a.status }}<br>Tugas: {{ a.task_terakhir }}<br>Biaya: Rp{{ a.cost_rp }} dari plafon Rp2000<br>Sub-agen: {{ a.sub_agent | length }}</div>
 {% endfor %}
 <h2>Log handoff live</h2>
 {% for h in handoff %}
-<div class="kartu">{{ h.jenis }} - {{ (h.isi or {}).get('tujuan', '') }}</div>
+<div class="kartu">{{ h.jenis }} - {{ (h.content or {}).get('purpose', '') }}</div>
 {% else %}
 <p class="pesan-sub">Belum ada handoff.</p>
 {% endfor %}

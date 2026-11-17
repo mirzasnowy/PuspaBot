@@ -1,0 +1,24 @@
+{
+  "task_id": "tugas-acuan-search_file_drive_summarize",
+  "name": "search_file_drive_summarize",
+  "recording": [
+    {
+      "tool": "drive_search",
+      "output": {
+        "jenis": "file",
+        "amount": 1,
+        "name": [
+          "nota-uji.pdf"
+        ]
+      }
+    },
+    {
+      "tool": "drive_read",
+      "output": {
+        "jenis": "summaries",
+        "value": 1,
+        "text": "[DATA: Nota uji, total Rp132.500.]"
+      }
+    }
+  ]
+}

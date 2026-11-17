@@ -93,20 +93,20 @@ def resolve_token_payload() -> dict | None:
     return token_payload_from_request_context()
 
 
-def make_ledger_sink(ledger, *, tugas_id: str, agen_id: str):
+def make_ledger_sink(ledger, *, task_id: str, agent_id: str):
     """Adaptasi ``Ledger`` menjadi ``log(jenis, isi)``.
 
     Best-effort: kegagalan tulis (mis. Postgres mati) ditelan supaya turn
     tidak jatuh karena audit; lihat catatan modul.
     """
 
-    def log(jenis, isi=None):
+    def log(jenis, content=None):
         try:
             ledger.append_event(
-                tugas_id=tugas_id,
-                agen_id=agen_id,
+                task_id=task_id,
+                agent_id=agent_id,
                 jenis=jenis,
-                isi=dict(isi or {}),
+                content=dict(content or {}),
             )
         except Exception:
             pass

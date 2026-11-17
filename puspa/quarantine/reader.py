@@ -28,7 +28,7 @@ MAX_CHARS = 200
 # "Rp" / "IDR" adalah prefix (Rp125.500); satuan lain umumnya suffix (87 kWh).
 _NUMBER_RE = re.compile(
     r"(?:(?P<awalan>rp|idr|rupiah)\s*)?"
-    r"(?P<nilai>\d{1,3}(?:[.,]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)"
+    r"(?P<value>\d{1,3}(?:[.,]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)"
     r"(?:\s*(?P<satuan>rp|idr|rupiah|%|persen|kg|gram|g|mg|liter|l|ml|cm|mm|m|km|"
     r"jam|menit|detik|hari|minggu|bulan|tahun|buah|pcs|unit|orang|gb|mb|kb|tb|"
     r"kwh|wh|va|mah|watt|volt|ampere|a|hz|mhz|ghz))?\b",
@@ -87,34 +87,34 @@ class QuarantinedReader:
         clean = " ".join((text or "").split())
         lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
 
-        judul = lines[0] if lines else ""
-        potongan = clean
+        title = lines[0] if lines else ""
+        excerpt = clean
 
-        angka: list[dict] = []
+        number: list[dict] = []
         seen: set[tuple[str, str]] = set()
         for m in _NUMBER_RE.finditer(clean):
-            nilai = m.group("nilai")
-            satuan = ((m.group("awalan") or "") or (m.group("satuan") or "")).lower()
-            key = (nilai, satuan)
+            value = m.group("value")
+            unit = ((m.group("prefix") or "") or (m.group("unit") or "")).lower()
+            key = (value, unit)
             if key in seen:
                 continue
             seen.add(key)
             start = max(0, m.start() - 100)
             end = min(len(clean), m.end() + 100)
-            konteks = clean[start:end]
-            if len(konteks) > MAX_CHARS:
-                konteks = konteks[:MAX_CHARS]
-            angka.append(
+            context = clean[start:end]
+            if len(context) > MAX_CHARS:
+                context = context[:MAX_CHARS]
+            number.append(
                 {
-                    "nilai": nilai,
-                    "satuan": satuan,
-                    "konteks": _mark_data(konteks),
+                    "value": value,
+                    "unit": unit,
+                    "context": _mark_data(context),
                 }
             )
 
         return {
             "source": source,
-            "judul": _mark_data(judul),
-            "angka": angka,
-            "potongan": _mark_data(potongan),
+            "title": _mark_data(title),
+            "number": number,
+            "excerpt": _mark_data(excerpt),
         }

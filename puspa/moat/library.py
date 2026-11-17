@@ -27,7 +27,7 @@ def _connect(dsn=None):
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
-def catat_alur_sukses(*, user_id: str, nama: str, blok: list,
+def record_workflow_success(*, user_id: str, name: str, block: list,
                       dsn=None) -> dict:
     """Catat satu jalan sukses alur (blok yang dipakai tercatat)."""
     from psycopg.types.json import Jsonb
@@ -35,50 +35,50 @@ def catat_alur_sukses(*, user_id: str, nama: str, blok: list,
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, jalan_sukses FROM pustaka_alur WHERE user_id = %s AND nama = %s",
-                (user_id, nama))
+                "SELECT id, successful_runs FROM workflow_library WHERE user_id = %s AND name = %s",
+                (user_id, name))
             row = cur.fetchone()
             if row is None:
                 cur.execute(
-                    "INSERT INTO pustaka_alur (user_id, nama, blok, jalan_sukses)"
-                    " VALUES (%s, %s, %s, 1) RETURNING id, jalan_sukses",
-                    (user_id, nama, Jsonb(blok)))
+                    "INSERT INTO workflow_library (user_id, name, block, successful_runs)"
+                    " VALUES (%s, %s, %s, 1) RETURNING id, successful_runs",
+                    (user_id, name, Jsonb(block)))
                 row = cur.fetchone()
             else:
                 cur.execute(
-                    "UPDATE pustaka_alur SET jalan_sukses = jalan_sukses + 1, blok = %s"
-                    " WHERE id = %s RETURNING id, jalan_sukses",
-                    (Jsonb(blok), row["id"]))
+                    "UPDATE workflow_library SET successful_runs = successful_runs + 1, block = %s"
+                    " WHERE id = %s RETURNING id, successful_runs",
+                    (Jsonb(block), row["id"]))
                 row = cur.fetchone()
         conn.commit()
-    return {"id": str(row["id"]), "jalan_sukses": int(row["jalan_sukses"])}
+    return {"id": str(row["id"]), "successful_runs": int(row["successful_runs"])}
 
 
-def catat_permintaan_blok(*, user_id: str, blok: str, alasan: str = "",
+def record_permintaan_block(*, user_id: str, block: str, reason: str = "",
                           dsn=None) -> dict:
     """Catat blok yang diminta tapi belum ada (Permintaan Blok)."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO permintaan_blok (user_id, blok, alasan)"
+                "INSERT INTO block_requests (user_id, block, reason)"
                 " VALUES (%s, %s, %s) RETURNING id",
-                (user_id, blok, alasan))
+                (user_id, block, reason))
             row = cur.fetchone()
         conn.commit()
     return {"id": str(row["id"])}
 
 
-def pemakaian_blok(dsn=None) -> list[dict]:
+def pemakaian_block(dsn=None) -> list[dict]:
     """Blok apa yang dipakai, berapa kali — bahan peta jalan."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT blok, jalan_sukses FROM pustaka_alur")
+            cur.execute("SELECT block, successful_runs FROM workflow_library")
             hitung: dict[str, int] = {}
             for r in cur.fetchall():
-                for b in (r["blok"] or []):
-                    hitung[str(b)] = hitung.get(str(b), 0) + int(r["jalan_sukses"])
+                for b in (r["block"] or []):
+                    hitung[str(b)] = hitung.get(str(b), 0) + int(r["successful_runs"])
             cur.execute(
-                "SELECT blok, COUNT(*) AS n FROM permintaan_blok GROUP BY blok")
-            diminta = {r["blok"]: int(r["n"]) for r in cur.fetchall()}
-    return [{"blok": b, "dipakai": n, "diminta_tapi_belum_ada": diminta.get(b, 0)}
+                "SELECT block, COUNT(*) AS n FROM block_requests GROUP BY block")
+            diminta = {r["block"]: int(r["n"]) for r in cur.fetchall()}
+    return [{"block": b, "dipakai": n, "diminta_tapi_not_yet_ada": diminta.get(b, 0)}
             for b, n in sorted(hitung.items(), key=lambda kv: -kv[1])]

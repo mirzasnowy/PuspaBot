@@ -21,9 +21,9 @@ from datetime import datetime, timezone
 
 from puspa.sandbox.allowlist import is_allowed
 
-VONIS = ("Terverifikasi", "Belum pasti", "Tidak bisa dipastikan")
+VONIS = ("Verified", "Uncertain", "Cannot be determined")
 AMBANG_KEANDALAN = 0.80
-POTONGAN_MAX = 200
+EXCERPT_MAX = 200
 
 
 class EvidenceError(Exception):
@@ -38,58 +38,58 @@ def _sekarang() -> datetime:
 class EvidenceRecord:
     """Satu rekaman bukti (satu angka)."""
 
-    bukti_id: str
+    evidence_id: str
     klaim: str
-    nilai: float
-    satuan: str
+    value: float
+    unit: str
     sumber_url: str
-    waktu_ambil: datetime
-    potongan_teks: str
-    hash_halaman: str
-    id_pembaca: str
-    id_pemeriksa: str | None = None
-    vonis: str = "Belum pasti"
-    tangkapan_layar: str | None = None  # path blob, TTL 30 hari
+    time_take: datetime
+    text_excerpt: str
+    page_hash: str
+    reader_id: str
+    verifier_id: str | None = None
+    vonis: str = "Uncertain"
+    screenshot: str | None = None  # path blob, TTL 30 hari
 
-    def ringkas(self) -> dict:
-        return {"bukti_id": self.bukti_id, "klaim": self.klaim, "nilai": self.nilai,
-                "satuan": self.satuan, "sumber_url": self.sumber_url,
-                "waktu_ambil": self.waktu_ambil.isoformat(),
-                "potongan_teks": self.potongan_teks, "vonis": self.vonis}
+    def summarize(self) -> dict:
+        return {"evidence_id": self.evidence_id, "klaim": self.klaim, "value": self.value,
+                "unit": self.unit, "sumber_url": self.sumber_url,
+                "time_take": self.time_take.isoformat(),
+                "text_excerpt": self.text_excerpt, "vonis": self.vonis}
 
 
-def buat_bukti_id() -> str:
+def create_evidence_id() -> str:
     return f"bukti-{uuid.uuid4().hex[:8]}"
 
 
-def catat_bukti(*, tugas_id: str, klaim: str, nilai, satuan: str,
-                sumber_url: str, potongan_teks: str, halaman: str = "",
-                id_pembaca: str, tangkapan_layar: str | None = None,
-                waktu_ambil: datetime | None = None) -> EvidenceRecord:
+def record_evidence(*, task_id: str, klaim: str, value, unit: str,
+                sumber_url: str, text_excerpt: str, halaman: str = "",
+                reader_id: str, screenshot: str | None = None,
+                time_take: datetime | None = None) -> EvidenceRecord:
     """Buat rekaman bukti (belum vonis — vonis diisi Pemeriksa).
 
     Validasi deterministik lapis 1: nilai bisa di-parse, satuan
     dikenal, domain sumber di allowlist, potongan dipangkas 200.
     """
     try:
-        nilai_f = float(nilai)
+        value_f = float(value)
     except (TypeError, ValueError) as exc:
-        raise EvidenceError(f"nilai tidak bisa di-parse: {nilai!r}") from exc
-    if satuan not in ("Rp", "%", "kWh", "GB", "hari", "buah", ""):
-        raise EvidenceError(f"satuan tidak dikenal: {satuan!r}")
+        raise EvidenceError(f"nilai tidak bisa di-parse: {value!r}") from exc
+    if unit not in ("Rp", "%", "kWh", "GB", "day", "buah", ""):
+        raise EvidenceError(f"satuan tidak dikenal: {unit!r}")
     if not is_allowed(sumber_url):
         raise EvidenceError(f"domain sumber tidak di allowlist: {sumber_url!r}")
-    potongan = " ".join(str(potongan_teks).split())[:POTONGAN_MAX]
+    excerpt = " ".join(str(text_excerpt).split())[:EXCERPT_MAX]
     return EvidenceRecord(
-        bukti_id=buat_bukti_id(), klaim=klaim, nilai=nilai_f, satuan=satuan,
-        sumber_url=sumber_url, waktu_ambil=waktu_ambil or _sekarang(),
-        potongan_teks=potongan,
-        hash_halaman=hashlib.sha256(halaman.encode("utf-8")).hexdigest() if halaman else "",
-        id_pembaca=id_pembaca, tangkapan_layar=tangkapan_layar,
+        evidence_id=create_evidence_id(), klaim=klaim, value=value_f, unit=unit,
+        sumber_url=sumber_url, time_take=time_take or _sekarang(),
+        text_excerpt=excerpt,
+        page_hash=hashlib.sha256(halaman.encode("utf-8")).hexdigest() if halaman else "",
+        reader_id=reader_id, screenshot=screenshot,
     )
 
 
-def simpan_bukti(dsn: str, bukti: EvidenceRecord, user_id: str, tugas_id: str) -> None:
+def save_evidence(dsn: str, evidence: EvidenceRecord, user_id: str, task_id: str) -> None:
     """Simpan rekaman bukti ke Postgres (tabel `bukti` Fase 2)."""
     import os
 
@@ -99,14 +99,14 @@ def simpan_bukti(dsn: str, bukti: EvidenceRecord, user_id: str, tugas_id: str) -
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO bukti (bukti_id, tugas_id, user_id, klaim, nilai, satuan,"
-                " sumber_url, waktu_ambil, potongan_teks, hash_halaman, tangkapan_layar,"
-                " id_pembaca, id_pemeriksa, vonis)"
+                "INSERT INTO evidence (evidence_id, task_id, user_id, klaim, value, unit,"
+                " sumber_url, time_take, text_excerpt, page_hash, screenshot,"
+                " reader_id, verifier_id, vonis)"
                 " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                (bukti.bukti_id, tugas_id, user_id, bukti.klaim, bukti.nilai,
-                 bukti.satuan, bukti.sumber_url, bukti.waktu_ambil,
-                 bukti.potongan_teks, bukti.hash_halaman, bukti.tangkapan_layar,
-                 bukti.id_pembaca, bukti.id_pemeriksa, bukti.vonis),
+                (evidence.evidence_id, task_id, user_id, evidence.klaim, evidence.value,
+                 evidence.unit, evidence.sumber_url, evidence.time_take,
+                 evidence.text_excerpt, evidence.page_hash, evidence.screenshot,
+                 evidence.reader_id, evidence.verifier_id, evidence.vonis),
             )
         conn.commit()
 
@@ -120,19 +120,19 @@ def skor_keandalan(vonis_terakhir: list[str]) -> dict:
     """
     potong = vonis_terakhir[-50:]
     if not potong:
-        return {"persen_terverifikasi": None, "jumlah": 0, "turunkan_vonis": False}
-    persen = sum(1 for v in potong if v == "Terverifikasi") / len(potong)
-    return {"persen_terverifikasi": round(persen * 100, 1), "jumlah": len(potong),
+        return {"persen_verified": None, "amount": 0, "turunkan_vonis": False}
+    persen = sum(1 for v in potong if v == "Verified") / len(potong)
+    return {"persen_verified": round(persen * 100, 1), "amount": len(potong),
             "turunkan_vonis": persen < AMBANG_KEANDALAN}
 
 
-def ringkasan_vonis(bukti_list: list[EvidenceRecord]) -> str:
+def summary_vonis(evidence_list: list[EvidenceRecord]) -> str:
     """Ringkasan lencana bukti Kantor, mis. "5 terverifikasi, 1 belum pasti"."""
     hitung: dict[str, int] = {}
-    for b in bukti_list:
+    for b in evidence_list:
         hitung[b.vonis] = hitung.get(b.vonis, 0) + 1
     bagian = []
-    for vonis in ("Terverifikasi", "Belum pasti", "Tidak bisa dipastikan"):
+    for vonis in ("Verified", "Uncertain", "Cannot be determined"):
         if hitung.get(vonis):
             bagian.append(f"{hitung[vonis]} {vonis.lower()}")
     return ", ".join(bagian) if bagian else "belum ada bukti"

@@ -4,188 +4,188 @@ Tagihan sebagai manifes."""
 import pytest
 
 from puspa.modules.manifest import (
-    ModuleError, aktifkan_modul, ambil_modul, buat_modul, daftar_modul,
-    hapus_modul, jalankan_gerbang, rollback_modul, ubah_modul,
+    ModuleError, aktifkan_module, take_module, create_module, items_module,
+    delete_module, jalankan_gerbang, rollback_module, change_module,
 )
 from puspa.modules.notifications import evaluasi_notif
 from puspa.modules.tables import (
-    TableError, baca_tabel, baca_tabel_modul_lain, daftar_tabel, tambah_baris,
+    TableError, read_table, read_table_module_lain, items_table, add_rows,
 )
-from puspa.modules.tagihan import MANIFES_TAGIHAN, buat_modul_tagihan
-from puspa.modules.views import render_modul
+from puspa.modules.bills import MANIFEST_BILL, create_module_bill
+from puspa.modules.views import render_module
 
-MANIFES_MINIMAL = {
-    "nama": "Catatan belanja",
+MANIFEST_MINIMAL = {
+    "name": "Catatan belanja",
     "tampilan": [
-        {"jenis": "tabel", "judul": "Daftar belanja", "tabel": "belanja",
-         "kolom": ["barang", "harga"]},
+        {"type": "table", "title": "Daftar belanja", "table": "belanja",
+         "kolom": ["product", "price"]},
     ],
-    "tabel": [
-        {"nama": "belanja", "kolom": [
-            {"nama": "barang", "tipe": "teks"},
-            {"nama": "harga", "tipe": "Rupiah"},
+    "table": [
+        {"name": "belanja", "kolom": [
+            {"name": "product", "tipe": "text"},
+            {"name": "price", "tipe": "Rupiah"},
         ]},
     ],
-    "contoh_data": {
-        "belanja": [{"barang": "Beras 5 kg", "harga": 65000}],
+    "example_data": {
+        "belanja": [{"product": "Beras 5 kg", "price": 65000}],
     },
 }
 
 
-def test_tagihan_sebagai_manifes_lolos_kelima_gerbang(make_user, test_dsn,
-                                                     izin_user_penuh):
+def test_bill_sebagai_manifest_passed_kelima_gerbang(make_user, test_dsn,
+                                                     permission_user_penuh):
     user_id, _ = make_user()
-    hasil = jalankan_gerbang(dict(MANIFES_TAGIHAN), dsn=test_dsn)
-    assert hasil["lolos"] is True, hasil["masalah"]
-    modul = buat_modul_tagihan(user_id=user_id, dsn=test_dsn)
-    assert modul["status"] == "draf"
-    aktif = aktifkan_modul(modul["id"], user_id=user_id,
-                           izin_user=izin_user_penuh, dsn=test_dsn)
-    assert aktif["status"] == "aktif"
+    result = jalankan_gerbang(dict(MANIFEST_BILL), dsn=test_dsn)
+    assert result["passed"] is True, result["masalah"]
+    module = create_module_bill(user_id=user_id, dsn=test_dsn)
+    assert module["status"] == "draft"
+    active = aktifkan_module(module["id"], user_id=user_id,
+                           permission_user=permission_user_penuh, dsn=test_dsn)
+    assert active["status"] == "active"
     # Tabel milik modul dibuat dari manifes.
-    tabel = daftar_tabel(modul["id"], user_id=user_id, dsn=test_dsn)
-    assert len(tabel) == 1 and tabel[0]["nama"] == "tagihan"
+    table = items_table(module["id"], user_id=user_id, dsn=test_dsn)
+    assert len(table) == 1 and table[0]["name"] == "bill"
     # Pratinjau dengan data contoh: angka ringkas + tabel + grafik.
-    html = render_modul(MANIFES_TAGIHAN)
+    html = render_module(MANIFEST_BILL)
     assert "220.000" in html  # 132.500 + 87.500
     assert "PLN" in html and "<svg" in html
 
 
-def test_modul_minimal_lolos_dan_aktif(make_user, test_dsn, izin_user_penuh):
+def test_module_minimal_passed_and_active(make_user, test_dsn, permission_user_penuh):
     user_id, _ = make_user()
-    modul = buat_modul(user_id=user_id, manifes=dict(MANIFES_MINIMAL), dsn=test_dsn)
-    aktif = aktifkan_modul(modul["id"], user_id=user_id,
-                           izin_user=izin_user_penuh, dsn=test_dsn)
-    assert aktif["status"] == "aktif"
+    module = create_module(user_id=user_id, manifest=dict(MANIFEST_MINIMAL), dsn=test_dsn)
+    active = aktifkan_module(module["id"], user_id=user_id,
+                           permission_user=permission_user_penuh, dsn=test_dsn)
+    assert active["status"] == "active"
 
 
-def test_manifes_nakal_ditolak():
+def test_manifest_nakal_rejected():
     nakal = [
         # HTML/JS di dalam manifes.
-        dict(MANIFES_MINIMAL, tampilan=[
-            {"jenis": "kartu", "judul": "x",
-             "teks": "<script>alert(1)</script>"}]),
+        dict(MANIFEST_MINIMAL, tampilan=[
+            {"type": "card", "title": "x",
+             "text": "<script>alert(1)</script>"}]),
         # Komponen tidak diizinkan.
-        dict(MANIFES_MINIMAL, tampilan=[
-            {"jenis": "video", "judul": "x"}]),
+        dict(MANIFEST_MINIMAL, tampilan=[
+            {"type": "video", "title": "x"}]),
         # Tipe kolom tidak diizinkan.
-        dict(MANIFES_MINIMAL, tabel=[
-            {"nama": "belanja", "kolom": [{"nama": "barang", "tipe": "gambar"}]}]),
+        dict(MANIFEST_MINIMAL, table=[
+            {"name": "belanja", "kolom": [{"name": "product", "tipe": "gambar"}]}]),
         # SQL di dalam manifes.
-        dict(MANIFES_MINIMAL, tampilan=[
-            {"jenis": "kartu", "judul": "x",
-             "teks": "SELECT * FROM pengguna"}]),
+        dict(MANIFEST_MINIMAL, tampilan=[
+            {"type": "card", "title": "x",
+             "text": "SELECT * FROM users"}]),
         # 4 tampilan (maks 3).
-        dict(MANIFES_MINIMAL, tampilan=[
-            {"jenis": "kartu", "judul": f"k{i}", "teks": "x"} for i in range(4)]),
+        dict(MANIFEST_MINIMAL, tampilan=[
+            {"type": "card", "title": f"k{i}", "text": "x"} for i in range(4)]),
         # 6 tabel (maks 5).
-        dict(MANIFES_MINIMAL, tabel=[
-            {"nama": f"t{i}", "kolom": [{"nama": "a", "tipe": "teks"}]}
+        dict(MANIFEST_MINIMAL, table=[
+            {"name": f"t{i}", "kolom": [{"name": "a", "tipe": "text"}]}
             for i in range(6)]),
     ]
     for m in nakal:
-        hasil = jalankan_gerbang(m, dsn=None)
-        assert hasil["lolos"] is False, m
-        assert hasil["masalah"]
+        result = jalankan_gerbang(m, dsn=None)
+        assert result["passed"] is False, m
+        assert result["masalah"]
 
 
-def test_buat_modul_nakal_menolak_dengan_alasan(make_user, test_dsn):
+def test_create_module_nakal_menolak_dengan_reason(make_user, test_dsn):
     user_id, _ = make_user()
-    nakal = dict(MANIFES_MINIMAL, tampilan=[{"jenis": "video", "judul": "x"}])
+    nakal = dict(MANIFEST_MINIMAL, tampilan=[{"type": "video", "title": "x"}])
     with pytest.raises(ModuleError, match="tidak diizinkan"):
-        buat_modul(user_id=user_id, manifes=nakal, dsn=test_dsn)
+        create_module(user_id=user_id, manifest=nakal, dsn=test_dsn)
 
 
-def test_isolasi_modul_tidak_bisa_baca_data_modul_lain(make_user, test_dsn,
-                                                      izin_user_penuh):
+def test_isolasi_module_not_can_read_data_module_lain(make_user, test_dsn,
+                                                      permission_user_penuh):
     user_a, _ = make_user()
     user_b, _ = make_user()
-    modul_a = buat_modul(user_id=user_a, manifes=dict(MANIFES_MINIMAL), dsn=test_dsn)
-    aktifkan_modul(modul_a["id"], user_id=user_a, izin_user=izin_user_penuh,
+    module_a = create_module(user_id=user_a, manifest=dict(MANIFEST_MINIMAL), dsn=test_dsn)
+    aktifkan_module(module_a["id"], user_id=user_a, permission_user=permission_user_penuh,
                    dsn=test_dsn)
-    tabel_a = daftar_tabel(modul_a["id"], user_id=user_a, dsn=test_dsn)[0]
-    tambah_baris(tabel_a["id"], user_id=user_a,
-                 data={"barang": "Beras", "harga": 65000}, dsn=test_dsn)
+    table_a = items_table(module_a["id"], user_id=user_a, dsn=test_dsn)[0]
+    add_rows(table_a["id"], user_id=user_a,
+                 data={"product": "Beras", "price": 65000}, dsn=test_dsn)
     # Modul lain (milik user B) mencoba baca tabel modul A -> ditolak.
-    modul_b = buat_modul(user_id=user_b, manifes=dict(MANIFES_MINIMAL), dsn=test_dsn)
+    module_b = create_module(user_id=user_b, manifest=dict(MANIFEST_MINIMAL), dsn=test_dsn)
     with pytest.raises(TableError, match="tidak bisa membaca data modul lain"):
-        baca_tabel_modul_lain(tabel_a["id"], modul_id_peminta=modul_b["id"],
+        read_table_module_lain(table_a["id"], module_id_peminta=module_b["id"],
                               user_id=user_b, dsn=test_dsn)
     # Pengguna lain juga tidak bisa baca langsung.
     with pytest.raises(TableError, match="pengguna lain"):
-        baca_tabel(tabel_a["id"], user_id=user_b, dsn=test_dsn)
+        read_table(table_a["id"], user_id=user_b, dsn=test_dsn)
     # Pemilik sendiri bisa baca.
-    assert baca_tabel(tabel_a["id"], user_id=user_a, dsn=test_dsn) == [
-        {"barang": "Beras", "harga": 65000}]
+    assert read_table(table_a["id"], user_id=user_a, dsn=test_dsn) == [
+        {"product": "Beras", "price": 65000}]
 
 
-def test_tipe_kolom_ditegakkan_saat_tambah_baris(make_user, test_dsn):
+def test_tipe_kolom_ditegakkan_saat_add_rows(make_user, test_dsn):
     user_id, _ = make_user()
-    modul = buat_modul(user_id=user_id, manifes=dict(MANIFES_MINIMAL), dsn=test_dsn)
-    tabel = daftar_tabel(modul["id"], user_id=user_id, dsn=test_dsn)[0]
+    module = create_module(user_id=user_id, manifest=dict(MANIFEST_MINIMAL), dsn=test_dsn)
+    table = items_table(module["id"], user_id=user_id, dsn=test_dsn)[0]
     with pytest.raises(TableError, match="harus angka"):
-        tambah_baris(tabel["id"], user_id=user_id,
-                     data={"barang": "Beras", "harga": "mahal"}, dsn=test_dsn)
+        add_rows(table["id"], user_id=user_id,
+                     data={"product": "Beras", "price": "expensive"}, dsn=test_dsn)
     with pytest.raises(TableError, match="tidak boleh negatif"):
-        tambah_baris(tabel["id"], user_id=user_id,
-                     data={"barang": "Beras", "harga": -100}, dsn=test_dsn)
-    ok = tambah_baris(tabel["id"], user_id=user_id,
-                      data={"barang": "Beras", "harga": 65000}, dsn=test_dsn)
-    assert ok["data"]["harga"] == 65000
+        add_rows(table["id"], user_id=user_id,
+                     data={"product": "Beras", "price": -100}, dsn=test_dsn)
+    ok = add_rows(table["id"], user_id=user_id,
+                      data={"product": "Beras", "price": 65000}, dsn=test_dsn)
+    assert ok["data"]["price"] == 65000
 
 
-def test_notif_modul_dari_data(make_user, test_dsn):
+def test_notif_module_dari_data(make_user, test_dsn):
     user_id, _ = make_user()
-    modul = buat_modul_tagihan(user_id=user_id, dsn=test_dsn)
-    data = MANIFES_TAGIHAN["contoh_data"]
-    notif = evaluasi_notif(MANIFES_TAGIHAN, data)
+    module = create_module_bill(user_id=user_id, dsn=test_dsn)
+    data = MANIFEST_BILL["example_data"]
+    notif = evaluasi_notif(MANIFEST_BILL, data)
     assert len(notif) == 2  # dua tagihan belum_bayar
-    assert "belum dibayar" in notif[0]["pesan"]
-    lunas = {"tagihan": [dict(r, status="sudah_bayar")
-                         for r in data["tagihan"]]}
-    assert evaluasi_notif(MANIFES_TAGIHAN, lunas) == []
+    assert "belum dibayar" in notif[0]["message"]
+    paid_off = {"bill": [dict(r, status="already_pay")
+                         for r in data["bill"]]}
+    assert evaluasi_notif(MANIFEST_BILL, paid_off) == []
 
 
-def test_ubah_modul_versi_baru_dan_rollback(make_user, test_dsn):
+def test_change_module_versi_new_and_rollback(make_user, test_dsn):
     user_id, _ = make_user()
-    modul = buat_modul(user_id=user_id, manifes=dict(MANIFES_MINIMAL), dsn=test_dsn)
-    baru = dict(MANIFES_MINIMAL)
-    baru["tampilan"] = [
-        {"jenis": "tabel", "judul": "Daftar belanja", "tabel": "belanja",
-         "kolom": ["barang", "harga"]},
-        {"jenis": "angka", "judul": "Total", "tabel": "belanja",
-         "kolom": "harga", "format": "Rupiah"},
+    module = create_module(user_id=user_id, manifest=dict(MANIFEST_MINIMAL), dsn=test_dsn)
+    new = dict(MANIFEST_MINIMAL)
+    new["tampilan"] = [
+        {"type": "table", "title": "Daftar belanja", "table": "belanja",
+         "kolom": ["product", "price"]},
+        {"type": "number", "title": "Total", "table": "belanja",
+         "kolom": "price", "format": "Rupiah"},
     ]
-    diubah = ubah_modul(modul["id"], user_id=user_id, manifes=baru, dsn=test_dsn)
-    assert diubah["versi_aktif"] == 2
-    pulih = rollback_modul(modul["id"], user_id=user_id, versi=1, dsn=test_dsn)
-    assert pulih["versi_aktif"] == 3
-    assert len(pulih["manifes"]["tampilan"]) == 1
+    updated_at = change_module(module["id"], user_id=user_id, manifest=new, dsn=test_dsn)
+    assert updated_at["active_version"] == 2
+    pulih = rollback_module(module["id"], user_id=user_id, versi=1, dsn=test_dsn)
+    assert pulih["active_version"] == 3
+    assert len(pulih["manifest"]["tampilan"]) == 1
 
 
-def test_hapus_modul_menawarkan_ekspor_dulu(make_user, test_dsn):
+def test_delete_module_menawarkan_export_dulu(make_user, test_dsn):
     user_id, _ = make_user()
-    modul = buat_modul(user_id=user_id, manifes=dict(MANIFES_MINIMAL), dsn=test_dsn)
-    tabel = daftar_tabel(modul["id"], user_id=user_id, dsn=test_dsn)[0]
-    tambah_baris(tabel["id"], user_id=user_id,
-                 data={"barang": "Beras", "harga": 65000}, dsn=test_dsn)
-    hasil = hapus_modul(modul["id"], user_id=user_id, dsn=test_dsn)
-    assert hasil["dihapus"]["status"] == "dihapus"
-    assert hasil["ekspor"]["tabel"]["belanja"] == [
-        {"barang": "Beras", "harga": 65000}]
+    module = create_module(user_id=user_id, manifest=dict(MANIFEST_MINIMAL), dsn=test_dsn)
+    table = items_table(module["id"], user_id=user_id, dsn=test_dsn)[0]
+    add_rows(table["id"], user_id=user_id,
+                 data={"product": "Beras", "price": 65000}, dsn=test_dsn)
+    result = delete_module(module["id"], user_id=user_id, dsn=test_dsn)
+    assert result["deleted"]["status"] == "deleted"
+    assert result["export"]["table"]["belanja"] == [
+        {"product": "Beras", "price": 65000}]
     # Data baris ikut terhapus sesudah diekspor.
-    assert daftar_tabel(modul["id"], user_id=user_id, dsn=test_dsn) == []
+    assert items_table(module["id"], user_id=user_id, dsn=test_dsn) == []
 
 
-def test_maks_3_modul_aktif(make_user, test_dsn, izin_user_penuh):
+def test_maks_3_module_active(make_user, test_dsn, permission_user_penuh):
     user_id, _ = make_user()
     for i in range(3):
-        m = dict(MANIFES_MINIMAL, nama=f"Modul {i}")
-        modul = buat_modul(user_id=user_id, manifes=m, dsn=test_dsn)
-        aktifkan_modul(modul["id"], user_id=user_id, izin_user=izin_user_penuh,
+        m = dict(MANIFEST_MINIMAL, name=f"Modul {i}")
+        module = create_module(user_id=user_id, manifest=m, dsn=test_dsn)
+        aktifkan_module(module["id"], user_id=user_id, permission_user=permission_user_penuh,
                        dsn=test_dsn)
-    keempat = buat_modul(user_id=user_id,
-                         manifes=dict(MANIFES_MINIMAL, nama="Modul 4"), dsn=test_dsn)
+    keempat = create_module(user_id=user_id,
+                         manifest=dict(MANIFEST_MINIMAL, name="Modul 4"), dsn=test_dsn)
     with pytest.raises(ModuleError, match="3 modul aktif"):
-        aktifkan_modul(keempat["id"], user_id=user_id, izin_user=izin_user_penuh,
+        aktifkan_module(keempat["id"], user_id=user_id, permission_user=permission_user_penuh,
                        dsn=test_dsn)

@@ -23,7 +23,7 @@ from psycopg.rows import dict_row
 from . import episodic, procedural
 from .schema import resolve_dsn
 
-MAX_RINGKASAN_CHARS = 2000
+MAX_SUMMARY_CHARS = 2000
 
 
 def _connect(dsn=None):
@@ -35,18 +35,18 @@ def _extractive_summary(episodes):
     lines = []
     total = 0
     for ep in episodes:
-        isi = " ".join(str(ep["isi"]).split())
-        if len(isi) > 200:
-            isi = isi[:197] + "..."
-        baris = f"- [{ep['jenis']}] {isi}"
-        if total + len(baris) > MAX_RINGKASAN_CHARS:
+        content = " ".join(str(ep["content"]).split())
+        if len(content) > 200:
+            content = content[:197] + "..."
+        rows = f"- [{ep['type']}] {content}"
+        if total + len(rows) > MAX_SUMMARY_CHARS:
             break
-        lines.append(baris)
-        total += len(baris)
+        lines.append(rows)
+        total += len(rows)
     return "\n".join(lines)
 
 
-def consolidate_idle(user_id, older_than_days=30, agen_id=None, dsn=None,
+def consolidate_idle(user_id, older_than_days=30, agent_id=None, dsn=None,
                      now=None):
     """Jalankan satu putaran konsolidasi untuk user ini.
 
@@ -59,72 +59,72 @@ def consolidate_idle(user_id, older_than_days=30, agen_id=None, dsn=None,
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT DISTINCT tugas_id FROM episodik WHERE user_id = %s "
-                "AND dibuat < %s AND tugas_id IS NOT NULL",
+                "SELECT DISTINCT task_id FROM episodic WHERE user_id = %s "
+                "AND created_at < %s AND task_id IS NOT NULL",
                 (user_id, ambang),
             )
-            tugas_ids = [r["tugas_id"] for r in cur.fetchall()]
+            task_ids = [r["task_id"] for r in cur.fetchall()]
             cur.execute(
-                "SELECT kejadian_ids FROM ringkasan WHERE user_id = %s",
+                "SELECT event_ids FROM summaries WHERE user_id = %s",
                 (user_id,),
             )
-            sudah = set()
+            already = set()
             for r in cur.fetchall():
-                sudah.update(str(k) for k in (r["kejadian_ids"] or []))
-    ringkasan_dibuat = 0
+                already.update(str(k) for k in (r["event_ids"] or []))
+    summary_created = 0
     prosedur_dipromosikan = 0
-    tugas_diproses = []
-    for tugas_id in tugas_ids:
+    task_diproses = []
+    for task_id in task_ids:
         with _connect(dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT id, jenis, isi, kejadian_id, dibuat FROM episodik "
-                    "WHERE user_id = %s AND tugas_id = %s ORDER BY dibuat ASC",
-                    (user_id, tugas_id),
+                    "SELECT id, type, content, event_id, created_at FROM episodic "
+                    "WHERE user_id = %s AND task_id = %s ORDER BY created_at ASC",
+                    (user_id, task_id),
                 )
                 rows = cur.fetchall()
         episodes = [
-            {"id": str(r["id"]), "jenis": r["jenis"], "isi": r["isi"],
-             "kejadian_id": str(r["kejadian_id"]) if r["kejadian_id"] else None,
-             "dibuat": r["dibuat"]}
+            {"id": str(r["id"]), "type": r["type"], "content": r["content"],
+             "event_id": str(r["event_id"]) if r["event_id"] else None,
+             "created_at": r["created_at"]}
             for r in rows
         ]
-        baru = [e for e in episodes if e["kejadian_id"] and e["kejadian_id"] not in sudah]
-        if not baru:
+        new = [e for e in episodes if e["event_id"] and e["event_id"] not in already]
+        if not new:
             continue
-        teks = _extractive_summary(baru)
-        kejadian_ids = [e["kejadian_id"] for e in baru if e["kejadian_id"]]
-        periode_awal = min(e["dibuat"] for e in baru)
-        periode_akhir = max(e["dibuat"] for e in baru)
+        text = _extractive_summary(new)
+        event_ids = [e["event_id"] for e in new if e["event_id"]]
+        period_start = min(e["created_at"] for e in new)
+        period_end = max(e["created_at"] for e in new)
         with _connect(dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO ringkasan (user_id, agen_id, periode_awal, "
-                    "periode_akhir, ringkasan, kejadian_ids) "
+                    "INSERT INTO summaries (user_id, agent_id, period_start, "
+                    "period_end, summary, event_ids) "
                     "VALUES (%s, %s, %s, %s, %s, %s)",
-                    (user_id, agen_id, periode_awal, periode_akhir, teks, kejadian_ids),
+                    (user_id, agent_id, period_start, period_end, text, event_ids),
                 )
             conn.commit()
-        ringkasan_dibuat += 1
-        tugas_diproses.append(str(tugas_id))
+        summary_created += 1
+        task_diproses.append(str(task_id))
         # Pola berhasil -> prosedural: episode tugas_selesai yang
         # isinya menandai berhasil.
-        selesai = [e for e in baru if e["jenis"] == "tugas_selesai"]
-        if selesai and any("berhasil" in e["isi"].lower() for e in selesai):
-            layanan = selesai[0]["isi"].split(":", 1)[0].strip() or "tugas"
-            langkah = [e["isi"] for e in baru if e["jenis"] != "tugas_selesai"] or [
-                e["isi"] for e in selesai
+        completed_at = [e for e in new if e["type"] == "task_completed"]
+        if completed_at and any("successful" in e["content"].lower() for e in completed_at):
+            service = completed_at[0]["content"].split(":", 1)[0].strip() or "tasks"
+            step = [e["content"] for e in new if e["type"] != "task_completed"] or [
+                e["content"] for e in completed_at
             ]
             procedural.record_successful_task(
-                user_id, layanan, langkah, agen_id=agen_id,
-                kejadian_asal_id=kejadian_ids[0] if kejadian_ids else None,
+                user_id, service, step, agent_id=agent_id,
+                source_event_id=event_ids[0] if event_ids else None,
                 dsn=dsn,
             )
             prosedur_dipromosikan += 1
     return {
-        "ringkasan_dibuat": ringkasan_dibuat,
+        "summary_created": summary_created,
         "prosedur_dipromosikan": prosedur_dipromosikan,
-        "tugas": tugas_diproses,
+        "tasks": task_diproses,
     }
 
 
@@ -133,21 +133,21 @@ def list_summaries(user_id, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, user_id, agen_id, periode_awal, periode_akhir, "
-                "ringkasan, kejadian_ids, dibuat FROM ringkasan "
-                "WHERE user_id = %s ORDER BY dibuat DESC",
+                "SELECT id, user_id, agent_id, period_start, period_end, "
+                "summary, event_ids, created_at FROM summaries "
+                "WHERE user_id = %s ORDER BY created_at DESC",
                 (user_id,),
             )
             return [
                 {
                     "id": str(r["id"]),
                     "user_id": str(r["user_id"]),
-                    "agen_id": str(r["agen_id"]) if r["agen_id"] else None,
-                    "periode_awal": r["periode_awal"],
-                    "periode_akhir": r["periode_akhir"],
-                    "ringkasan": r["ringkasan"],
-                    "kejadian_ids": [str(k) for k in (r["kejadian_ids"] or [])],
-                    "dibuat": r["dibuat"],
+                    "agent_id": str(r["agent_id"]) if r["agent_id"] else None,
+                    "period_start": r["period_start"],
+                    "period_end": r["period_end"],
+                    "summaries": r["summaries"],
+                    "event_ids": [str(k) for k in (r["event_ids"] or [])],
+                    "created_at": r["created_at"],
                 }
                 for r in cur.fetchall()
             ]

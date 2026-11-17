@@ -196,7 +196,7 @@ def resolve_provider_name(provider: str | None, model: str) -> str:
     raise ValueError(
         f"provider tidak bisa ditebak dari model {model!r}; "
         f"sebutkan provider eksplisit. Didukung: {', '.join(SUPPORTED_PROVIDERS)} "
-        "(+ semua nama di registry nanobot, mis. groq/deepseek/mistral)."
+        "(+ semua name di registry nanobot, mis. groq/deepseek/mistral)."
     )
 
 

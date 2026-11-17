@@ -44,9 +44,9 @@ if _NANOBOT_LOCAL.exists():
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 MEMORY_TABLES = (
-    "fakta_profil", "episodik", "prosedur", "pemberian_irisan",
-    "ringkasan", "contoh_gaya", "onboarding", "persetujuan_data",
-    "tautan_email_digunakan",
+    "profile_facts", "episodic", "procedures", "slice_grants",
+    "summaries", "style_examples", "onboarding", "data_consents",
+    "used_email_links",
 )
 
 
@@ -66,7 +66,7 @@ def _reset_tables(test_dsn):
     create_workflow_schema(test_dsn)
     with psycopg.connect(test_dsn) as conn:
         conn.execute(
-            "TRUNCATE pengguna, sesi, vault, agen, kejadian, "
+            "TRUNCATE users, sessions, vault, agents, events, "
             + ", ".join(MEMORY_TABLES) + " CASCADE"
         )
         conn.commit()
@@ -76,7 +76,7 @@ def _reset_tables(test_dsn):
     yield
     with psycopg.connect(test_dsn) as conn:
         conn.execute(
-            "TRUNCATE pengguna, sesi, vault, agen, kejadian, "
+            "TRUNCATE users, sessions, vault, agents, events, "
             + ", ".join(MEMORY_TABLES) + " CASCADE"
         )
         conn.commit()
@@ -132,11 +132,11 @@ def tmp_skill_dir(tmp_path):
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text("# Skill Contoh\n\nContoh.\n", encoding="utf-8")
     manifest = {
-        "name": "contoh",
+        "name": "example",
         "version": "0.1.0",
-        "tools": ["baca_harga", "cari_listing"],
+        "tools": ["read_price", "search_listings"],
         "domains": ["tokopedia.com"],
-        "konektor": {"gmail": ["baca"]},
+        "connectors": {"gmail": ["read"]},
         "author": "puspa",
     }
     (skill_dir / "manifest.json").write_text(
@@ -157,8 +157,8 @@ def make_user(test_dsn):
         counter["n"] += 1
         email = email or f"user{counter['n']}@contoh.id"
         user_id = create_user(email, secrets.token_urlsafe(24), dsn=test_dsn)
-        agen_id = ensure_puspa_agent(user_id, dsn=test_dsn)
-        return {"user_id": user_id, "email": email, "agen_id": agen_id}
+        agent_id = ensure_puspa_agent(user_id, dsn=test_dsn)
+        return {"user_id": user_id, "email": email, "agent_id": agent_id}
 
     return _make
 
@@ -177,31 +177,31 @@ def token_payloads():
     import time
 
     now = int(time.time())
-    agen = {"user_id": "user-1", "agen_id": "agen-1", "sub_agen_id": None,
-            "tools": ["baca", "tulis"], "domains": ["tokopedia.com"],
-            "konektor": {"gmail": ["baca"]},
-            "anggaran": {"langkah_max": 25, "token_max": 100000, "rupiah_max": 2000},
+    agent = {"user_id": "user-1", "agent_id": "agen-1", "subagent_id": None,
+            "tools": ["read", "tulis"], "domains": ["tokopedia.com"],
+            "connectors": {"gmail": ["read"]},
+            "anggaran": {"step_max": 25, "token_max": 100000, "rupiah_max": 2000},
             "exp": now + 3600, "iat": now, "parent": None}
-    sub = dict(agen, sub_agen_id="sub-1", tools=["baca"],
-               anggaran={"langkah_max": 15, "token_max": 20000, "rupiah_max": 1000},
+    sub = dict(agent, subagent_id="sub-1", tools=["read"],
+               anggaran={"step_max": 15, "token_max": 20000, "rupiah_max": 1000},
                parent="agen-1")
-    return {"signing_key": signing_key, "agen": agen, "sub": sub}
+    return {"signing_key": signing_key, "agents": agent, "sub": sub}
 
 
 @pytest.fixture
-def agen_kedua(test_dsn):
+def agent_kedua(test_dsn):
     """A second user-created agent (for cross-agent procedure reuse)."""
-    from puspa.runtime.agents import buat_agen
+    from puspa.runtime.agents import create_agent
 
-    return buat_agen("agen-kedua", dsn=test_dsn)
+    return create_agent("agen-kedua", dsn=test_dsn)
 
 
 @pytest.fixture
-def izin_user_penuh():
+def permission_user_penuh():
     return {
-        "konektor": ["gmail", "calendar"],
+        "connectors": ["gmail", "calendar"],
         "scope": ["gmail.readonly", "gmail.compose", "calendar.events"],
         "domain": ["tokopedia.com", "shopee.co.id", "blibli.com",
-                   "situs_provider_tagihan"],
+                   "situs_provider_bill"],
         "batas_belanja": 1000000,
     }

@@ -13,31 +13,31 @@ import pytest
 
 from puspa.evidence.renderer import sajikan
 from puspa.evidence.verifier import periksa_suntikan
-from puspa.evidence.evidence import catat_bukti
+from puspa.evidence.evidence import record_evidence
 from puspa.runtime.handoff import tolak_lingkaran, HandoffError
 from puspa.runtime.subagents import SubagentPool, SubagentError
 
 
 def test_gerbang11_pemeriksa_tangkap_suntikan_3_dari_3():
-    def baca_ulang(url):
-        return {"nilai": 12500000, "nama": "Laptop X"}
-    for nilai_salah in (9999999, 15000000, 100000):
-        b = catat_bukti(tugas_id="t1", klaim="Laptop X", nilai=nilai_salah,
-                        satuan="Rp", sumber_url="https://tokopedia.com/produk/laptop-x",
-                        potongan_teks="x", id_pembaca="sub-1")
-        assert periksa_suntikan(b, nilai_salah=nilai_salah, baca_ulang=baca_ulang) != "Terverifikasi"
+    def reread(url):
+        return {"value": 12500000, "name": "Laptop X"}
+    for value_wrong in (9999999, 15000000, 100000):
+        b = record_evidence(task_id="t1", klaim="Laptop X", value=value_wrong,
+                        unit="Rp", sumber_url="https://tokopedia.com/produk/laptop-x",
+                        text_excerpt="x", reader_id="sub-1")
+        assert periksa_suntikan(b, value_wrong=value_wrong, reread=reread) != "Verified"
 
 
-def test_gerbang11_token_di_luar_ditolak_3_dari_3(token_payloads):
+def test_gerbang11_token_di_luar_rejected_3_dari_3(token_payloads):
     kolam = SubagentPool()
-    for tools in (["hapus_semua"], ["baca", "kirim_tanpa_izin"], ["bayar"]):
+    for tools in (["delete_all"], ["read", "send_without_permission"], ["pay"]):
         bukan_subset = dict(token_payloads["sub"], tools=tools)
         with pytest.raises(SubagentError):
-            kolam.spawn(agen_id="agen-1", tugas_id="t1", kelas_izin="Pelaksana",
-                        token_agen=token_payloads["agen"], token_subagen=bukan_subset)
+            kolam.spawn(agent_id="agen-1", task_id="t1", permission_class="Pelaksana",
+                        token_agent=token_payloads["agents"], token_subagen=bukan_subset)
 
 
-def test_gerbang11_handoff_melingkar_ditolak():
+def test_gerbang11_handoff_melingkar_rejected():
     with pytest.raises(HandoffError):
         tolak_lingkaran(["puspa", "agen-riset"], "agen-riset", "puspa")
 
@@ -45,25 +45,25 @@ def test_gerbang11_handoff_melingkar_ditolak():
 def test_gerbang12_rantai_hash_diubah_terdeteksi_3_dari_3(ledger, make_user):
     u = make_user()
     for i in range(3):
-        tugas_id = f"tugas-rantai-{i}"
-        ledger.append_event(tugas_id=tugas_id, agen_id=u["agen_id"],
-                            jenis="tugas_dibuat", isi={"tujuan": "uji"})
-        ledger.append_event(tugas_id=tugas_id, agen_id=u["agen_id"],
-                            jenis="tugas_selesai", isi={})
-        ok_sebelum, _ = ledger.verify_chain(tugas_id)
+        task_id = f"tugas-rantai-{i}"
+        ledger.append_event(task_id=task_id, agent_id=u["agent_id"],
+                            jenis="task_created", content={"purpose": "test"})
+        ledger.append_event(task_id=task_id, agent_id=u["agent_id"],
+                            jenis="task_completed", content={})
+        ok_sebelum, _ = ledger.verify_chain(task_id)
         assert ok_sebelum is True
         # Ubah diam-diam satu hash (sebagai pemilik DB; nilai unik per tugas).
         with psycopg.connect(ledger.dsn) as conn:
             conn.execute(
-                "UPDATE kejadian SET hash = %s WHERE tugas_id = %s AND jenis = 'tugas_dibuat'",
-                (f"00diubah{i}", tugas_id,))
+                "UPDATE events SET hash = %s WHERE task_id = %s AND type = 'task_created'",
+                (f"00diubah{i}", task_id,))
             conn.commit()
-        ok_sesudah, _ = ledger.verify_chain(tugas_id)
+        ok_sesudah, _ = ledger.verify_chain(task_id)
         assert ok_sesudah is False
 
 
-def test_gerbang12_angka_yatim_ditahan_3_dari_3():
-    for teks in ("Harganya Rp9.999.000.", "Tagihan Rp132.500 jatuh tempo 20 Nov.",
+def test_gerbang12_number_yatim_ditahan_3_dari_3():
+    for text in ("Harganya Rp9.999.000.", "Tagihan Rp132.500 jatuh tempo 20 Nov.",
                  "Selisihnya 15% lebih murah."):
-        hasil = sajikan(teks, {})
-        assert hasil["ditahan"] is True and hasil["dibuang"]
+        result = sajikan(text, {})
+        assert result["ditahan"] is True and result["dibuang"]
