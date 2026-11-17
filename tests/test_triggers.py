@@ -12,8 +12,8 @@ from puspa.workflow.triggers import (
 SEKARANG = datetime(2026, 11, 17, 12, 0, tzinfo=timezone.utc)
 
 
-def test_jadwal_tanggal_monthly():
-    p = {"type": "jadwal", "mode": "tanggal", "tanggal": 25, "jam_mulai": "07:00"}
+def test_schedule_date_monthly():
+    p = {"type": "schedule", "mode": "date", "date": 25, "start_time": "07:00"}
     assert validasi_trigger(p) == []
     berikut = next_trigger_at(p, SEKARANG)
     assert (berikut.year, berikut.month, berikut.day) == (2026, 11, 25)
@@ -21,22 +21,22 @@ def test_jadwal_tanggal_monthly():
 
 
 def test_schedule_date_past_this_month_to_next_month():
-    p = {"type": "jadwal", "mode": "tanggal", "tanggal": 10, "jam_mulai": "07:00"}
+    p = {"type": "schedule", "mode": "date", "date": 10, "start_time": "07:00"}
     berikut = next_trigger_at(p, SEKARANG)
     assert (berikut.year, berikut.month, berikut.day) == (2026, 12, 10)
 
 
-def test_jadwal_day_weekly():
-    p = {"type": "jadwal", "mode": "day", "day": "senin", "jam_mulai": "07:00"}
+def test_schedule_day_weekly():
+    p = {"type": "schedule", "mode": "day", "day": "senin", "start_time": "07:00"}
     berikut = next_trigger_at(p, SEKARANG)  # 17 Nov 2026 = Selasa
     assert berikut.weekday() == 0
     assert (berikut.year, berikut.month, berikut.day) == (2026, 11, 23)
 
 
-def test_jadwal_interval_minimal_1_jam():
-    p = {"type": "jadwal", "mode": "interval_jam", "jam": 0.5}
+def test_schedule_interval_minimal_1_hour():
+    p = {"type": "schedule", "mode": "interval_hour", "hour": 0.5}
     assert any("minimal 1 jam" in m for m in validasi_trigger(p))
-    p2 = {"type": "jadwal", "mode": "interval_jam", "jam": 1}
+    p2 = {"type": "schedule", "mode": "interval_hour", "hour": 1}
     assert validasi_trigger(p2) == []
     assert next_trigger_at(p2, SEKARANG) == datetime(
         2026, 11, 17, 13, 0, tzinfo=timezone.utc)
@@ -70,18 +70,18 @@ def test_price_turun_di_bawah_ambang():
     assert match_price_turun(p, None) is False  # belum ada data: tidak memicu
 
 
-def test_save_trigger_jadwal_to_penjadwal_fase2(make_user, test_dsn):
-    user_id, _ = make_user()
-    p = {"type": "jadwal", "mode": "tanggal", "tanggal": 25, "jam_mulai": "07:00"}
+def test_save_trigger_schedule_to_penjadwal_fase2(make_user, test_dsn):
+    user_id = make_user()["user_id"]
+    p = {"type": "schedule", "mode": "date", "date": 25, "start_time": "07:00"}
     trigger = save_to_penjadwal(user_id=user_id, workflow_id="alur-uji",
                                  trigger=p, sekarang=SEKARANG, dsn=test_dsn)
     assert trigger is not None
-    assert trigger.event_type == "jadwal"
+    assert trigger.event_type == "schedule"
     assert trigger.workflow == "alur-uji"
     assert (trigger.next_trigger_at.year, trigger.next_trigger_at.month,
             trigger.next_trigger_at.day) == (2026, 11, 25)
 
 
-def test_trigger_non_jadwal_not_disimpan_to_penjadwal():
+def test_trigger_non_schedule_not_disimpan_to_penjadwal():
     assert save_to_penjadwal(user_id="u", workflow_id="a",
                                trigger={"type": "manual"}) is None

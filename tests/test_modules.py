@@ -34,7 +34,7 @@ MANIFEST_MINIMAL = {
 
 def test_bill_sebagai_manifest_passed_kelima_gerbang(make_user, test_dsn,
                                                      permission_user_penuh):
-    user_id, _ = make_user()
+    user_id = make_user()["user_id"]
     result = jalankan_gerbang(dict(MANIFEST_BILL), dsn=test_dsn)
     assert result["passed"] is True, result["masalah"]
     module = create_module_bill(user_id=user_id, dsn=test_dsn)
@@ -52,7 +52,7 @@ def test_bill_sebagai_manifest_passed_kelima_gerbang(make_user, test_dsn,
 
 
 def test_module_minimal_passed_and_active(make_user, test_dsn, permission_user_penuh):
-    user_id, _ = make_user()
+    user_id = make_user()["user_id"]
     module = create_module(user_id=user_id, manifest=dict(MANIFEST_MINIMAL), dsn=test_dsn)
     active = aktifkan_module(module["id"], user_id=user_id,
                            permission_user=permission_user_penuh, dsn=test_dsn)
@@ -90,7 +90,7 @@ def test_manifest_nakal_rejected():
 
 
 def test_create_module_nakal_menolak_dengan_reason(make_user, test_dsn):
-    user_id, _ = make_user()
+    user_id = make_user()["user_id"]
     nakal = dict(MANIFEST_MINIMAL, tampilan=[{"type": "video", "title": "x"}])
     with pytest.raises(ModuleError, match="tidak diizinkan"):
         create_module(user_id=user_id, manifest=nakal, dsn=test_dsn)
@@ -98,8 +98,8 @@ def test_create_module_nakal_menolak_dengan_reason(make_user, test_dsn):
 
 def test_isolasi_module_not_can_read_data_module_lain(make_user, test_dsn,
                                                       permission_user_penuh):
-    user_a, _ = make_user()
-    user_b, _ = make_user()
+    user_a = make_user()["user_id"]
+    user_b = make_user()["user_id"]
     module_a = create_module(user_id=user_a, manifest=dict(MANIFEST_MINIMAL), dsn=test_dsn)
     aktifkan_module(module_a["id"], user_id=user_a, permission_user=permission_user_penuh,
                    dsn=test_dsn)
@@ -120,7 +120,7 @@ def test_isolasi_module_not_can_read_data_module_lain(make_user, test_dsn,
 
 
 def test_tipe_kolom_ditegakkan_saat_add_rows(make_user, test_dsn):
-    user_id, _ = make_user()
+    user_id = make_user()["user_id"]
     module = create_module(user_id=user_id, manifest=dict(MANIFEST_MINIMAL), dsn=test_dsn)
     table = items_table(module["id"], user_id=user_id, dsn=test_dsn)[0]
     with pytest.raises(TableError, match="harus angka"):
@@ -135,7 +135,7 @@ def test_tipe_kolom_ditegakkan_saat_add_rows(make_user, test_dsn):
 
 
 def test_notif_module_dari_data(make_user, test_dsn):
-    user_id, _ = make_user()
+    user_id = make_user()["user_id"]
     module = create_module_bill(user_id=user_id, dsn=test_dsn)
     data = MANIFEST_BILL["example_data"]
     notif = evaluasi_notif(MANIFEST_BILL, data)
@@ -147,7 +147,7 @@ def test_notif_module_dari_data(make_user, test_dsn):
 
 
 def test_change_module_versi_new_and_rollback(make_user, test_dsn):
-    user_id, _ = make_user()
+    user_id = make_user()["user_id"]
     module = create_module(user_id=user_id, manifest=dict(MANIFEST_MINIMAL), dsn=test_dsn)
     new = dict(MANIFEST_MINIMAL)
     new["tampilan"] = [
@@ -164,7 +164,7 @@ def test_change_module_versi_new_and_rollback(make_user, test_dsn):
 
 
 def test_delete_module_menawarkan_export_dulu(make_user, test_dsn):
-    user_id, _ = make_user()
+    user_id = make_user()["user_id"]
     module = create_module(user_id=user_id, manifest=dict(MANIFEST_MINIMAL), dsn=test_dsn)
     table = items_table(module["id"], user_id=user_id, dsn=test_dsn)[0]
     add_rows(table["id"], user_id=user_id,
@@ -178,7 +178,7 @@ def test_delete_module_menawarkan_export_dulu(make_user, test_dsn):
 
 
 def test_maks_3_module_active(make_user, test_dsn, permission_user_penuh):
-    user_id, _ = make_user()
+    user_id = make_user()["user_id"]
     for i in range(3):
         m = dict(MANIFEST_MINIMAL, name=f"Modul {i}")
         module = create_module(user_id=user_id, manifest=m, dsn=test_dsn)

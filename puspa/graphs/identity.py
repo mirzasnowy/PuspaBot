@@ -132,7 +132,7 @@ def kandidat_identitas(*, brand: str | None = None, series: str | None = None,
         syarat.append("model_number LIKE %s")
         value.append("%" + normalisasi_number_model(model_number) + "%")
     if brand:
-        syarat.append("merek ILIKE %s")
+        syarat.append("brand ILIKE %s")
         value.append("%" + brand + "%")
     if series:
         syarat.append("seri ILIKE %s")

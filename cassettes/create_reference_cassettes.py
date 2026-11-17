@@ -57,7 +57,7 @@ KASET = {
     ],
     "bill_reminder": [
         {"tool": "create_trigger", "output": {"type": "triggers", "value": 1,
-         "jadwal": "harian 07:00"}},
+         "schedule": "harian 07:00"}},
     ],
     "remind_bill_due_this_week": [
         {"tool": "read_bill", "output": {"type": "bill", "value": 132500,

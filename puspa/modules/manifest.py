@@ -30,7 +30,7 @@ DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 KOMPONEN_DIIZINKAN = ("card", "table", "items", "form", "number",
                       "grafik_garis", "tombol_action")
-TIPE_KOLOM = ("text", "number", "Rupiah", "tanggal", "choice")
+TIPE_KOLOM = ("text", "number", "Rupiah", "date", "choice")
 MAKS_TAMPILAN = 3
 MAKS_TABLE = 5
 MAKS_KOLOM_PER_TABLE = 10
@@ -282,7 +282,7 @@ def aktifkan_module(module_id: str, *, user_id: str, permission_user: dict,
     # Gerbang 4 (jalan): uji kering alur modul bila ada.
     workflow = module["manifest"].get("workflows")
     if workflow:
-        from puspa.workflow.runner import create_workflow, jalankan_workflow, test_dry
+        from puspa.workflow.runner import create_workflow, jalankan_workflow, dry_run
 
         workflow_sementara = create_workflow(
             user_id=user_id, agent_id="puspa",
@@ -290,7 +290,7 @@ def aktifkan_module(module_id: str, *, user_id: str, permission_user: dict,
             trigger=workflow.get("triggers", {"type": "manual"}),
             step=workflow.get("step", []), dsn=dsn)
         try:
-            result_dry = test_dry(str(workflow_sementara["id"]), user_id=user_id, dsn=dsn)
+            result_dry = dry_run(str(workflow_sementara["id"]), user_id=user_id, dsn=dsn)
         finally:
             from puspa.workflow.runner import delete_workflow
 

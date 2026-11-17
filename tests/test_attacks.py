@@ -218,7 +218,7 @@ def test_j2_gerbang_menolak_tool_di_luar_token(ephemeral_keys, stub_log):
     token_read = _token(
         ephemeral_keys,
         tools=["read_price", "search_listings"],
-        connector={"gmail": ["read"]},
+        connectors={"gmail": ["read"]},
     )
     with pytest.raises(GateDenied):
         gate.request_approval(
@@ -524,7 +524,7 @@ def test_j5_injeksi_email_pay_without_approval_and_without_token_pay(
     token_pembaca = _token(
         ephemeral_keys,
         tools=["read_email"],
-        connector={"gmail": ["read"]},
+        connectors={"gmail": ["read"]},
         anggaran={"step_max": 15, "token_max": 50000, "rupiah_max": 0},
     )
     with pytest.raises(GateDenied):
@@ -584,7 +584,7 @@ def test_j6_issue_child_menolak_token_bukan_subset(ephemeral_keys):
     child = issue_child(
         token_induk,
         _payload(tools=["read_price"], domains=["tokopedia.com"],
-                 connector={}, subagent_id="sub-1"),
+                 connectors={}, subagent_id="sub-1"),
         sk, pk,
     )
     payload_child = verify_token(child, pk)
@@ -602,7 +602,7 @@ def test_j6_token_child_rejected_gerbang_for_tool_di_luar_items(
     child = issue_child(
         token_induk,
         _payload(tools=["read_price"], domains=["tokopedia.com"],
-                 connector={"gmail": ["read"]}, subagent_id="sub-1"),
+                 connectors={"gmail": ["read"]}, subagent_id="sub-1"),
         sk, pk,
     )
     assert verify_token(child, pk)["subagent_id"] == "sub-1"

@@ -9,7 +9,7 @@ from puspa.workflow import approvals
 from puspa.workflow.blocks import BLOK
 from puspa.workflow.runner import (
     WorkflowError, aktifkan_workflow, take_workflow, create_workflow, eksekusi_action_disetujui,
-    delete_workflow, jalankan_workflow, jeda_workflow, rollback_workflow, change_workflow, test_dry,
+    delete_workflow, jalankan_workflow, jeda_workflow, rollback_workflow, change_workflow, dry_run,
 )
 from puspa.workflow.templates import create_dari_templat
 
@@ -56,7 +56,7 @@ def test_change_membuat_versi_new_and_rollback(make_user, test_dsn):
 
 def test_delete_not_menghapus_history_jalan(make_user, test_dsn):
     user_id, agent_id, workflow = _workflow_bill(make_user, test_dsn)
-    result = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    result = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     assert result["success"] is True
     delete_workflow(workflow["id"], user_id=user_id, dsn=test_dsn)
     assert take_workflow(workflow["id"], user_id=user_id, dsn=test_dsn)["status"] == "deleted"
@@ -74,7 +74,7 @@ def test_test_dry_simulasikan_action_logout(make_user, test_dsn):
     user_id, agent_id = u["user_id"], u["agent_id"]
     workflow = create_dari_templat("bill_monthly", user_id=user_id, agent_id=agent_id,
                              dsn=test_dsn)
-    result = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    result = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     assert result["success"] is True
     simulasi = [l for l in result["step_results"] if l.get("simulasi")]
     assert len(simulasi) == 1 and simulasi[0]["block"] == "prepare_payment"
@@ -89,7 +89,7 @@ def test_aktifkan_need_test_dry_and_permission_cukup(make_user, test_dsn, permis
     with pytest.raises(WorkflowError, match="uji kering"):
         aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
                       dsn=test_dsn)
-    dry = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     active = aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
                           result_dry=dry, dsn=test_dsn)
     assert active["status"] == "active"
@@ -102,7 +102,7 @@ def test_aktifkan_rejected_bila_manifest_di_luar_permission_user(make_user, test
                      trigger=TRIGGER_MANUAL,
                      step=[{"block": "read_email", "masukan": {"email_id": "x"}}],
                      dsn=test_dsn)
-    dry = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     with pytest.raises(WorkflowError, match="di luar izin user"):
         aktifkan_workflow(workflow["id"], user_id=user_id,
                       permission_user={"connectors": [], "scope": [], "domain": [],
@@ -117,12 +117,12 @@ def test_maks_5_workflow_active(make_user, test_dsn, permission_user_penuh):
         workflow = create_workflow(user_id=user_id, agent_id=agent_id, name=f"Alur {i}",
                          trigger=TRIGGER_MANUAL, step=STEP_BILL,
                          dsn=test_dsn)
-        dry = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+        dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
         aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
                       result_dry=dry, dsn=test_dsn)
     keenam = create_workflow(user_id=user_id, agent_id=agent_id, name="Alur 6",
                        trigger=TRIGGER_MANUAL, step=STEP_BILL, dsn=test_dsn)
-    dry = test_dry(keenam["id"], user_id=user_id, dsn=test_dsn)
+    dry = dry_run(keenam["id"], user_id=user_id, dsn=test_dsn)
     with pytest.raises(WorkflowError, match="5 alur aktif"):
         aktifkan_workflow(keenam["id"], user_id=user_id, permission_user=permission_user_penuh,
                       result_dry=dry, dsn=test_dsn)
@@ -134,10 +134,10 @@ def test_jalan_berhenti_di_approval_lalu_dieksekusi(make_user, test_dsn,
     user_id, agent_id = u["user_id"], u["agent_id"]
     workflow = create_dari_templat("bill_monthly", user_id=user_id, agent_id=agent_id,
                              dsn=test_dsn)
-    dry = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
                   result_dry=dry, dsn=test_dsn)
-    result = jalankan_workflow(workflow["id"], user_id=user_id, trigger_jenis="jadwal",
+    result = jalankan_workflow(workflow["id"], user_id=user_id, trigger_jenis="schedule",
                           dsn=test_dsn)
     assert result["status"] == "pending_approval"
     assert result["approval_id"]
@@ -158,7 +158,7 @@ def test_approval_content_berubah_batal(make_user, test_dsn, permission_user_pen
     user_id, agent_id = u["user_id"], u["agent_id"]
     workflow = create_dari_templat("bill_monthly", user_id=user_id, agent_id=agent_id,
                              dsn=test_dsn)
-    dry = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
                   result_dry=dry, dsn=test_dsn)
     result = jalankan_workflow(workflow["id"], user_id=user_id, dsn=test_dsn)
@@ -178,11 +178,11 @@ def _jalan_id_nyata(make_user, test_dsn):
     user_id, agent_id = u["user_id"], u["agent_id"]
     workflow = create_dari_templat("rekap_bill_weekly", user_id=user_id,
                              agent_id=agent_id, dsn=test_dsn)
-    result = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    result = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     return user_id, workflow["id"], result["jalan_id"]
 
 
-def test_approval_kedaluwarsa_24_jam_cancelled(make_user, test_dsn):
+def test_approval_kedaluwarsa_24_hour_cancelled(make_user, test_dsn):
     user_id, workflow_id, jalan_id = _jalan_id_nyata(make_user, test_dsn)
     sekarang = datetime(2026, 11, 17, 7, 0, tzinfo=timezone.utc)
     created_at = approvals.request_approval(
@@ -199,7 +199,7 @@ def test_approval_kedaluwarsa_24_jam_cancelled(make_user, test_dsn):
     assert row["status"] == "expired"
 
 
-def test_approval_23_jam_masih_can_disetujui(make_user, test_dsn):
+def test_approval_23_hour_masih_can_disetujui(make_user, test_dsn):
     user_id, workflow_id, jalan_id = _jalan_id_nyata(make_user, test_dsn)
     sekarang = datetime(2026, 11, 17, 7, 0, tzinfo=timezone.utc)
     created_at = approvals.request_approval(
@@ -215,7 +215,7 @@ def test_approval_23_jam_masih_can_disetujui(make_user, test_dsn):
 
 def test_failed_2x_berturut_paused_automatic(make_user, test_dsn, permission_user_penuh):
     user_id, agent_id, workflow = _workflow_bill(make_user, test_dsn)
-    dry = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
                   result_dry=dry, dsn=test_dsn)
 
@@ -250,7 +250,7 @@ def test_injection_past_data_not_can_menulis_ulang_workflow(make_user, test_dsn,
                  {"block": "send_notification", "masukan": {"message": "completed"},
                   "title": "Ingatkan"}],
         dsn=test_dsn)
-    dry = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
                   result_dry=dry, dsn=test_dsn)
 
@@ -271,7 +271,7 @@ def test_injection_past_data_not_can_menulis_ulang_workflow(make_user, test_dsn,
 def test_ceiling_cost_per_jalan_rp5000(make_user, test_dsn, permission_user_penuh,
                                        monkeypatch):
     user_id, agent_id, workflow = _workflow_bill(make_user, test_dsn)
-    dry = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
                   result_dry=dry, dsn=test_dsn)
     monkeypatch.setitem(BLOK["check_bill"], "cost_rp", 6000)
@@ -285,7 +285,7 @@ def test_success_3x_jadi_prosedur_trial(make_user, test_dsn, permission_user_pen
     user_id, agent_id = u["user_id"], u["agent_id"]
     workflow = create_dari_templat("rekap_bill_weekly", user_id=user_id,
                              agent_id=agent_id, dsn=test_dsn)
-    dry = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
                   result_dry=dry, dsn=test_dsn)
     for _ in range(3):
@@ -308,7 +308,7 @@ def test_ask_user_berhenti_sampai_dijawab(make_user, test_dsn, permission_user_p
                   "title": "Tanya dulu"},
                  {"block": "send_notification", "masukan": {"message": "Lanjut."}}],
         dsn=test_dsn)
-    dry_without_jawaban = test_dry(workflow["id"], user_id=user_id, dsn=test_dsn)
+    dry_without_jawaban = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
     assert dry_without_jawaban["status"] == "pending_jawaban"
     dry = jalankan_workflow(workflow["id"], user_id=user_id, mode="dry",
                            jawaban={"Tanya dulu": "ya"}, dsn=test_dsn)

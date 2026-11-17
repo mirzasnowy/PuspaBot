@@ -18,7 +18,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
-TIPE_KOLOM = ("text", "number", "Rupiah", "tanggal", "choice")
+TIPE_KOLOM = ("text", "number", "Rupiah", "date", "choice")
 
 
 class TableError(Exception):
@@ -96,7 +96,7 @@ def periksa_value(kolom: dict, value) -> str | None:
         if tipe == "Rupiah" and value < 0:
             return f"kolom {name!r} (Rupiah) tidak boleh negatif"
         return None
-    if tipe == "tanggal":
+    if tipe == "date":
         if isinstance(value, str):
             try:
                 date.fromisoformat(value)

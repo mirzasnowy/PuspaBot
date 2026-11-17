@@ -66,7 +66,7 @@ STEP_PROSEDUR = {
 }
 
 SKEMA_OUTPUT_BILL = {
-    "amount": "Rp", "due_date": "tanggal", "status": "text",
+    "amount": "Rp", "due_date": "date", "status": "text",
     "periode": "text", "evidence_id": "text",
 }
 
@@ -219,9 +219,9 @@ def reminder_due_date(*, due_date: str | None, day_sebelum: int = 3,
     """
     if not due_date:
         return {"perlu_remind": False, "day_lagi": None}
-    date = date.fromisoformat(due_date)
+    due = date.fromisoformat(due_date)
     today = today or datetime.now(timezone.utc).date()
-    day_lagi = (date - today).days
+    day_lagi = (due - today).days
     return {"perlu_remind": 0 <= day_lagi <= day_sebelum,
             "day_lagi": day_lagi}
 

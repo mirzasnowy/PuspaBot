@@ -7,7 +7,7 @@
       "output": {
         "event_type": "triggers",
         "value": 1,
-        "jadwal": "harian 07:00"
+        "schedule": "harian 07:00"
       }
     }
   ]

@@ -21,8 +21,8 @@ def test_tick_jalankan_trigger_sekali_idempotent(test_dsn, make_user):
     u = make_user()
     event = []
     sink = lambda event_type, content: event.append({"type": event_type, "content": content})
-    create_trigger(u["user_id"], "jadwal", _sekarang() - timedelta(minutes=5),
-                jadwal="harian 07:00", dsn=test_dsn)
+    create_trigger(u["user_id"], "schedule", _sekarang() - timedelta(minutes=5),
+                schedule="harian 07:00", dsn=test_dsn)
     result = tick(sink=sink, dsn=test_dsn)
     assert len(result) == 1
     assert event[0]["type"] == "trigger_fired"
@@ -34,7 +34,7 @@ def test_trigger_terlewat_dijalankan_sekali_and_dilaporkan(test_dsn, make_user):
     u = make_user()
     event = []
     sink = lambda event_type, content: event.append({"type": event_type, "content": content})
-    create_trigger(u["user_id"], "jadwal", _sekarang() - timedelta(hours=3), dsn=test_dsn)
+    create_trigger(u["user_id"], "schedule", _sekarang() - timedelta(hours=3), dsn=test_dsn)
     result = jalankan_yang_terlewat(sink=sink, dsn=test_dsn)
     assert len(result) == 1 and result[0]["terlewat"] is True
     assert event[0]["type"] == "trigger_missed"

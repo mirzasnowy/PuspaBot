@@ -16,8 +16,8 @@ from __future__ import annotations
 MANIFEST_BILL = {
     "name": "Tagihan",
     "workflows": {
-        "triggers": {"type": "jadwal", "mode": "tanggal", "tanggal": 25,
-                   "jam_mulai": "07:00"},
+        "triggers": {"type": "schedule", "mode": "date", "date": 25,
+                   "start_time": "07:00"},
         "step": [
             {"block": "check_bill",
              "masukan": {"provider": "PLN", "number_pelanggan": ""},
@@ -48,7 +48,7 @@ MANIFEST_BILL = {
             {"name": "provider", "tipe": "choice",
              "choice": ["PLN", "PDAM", "airtime", "paket data"]},
             {"name": "amount", "tipe": "Rupiah"},
-            {"name": "due_date", "tipe": "tanggal"},
+            {"name": "due_date", "tipe": "date"},
             {"name": "status", "tipe": "choice",
              "choice": ["not_yet_pay", "already_pay", "active"]},
             {"name": "catatan", "tipe": "text"},

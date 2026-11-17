@@ -72,8 +72,8 @@ EVENT_TYPES = frozenset(
         "trigger_missed",
         "module_proposed",
         "module_activated",
-        "false_report",
-        "data_consent",
+        "false_reports",
+        "data_consents",
     }
 )
 

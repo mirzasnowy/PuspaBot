@@ -27,9 +27,9 @@ MAX_CHARS = 200
 # Angka + satuan yang dikenali. Satuan kosong ("") berarti angka polos.
 # "Rp" / "IDR" adalah prefix (Rp125.500); satuan lain umumnya suffix (87 kWh).
 _NUMBER_RE = re.compile(
-    r"(?:(?P<awalan>rp|idr|rupiah)\s*)?"
+    r"(?:(?P<prefix>rp|idr|rupiah)\s*)?"
     r"(?P<value>\d{1,3}(?:[.,]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)"
-    r"(?:\s*(?P<satuan>rp|idr|rupiah|%|persen|kg|gram|g|mg|liter|l|ml|cm|mm|m|km|"
+    r"(?:\s*(?P<unit>rp|idr|rupiah|%|persen|kg|gram|g|mg|liter|l|ml|cm|mm|m|km|"
     r"jam|menit|detik|hari|minggu|bulan|tahun|buah|pcs|unit|orang|gb|mb|kb|tb|"
     r"kwh|wh|va|mah|watt|volt|ampere|a|hz|mhz|ghz))?\b",
     re.IGNORECASE,

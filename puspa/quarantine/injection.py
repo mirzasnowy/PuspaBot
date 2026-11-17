@@ -54,7 +54,7 @@ _PATTERNS: list[tuple[str, str, str]] = [
     (r"you\s+must\b", "you must", "high"),
     (r"jangan\s+(beri\s?tahu|bilang|ceritakan|sampaikan)\b[^.]{0,40}(user|pengguna|siapa\s*pun|siapapun|orang\s*lain)", "jangan beri tahu user", "high"),
     (r"do\s+not\s+tell\s+the\s+user\b", "do not tell the user", "high"),
-    (r"(send|kirimkan|transfer|pay)\s+[^.]{0,30}(uang|dana|balance|password|kata\s+sandi|otp|token|api[_\s-]?key|key|data\s+pribadi)", "perintah kirim/bayar rahasia", "high"),
+     (r"(kirim|kirimkan|send|transfer|bayar|pay)\s+[^.]{0,30}(uang|dana|balance|password|kata\s+sandi|otp|token|api[_\s-]?key|key|data\s+pribadi)", "perintah kirim/bayar rahasia", "high"),
     (r"(kirim|kirimkan|berikan|tunjukkan|ungkapkan)\s+[^.]{0,30}(password|kata\s+sandi|otp|token|api[_\s-]?key)", "minta kredensial", "high"),
     (r"(send|transfer|pay)\s+[^.]{0,30}(money|password|otp|token|api[_\s-]?key|funds)", "send/transfer secret", "high"),
     (r"bayar\s+sekarang\b", "bayar sekarang", "high"),
