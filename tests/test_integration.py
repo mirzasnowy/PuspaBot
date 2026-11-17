@@ -194,7 +194,7 @@ def _ledger_events(events, jenis):
 
 # --- Registry + wrapper -----------------------------------------------------
 
-def test_registry_membungkus_tool_saat_register(stub_log):
+def test_registry_membungkus_tool_saat_register(ephemeral_keys, stub_log):
     registry = PuspaRegistry(log=stub_log)
     echo = EchoTool()
     registry.register(echo)
@@ -203,7 +203,86 @@ def test_registry_membungkus_tool_saat_register(stub_log):
     assert got.name == "echo_baca"
     assert got.to_schema()["function"]["name"] == "echo_baca"
     assert "echo_baca" in registry.tool_names
-    assert any(d["function"]["name"] == "echo_baca" for d in registry.get_definitions())
+    # get_definitions difilter token (lapis visibilitas): ikat token yang
+    # mengizinkan echo_baca dulu, kalau tidak daftarnya kosong.
+    with token_context(_verified_payload(ephemeral_keys)):
+        assert any(d["function"]["name"] == "echo_baca" for d in registry.get_definitions())
+
+
+def test_get_definitions_only_returns_token_tools(ephemeral_keys, stub_log):
+    """Regresi run live-1 CLI: model hanya melihat tool yang diizinkan token.
+
+    Registry berisi echo_baca + kirim + message, token hanya mengizinkan
+    dua pertama — definisi yang dilihat model tepat dua itu, bukan
+    `message` dan bukan tool lain di luar token."""
+
+    @tool_parameters(
+        {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
+    )
+    class MessageTool(Tool):
+        @property
+        def name(self):
+            return "message"
+
+        @property
+        def description(self):
+            return "Tool bawaan nanobot (bukan milik Puspa)."
+
+        @property
+        def read_only(self):
+            return True
+
+        async def execute(self, **kwargs):
+            return "seharusnya tidak pernah terlihat model"
+
+    payload = _verified_payload(ephemeral_keys, tools=["echo_baca", "kirim"])
+    registry = PuspaRegistry(log=stub_log)
+    registry.register(EchoTool())
+    registry.register(KirimTool())
+    registry.register(MessageTool())
+    with token_context(payload):
+        names = [d["function"]["name"] for d in registry.get_definitions()]
+    assert set(names) == {"echo_baca", "kirim"}
+    assert "message" not in names
+
+
+def test_get_definitions_empty_without_token(stub_log):
+    """Tanpa token terikat, model tidak melihat tool apa pun (fail-closed)."""
+    registry = PuspaRegistry(log=stub_log)
+    registry.register(EchoTool())
+    registry.register(KirimTool())
+    assert registry.get_definitions() == []
+
+
+def test_get_definitions_follows_token_change(ephemeral_keys, stub_log):
+    """Filter dibaca dari token yang sedang berlaku setiap panggilan —
+    cache daftar lengkap di induk tidak membuat hasil basi saat token
+    berganti antar turn."""
+    registry = PuspaRegistry(log=stub_log)
+    registry.register(EchoTool())
+    registry.register(KirimTool())
+    payload_a = _verified_payload(ephemeral_keys, tools=["echo_baca"])
+    payload_b = _verified_payload(ephemeral_keys, tools=["kirim"])
+    with token_context(payload_a):
+        assert {d["function"]["name"] for d in registry.get_definitions()} == {"echo_baca"}
+    with token_context(payload_b):
+        assert {d["function"]["name"] for d in registry.get_definitions()} == {"kirim"}
+    assert registry.get_definitions() == []  # token sudah ditutup
+
+
+def test_prepare_call_still_rejects_tool_outside_token(ephemeral_keys, stub_log):
+    """Visibilitas difilter tidak melemahkan penegak eksekusi: tool di
+    luar token tetap ditolak prepare_call walau terdaftar di registry."""
+    payload = _verified_payload(ephemeral_keys, tools=["echo_baca"])
+    registry = PuspaRegistry(log=stub_log)
+    registry.register(EchoTool())
+    registry.register(KirimTool())
+    with token_context(payload):
+        _tool, _params, error = registry.prepare_call(
+            "kirim", {"penerima": "a@contoh.id", "judul": "Halo", "isi": "tes"}
+        )
+    assert error is not None
+    assert "di luar token" in str(error)
 
 
 def test_wrapper_tolak_tanpa_token(ephemeral_keys, stub_log):

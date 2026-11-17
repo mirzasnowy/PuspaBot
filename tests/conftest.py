@@ -25,9 +25,9 @@ from puspa.accounts import create_schema
 # sana; kalau tidak ada (fresh clone), nanobot dipakai dari dependency
 # yang terinstal (git pin di requirements.txt). Guard Path.exists()
 # inilah yang membuat kedua jalur itu jalan tanpa mengubah kode.
-_nanobot_local = Path(__file__).resolve().parent.parent / "nanobot"
-if _nanobot_local.exists():
-    sys.path.insert(0, str(_nanobot_local))
+_NANOBOT_LOCAL = Path(__file__).resolve().parent.parent / "nanobot"
+if _NANOBOT_LOCAL.exists():
+    sys.path.insert(0, str(_NANOBOT_LOCAL))
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 

@@ -26,7 +26,7 @@ MAX_CHARS = 200
 
 # Angka + satuan yang dikenali. Satuan kosong ("") berarti angka polos.
 # "Rp" / "IDR" adalah prefix (Rp125.500); satuan lain umumnya suffix (87 kWh).
-_NUM_RE = re.compile(
+_NUMBER_RE = re.compile(
     r"(?:(?P<awalan>rp|idr|rupiah)\s*)?"
     r"(?P<nilai>\d{1,3}(?:[.,]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)"
     r"(?:\s*(?P<satuan>rp|idr|rupiah|%|persen|kg|gram|g|mg|liter|l|ml|cm|mm|m|km|"
@@ -92,7 +92,7 @@ class QuarantinedReader:
 
         angka: list[dict] = []
         seen: set[tuple[str, str]] = set()
-        for m in _NUM_RE.finditer(clean):
+        for m in _NUMBER_RE.finditer(clean):
             nilai = m.group("nilai")
             satuan = ((m.group("awalan") or "") or (m.group("satuan") or "")).lower()
             key = (nilai, satuan)

@@ -130,7 +130,7 @@ def owner_of(agen_id, dsn=None):
 
 
 # ======================================================================
-# Pembaca bermilik (scoped readers). Pola yang sama untuk semua:
+# Fungsi baca bermilik (scoped readers). Pola yang sama untuk semua:
 #   1. tentukan pemilik (dari argumen, dari token sesi, atau dari registry)
 #   2. require_owner(...) — SEBELUM query isi / dekripsi
 #   3. baru baca data milik pemilik itu

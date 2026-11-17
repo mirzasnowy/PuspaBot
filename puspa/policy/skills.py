@@ -18,7 +18,7 @@ from pathlib import Path
 
 from cryptography.exceptions import InvalidSignature
 
-from .tokens import TokenError, canonical_json
+from .tokens import TokenError, _b64url_decode, _b64url_encode, canonical_json
 
 __all__ = ["SkillRejected", "check_tool", "load_skill", "sign_skill", "verify_skill"]
 
@@ -44,15 +44,6 @@ def _read_manifest(dirpath) -> dict:
     if not isinstance(manifest, dict):
         raise SkillRejected("manifest harus objek JSON")
     return manifest
-
-
-def _b64url_encode(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
-
-
-def _b64url_decode(data: str) -> bytes:
-    pad = "=" * (-len(data) % 4)
-    return base64.urlsafe_b64decode(data + pad)
 
 
 def _unsigned_manifest(manifest: dict) -> dict:

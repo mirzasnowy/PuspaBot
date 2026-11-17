@@ -35,17 +35,25 @@ build/fase-0/
     conftest.py  test_ledger.py  test_ledger_event_types.py  test_policy.py
     test_gate.py  test_accounts.py  test_quarantine.py  test_sandbox.py
     test_attacks.py  test_integration.py  test_rls.py  test_vault.py
-    test_access.py
+    test_access.py  test_byok_provider.py
+  demo/
+    byok_demo.py  byok_provider.py  openrouter_provider.py
+    mock_provider_server.py  MATRIKS_BYOK.md  LAPORAN_DEMO.md  NOTES.md
+    mock_logs/  data/
   infra/
     setup_db.sql
   requirements.txt  pytest.ini  README.md  CONTRACTS.md  STATUS.md
+  NOTICE.md  nanobot-INVENTORY.md
 ```
 
 ## Database (Postgres)
 
 - Server Postgres lokal. Test DB `puspa_test`. DSN dari env `PUSPA_TEST_DSN`, default `dbname=puspa_test user=root host=/var/run/postgresql` (peer auth, tanpa password).
 - Peran `root` dibuat dengan LOGIN; DB `puspa_test` milik `root`.
-- Semua tabel aplikasi punya `user_id` (kecuali `kejadian` yang punya `agen_id` + `tugas_id`; isolasi pengguna di `kejadian` lewat `agen_id` yang terikat ke `user_id` pemilik agen — catat pemetaan ini di ledger.py).
+- Semua tabel aplikasi punya kolom `user_id`, kecuali `pengguna` (PK-nya
+  `id`, tanpa kolom `user_id`) dan `kejadian` (memakai `agen_id` +
+  `tugas_id`; isolasi pengguna di `kejadian` lewat `agen_id` yang terikat
+  ke `user_id` pemilik agen — catat pemetaan ini di ledger.py).
 
 ## Buku Kerja — `puspa/ledger` (definisi 2.3)
 
@@ -55,7 +63,7 @@ build/fase-0/
 - Izin DB: peran aplikasi hanya INSERT + SELECT pada `kejadian`. Tanpa UPDATE/DELETE (REVOKE).
 - API:
   - `Ledger(dsn)`; `create_schema()` — menjalankan `schema.sql` (CREATE TABLE IF NOT EXISTS + REVOKE).
-  - `append_event(*, tugas_id, agen_id, sub_agen_id=None, jenis, isi: dict, id_induk=None) -> dict` — validasi `jenis`; `hash_sebelumnya` = hash kejadian sebelumnya dalam `tugas_id` yang sama (urut `id`), atau string `"GENESIS"` untuk kejadian pertama; `hash = sha256(canonical_json({tugas_id, agen_id, sub_agen_id, jenis, isi, id_induk, hash_sebelumnya, waktu_iso}))`; `waktu` dari DB (`now()`), dibaca kembali setelah insert.
+  - `append_event(*, tugas_id, agen_id, sub_agen_id=None, jenis, isi: dict, id_induk=None) -> dict` — validasi `jenis`; `hash_sebelumnya` = hash kejadian sebelumnya dalam `tugas_id` yang sama (urut `(waktu, id)`), atau string `"GENESIS"` untuk kejadian pertama; `hash = sha256(canonical_json({tugas_id, agen_id, sub_agen_id, jenis, isi, id_induk, hash_sebelumnya, waktu_iso}))`; `waktu` dari DB (`now()`), dibaca kembali setelah insert.
   - `verify_chain(tugas_id) -> (bool, list[str])` — hitung ulang hash tiap kejadian berurutan; kembalikan (True, []) atau (False, [id kejadian yang putus]).
   - `events(tugas_id, jenis=None) -> list[dict]`.
 - Tombstone (keputusan yang dicatat): hapus tugas TIDAK memakai UPDATE. Hapus = append `tugas_dihentikan` dengan `isi={"dihapus": true, ...}`; proyeksi menyembunyikan tugas itu. Alasan: append-only adalah invarian yang lebih kuat daripada "isi diganti" di definisi 2.3; kalau Nero tidak setuju, ini pertanyaan untuknya (lihat STATUS.md).
@@ -105,9 +113,9 @@ build/fase-0/
 ## Akses lintas pengguna — `puspa/accounts/access.py` (definisi 2.6, jalur serangan ke-8)
 
 - `require_owner(requesting_user_id, owner_user_id)` — SATU-SATUNYA tempat pemeriksaan kepemilikan; setiap API baca WAJIB memanggilnya SEBELUM query isi / dekripsi. Fail-closed: tolak (`AccessDeniedError`) kalau salah satu id None/kosong/bukan-string, atau keduanya berbeda. TIDAK menyentuh database.
-- Pembaca bermilik (pola sama: tentukan pemilik -> `require_owner` -> baru baca): `read_vault_entry(requesting_user_id, owner_user_id, name)` (ditolak SEBELUM dekripsi; pemilik benar + nama tidak ada -> `KeyError`); `resolve_session_as(requesting_user_id, token)` (token itu sendiri kredensial kepemilikan; memakai `owner_of_token` tanpa efek samping; token tidak dikenal/dicabut -> `SessionError`); `read_ledger_event(requesting_user_id, event_id)` (cek keberadaan dulu -> pemilik dari registry -> `require_owner` -> baru baca isi; agen tak terdaftar -> `AccessDeniedError`); `read_ledger_events_for_task(requesting_user_id, tugas_id)` (semua agen di tugas dicek dulu; satu saja milik orang lain -> seluruh tugas ditolak).
+- Fungsi baca bermilik (scoped readers) (pola sama: tentukan pemilik -> `require_owner` -> baru baca): `read_vault_entry(requesting_user_id, owner_user_id, name)` (ditolak SEBELUM dekripsi; pemilik benar + nama tidak ada -> `KeyError`); `resolve_session_as(requesting_user_id, token)` (token itu sendiri kredensial kepemilikan; memakai `owner_of_token` tanpa efek samping; token tidak dikenal/dicabut -> `SessionError`); `read_ledger_event(requesting_user_id, event_id)` (cek keberadaan dulu -> pemilik dari registry -> `require_owner` -> baru baca isi; agen tak terdaftar -> `AccessDeniedError`); `read_ledger_events_for_task(requesting_user_id, tugas_id)` (semua agen di tugas dicek dulu; satu saja milik orang lain -> seluruh tugas ditolak).
 - Registry agen (`schema_agen.sql`, tabel `agen`: `agen_id TEXT PK`, `user_id UUID FK -> pengguna(id) ON DELETE CASCADE`): `create_agent_schema()`, `register_agent(agen_id, user_id)` (idempotent ke pemilik sama; ke pemilik lain -> `AccessDeniedError`), `owner_of(agen_id)` (None kalau belum terdaftar = ditolak fail-closed). Tabel `agen` dibuat sesuai kebutuhan oleh `create_agent_schema()`, bukan oleh `infra/setup_db.sql`.
-- Alur/modul BELUM punya pembaca bermilik (tabelnya baru fase 4): saat tabelnya ada, pakai `require_owner` yang sama dengan `owner_user_id` dari baris alur/modul itu.
+- Alur/modul BELUM punya fungsi baca bermilik (tabelnya baru fase 4): saat tabelnya ada, pakai `require_owner` yang sama dengan `owner_user_id` dari baris alur/modul itu.
 - Uji: `tests/test_access.py` (23 tes) + 3 tes j8 di `tests/test_attacks.py` (total 26 tes jalur 8).
 
 ## Pembaca terkarantina + injection — `puspa/quarantine` (definisi 2.6)

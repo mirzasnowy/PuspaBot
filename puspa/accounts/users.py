@@ -22,7 +22,7 @@ class DuplicateEmailError(Exception):
     """Email sudah terdaftar."""
 
 
-_HASHER = PasswordHasher(time_cost=2, memory_cost=65536, parallelism=1)
+_PASSWORD_HASHER = PasswordHasher(time_cost=2, memory_cost=65536, parallelism=1)
 
 
 def resolve_dsn(dsn=None):
@@ -50,8 +50,8 @@ def create_user(email, password, dsn=None):
     if not email_n:
         raise ValueError("email kosong")
     if not password:
-        raise ValueError("password kosong")
-    password_hash = _HASHER.hash(password)
+        raise ValueError("kata sandi kosong")
+    password_hash = _PASSWORD_HASHER.hash(password)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             try:
@@ -85,7 +85,7 @@ def authenticate(email, password, dsn=None):
         raise AuthError("email atau password salah")
     user_id, password_hash = row
     try:
-        _HASHER.verify(password_hash, password)
+        _PASSWORD_HASHER.verify(password_hash, password)
     except (VerifyMismatchError, VerificationError, InvalidHash):
         raise AuthError("email atau password salah")
     return str(user_id)
