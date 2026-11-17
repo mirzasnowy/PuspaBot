@@ -72,6 +72,6 @@ def test_report_wrong_menurunkan_skor_and_dicatat_ledger(make_user, test_dsn, le
     assert reliability.skor_sumber("Shopee", "phone", dsn=test_dsn)["persen_verified"] == 98.0
     items = report.items_laporan("bukti-1", dsn=test_dsn)
     assert len(items) == 1 and items[0]["reason"] == "harga salah"
-    event = ledger.events("tugas-lapor-1", event_type="false_reports")
+    event = ledger.events("tugas-lapor-1", event_type="false_report")
     assert len(event) == 1
     assert event[0]["content"]["evidence_id"] == "bukti-1"

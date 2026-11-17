@@ -36,7 +36,7 @@ def metrik_workflow(dsn=None) -> dict:
             jalan = {r["status"]: int(r["n"]) for r in cur.fetchall()}
             cur.execute(
                 "SELECT block, COUNT(*) AS n FROM block_requests"
-                " GROUP BY blok ORDER BY n DESC")
+                " GROUP BY block ORDER BY n DESC")
             permintaan = [(r["block"], int(r["n"])) for r in cur.fetchall()]
     total_jalan = sum(jalan.values())
     completed_at = jalan.get("completed", 0)

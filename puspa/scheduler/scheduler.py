@@ -90,7 +90,7 @@ def items_trigger_due_date(dsn=None, sekarang: datetime | None = None) -> list[P
             rows = cur.fetchall()
         conn.commit()
     return [Pemicu(id=r["id"], user_id=str(r["user_id"]), event_type=r["type"],
-                   schedule=r["schedule"] or "", workflow=r["workflows"] or "",
+                   schedule=r["schedule"] or "", workflow=r["workflow"] or "",
                    next_trigger_at=r["next_trigger_at"], active=r["active"])
             for r in rows]
 
@@ -156,7 +156,7 @@ def jalankan_yang_terlewat(*, sink=None, dsn=None,
     result = []
     for r in rows:
         trigger = Pemicu(id=r["id"], user_id=str(r["user_id"]), event_type=r["type"],
-                        schedule=r["schedule"] or "", workflow=r["workflows"] or "",
+                        schedule=r["schedule"] or "", workflow=r["workflow"] or "",
                         next_trigger_at=r["next_trigger_at"], active=r["active"])
         jalan = jalan_trigger(trigger, sink=sink, terlewat=True, dsn=dsn, sekarang=sekarang)
         if jalan is not None:

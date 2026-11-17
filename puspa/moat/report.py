@@ -46,12 +46,12 @@ def report_wrong(*, evidence_id: str, user_id: str, reason: str = "",
             if sumber:
                 cur.execute(
                     "INSERT INTO source_readings (user_id, sumber, category, vonis)"
-                    " VALUES (%s, %s, %s, 'Tidak bisa dipastikan')",
+                    " VALUES (%s, %s, %s, 'Cannot be determined')",
                     (user_id, sumber, category))
         conn.commit()
     if ledger is not None:
         ledger.append_event(task_id=task_id, agent_id=agent_id,
-                            event_type="false_reports",
+                            event_type="false_report",
                             content={"evidence_id": evidence_id, "reason": reason})
     return {"laporan_id": laporan_id, "reread_requested": True}
 

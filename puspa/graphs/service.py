@@ -117,7 +117,7 @@ def record_use_ulang(*, prosedur_id: str, user_id: str, agent_id: str,
                 " FROM procedure_uses WHERE prosedur_id = %s", (prosedur_id,))
             row = cur.fetchone()
         conn.commit()
-    return {"pemakaian_to": row["n"], "agent_berbeda": row["agents"]}
+    return {"pemakaian_to": row["n"], "agent_berbeda": row["agent"]}
 
 
 def jalankan_prosedur(prosedur: dict, *, jalankan, agent_id: str,

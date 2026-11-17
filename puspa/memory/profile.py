@@ -133,7 +133,7 @@ def list_facts(user_id, key=None, status=None, include_history=False, dsn=None):
                 query += " AND status = %s"
                 params.append(status)
             elif not include_history:
-                query += " AND status IN ('berlaku', 'usulan')"
+                query += " AND status IN ('active', 'proposed')"
             query += " ORDER BY created_at ASC"
             cur.execute(query, params)
             return [_row_to_fact(r) for r in cur.fetchall()]
@@ -154,7 +154,7 @@ def confirm_proposal(fact_id, user_id, dsn=None):
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM profile_facts WHERE id = %s AND user_id = %s "
-                "AND status = 'usulan'",
+                "AND status = 'proposed'",
                 (fact_id, user_id),
             )
             row = cur.fetchone()

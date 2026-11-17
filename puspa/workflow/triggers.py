@@ -39,8 +39,8 @@ def validasi_trigger(trigger: dict) -> list[str]:
     if event_type == "schedule":
         mode = trigger.get("mode")
         if mode == "date":
-            date = trigger.get("date")
-            if not isinstance(date, int) or not 1 <= date <= 31:
+            day = trigger.get("date")
+            if not isinstance(day, int) or not 1 <= day <= 31:
                 masalah.append("pemicu jadwal tanggal: 'tanggal' harus 1-31")
         elif mode == "day":
             if trigger.get("day") not in HARI:
@@ -98,12 +98,12 @@ def next_trigger_at(trigger: dict, sekarang: datetime | None = None) -> datetime
             calon += timedelta(days=7)
         return calon
     # mode tanggal: tanggal yang sama tiap bulan.
-    date = int(trigger["date"])
+    day = int(trigger["date"])
     tahun, month = sekarang.year, sekarang.month
     for _ in range(2):  # bulan ini, kalau lewat bulan depan
         try:
             calon = datetime.combine(
-                date(tahun, month, date), hour, tzinfo=timezone.utc)
+                date(tahun, month, day), hour, tzinfo=timezone.utc)
         except ValueError:
             # tanggal 31 di bulan 30 hari: geser ke akhir bulan.
             if month == 12:

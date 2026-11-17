@@ -145,7 +145,7 @@ def list_summaries(user_id, dsn=None):
                     "agent_id": str(r["agent_id"]) if r["agent_id"] else None,
                     "period_start": r["period_start"],
                     "period_end": r["period_end"],
-                    "summaries": r["summaries"],
+                    "summary": r["summary"],
                     "event_ids": [str(k) for k in (r["event_ids"] or [])],
                     "created_at": r["created_at"],
                 }

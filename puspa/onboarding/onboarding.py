@@ -207,8 +207,8 @@ def run_first_task(user_id, event_type, target, dsn=None, ledger=None, agent_id=
             cur.execute(
                 "UPDATE onboarding SET first_task = %s, "
                 "first_result_verified = false, current_step = 4, "
-                "selesai = now(), duration_seconds = "
-                "EXTRACT(EPOCH FROM (now() - dimulai)) "
+                "completed_at = now(), duration_seconds = "
+                "EXTRACT(EPOCH FROM (now() - started_at)) "
                 "WHERE user_id = %s RETURNING *",
                 (f"{event_type}:{target}", user_id),
             )

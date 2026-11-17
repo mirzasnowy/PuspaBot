@@ -1,10 +1,23 @@
 """Tes metrik moat gerbang 8 (§3.6) + pustaka alur (§3.8 revisi 7)."""
 
 import psycopg
+import pytest
 
 from puspa.graphs import service as graf
 from puspa.graphs.identity import add_product, tautkan_listing
 from puspa.moat import library, metrics
+
+
+@pytest.fixture
+def agent_kedua(test_dsn):
+    """Local override of the shared fixture: a factory that creates a
+    second agent for a given user. (The shared conftest fixture calls
+    create_agent("agen-kedua") with no user_id/name, but create_agent's
+    signature is (user_id, name, ...), so it errors at setup. Tests
+    here call agent_kedua(user_id) and use the returned agent_id.)"""
+    from puspa.runtime.agents import create_agent
+
+    return lambda user_id: create_agent(user_id, "agen-kedua", dsn=test_dsn)
 
 
 def test_cakupan_pencocokan_automatic(make_user, test_dsn):
@@ -85,7 +98,7 @@ def test_keandalan_all_sumber_and_ukur_all(make_user, test_dsn):
         conn.commit()
     result = metrics.keandalan_all_sumber(dsn=test_dsn)
     assert result["status"] == "passed"
-    assert "Shopee x HP" in result["sumber"]
+    assert "Shopee x phone" in result["sumber"]
     semua = metrics.ukur_all(user["user_id"], dsn=test_dsn)
     # Metrik alur aktif Fase 4 TIDAK diklaim di Fase 3.
     assert semua["workflow_active_user_test"]["status"] == "tertunda"

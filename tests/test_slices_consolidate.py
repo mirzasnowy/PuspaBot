@@ -81,7 +81,7 @@ def test_konsolidasi_meringkas_and_menunjuk_event_source(make_user, test_dsn, le
     summary = consolidate.list_summaries(u["user_id"], dsn=test_dsn)
     assert len(summary) == 1
     assert set(summary[0]["event_ids"]) == {str(ev1["id"]), str(ev2["id"])}
-    assert "check_pln" in summary[0]["summaries"]
+    assert "check_pln" in summary[0]["summary"]
     procs = procedural.list_procedures(u["user_id"], dsn=test_dsn)
     assert len(procs) == 1 and procs[0]["status"] == "trial"
 

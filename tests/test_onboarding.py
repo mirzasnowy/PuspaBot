@@ -31,7 +31,7 @@ def test_onboarding_4_step_end_to_end(make_user, test_dsn, ledger):
     assert s2["notif_terkirim"] is False
     assert len(notifier.trial) == 1
     s3 = complete_step3(u["user_id"], connector="nanti", dsn=test_dsn)
-    assert s3["current_step"] == 3 and s3["connectors"] == "nanti"
+    assert s3["current_step"] == 3 and s3["connector"] == "nanti"
     result = run_first_task(
         u["user_id"], "compare_prices", "Asus Vivobook 14",
         dsn=test_dsn, ledger=ledger, agent_id=u["agent_id"],

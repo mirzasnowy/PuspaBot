@@ -42,7 +42,7 @@ def skor_sumber(sumber: str, category: str = "", dsn=None) -> dict:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT vonis, created_at FROM source_readings"
-                " WHERE sumber = %s AND kategori = %s"
+                " WHERE sumber = %s AND category = %s"
                 " ORDER BY created_at DESC LIMIT 50",
                 (sumber, category))
             rows = cur.fetchall()

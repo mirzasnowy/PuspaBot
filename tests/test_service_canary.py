@@ -8,6 +8,18 @@ from puspa.graphs import service as graf
 LANGKAH = [{"step": "open_situs_resmi"}, {"step": "read_amount"}]
 
 
+@pytest.fixture
+def agent_kedua(test_dsn):
+    """Local override of the shared fixture: a factory that creates a
+    second agent for a given user. (The shared conftest fixture calls
+    create_agent("agen-kedua") with no user_id/name, but create_agent's
+    signature is (user_id, name, ...), so it errors at setup. Tests
+    here call agent_kedua(user_id) and use the returned agent_id.)"""
+    from puspa.runtime.agents import create_agent
+
+    return lambda user_id: create_agent(user_id, "agen-kedua", dsn=test_dsn)
+
+
 def _create_prosedur(user, agent_id, test_dsn, service="PLN"):
     return graf.tulis_prosedur(user_id=user["user_id"], service=service,
                                step=LANGKAH, agent_id=agent_id, dsn=test_dsn)
@@ -131,7 +143,7 @@ def test_pattern_subagen_disimpan_di_graf_and_dibaca_agent_lain(make_user, agent
     agen2 = agent_kedua(user["user_id"])
     pattern = graf.save_pattern_subagen(user_id=user["user_id"], name="compare_prices",
                                     agent_id=user["agent_id"], dsn=test_dsn)
-    assert pattern["service"] == "pola:compare_price"
+    assert pattern["service"] == "pola:compare_prices"
     assert [step["step"] for step in pattern["step"]] == [
         "pembaca_tokopedia", "pembaca_shopee", "pembaca_blibli", "pemeriksa_read_ulang"]
     # Agen kedua membaca pola dari graf tanpa diajari ulang.
