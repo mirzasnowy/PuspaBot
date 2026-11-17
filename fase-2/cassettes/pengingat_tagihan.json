@@ -1,0 +1,14 @@
+{
+  "tugas_id": "tugas-acuan-pengingat_tagihan",
+  "nama": "pengingat_tagihan",
+  "rekaman": [
+    {
+      "tool": "buat_pemicu",
+      "keluaran": {
+        "jenis": "pemicu",
+        "nilai": 1,
+        "jadwal": "harian 07:00"
+      }
+    }
+  ]
+}

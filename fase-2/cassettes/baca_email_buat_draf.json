@@ -1,0 +1,32 @@
+{
+  "tugas_id": "tugas-acuan-baca_email_buat_draf",
+  "nama": "baca_email_buat_draf",
+  "rekaman": [
+    {
+      "tool": "gmail_cari",
+      "keluaran": {
+        "jenis": "email",
+        "jumlah": 1,
+        "id": [
+          "m-uji-1"
+        ]
+      }
+    },
+    {
+      "tool": "gmail_baca",
+      "keluaran": {
+        "jenis": "email",
+        "nilai": 1,
+        "teks": "[DATA: Halo, tolong kirim laporan minggu ini.]"
+      }
+    },
+    {
+      "tool": "gmail_buat_draf",
+      "keluaran": {
+        "jenis": "draf",
+        "nilai": 1,
+        "id": "draf-uji-1"
+      }
+    }
+  ]
+}

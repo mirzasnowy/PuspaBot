@@ -1,0 +1,14 @@
+{
+  "tugas_id": "tugas-acuan-ingat_preferensi_kemarin",
+  "nama": "ingat_preferensi_kemarin",
+  "rekaman": [
+    {
+      "tool": "baca_memori",
+      "keluaran": {
+        "jenis": "fakta",
+        "nilai": 1,
+        "teks": "User suka jawaban singkat, bahasa santai."
+      }
+    }
+  ]
+}

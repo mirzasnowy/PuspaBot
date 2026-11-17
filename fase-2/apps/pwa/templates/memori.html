@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block isi %}
+<h1>Memori</h1>
+<h2>Profil</h2>
+{% for f in profil %}
+<div class="kartu">{{ f }}</div>
+{% else %}
+<p class="pesan-sub">Belum ada fakta profil. Puspa belajar dari percakapanmu.</p>
+{% endfor %}
+<h2>Usulan</h2>
+<p class="pesan-sub">Fakta yang disimpulkan agen menunggu konfirmasimu di sini (fase 1: Usulan).</p>
+<h2>Ekspor dan hapus</h2>
+<p class="pesan-sub">Ekspor penuh dan hapus akun tersedia lewat jalur Fase 1 (puspa.consent.account). Hapus akun menghapus memori, alur, modul, kaset, dan blob; rantai hash Buku Kerja tetap utuh lewat tombstone.</p>
+{% endblock %}

@@ -1,0 +1,24 @@
+{
+  "tugas_id": "tugas-acuan-cari_file_drive_ringkas",
+  "nama": "cari_file_drive_ringkas",
+  "rekaman": [
+    {
+      "tool": "drive_cari",
+      "keluaran": {
+        "jenis": "file",
+        "jumlah": 1,
+        "nama": [
+          "nota-uji.pdf"
+        ]
+      }
+    },
+    {
+      "tool": "drive_baca",
+      "keluaran": {
+        "jenis": "ringkasan",
+        "nilai": 1,
+        "teks": "[DATA: Nota uji, total Rp132.500.]"
+      }
+    }
+  ]
+}
