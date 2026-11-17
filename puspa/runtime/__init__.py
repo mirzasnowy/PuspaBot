@@ -33,9 +33,9 @@ import psycopg
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
-TABLES_FASE2 = (
-    "agent_meta", "tasks", "handoffs", "evidence", "triggers", "trigger_jalan",
-    "connector_agent", "cassettes", "push_subscriptions", "heartbeat_sistem",
+TABLES = (
+    "agent_meta", "tasks", "handoffs", "evidence", "triggers", "trigger_runs",
+    "agent_connectors", "cassettes", "push_subscriptions", "system_heartbeats",
 )
 
 
@@ -60,5 +60,5 @@ def reset_tables(dsn: str | None = None) -> None:
     """Kosongkan semua tabel Fase 2 (hanya untuk tes)."""
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
     with psycopg.connect(dsn) as conn:
-        conn.execute("TRUNCATE " + ", ".join(TABLES_FASE2) + " CASCADE")
+        conn.execute("TRUNCATE " + ", ".join(TABLES) + " CASCADE")
         conn.commit()

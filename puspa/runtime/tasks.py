@@ -91,16 +91,16 @@ class TaskRunner:
                  budget: BudgetTracker | None = None) -> None:
         # sink(jenis, isi): pencatat kejadian; default buang ke memori.
         self._event: list[dict] = []
-        self.sink = sink or (lambda jenis, content: self._event.append({"type": jenis, "content": content}))
+        self.sink = sink or (lambda event_type, content: self._event.append({"type": event_type, "content": content}))
         # pelaksana(nama_langkah, masukan) -> dict hasil ber-skema.
         self.pelaksana = pelaksana or (lambda name, masukan: {"type": masukan.get("type", "result"), "value": None})
         # pemeriksa(hasil) -> (lolos: bool, alasan: str).
         self.pemeriksa = pemeriksa or (lambda result: (True, ""))
         self.budget = budget or BudgetTracker()
 
-    def _record(self, jenis: str, content: dict) -> None:
+    def _record(self, event_type: str, content: dict) -> None:
         try:
-            self.sink(jenis, content)
+            self.sink(event_type, content)
         except Exception:
             # Penulisan ledger best-effort (keputusan Fase 0 no. 9):
             # Postgres mati tidak boleh menjatuhkan turn.
@@ -227,8 +227,8 @@ def tombstone_task(task_id: str, user_id: str, agent_id: str, *, dsn=None,
         from puspa.ledger import Ledger
 
         ledger = Ledger(dsn)
-        sink = lambda jenis, content: ledger.append_event(
-            task_id=task_id, agent_id=agent_id, jenis=jenis, content=content)
+        sink = lambda event_type, content: ledger.append_event(
+            task_id=task_id, agent_id=agent_id, event_type=event_type, content=content)
     sink("task_stopped", {"task_id": task_id, "deleted": True,
                               "user_id": user_id})
     cassette = delete_cassette_task(task_id, cassette_dir=cassette_dir, dsn=dsn)

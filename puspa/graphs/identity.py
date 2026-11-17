@@ -233,7 +233,7 @@ def price_terkini(product_id: str, dsn=None) -> list[dict]:
                      "created_at": r["created_at"]} for r in cur.fetchall()]
 
 
-def riwayat_price(product_id: str, *, day: int = 30, dsn=None) -> list[dict]:
+def history_price(product_id: str, *, day: int = 30, dsn=None) -> list[dict]:
     """Riwayat harga 30 hari (API baca §3.2)."""
     sejak = datetime.now(timezone.utc) - timedelta(days=day)
     with _connect(dsn) as conn:

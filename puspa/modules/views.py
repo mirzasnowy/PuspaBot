@@ -55,15 +55,15 @@ def render_grafik_garis(title: str, value: list) -> str:
 def render_tampilan(tampilan: dict, data: dict) -> str:
     """Render satu tampilan. `data`: {nama_tabel: [baris, ...]} — data
     contoh (pratinjau) atau data nyata modul."""
-    jenis = tampilan.get("type")
+    event_type = tampilan.get("type")
     title = tampilan.get("title", "")
-    if jenis not in KOMPONEN:
-        raise ValueError(f"komponen {jenis!r} tidak diizinkan")
-    if jenis == "card":
+    if event_type not in KOMPONEN:
+        raise ValueError(f"komponen {event_type!r} tidak diizinkan")
+    if event_type == "card":
         text = tampilan.get("text", "")
         return (f'<div class="kartu"><h4>{_esc(title)}</h4>'
                 f'<p>{_esc(text)}</p></div>')
-    if jenis == "number":
+    if event_type == "number":
         table = tampilan.get("table", "")
         kolom = tampilan.get("kolom", "")
         rows = data.get(table, [])
@@ -73,7 +73,7 @@ def render_tampilan(tampilan: dict, data: dict) -> str:
         value = _rupiah(total) if label == "Rupiah" else f"{total:,.0f}".replace(",", ".")
         return (f'<div class="angka"><h4>{_esc(title)}</h4>'
                 f'<p class="nilai">{value}</p></div>')
-    if jenis == "table":
+    if event_type == "table":
         table = tampilan.get("table", "")
         kolom = tampilan.get("kolom", []) or []
         rows = data.get(table, [])
@@ -85,13 +85,13 @@ def render_tampilan(tampilan: dict, data: dict) -> str:
         return (f'<div class="tabel"><h4>{_esc(title)}</h4>'
                 f'<table><thead><tr>{kepala}</tr></thead>'
                 f'<tbody>{content}</tbody></table></div>')
-    if jenis == "items":
+    if event_type == "items":
         table = tampilan.get("table", "")
         kolom = tampilan.get("kolom", "")
         rows = data.get(table, [])
         item = "".join(f"<li>{_esc(b.get(kolom, ''))}</li>" for b in rows)
         return f'<div class="daftar"><h4>{_esc(title)}</h4><ul>{item}</ul></div>'
-    if jenis == "form":
+    if event_type == "form":
         kolom = tampilan.get("kolom", []) or []
         field = ""
         for k in kolom:
@@ -99,7 +99,7 @@ def render_tampilan(tampilan: dict, data: dict) -> str:
                       f'<input name="{_esc(k)}" type="text"></label>')
         return (f'<div class="form"><h4>{_esc(title)}</h4>'
                 f'<form>{field}<button type="submit">Simpan</button></form></div>')
-    if jenis == "grafik_garis":
+    if event_type == "grafik_garis":
         table = tampilan.get("table", "")
         kolom = tampilan.get("kolom", "")
         rows = data.get(table, [])

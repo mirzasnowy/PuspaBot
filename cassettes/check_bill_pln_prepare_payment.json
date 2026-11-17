@@ -5,7 +5,7 @@
     {
       "tool": "read_bill",
       "output": {
-        "jenis": "bill",
+        "event_type": "bill",
         "value": 132500,
         "penyedia": "PLN",
         "due_date": "20 Nov 2026"
@@ -14,7 +14,7 @@
     {
       "tool": "prepare_payment",
       "output": {
-        "jenis": "pay",
+        "event_type": "pay",
         "value": 132500,
         "status": "pending_approval"
       }

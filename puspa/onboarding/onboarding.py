@@ -42,7 +42,7 @@ TEMPLATE_WORKFLOW_BAWAAN = (
     "Rekap tagihan minggu ini",
 )
 
-JENIS_TASK_PERTAMA = ("compare_prices", "check_bill")
+FIRST_TASK_TYPES = ("compare_prices", "check_bill")
 
 
 class StubNotifier:
@@ -171,7 +171,7 @@ def complete_step3(user_id, connector="nanti", dsn=None):
     return _row(row)
 
 
-def run_first_task(user_id, jenis, target, dsn=None, ledger=None, agent_id=None):
+def run_first_task(user_id, event_type, target, dsn=None, ledger=None, agent_id=None):
     """Langkah 4: tugas pertama terbimbing — STUB TERUKUR.
 
     Memanggil jalur nyata sebisanya: validasi, tulis Buku Kerja
@@ -179,8 +179,8 @@ def run_first_task(user_id, jenis, target, dsn=None, ledger=None, agent_id=None)
     Hasilnya SELALU `terbukti=False` dengan alasan: wedge-nya Fase 3.
     Tidak ada harga/tagihan yang dikarang.
     """
-    if jenis not in JENIS_TASK_PERTAMA:
-        raise ValueError(f"jenis tugas pertama tidak dikenal: {jenis!r}")
+    if event_type not in FIRST_TASK_TYPES:
+        raise ValueError(f"jenis tugas pertama tidak dikenal: {event_type!r}")
     if not target or not isinstance(target, str):
         raise ValueError("target harus string tak kosong")
     mulai = time.monotonic()
@@ -191,13 +191,13 @@ def run_first_task(user_id, jenis, target, dsn=None, ledger=None, agent_id=None)
     if ledger is not None and agent_id is not None:
         for jenis_event in ("task_created", "task_completed"):
             ev = ledger.append_event(
-                task_id=task_id, agent_id=agent_id, jenis=jenis_event,
-                content={"tasks": jenis, "target": target, "stub": True},
+                task_id=task_id, agent_id=agent_id, event_type=jenis_event,
+                content={"tasks": event_type, "target": target, "stub": True},
             )
             event_ids.append(str(ev["id"]))
     episodic.record_episode(
         user_id,
-        f"tugas pertama ({jenis}): {target} — stub, menunggu wedge Fase 3",
+        f"tugas pertama ({event_type}): {target} — stub, menunggu wedge Fase 3",
         "task_completed", agent_id=agent_id, task_id=task_id,
         event_id=event_ids[-1] if event_ids else None, dsn=dsn,
     )
@@ -210,7 +210,7 @@ def run_first_task(user_id, jenis, target, dsn=None, ledger=None, agent_id=None)
                 "selesai = now(), duration_seconds = "
                 "EXTRACT(EPOCH FROM (now() - dimulai)) "
                 "WHERE user_id = %s RETURNING *",
-                (f"{jenis}:{target}", user_id),
+                (f"{event_type}:{target}", user_id),
             )
             row = cur.fetchone()
             if row is None:
@@ -220,7 +220,7 @@ def run_first_task(user_id, jenis, target, dsn=None, ledger=None, agent_id=None)
     return {
         "status": status,
         "task_id": task_id,
-        "type": jenis,
+        "type": event_type,
         "target": target,
         "terbukti": False,
         "reason": (

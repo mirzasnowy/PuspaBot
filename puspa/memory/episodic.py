@@ -23,12 +23,12 @@ def _vector_literal(vector):
     return "[" + ",".join(f"{v:.6f}" for v in vector) + "]"
 
 
-def record_episode(user_id, content, jenis, agent_id=None, task_id=None,
+def record_episode(user_id, content, event_type, agent_id=None, task_id=None,
                    event_id=None, embedder=None, dsn=None):
     """Tulis satu episode; kembalikan dict episode (tanpa vektor)."""
     if not isinstance(content, str) or content == "":
         raise ValueError("isi harus string tak kosong")
-    if not isinstance(jenis, str) or jenis == "":
+    if not isinstance(event_type, str) or event_type == "":
         raise ValueError("jenis harus string tak kosong")
     embedder = embedder or HashEmbedding()
     vector = embedder.embed(content)
@@ -39,7 +39,7 @@ def record_episode(user_id, content, jenis, agent_id=None, task_id=None,
                 "embedding, event_id) VALUES (%s, %s, %s, %s, %s, %s::vector, %s) "
                 "RETURNING id, user_id, agent_id, task_id, type, content, "
                 "event_id, created_at",
-                (user_id, agent_id, task_id, jenis, content,
+                (user_id, agent_id, task_id, event_type, content,
                  _vector_literal(vector), event_id),
             )
             row = cur.fetchone()

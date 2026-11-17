@@ -14,7 +14,7 @@ Tidak ada agen bekerja saat ini.
 {% endfor %}
 <h2>Log handoff live</h2>
 {% for h in handoff %}
-<div class="kartu">{{ h.jenis }} - {{ (h.content or {}).get('purpose', '') }}</div>
+<div class="kartu">{{ h.event_type }} - {{ (h.content or {}).get('purpose', '') }}</div>
 {% else %}
 <p class="pesan-sub">Belum ada handoff.</p>
 {% endfor %}

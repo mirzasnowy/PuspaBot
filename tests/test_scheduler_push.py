@@ -20,7 +20,7 @@ def _sekarang():
 def test_tick_jalankan_trigger_sekali_idempotent(test_dsn, make_user):
     u = make_user()
     event = []
-    sink = lambda jenis, content: event.append({"type": jenis, "content": content})
+    sink = lambda event_type, content: event.append({"type": event_type, "content": content})
     create_trigger(u["user_id"], "jadwal", _sekarang() - timedelta(minutes=5),
                 jadwal="harian 07:00", dsn=test_dsn)
     result = tick(sink=sink, dsn=test_dsn)
@@ -33,7 +33,7 @@ def test_tick_jalankan_trigger_sekali_idempotent(test_dsn, make_user):
 def test_trigger_terlewat_dijalankan_sekali_and_dilaporkan(test_dsn, make_user):
     u = make_user()
     event = []
-    sink = lambda jenis, content: event.append({"type": jenis, "content": content})
+    sink = lambda event_type, content: event.append({"type": event_type, "content": content})
     create_trigger(u["user_id"], "jadwal", _sekarang() - timedelta(hours=3), dsn=test_dsn)
     result = jalankan_yang_terlewat(sink=sink, dsn=test_dsn)
     assert len(result) == 1 and result[0]["terlewat"] is True
@@ -52,7 +52,7 @@ def test_heartbeat_penjadal_mati_more_dari_2_minute(test_dsn):
 def test_backup_daily_terjadwal_sebagai_trigger(test_dsn, make_user):
     u = make_user()
     trigger = schedule_backup_daily(u["user_id"], dsn=test_dsn)
-    assert trigger.jenis == "backup_daily"
+    assert trigger.event_type == "backup_daily"
     assert trigger.next_trigger_at > _sekarang()
 
 

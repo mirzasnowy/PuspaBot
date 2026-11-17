@@ -251,7 +251,7 @@ def _task_dengan_agent(test_dsn, agent_id, task_id):
     ledger = Ledger(test_dsn)
     ledger.create_schema()
     ev = ledger.append_event(
-        task_id=task_id, agent_id=agent_id, jenis="user_message",
+        task_id=task_id, agent_id=agent_id, event_type="user_message",
         content={"text": f"rahasia {agent_id}"},
     )
     return ledger, ev
@@ -306,11 +306,11 @@ def test_read_ledger_events_for_task_own_own_passed(test_dsn):
     ledger = Ledger(test_dsn)
     ledger.create_schema()
     ledger.append_event(
-        task_id=task_id, agent_id="agen-A", jenis="user_message",
+        task_id=task_id, agent_id="agen-A", event_type="user_message",
         content={"text": "satu"},
     )
     ledger.append_event(
-        task_id=task_id, agent_id="agen-A", jenis="agent_message",
+        task_id=task_id, agent_id="agen-A", event_type="agent_message",
         content={"text": "dua"},
     )
     result = read_ledger_events_for_task(uid_a, task_id, dsn=test_dsn)
@@ -329,11 +329,11 @@ def test_read_ledger_events_for_task_campuran_rejected_total(test_dsn):
     ledger = Ledger(test_dsn)
     ledger.create_schema()
     ledger.append_event(
-        task_id=task_id, agent_id="agen-A", jenis="user_message",
+        task_id=task_id, agent_id="agen-A", event_type="user_message",
         content={"text": "milik A"},
     )
     ledger.append_event(
-        task_id=task_id, agent_id="agen-B", jenis="user_message",
+        task_id=task_id, agent_id="agen-B", event_type="user_message",
         content={"text": "milik B"},
     )
     with pytest.raises(AccessDeniedError):

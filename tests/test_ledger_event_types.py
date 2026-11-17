@@ -1,11 +1,11 @@
-# Tes 9 jenis kejadian baru Buku Kerja — definisi 2.3 revisi 7.
+# Tes 9 event_type kejadian baru Buku Kerja — definisi 2.3 revisi 7.
 #
-# Yang diuji: tiap jenis baru bisa di-append lewat Ledger.append_event dan
-# terbaca kembali lewat events() dengan jenis yang benar; rantai hash tetap
-# terverifikasi setelah append campuran jenis lama + baru; jenis tak dikenal
+# Yang diuji: tiap event_type baru bisa di-append lewat Ledger.append_event dan
+# terbaca kembali lewat events() dengan event_type yang benar; rantai hash tetap
+# terverifikasi setelah append campuran event_type lama + baru; event_type tak dikenal
 # tetap ditolak di Python (InvalidEventTypeError) dan di level DB (CHECK
 # constraint menolak INSERT langsung via SQL); CHECK DB juga menerima tiap
-# jenis baru lewat INSERT langsung (bukan hanya lewat Python).
+# event_type baru lewat INSERT langsung (bukan hanya lewat Python).
 #
 # DB tes: sama seperti test_ledger.py (Postgres lokal, DSN dari env
 # PUSPA_TEST_DSN atau default peer-auth). Tiap tes memakai tugas_id unik lalu
@@ -18,7 +18,7 @@ import psycopg
 import pytest
 from psycopg import errors as pg_errors
 
-from puspa.ledger import GENESIS, JENIS_EVENT, Ledger
+from puspa.ledger import EVENT_TYPES, GENESIS, Ledger
 from puspa.ledger.errors import InvalidEventTypeError
 
 DSN = os.environ.get(
@@ -26,8 +26,8 @@ DSN = os.environ.get(
 )
 AGEN = "agen-tes"
 
-#: 9 jenis baru revisi 7 (definisi 2.3, daftar harfiah).
-JENIS_NEW = [
+#: 9 event_type baru revisi 7 (definisi 2.3, daftar harfiah).
+EVENT_TYPES_NEW = [
     "workflow_proposed",
     "workflow_activated",
     "workflow_paused",
@@ -35,12 +35,12 @@ JENIS_NEW = [
     "trigger_missed",
     "module_proposed",
     "module_activated",
-    "false_reports",
-    "data_consents",
+    "false_report",
+    "data_consent",
 ]
 
-#: 22 jenis lama — harus tetap ada semua (tidak ada yang hilang/berubah).
-JENIS_OLD = [
+#: 22 event_type lama — harus tetap ada semua (tidak ada yang hilang/berubah).
+EVENT_TYPES_OLD = [
     "task_created",
     "plan_created",
     "subagent_created",
@@ -84,19 +84,19 @@ def task_id(ledger):
 
 
 def test_himpunan_tertutup_31_jenis():
-    assert len(JENIS_OLD) == 22
-    assert len(JENIS_NEW) == 9
-    assert set(JENIS_OLD).isdisjoint(JENIS_NEW)
-    assert JENIS_EVENT == set(JENIS_OLD) | set(JENIS_NEW)
-    assert len(JENIS_EVENT) == 31
+    assert len(EVENT_TYPES_OLD) == 22
+    assert len(EVENT_TYPES_NEW) == 9
+    assert set(EVENT_TYPES_OLD).isdisjoint(EVENT_TYPES_NEW)
+    assert EVENT_TYPES == set(EVENT_TYPES_OLD) | set(EVENT_TYPES_NEW)
+    assert len(EVENT_TYPES) == 31
 
 
-@pytest.mark.parametrize("type", JENIS_NEW)
-def test_append_jenis_new_and_read_kembali(ledger, task_id, jenis):
+@pytest.mark.parametrize("event_type", EVENT_TYPES_NEW)
+def test_append_jenis_new_and_read_kembali(ledger, task_id, event_type):
     ev = ledger.append_event(
-        task_id=task_id, agent_id=AGEN, jenis=jenis, content={"type": jenis}
+        task_id=task_id, agent_id=AGEN, event_type=event_type, content={"type": event_type}
     )
-    assert ev["type"] == jenis
+    assert ev["type"] == event_type
     assert ev["task_id"] == task_id
     assert ev["previous_hash"] == GENESIS  # kejadian pertama tugas ini
     assert len(ev["hash"]) == 64
@@ -104,12 +104,12 @@ def test_append_jenis_new_and_read_kembali(ledger, task_id, jenis):
     dibaca = ledger.events(task_id)
     assert len(dibaca) == 1
     assert dibaca[0] == ev
-    # Filter jenis mengembalikan kejadian yang sama.
-    assert [e["id"] for e in ledger.events(task_id, jenis=jenis)] == [ev["id"]]
+    # Filter event_type mengembalikan kejadian yang sama.
+    assert [e["id"] for e in ledger.events(task_id, event_type=event_type)] == [ev["id"]]
 
 
 def test_rantai_hash_campuran_old_and_new_tetap_utuh(ledger, task_id):
-    # Campuran jenis lama + baru dalam satu tugas, urut append.
+    # Campuran event_type lama + baru dalam satu tugas, urut append.
     urutan = [
         "task_created",
         "workflow_proposed",
@@ -120,13 +120,13 @@ def test_rantai_hash_campuran_old_and_new_tetap_utuh(ledger, task_id):
         "heartbeat",
         "trigger_missed",
         "workflow_paused",
-        "false_reports",
-        "data_consents",
+        "false_report",
+        "data_consent",
         "task_completed",
     ]
     created_at = [
         ledger.append_event(
-            task_id=task_id, agent_id=AGEN, jenis=j, content={"urutan": i}
+            task_id=task_id, agent_id=AGEN, event_type=j, content={"urutan": i}
         )
         for i, j in enumerate(urutan)
     ]
@@ -140,38 +140,38 @@ def test_rantai_hash_campuran_old_and_new_tetap_utuh(ledger, task_id):
 
 
 def test_jenis_tak_dikenal_rejected_python_and_db(ledger, task_id):
-    # Level Python: append dan filter events menolak jenis sembarang.
+    # Level Python: append dan filter events menolak event_type sembarang.
     with pytest.raises(InvalidEventTypeError):
         ledger.append_event(
-            task_id=task_id, agent_id=AGEN, jenis="jenis_ngawur", content={}
+            task_id=task_id, agent_id=AGEN, event_type="bogus_type", content={}
         )
     with pytest.raises(InvalidEventTypeError):
-        ledger.events(task_id, jenis="jenis_ngawur")
+        ledger.events(task_id, event_type="bogus_type")
     assert ledger.events(task_id) == []
 
-    # Level DB: INSERT langsung via SQL dengan jenis sembarang gagal
+    # Level DB: INSERT langsung via SQL dengan event_type sembarang gagal
     # karena CHECK constraint — walau melewati validasi Python.
     with psycopg.connect(DSN, autocommit=True) as conn:
         with pytest.raises(pg_errors.CheckViolation):
             conn.execute(
                 "INSERT INTO events "
                 "(task_id, agent_id, type, content, previous_hash, hash) "
-                "VALUES (%s, %s, 'jenis_ngawur', '{}'::jsonb, %s, %s)",
+                "VALUES (%s, %s, 'bogus_type', '{}'::jsonb, %s, %s)",
                 (task_id, AGEN, GENESIS, uuid.uuid4().hex),
             )
     assert ledger.events(task_id) == []
 
 
-@pytest.mark.parametrize("type", JENIS_NEW)
-def test_check_db_menerima_jenis_new_insert_langsung(ledger, task_id, jenis):
-    # INSERT langsung via SQL (tanpa Ledger) dengan tiap jenis baru harus
+@pytest.mark.parametrize("event_type", EVENT_TYPES_NEW)
+def test_check_db_menerima_jenis_new_insert_langsung(ledger, task_id, event_type):
+    # INSERT langsung via SQL (tanpa Ledger) dengan tiap event_type baru harus
     # lolos CHECK — membuktikan schema.sql, bukan hanya JENIS_KEJADIAN.
     with psycopg.connect(DSN, autocommit=True) as conn:
         row = conn.execute(
             "INSERT INTO events "
             "(task_id, agent_id, type, content, previous_hash, hash) "
             "VALUES (%s, %s, %s, '{}'::jsonb, %s, %s) RETURNING id, type",
-            (task_id, AGEN, jenis, GENESIS, uuid.uuid4().hex),
+            (task_id, AGEN, event_type, GENESIS, uuid.uuid4().hex),
         ).fetchone()
-    assert row[1] == jenis
-    assert [e["type"] for e in ledger.events(task_id)] == [jenis]
+    assert row[1] == event_type
+    assert [e["type"] for e in ledger.events(task_id)] == [event_type]

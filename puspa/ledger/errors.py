@@ -8,9 +8,9 @@ class LedgerError(Exception):
 class InvalidEventTypeError(LedgerError):
     """`jenis` kejadian di luar himpunan tertutup (definisi 2.3)."""
 
-    def __init__(self, jenis):
+    def __init__(self, event_type):
         super().__init__(
-            f"jenis kejadian tidak dikenal: {jenis!r} "
+            f"jenis kejadian tidak dikenal: {event_type!r} "
             "(must wrong satu dari 31 type tertutup di definisi 2.3)"
         )
-        self.jenis = jenis
+        self.event_type = event_type

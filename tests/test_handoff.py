@@ -18,7 +18,7 @@ def _kontrak(**kw):
     return HandoffContract(**dasar)
 
 
-def test_kontrak_valid_and_field_wajib():
+def test_kontrak_valid_and_field_required():
     k = _kontrak()
     assert k.timeout_seconds == 45
     assert k.idempotency_key.startswith("handoff-")

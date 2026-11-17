@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS events (
         'workflow_proposed', 'workflow_activated', 'workflow_paused',
         'trigger_fired', 'trigger_missed',
         'module_proposed', 'module_activated',
-        'false_reports', 'data_consents'
+        'false_report', 'data_consent'
     )),
     content JSONB NOT NULL DEFAULT '{}',
     parent_id UUID REFERENCES events(id),
@@ -49,7 +49,7 @@ ALTER TABLE events ADD CONSTRAINT event_jenis_check CHECK (type IN (
     'workflow_proposed', 'workflow_activated', 'workflow_paused',
     'trigger_fired', 'trigger_missed',
     'module_proposed', 'module_activated',
-    'false_reports', 'data_consents'
+    'false_report', 'data_consent'
 ));
 
 -- Izin: peran aplikasi hanya INSERT + SELECT. Tanpa UPDATE/DELETE.

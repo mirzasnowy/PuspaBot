@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
 
-JENIS_TRIGGER = ("jadwal", "due_date", "price_turun", "manual")
+TRIGGER_TYPES = ("jadwal", "due_date", "price_turun", "manual")
 # Pemicu yang sengaja ditolak di MVP (§2.12, keputusan 18).
 TRIGGER_REJECTED = ("email_login", "webhook")
 INTERVAL_MINIMAL_JAM = 1
@@ -31,12 +31,12 @@ def validasi_trigger(trigger: dict) -> list[str]:
     masalah: list[str] = []
     if not isinstance(trigger, dict):
         return ["pemicu harus objek"]
-    jenis = trigger.get("type")
-    if jenis in TRIGGER_REJECTED:
-        return [f"pemicu {jenis!r} sesudah MVP (keputusan 18) — tidak dibangun"]
-    if jenis not in JENIS_TRIGGER:
-        return [f"jenis pemicu {jenis!r} tidak dikenal"]
-    if jenis == "jadwal":
+    event_type = trigger.get("type")
+    if event_type in TRIGGER_REJECTED:
+        return [f"pemicu {event_type!r} sesudah MVP (keputusan 18) — tidak dibangun"]
+    if event_type not in TRIGGER_TYPES:
+        return [f"jenis pemicu {event_type!r} tidak dikenal"]
+    if event_type == "jadwal":
         mode = trigger.get("mode")
         if mode == "tanggal":
             tanggal = trigger.get("tanggal")
@@ -57,13 +57,13 @@ def validasi_trigger(trigger: dict) -> list[str]:
             time.fromisoformat(str(jam_mulai))
         except ValueError:
             masalah.append(f"pemicu jadwal: 'jam_mulai' {jam_mulai!r} bukan jam valid")
-    elif jenis == "due_date":
+    elif event_type == "due_date":
         day = trigger.get("day_sebelum")
         if not isinstance(day, int) or day < 0:
             masalah.append("pemicu due_date: 'day_sebelum' harus bilangan >= 0")
         if trigger.get("provider") not in ("PLN", "PDAM", "airtime", "paket data"):
             masalah.append("pemicu due_date: 'provider' harus provider MVP")
-    elif jenis == "price_turun":
+    elif event_type == "price_turun":
         if not trigger.get("product_id"):
             masalah.append("pemicu price_turun: 'product_id' wajib (dari watchlist)")
         ambang = trigger.get("price_threshold")

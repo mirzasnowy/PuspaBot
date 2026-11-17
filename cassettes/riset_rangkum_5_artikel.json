@@ -5,7 +5,7 @@
     {
       "tool": "search_artikel",
       "output": {
-        "jenis": "artikel",
+        "event_type": "artikel",
         "amount": 5,
         "title": [
           "AI agents 2026",
@@ -19,7 +19,7 @@
     {
       "tool": "read_artikel",
       "output": {
-        "jenis": "summaries",
+        "event_type": "summaries",
         "value": 5,
         "text": "Lima artikel dirangkum."
       }

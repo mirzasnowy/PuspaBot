@@ -48,11 +48,11 @@ class PuspaHook(AgentHook):
         self.agent_id = agent_id
         self._log = log
 
-    def _log_event(self, jenis: str, content: dict) -> None:
+    def _log_event(self, event_type: str, content: dict) -> None:
         if self._log is None:
             return
         try:
-            self._log(jenis, content)
+            self._log(event_type, content)
         except Exception:
             pass
 

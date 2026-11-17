@@ -30,8 +30,8 @@ def _reset_revocation():
 def stub_log():
     events = []
 
-    def log(jenis, content):
-        events.append((jenis, content))
+    def log(event_type, content):
+        events.append((event_type, content))
 
     log.events = events
     return log

@@ -5,7 +5,7 @@
     {
       "tool": "read_bill",
       "output": {
-        "jenis": "bill",
+        "event_type": "bill",
         "value": 132500,
         "penyedia": "PLN",
         "due_date": "20 Nov 2026"
@@ -14,7 +14,7 @@
     {
       "tool": "read_bill",
       "output": {
-        "jenis": "bill",
+        "event_type": "bill",
         "value": 85000,
         "penyedia": "PDAM",
         "due_date": "22 Nov 2026"

@@ -101,14 +101,14 @@ class Gate:
         self._requests: dict[str, ApprovalRequest] = {}
 
     # -- pencatatan ---------------------------------------------------
-    def _log(self, jenis: str, content: dict) -> None:
+    def _log(self, event_type: str, content: dict) -> None:
         if self.log is None:
             return
         try:
-            self.log(jenis, content)
+            self.log(event_type, content)
         except TypeError:
             # Stub pencatat yang menerima satu dict kejadian.
-            self.log({"type": jenis, "content": content})
+            self.log({"type": event_type, "content": content})
 
     def _deny(self, request, reason: str, invalidate: bool = False):
         """Catat penolakan lalu lempar GateDenied.

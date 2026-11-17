@@ -47,9 +47,9 @@ def test_gerbang12_rantai_hash_diubah_terdeteksi_3_dari_3(ledger, make_user):
     for i in range(3):
         task_id = f"tugas-rantai-{i}"
         ledger.append_event(task_id=task_id, agent_id=u["agent_id"],
-                            jenis="task_created", content={"purpose": "test"})
+                            event_type="task_created", content={"purpose": "test"})
         ledger.append_event(task_id=task_id, agent_id=u["agent_id"],
-                            jenis="task_completed", content={})
+                            event_type="task_completed", content={})
         ok_sebelum, _ = ledger.verify_chain(task_id)
         assert ok_sebelum is True
         # Ubah diam-diam satu hash (sebagai pemilik DB; nilai unik per tugas).

@@ -227,8 +227,8 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
         from puspa.runtime.tasks import Task, TaskRunner, create_task_id
 
         agent_id = ensure_puspa_agent(user_id, dsn=app.state.dsn)
-        runner = TaskRunner(sink=lambda jenis, content: app.state.event.append(
-            {"type": jenis, "task_id": content.get("task_id", ""), "agent_id": agent_id,
+        runner = TaskRunner(sink=lambda event_type, content: app.state.event.append(
+            {"type": event_type, "task_id": content.get("task_id", ""), "agent_id": agent_id,
              "content": content, "created_at": time.time()}))
         task = runner.jalankan(Task(task_id=create_task_id(), user_id=user_id,
                                     agent_id=agent_id, purpose=purpose))

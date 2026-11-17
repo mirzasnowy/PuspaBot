@@ -51,7 +51,7 @@ def report_wrong(*, evidence_id: str, user_id: str, reason: str = "",
         conn.commit()
     if ledger is not None:
         ledger.append_event(task_id=task_id, agent_id=agent_id,
-                            jenis="false_reports",
+                            event_type="false_reports",
                             content={"evidence_id": evidence_id, "reason": reason})
     return {"laporan_id": laporan_id, "reread_requested": True}
 

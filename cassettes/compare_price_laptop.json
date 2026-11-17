@@ -5,7 +5,7 @@
     {
       "tool": "read_price",
       "output": {
-        "jenis": "price",
+        "event_type": "price",
         "value": 12500000,
         "store": "Tokopedia",
         "product": "Laptop X 14 inci 16GB"
@@ -14,7 +14,7 @@
     {
       "tool": "read_price",
       "output": {
-        "jenis": "price",
+        "event_type": "price",
         "value": 11999000,
         "store": "Shopee",
         "product": "Laptop X 14 inci 16GB"
@@ -23,7 +23,7 @@
     {
       "tool": "read_price",
       "output": {
-        "jenis": "price",
+        "event_type": "price",
         "value": 12499000,
         "store": "Blibli",
         "product": "Laptop X 14 inci 16GB"

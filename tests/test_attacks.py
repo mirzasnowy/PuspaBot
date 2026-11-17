@@ -65,8 +65,8 @@ def _reset_token_state():
 def stub_log():
     events = []
 
-    def log(jenis, content):
-        events.append((jenis, content))
+    def log(event_type, content):
+        events.append((event_type, content))
 
     log.events = events
     return log
@@ -404,15 +404,15 @@ def test_j4_ledger_not_membocorkan_task_lain(test_dsn):
     task_a = f"tugas-A-{uuid.uuid4().hex[:8]}"
     task_b = f"tugas-B-{uuid.uuid4().hex[:8]}"
     ledger.append_event(
-        task_id=task_a, agent_id="agen-A", jenis="user_message",
+        task_id=task_a, agent_id="agen-A", event_type="user_message",
         content={"text": "rahasia tugas A"},
     )
     ledger.append_event(
-        task_id=task_a, agent_id="agen-A", jenis="tool_called",
+        task_id=task_a, agent_id="agen-A", event_type="tool_called",
         content={"tool": "read_price"},
     )
     ledger.append_event(
-        task_id=task_b, agent_id="agen-B", jenis="user_message",
+        task_id=task_b, agent_id="agen-B", event_type="user_message",
         content={"text": "rahasia tugas B"},
     )
 
@@ -425,8 +425,8 @@ def test_j4_ledger_not_membocorkan_task_lain(test_dsn):
     assert not any("rahasia tugas A" in str(e["content"]) for e in ev_b)
     assert not any("rahasia tugas B" in str(e["content"]) for e in ev_a)
     # Filter jenis pun tidak bocor lintas tugas.
-    assert ledger.events(task_b, jenis="tool_called") == []
-    assert len(ledger.events(task_a, jenis="tool_called")) == 1
+    assert ledger.events(task_b, event_type="tool_called") == []
+    assert len(ledger.events(task_a, event_type="tool_called")) == 1
     # Tugas yang tidak ada: kosong, bukan error yang membocorkan.
     assert ledger.events(f"tugas-tidak-ada-{uuid.uuid4().hex}") == []
     ok_a, putus_a = ledger.verify_chain(task_a)
@@ -818,12 +818,12 @@ def testj8AmembacaeventledgeragentBrejected(test_dsn, _agent_schema_j8):
     ledger.create_schema()
     task_b = f"tugas-j8-B-{uuid.uuid4().hex[:8]}"
     ev_b = ledger.append_event(
-        task_id=task_b, agent_id="agen-j8-B", jenis="user_message",
+        task_id=task_b, agent_id="agen-j8-B", event_type="user_message",
         content={"text": "rahasia B"},
     )
     task_a = f"tugas-j8-A-{uuid.uuid4().hex[:8]}"
     ev_a = ledger.append_event(
-        task_id=task_a, agent_id="agen-j8-A", jenis="user_message",
+        task_id=task_a, agent_id="agen-j8-A", event_type="user_message",
         content={"text": "milik A"},
     )
     # B membaca miliknya: lolos.

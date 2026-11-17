@@ -67,7 +67,7 @@ def test_restore_to_db_bersih_and_verifikasi(make_user, test_dsn, backup_key, tm
     profile.add_fact(u["user_id"], "name", "Nero", "user_stated", dsn=test_dsn)
     task_id = "11111111-1111-1111-1111-111111111111"
     ledger.append_event(
-        task_id=task_id, agent_id=u["agent_id"], jenis="task_created",
+        task_id=task_id, agent_id=u["agent_id"], event_type="task_created",
         content={"tasks": "uji restore"},
     )
     result = create_backup(dsn=test_dsn, backup_dir=tmp_path)

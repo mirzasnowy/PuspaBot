@@ -5,7 +5,7 @@
     {
       "tool": "read_memory",
       "output": {
-        "jenis": "fact",
+        "event_type": "fact",
         "value": 1,
         "text": "User suka jawaban singkat, bahasa santai."
       }

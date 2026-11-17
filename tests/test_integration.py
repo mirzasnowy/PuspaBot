@@ -181,15 +181,15 @@ def _verified_payload(ephemeral_keys, **overrides):
 def stub_log():
     events = []
 
-    def log(jenis, content=None):
-        events.append((jenis, dict(content or {})))
+    def log(event_type, content=None):
+        events.append((event_type, dict(content or {})))
 
     log.events = events
     return log
 
 
-def _ledger_events(events, jenis):
-    return [content for (j, content) in events if j == jenis]
+def _ledger_events(events, event_type):
+    return [content for (j, content) in events if j == event_type]
 
 
 # --- Registry + wrapper -----------------------------------------------------
@@ -531,8 +531,8 @@ def test_hook_menulis_siklus_task_to_book_kerja(test_dsn, stub_log):
         )
     )
     event = ledger.events(tid)
-    jenis = [e["type"] for e in event]
-    assert jenis == ["task_created", "task_completed", "agent_message"]
+    event_type = [e["type"] for e in event]
+    assert event_type == ["task_created", "task_completed", "agent_message"]
     assert ledger.verify_chain(tid) == (True, [])
     message = [e for e in event if e["type"] == "agent_message"][0]
     assert "Jawaban akhir agen." in message["content"]["content"]

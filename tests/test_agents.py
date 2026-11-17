@@ -13,7 +13,7 @@ def test_puspa_automatic_and_idempotent(make_user):
     lagi = ensure_puspa_agent(u["user_id"])
     assert lagi == agent_id
     items = items_agent(u["user_id"])
-    assert len(items) == 1 and items[0]["wajib"] is True and items[0]["name"] == "Puspa"
+    assert len(items) == 1 and items[0]["required"] is True and items[0]["name"] == "Puspa"
 
 
 def test_maks_tiga_agent(make_user):

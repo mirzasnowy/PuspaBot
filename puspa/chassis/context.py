@@ -100,12 +100,12 @@ def make_ledger_sink(ledger, *, task_id: str, agent_id: str):
     tidak jatuh karena audit; lihat catatan modul.
     """
 
-    def log(jenis, content=None):
+    def log(event_type, content=None):
         try:
             ledger.append_event(
                 task_id=task_id,
                 agent_id=agent_id,
-                jenis=jenis,
+                event_type=event_type,
                 content=dict(content or {}),
             )
         except Exception:

@@ -43,8 +43,8 @@ def test_jadwal_interval_minimal_1_jam():
 
 
 def test_trigger_email_and_webhook_rejected():
-    for jenis in ("email_login", "webhook"):
-        masalah = validasi_trigger({"type": jenis})
+    for event_type in ("email_login", "webhook"):
+        masalah = validasi_trigger({"type": event_type})
         assert masalah and "sesudah MVP" in masalah[0]
 
 
@@ -76,7 +76,7 @@ def test_save_trigger_jadwal_to_penjadwal_fase2(make_user, test_dsn):
     trigger = save_to_penjadwal(user_id=user_id, workflow_id="alur-uji",
                                  trigger=p, sekarang=SEKARANG, dsn=test_dsn)
     assert trigger is not None
-    assert trigger.jenis == "jadwal"
+    assert trigger.event_type == "jadwal"
     assert trigger.workflow == "alur-uji"
     assert (trigger.next_trigger_at.year, trigger.next_trigger_at.month,
             trigger.next_trigger_at.day) == (2026, 11, 25)
