@@ -180,10 +180,10 @@ def token_payloads():
     agent = {"user_id": "user-1", "agent_id": "agen-1", "subagent_id": None,
             "tools": ["read", "tulis"], "domains": ["tokopedia.com"],
             "connectors": {"gmail": ["read"]},
-            "anggaran": {"step_max": 25, "token_max": 100000, "rupiah_max": 2000},
+            "budget": {"step_max": 25, "token_max": 100000, "rupiah_max": 2000},
             "exp": now + 3600, "iat": now, "parent": None}
     sub = dict(agent, subagent_id="sub-1", tools=["read"],
-               anggaran={"step_max": 15, "token_max": 20000, "rupiah_max": 1000},
+               budget={"step_max": 15, "token_max": 20000, "rupiah_max": 1000},
                parent="agen-1")
     return {"signing_key": signing_key, "agents": agent, "sub": sub}
 
@@ -202,6 +202,6 @@ def permission_user_penuh():
         "connectors": ["gmail", "calendar"],
         "scope": ["gmail.readonly", "gmail.compose", "calendar.events"],
         "domain": ["tokopedia.com", "shopee.co.id", "blibli.com",
-                   "situs_provider_bill"],
-        "batas_belanja": 1000000,
+                   "site_provider_bill"],
+        "spending_limit": 1000000,
     }

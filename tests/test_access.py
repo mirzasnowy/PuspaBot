@@ -54,7 +54,7 @@ def _dua_user(test_dsn):
 # ======================================================================
 
 
-def test_require_owner_pemilik_own_passed():
+def test_require_owner_self_passed():
     assert require_owner("user-1", "user-1") is None
     assert require_owner("  user-1  ", "user-1") is None  # spasi diabaikan
 
@@ -67,7 +67,7 @@ def test_require_owner_different_user_rejected():
 
 
 @pytest.mark.parametrize("buruk", [None, "", "   ", 123, ["user-1"]])
-def test_require_owner_id_kosong_or_bukan_string_rejected(buruk):
+def test_require_owner_id_empty_or_not_string_rejected(buruk):
     """Fail-closed: salah satu sisi None/kosong/bukan-string -> ditolak,
     bahkan kalau sisi lainnya valid."""
     with pytest.raises(AccessDeniedError):
@@ -99,7 +99,7 @@ def test_register_agent_and_owner_of(test_dsn):
     assert owner_of("agen-A", dsn=test_dsn) == uid_a
 
 
-def test_register_agent_to_pemilik_lain_rejected(test_dsn):
+def test_register_agent_to_other_owner_rejected(test_dsn):
     """Agen tidak bisa dibajak/dipindah pemilik lewat registrasi ulang."""
     uid_a, uid_b = _dua_user(test_dsn)
     register_agent("agen-A", uid_a, dsn=test_dsn)
@@ -108,7 +108,7 @@ def test_register_agent_to_pemilik_lain_rejected(test_dsn):
     assert owner_of("agen-A", dsn=test_dsn) == uid_a
 
 
-def test_register_agent_id_kosong_rejected(test_dsn):
+def test_register_agent_id_empty_rejected(test_dsn):
     uid_a, _uid_b = _dua_user(test_dsn)
     with pytest.raises(ValueError):
         register_agent("", uid_a, dsn=test_dsn)
@@ -121,7 +121,7 @@ def test_register_agent_id_kosong_rejected(test_dsn):
 # ======================================================================
 
 
-def test_read_vault_entry_pemilik_own_passed(test_dsn, vault_master_key):
+def test_read_vault_entry_as_owner_passed(test_dsn, vault_master_key):
     uid_a, _uid_b = _dua_user(test_dsn)
     vault_mod.put(uid_a, "gmail_token", "token-rahasia-A", dsn=test_dsn)
     assert read_vault_entry(uid_a, uid_a, "gmail_token", dsn=test_dsn) == (
@@ -129,7 +129,7 @@ def test_read_vault_entry_pemilik_own_passed(test_dsn, vault_master_key):
     )
 
 
-def test_read_vault_entry_user_lain_rejected(test_dsn, vault_master_key):
+def test_read_vault_entry_other_user_rejected(test_dsn, vault_master_key):
     """Data B ADA, tapi A ditolak — dan penolakannya AccessDeniedError,
     bukan KeyError (yang berarti 'tidak ada')."""
     uid_a, uid_b = _dua_user(test_dsn)
@@ -143,7 +143,7 @@ def test_read_vault_entry_user_lain_rejected(test_dsn, vault_master_key):
         read_vault_entry(uid_a, uid_b, "gmail_token", dsn=test_dsn)
 
 
-def test_read_vault_entry_not_ada_bukan_access_denied(
+def test_read_vault_entry_not_exists_not_access_denied(
     test_dsn, vault_master_key
 ):
     """Pemilik membaca nama yang memang tidak ada -> KeyError, supaya
@@ -153,7 +153,7 @@ def test_read_vault_entry_not_ada_bukan_access_denied(
         read_vault_entry(uid_a, uid_a, "nama-tidak-ada", dsn=test_dsn)
 
 
-def test_read_vault_entry_lintas_user_without_dekripsi(
+def test_read_vault_entry_cross_user_without_decryption(
     test_dsn, vault_master_key, monkeypatch
 ):
     """Tes negatif penting: A membaca vault B -> ditolak SEBELUM dekripsi
@@ -189,7 +189,7 @@ def test_read_vault_entry_lintas_user_without_dekripsi(
 # ======================================================================
 
 
-def test_resolve_session_as_pemilik_own_passed(test_dsn):
+def test_resolve_session_as_owner_passed(test_dsn):
     uid_a, _uid_b = _dua_user(test_dsn)
     token_a = create_session(uid_a, "laptop-A", dsn=test_dsn)
     assert resolve_session_as(uid_a, token_a, dsn=test_dsn) == uid_a
@@ -197,7 +197,7 @@ def test_resolve_session_as_pemilik_own_passed(test_dsn):
     assert validate_session(token_a, dsn=test_dsn) == uid_a
 
 
-def test_resolve_session_as_token_user_lain_rejected(test_dsn):
+def test_resolve_session_as_token_other_user_rejected(test_dsn):
     """A memakai token sesi B untuk mengaku sebagai A -> ditolak. Token B
     tetap valid untuk B (bukan token rusak), jadi penolakannya murni
     karena kepemilikan."""
@@ -210,7 +210,7 @@ def test_resolve_session_as_token_user_lain_rejected(test_dsn):
     assert resolve_session_as(uid_b, token_b, dsn=test_dsn) == uid_b
 
 
-def test_resolve_session_as_rejected_without_efek_samping(test_dsn):
+def test_resolve_session_as_rejected_without_side_effects(test_dsn):
     """Resolusi yang ditolak tidak mengubah sesi B sama sekali:
     `terakhir_dilihat` B tetap seperti sebelum penolakan (resolve memakai
     lookup pemilik tanpa efek samping, bukan validate_session)."""
@@ -218,19 +218,19 @@ def test_resolve_session_as_rejected_without_efek_samping(test_dsn):
     token_b = create_session(uid_b, "laptop-B", dsn=test_dsn)
     # Satu validasi sah dulu, supaya terakhir_dilihat terisi.
     assert validate_session(token_b, dsn=test_dsn) == uid_b
-    sebelum = list_sessions(uid_b, dsn=test_dsn)[0]["last_seen_at"]
-    assert sebelum is not None
+    before = list_sessions(uid_b, dsn=test_dsn)[0]["last_seen_at"]
+    assert before is not None
     with pytest.raises(AccessDeniedError):
         resolve_session_as(uid_a, token_b, dsn=test_dsn)
     sesudah = list_sessions(uid_b, dsn=test_dsn)[0]["last_seen_at"]
-    assert sesudah == sebelum
+    assert sesudah == before
     # Kontrol: resolve yang lolos juga tidak mengubah timestamp —
     # resolusi adalah pemeriksaan kepemilikan, bukan pemakaian sesi.
     assert resolve_session_as(uid_b, token_b, dsn=test_dsn) == uid_b
-    assert list_sessions(uid_b, dsn=test_dsn)[0]["last_seen_at"] == sebelum
+    assert list_sessions(uid_b, dsn=test_dsn)[0]["last_seen_at"] == before
 
 
-def test_resolve_session_as_token_not_valid_bukan_access_denied(test_dsn):
+def test_resolve_session_as_invalid_token_not_access_denied(test_dsn):
     """Token tebak-acakan / sudah dicabut -> SessionError, bukan
     AccessDeniedError: 'tidak dikenal' dibedakan dari 'milik orang lain'."""
     uid_a, _uid_b = _dua_user(test_dsn)
@@ -267,7 +267,7 @@ def test_read_ledger_event_own_own_passed(test_dsn):
     assert result["agent_id"] == "agen-A"
 
 
-def test_read_ledger_event_own_agent_user_lain_rejected(test_dsn):
+def test_read_ledger_event_own_agent_other_user_rejected(test_dsn):
     """Kejadian milik agen B ADA, tapi A ditolak — AccessDeniedError,
     bukan KeyError, dan isi kejadian tidak pernah sampai ke A."""
     uid_a, uid_b = _dua_user(test_dsn)
@@ -281,13 +281,13 @@ def test_read_ledger_event_own_agent_user_lain_rejected(test_dsn):
         read_ledger_event(uid_a, ev_b["id"], dsn=test_dsn)
 
 
-def test_read_ledger_event_not_ada_bukan_access_denied(test_dsn):
+def test_read_ledger_event_not_exists_not_access_denied(test_dsn):
     uid_a, _uid_b = _dua_user(test_dsn)
     with pytest.raises(KeyError):
         read_ledger_event(uid_a, str(uuid.uuid4()), dsn=test_dsn)
 
 
-def test_read_ledger_event_agent_tak_terdaftar_rejected_fail_closed(test_dsn):
+def test_read_ledger_event_agent_unregistered_rejected_fail_closed(test_dsn):
     """Kejadian dari agen yang TIDAK ada di registry -> pemilik tidak
     diketahui -> ditolak, bukan dianggap milik siapa pun."""
     uid_a, _uid_b = _dua_user(test_dsn)
@@ -318,7 +318,7 @@ def test_read_ledger_events_for_task_own_own_passed(test_dsn):
     assert all(e["task_id"] == task_id for e in result)
 
 
-def test_read_ledger_events_for_task_campuran_rejected_total(test_dsn):
+def test_read_ledger_events_for_task_mixed_rejected_total(test_dsn):
     """Satu tugas berisi kejadian agen A dan agen B: A meminta seluruh
     tugas -> ditolak TOTAL (daftar kosong, bukan sebagian) karena satu
     kejadian saja milik orang lain."""

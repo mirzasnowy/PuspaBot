@@ -39,7 +39,7 @@ def _payload(**overrides):
         "tools": ["gmail.kirim", "read_price", "calendar.create_event"],
         "domains": ["tokopedia.com", "shopee.co.id"],
         "connectors": {"gmail": ["read", "send"], "calendar": ["read"]},
-        "anggaran": {"step_max": 25, "token_max": 100000, "rupiah_max": 2000},
+        "budget": {"step_max": 25, "token_max": 100000, "rupiah_max": 2000},
         "exp": now + 3600,
         "iat": now,
         "parent": None,
@@ -93,7 +93,7 @@ def test_verify_expired_raises(ephemeral_keys):
 def test_verify_missing_field_raises(ephemeral_keys):
     sk, pk = ephemeral_keys
     payload = _payload()
-    del payload["anggaran"]
+    del payload["budget"]
     with pytest.raises(TokenError):
         issue_token(payload, sk)
     # Token yang payloadnya kehilangan field (dibuat manual) juga ditolak.
@@ -128,7 +128,7 @@ def test_is_subset_ok():
         tools=["read_price"],
         domains=["tokopedia.com"],
         connectors={"gmail": ["read"]},
-        anggaran={"step_max": 15, "token_max": 50000, "rupiah_max": 1000},
+        budget={"step_max": 15, "token_max": 50000, "rupiah_max": 1000},
         exp=parent["exp"] - 60,
     )
     assert is_subset(child, parent) is True
@@ -140,9 +140,9 @@ def test_is_subset_rejects_bigger_tool():
     assert is_subset(child, parent) is False
 
 
-def test_is_subset_rejects_bigger_anggaran():
+def test_is_subset_rejects_bigger_budget():
     parent = _payload()
-    child = _payload(anggaran={"step_max": 26, "token_max": 100000, "rupiah_max": 2000})
+    child = _payload(budget={"step_max": 26, "token_max": 100000, "rupiah_max": 2000})
     assert is_subset(child, parent) is False
 
 
@@ -153,7 +153,7 @@ def test_is_subset_rejects_later_exp_and_other_user():
     assert is_subset(_payload(agent_id="agen-lain"), parent) is False
 
 
-def test_is_subset_subagen_cannot_spawn_subagen():
+def test_is_subset_subagent_cannot_spawn_subagent():
     parent = _payload(subagent_id="sub-1")
     child = _payload(subagent_id="sub-2")
     assert is_subset(child, parent) is False
@@ -302,7 +302,7 @@ def test_check_tool_manifest_unsigned_rejected(ephemeral_keys, tmp_skill_dir):
         check_tool(manifest, "read_price", pk)
 
 
-def test_check_tool_manifest_diubah_setelah_tanda_tangan_rejected(
+def test_tool_manifest_changed_after_signing_rejected(
     ephemeral_keys, tmp_skill_dir
 ):
     """Manifes yang ditandatangani lalu diubah diam-diam (tool berbahaya

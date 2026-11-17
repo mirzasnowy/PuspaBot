@@ -30,7 +30,7 @@ class EvidenceError(Exception):
     """Rekaman bukti tidak valid."""
 
 
-def _sekarang() -> datetime:
+def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
@@ -39,31 +39,31 @@ class EvidenceRecord:
     """Satu rekaman bukti (satu angka)."""
 
     evidence_id: str
-    klaim: str
+    claim: str
     value: float
     unit: str
-    sumber_url: str
+    source_url: str
     time_take: datetime
     text_excerpt: str
     page_hash: str
     reader_id: str
     verifier_id: str | None = None
-    vonis: str = "Uncertain"
+    verdict: str = "Uncertain"
     screenshot: str | None = None  # path blob, TTL 30 hari
 
     def summarize(self) -> dict:
-        return {"evidence_id": self.evidence_id, "klaim": self.klaim, "value": self.value,
-                "unit": self.unit, "sumber_url": self.sumber_url,
+        return {"evidence_id": self.evidence_id, "claim": self.claim, "value": self.value,
+                "unit": self.unit, "source_url": self.source_url,
                 "time_take": self.time_take.isoformat(),
-                "text_excerpt": self.text_excerpt, "vonis": self.vonis}
+                "text_excerpt": self.text_excerpt, "verdict": self.verdict}
 
 
 def create_evidence_id() -> str:
     return f"bukti-{uuid.uuid4().hex[:8]}"
 
 
-def record_evidence(*, task_id: str, klaim: str, value, unit: str,
-                sumber_url: str, text_excerpt: str, halaman: str = "",
+def record_evidence(*, task_id: str, claim: str, value, unit: str,
+                source_url: str, text_excerpt: str, page: str = "",
                 reader_id: str, screenshot: str | None = None,
                 time_take: datetime | None = None) -> EvidenceRecord:
     """Buat rekaman bukti (belum vonis — vonis diisi Pemeriksa).
@@ -77,14 +77,14 @@ def record_evidence(*, task_id: str, klaim: str, value, unit: str,
         raise EvidenceError(f"nilai tidak bisa di-parse: {value!r}") from exc
     if unit not in ("Rp", "%", "kWh", "GB", "day", "buah", ""):
         raise EvidenceError(f"satuan tidak dikenal: {unit!r}")
-    if not is_allowed(sumber_url):
-        raise EvidenceError(f"domain sumber tidak di allowlist: {sumber_url!r}")
+    if not is_allowed(source_url):
+        raise EvidenceError(f"domain sumber tidak di allowlist: {source_url!r}")
     excerpt = " ".join(str(text_excerpt).split())[:EXCERPT_MAX]
     return EvidenceRecord(
-        evidence_id=create_evidence_id(), klaim=klaim, value=value_f, unit=unit,
-        sumber_url=sumber_url, time_take=time_take or _sekarang(),
+        evidence_id=create_evidence_id(), claim=claim, value=value_f, unit=unit,
+        source_url=source_url, time_take=time_take or _now(),
         text_excerpt=excerpt,
-        page_hash=hashlib.sha256(halaman.encode("utf-8")).hexdigest() if halaman else "",
+        page_hash=hashlib.sha256(page.encode("utf-8")).hexdigest() if page else "",
         reader_id=reader_id, screenshot=screenshot,
     )
 
@@ -103,36 +103,36 @@ def save_evidence(dsn: str, evidence: EvidenceRecord, user_id: str, task_id: str
                 " sumber_url, time_take, text_excerpt, page_hash, screenshot,"
                 " reader_id, verifier_id, vonis)"
                 " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                (evidence.evidence_id, task_id, user_id, evidence.klaim, evidence.value,
-                 evidence.unit, evidence.sumber_url, evidence.time_take,
+                (evidence.evidence_id, task_id, user_id, evidence.claim, evidence.value,
+                 evidence.unit, evidence.source_url, evidence.time_take,
                  evidence.text_excerpt, evidence.page_hash, evidence.screenshot,
-                 evidence.reader_id, evidence.verifier_id, evidence.vonis),
+                 evidence.reader_id, evidence.verifier_id, evidence.verdict),
             )
         conn.commit()
 
 
-def skor_keandalan(vonis_terakhir: list[str]) -> dict:
+def reliability_score(vonis_terakhir: list[str]) -> dict:
     """Skor Keandalan sumber dari N pembacaan terakhir (maks 50).
 
     Kembalikan {"persen_terverifikasi": x, "jumlah": n,
     "turunkan_vonis": bool}. Sumber di bawah 80% -> semua hasil
     maksimal Belum pasti.
     """
-    potong = vonis_terakhir[-50:]
-    if not potong:
-        return {"persen_verified": None, "amount": 0, "turunkan_vonis": False}
-    persen = sum(1 for v in potong if v == "Verified") / len(potong)
-    return {"persen_verified": round(persen * 100, 1), "amount": len(potong),
-            "turunkan_vonis": persen < AMBANG_KEANDALAN}
+    recent = vonis_terakhir[-50:]
+    if not recent:
+        return {"percent_verified": None, "amount": 0, "downgrade_verdict": False}
+    percent = sum(1 for v in recent if v == "Verified") / len(recent)
+    return {"percent_verified": round(percent * 100, 1), "amount": len(recent),
+            "downgrade_verdict": percent < AMBANG_KEANDALAN}
 
 
-def summary_vonis(evidence_list: list[EvidenceRecord]) -> str:
+def verdict_summary(evidence_list: list[EvidenceRecord]) -> str:
     """Ringkasan lencana bukti Kantor, mis. "5 terverifikasi, 1 belum pasti"."""
-    hitung: dict[str, int] = {}
+    counts: dict[str, int] = {}
     for b in evidence_list:
-        hitung[b.vonis] = hitung.get(b.vonis, 0) + 1
-    bagian = []
-    for vonis in ("Verified", "Uncertain", "Cannot be determined"):
-        if hitung.get(vonis):
-            bagian.append(f"{hitung[vonis]} {vonis.lower()}")
-    return ", ".join(bagian) if bagian else "no evidence yet"
+        counts[b.verdict] = counts.get(b.verdict, 0) + 1
+    parts = []
+    for verdict in ("Verified", "Uncertain", "Cannot be determined"):
+        if counts.get(verdict):
+            parts.append(f"{counts[verdict]} {verdict.lower()}")
+    return ", ".join(parts) if parts else "no evidence yet"

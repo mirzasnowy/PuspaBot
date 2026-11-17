@@ -20,7 +20,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
-TTL_MINUTE = 30
+TTL_MINUTES = 30
 
 
 def _connect(dsn=None):
@@ -28,9 +28,9 @@ def _connect(dsn=None):
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
-def save(key: str, *, sumber: str, value: dict, evidence_id: str, dsn=None) -> None:
+def save(key: str, *, source: str, value: dict, evidence_id: str, dsn=None) -> None:
     """Simpan bukti ke cache bersama (TTL 30 menit)."""
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=TTL_MINUTE)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=TTL_MINUTES)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -38,19 +38,19 @@ def save(key: str, *, sumber: str, value: dict, evidence_id: str, dsn=None) -> N
                 " VALUES (%s, %s, %s, %s, %s)"
                 " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value,"
                 " evidence_id = EXCLUDED.evidence_id, expires_at = EXCLUDED.expires_at",
-                (key, sumber, Jsonb(value), evidence_id, expires_at))
+                (key, source, Jsonb(value), evidence_id, expires_at))
         conn.commit()
 
 
 def take(key: str, dsn=None) -> dict | None:
     """Ambil dari cache bila masih segar; hit dicatat. None bila
     tidak ada / kedaluwarsa (pemanggil wajib baca ulang sumber)."""
-    sekarang = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT value, evidence_id FROM evidence_cache WHERE key = %s AND expires_at > %s",
-                (key, sekarang))
+                (key, now))
             row = cur.fetchone()
             if row is None:
                 return None
@@ -59,7 +59,7 @@ def take(key: str, dsn=None) -> dict | None:
     return {"value": row["value"], "evidence_id": row["evidence_id"]}
 
 
-def statistics_hit(dsn=None) -> dict:
+def hit_statistics(dsn=None) -> dict:
     """Tingkat cache hit (tanpa target di MVP, §3.8)."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:

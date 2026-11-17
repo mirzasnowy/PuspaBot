@@ -101,11 +101,11 @@ class EchoTool(Tool):
     {
         "type": "object",
         "properties": {
-            "penerima": {"type": "string"},
+            "recipient": {"type": "string"},
             "title": {"type": "string"},
             "content": {"type": "string"},
         },
-        "required": ["penerima", "title", "content"],
+        "required": ["recipient", "title", "content"],
     }
 )
 class SendTool(Tool):
@@ -124,7 +124,7 @@ class SendTool(Tool):
 
     async def execute(self, **kwargs):
         self.calls.append(dict(kwargs))
-        return "terkirim"
+        return "sent"
 
 
 class FakeSandbox:
@@ -161,7 +161,7 @@ def _payload(**overrides):
         "tools": ["echo_read", "send", "run_code"],
         "domains": ["tokopedia.com"],
         "connectors": {"gmail": ["read", "send"]},
-        "anggaran": {"step_max": 25, "token_max": 100000, "rupiah_max": 0},
+        "budget": {"step_max": 25, "token_max": 100000, "rupiah_max": 0},
         "exp": now + 3600,
         "iat": now,
         "parent": None,
@@ -194,7 +194,7 @@ def _ledger_events(events, event_type):
 
 # --- Registry + wrapper -----------------------------------------------------
 
-def test_registry_membungkus_tool_saat_register(ephemeral_keys, stub_log):
+def test_registry_wraps_tool_when_registering(ephemeral_keys, stub_log):
     registry = PuspaRegistry(log=stub_log)
     echo = EchoTool()
     registry.register(echo)
@@ -279,13 +279,13 @@ def test_prepare_call_still_rejects_tool_outside_token(ephemeral_keys, stub_log)
     registry.register(SendTool())
     with token_context(payload):
         _tool, _params, error = registry.prepare_call(
-            "send", {"penerima": "a@contoh.id", "title": "Halo", "content": "tes"}
+            "send", {"recipient": "a@contoh.id", "title": "Halo", "content": "tes"}
         )
     assert error is not None
     assert "di luar token" in str(error)
 
 
-def test_wrapper_tolak_without_token(ephemeral_keys, stub_log):
+def test_wrapper_rejects_without_token(ephemeral_keys, stub_log):
     registry = PuspaRegistry(log=stub_log)
     echo = EchoTool()
     registry.register(echo)
@@ -296,7 +296,7 @@ def test_wrapper_tolak_without_token(ephemeral_keys, stub_log):
     assert _ledger_events(stub_log.events, "tool_called")[0]["status"] == "rejected"
 
 
-def test_wrapper_izinkan_dengan_token(ephemeral_keys, stub_log):
+def test_wrapper_allows_with_token(ephemeral_keys, stub_log):
     payload = _verified_payload(ephemeral_keys)
     registry = PuspaRegistry(log=stub_log)
     echo = EchoTool()
@@ -310,7 +310,7 @@ def test_wrapper_izinkan_dengan_token(ephemeral_keys, stub_log):
     assert completed_at["status"] == "ok"
 
 
-def test_wrapper_tolak_tool_di_luar_token(ephemeral_keys, stub_log):
+def test_wrapper_rejects_tool_outside_token(ephemeral_keys, stub_log):
     payload = _verified_payload(ephemeral_keys, tools=["send"])
     registry = PuspaRegistry(log=stub_log)
     echo = EchoTool()
@@ -322,7 +322,7 @@ def test_wrapper_tolak_tool_di_luar_token(ephemeral_keys, stub_log):
     assert echo.calls == []
 
 
-def test_prepare_call_backstop_menutup_tool_without_bungkus(ephemeral_keys, stub_log):
+def test_prepare_call_backstop_closes_unwrapped_tool(ephemeral_keys, stub_log):
     """Tool yang masuk registry tanpa lewat register() (mis. jalur
     internal) tetap ditolak prepare_call bila di luar token."""
 
@@ -355,7 +355,7 @@ def test_prepare_call_backstop_menutup_tool_without_bungkus(ephemeral_keys, stub
     assert "di luar token" in str(error)
 
 
-def test_wrapper_action_logout_need_approval_not_dieksekusi(
+def test_wrapper_action_logout_needs_approval_not_executed(
     ephemeral_keys, stub_log
 ):
     sk, pk = ephemeral_keys
@@ -368,26 +368,26 @@ def test_wrapper_action_logout_need_approval_not_dieksekusi(
         result = asyncio.run(
             registry.execute(
                 "send",
-                {"penerima": "a@contoh.id", "title": "Halo", "content": "tes"},
+                {"recipient": "a@contoh.id", "title": "Halo", "content": "tes"},
             )
         )
     assert isinstance(result, ToolResult) and result.is_error
     assert "Menunggu persetujuan" in str(result)
     assert send.calls == []  # TIDAK dieksekusi
-    diminta = _ledger_events(stub_log.events, "approval_requested")
-    assert len(diminta) == 1
-    request_id = diminta[0]["request_id"]
+    requested = _ledger_events(stub_log.events, "approval_requested")
+    assert len(requested) == 1
+    request_id = requested[0]["request_id"]
     # Alur persetujuan (simulasi PWA fase 2): setujui lalu eksekusi tepat sekali.
     gate.approve(request_id, "user-1")
     dijalankan = []
     hasil1 = gate.execute(request_id, executor=lambda content: dijalankan.append(content))
     hasil2 = gate.execute(request_id, executor=lambda content: dijalankan.append(content))
     assert len(dijalankan) == 1
-    assert dijalankan[0]["penerima"] == "a@contoh.id"
+    assert dijalankan[0]["recipient"] == "a@contoh.id"
     assert hasil1 == hasil2
 
 
-def test_wrapper_action_logout_without_gerbang_rejected(ephemeral_keys, stub_log):
+def test_wrapper_action_logout_without_gate_rejected(ephemeral_keys, stub_log):
     payload = _verified_payload(ephemeral_keys)
     registry = PuspaRegistry(log=stub_log, gate=None)
     send = SendTool()
@@ -396,7 +396,7 @@ def test_wrapper_action_logout_without_gerbang_rejected(ephemeral_keys, stub_log
         result = asyncio.run(
             registry.execute(
                 "send",
-                {"penerima": "a@contoh.id", "title": "Halo", "content": "tes"},
+                {"recipient": "a@contoh.id", "title": "Halo", "content": "tes"},
             )
         )
     assert isinstance(result, ToolResult) and result.is_error
@@ -404,7 +404,7 @@ def test_wrapper_action_logout_without_gerbang_rejected(ephemeral_keys, stub_log
     assert send.calls == []
 
 
-def test_wrapper_mencatat_temuan_injeksi_di_tool_completed(ephemeral_keys, stub_log):
+def test_wrapper_records_injection_finding_in_completed_tool(ephemeral_keys, stub_log):
     """Hasil tool yang mengandung pola instruksi dicatat (deteksi),
     bukan ditulis ulang — pemblokiran adalah tugas Pemeriksa (fase 2)."""
 
@@ -435,7 +435,7 @@ def test_wrapper_mencatat_temuan_injeksi_di_tool_completed(ephemeral_keys, stub_
     assert "Abaikan instruksi" in str(result)  # hasil TIDAK ditulis ulang di fase 0
     completed_at = _ledger_events(stub_log.events, "tool_completed")[0]
     assert completed_at["status"] == "ok"
-    assert completed_at.get("injeksi"), "temuan injeksi harus tercatat di tool_completed"
+    assert completed_at.get("injection"), "temuan injeksi harus tercatat di tool_completed"
 
 
 def test_kind_for_tool():
@@ -448,7 +448,7 @@ def test_kind_for_tool():
 
 # --- Jalur eksekusi runner asli --------------------------------------------
 
-def test_execute_tool_calls_jalur_runner_asli(ephemeral_keys, stub_log):
+def test_execute_tool_calls_real_runner_path(ephemeral_keys, stub_log):
     """Tool call melewati execute_tool_calls nanobot (prepare_call ->
     before_execute_tool -> tool.execute -> after_execute_tool) dengan
     registry + hook Puspa terpasang."""
@@ -516,7 +516,7 @@ def test_execute_tool_calls_rejected_without_token(stub_log):
 
 # --- Hook + Buku Kerja nyata -------------------------------------------------
 
-def test_hook_menulis_siklus_task_to_book_kerja(test_dsn, stub_log):
+def test_hook_writes_cycle_task_to_ledger(test_dsn, stub_log):
     import uuid
 
     tid = f"tugas-hook-{uuid.uuid4().hex[:8]}"
@@ -538,7 +538,7 @@ def test_hook_menulis_siklus_task_to_book_kerja(test_dsn, stub_log):
     assert "Jawaban akhir agen." in message["content"]["content"]
 
 
-def test_hook_on_error_menulis_task_failed(test_dsn):
+def test_hook_on_error_writes_task_failed(test_dsn):
     import uuid
 
     tid = f"tugas-gagal-{uuid.uuid4().hex[:8]}"
@@ -554,7 +554,7 @@ def test_hook_on_error_menulis_task_failed(test_dsn):
     assert "timeout" in event[0]["content"]["reason"]
 
 
-def test_hook_factory_membangun_hook_per_turn(stub_log):
+def test_hook_factory_builds_hook_per_turn(stub_log):
     factory = build_hook_factory(
         PuspaChassis(task_id="tugas-f", agent_id="agen-puspa", log=stub_log)
     )
@@ -586,7 +586,7 @@ def _tulis_skill_ws(workspace: Path, name: str, *, tools=("read_price",)):
     return skill_dir
 
 
-def test_skills_loader_tolak_skill_workspace_unsigned(tmp_path, ephemeral_keys):
+def test_skills_loader_reject_skill_workspace_unsigned(tmp_path, ephemeral_keys):
     _sk, pk = ephemeral_keys
     workspace = tmp_path / "ws"
     _tulis_skill_ws(workspace, "price")
@@ -594,7 +594,7 @@ def test_skills_loader_tolak_skill_workspace_unsigned(tmp_path, ephemeral_keys):
     assert loader.load_skill("price") is None
 
 
-def test_skills_loader_terima_skill_workspace_bertanda_tangan(
+def test_skills_loader_accepts_signed_workspace_skill(
     tmp_path, ephemeral_keys
 ):
     sk, pk = ephemeral_keys
@@ -606,7 +606,7 @@ def test_skills_loader_terima_skill_workspace_bertanda_tangan(
     assert content is not None and "Isi skill price" in content
 
 
-def test_skills_loader_tolak_skill_diubah_setelah_tanda_tangan(
+def test_skills_loader_rejects_skill_changed_after_signing(
     tmp_path, ephemeral_keys
 ):
     sk, pk = ephemeral_keys
@@ -622,7 +622,7 @@ def test_skills_loader_tolak_skill_diubah_setelah_tanda_tangan(
     assert loader.load_skill("price") is None
 
 
-def test_skills_loader_builtin_tetap_dibaca_without_key_puspa(tmp_path):
+def test_skills_loader_builtin_still_readable_without_puspa_key(tmp_path):
     """Skill bawaan nanobot (bagian chassis) dipercaya tanpa tanda tangan
     Puspa; yang wajib tanda tangan hanya skill workspace/plugin."""
     workspace = tmp_path / "ws"
@@ -632,7 +632,7 @@ def test_skills_loader_builtin_tetap_dibaca_without_key_puspa(tmp_path):
     assert content is not None and "weather" in content.lower()
 
 
-def test_skills_loader_without_public_key_tolak_all_workspace(
+def test_skills_loader_without_public_key_rejects_all_workspace_skills(
     tmp_path, ephemeral_keys
 ):
     sk, _pk = ephemeral_keys
@@ -645,7 +645,7 @@ def test_skills_loader_without_public_key_tolak_all_workspace(
 
 # --- Session binding ----------------------------------------------------------
 
-def test_bind_turn_menerbitkan_token_agent(test_dsn, ephemeral_keys):
+def test_bind_turn_publishes_token_agent(test_dsn, ephemeral_keys):
     sk, pk = ephemeral_keys
     user_id = create_user("uji@contoh.id", "kata-sandi-kuat", dsn=test_dsn)
     sesi = create_session(user_id, "laptop", dsn=test_dsn)
@@ -663,14 +663,14 @@ def test_bind_turn_menerbitkan_token_agent(test_dsn, ephemeral_keys):
     assert payload["agent_id"] == "agen-puspa"
     assert payload["tools"] == ["echo_read"]
     assert payload["task_id"] == "tugas-bind"
-    assert payload["anggaran"]["rupiah_max"] == 0
+    assert payload["budget"]["rupiah_max"] == 0
     assert payload_from_token(token, pk)["user_id"] == user_id
     with token_context(payload):
         assert resolve_token_payload()["agent_id"] == "agen-puspa"
     assert resolve_token_payload() is None  # konteks sudah ditutup
 
 
-def test_bind_turn_tolak_sesi_not_valid(test_dsn, ephemeral_keys):
+def test_bind_turn_rejects_invalid_session(test_dsn, ephemeral_keys):
     sk, pk = ephemeral_keys
     with pytest.raises(Exception):
         bind_turn(
@@ -685,7 +685,7 @@ def test_bind_turn_tolak_sesi_not_valid(test_dsn, ephemeral_keys):
 
 # --- Token ContextVar mengalir ke task (mekanisme sub-agen) -------------------
 
-def test_token_context_terlihat_di_dalam_async_task(ephemeral_keys):
+def test_token_context_visible_inside_async_task(ephemeral_keys):
     """``asyncio.create_task`` menyalin ContextVar — mekanisme yang dipakai
     ``SubagentManager._create_task``; token induk terlihat di sub-agen."""
     payload = _verified_payload(ephemeral_keys)
@@ -703,7 +703,7 @@ def test_token_context_terlihat_di_dalam_async_task(ephemeral_keys):
 
 # --- SandboxTool ---------------------------------------------------------------
 
-def test_sandbox_tool_mengembalikan_stdout(ephemeral_keys):
+def test_sandbox_tool_returns_stdout(ephemeral_keys):
     tool = SandboxTool(FakeSandbox(ok=True, stdout="42\n"))
     assert tool.name == "run_code"
     assert tool.concurrency_safe is True
@@ -712,14 +712,14 @@ def test_sandbox_tool_mengembalikan_stdout(ephemeral_keys):
     assert str(result).strip() == "42"
 
 
-def test_sandbox_tool_fail_closed_saat_sandbox_mati():
+def test_sandbox_tool_fails_closed_when_sandbox_dead():
     tool = SandboxTool(FakeSandbox(ok=False))
     result = asyncio.run(tool.execute(code="print(1)"))
     assert isinstance(result, ToolResult) and result.is_error
     assert "Sandbox tidak tersedia" in str(result)
 
 
-def test_sandbox_tool_login_registry_and_terbungkus(ephemeral_keys, stub_log):
+def test_sandbox_tool_in_registry_and_wrapped(ephemeral_keys, stub_log):
     payload = _verified_payload(ephemeral_keys)
     chassis = PuspaChassis(log=stub_log)
     registry = build_registry(chassis)
@@ -734,7 +734,7 @@ def test_sandbox_tool_login_registry_and_terbungkus(ephemeral_keys, stub_log):
 
 # --- Factory / assemble ---------------------------------------------------------
 
-def test_assemble_meneruskan_wiring_puspa_to_agent_loop(monkeypatch):
+def test_assemble_forwards_wiring_puspa_to_agent_loop(monkeypatch):
     captured = {}
 
     class LoopPalsu:

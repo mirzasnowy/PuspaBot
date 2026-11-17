@@ -3,8 +3,8 @@
 import pytest
 
 from puspa.workflow.blocks import (
-    BLOK, BlockError, items_block, definisi_block, kedalaman_cabang,
-    periksa_workflow, periksa_step, periksa_masukan,
+    BLOCKS, BlockError, list_blocks, block_definition, branch_depth,
+    validate_workflow, validate_step, validate_inputs,
 )
 
 BLOCK_REQUIRED = (
@@ -15,72 +15,72 @@ BLOCK_REQUIRED = (
 )
 
 
-def test_pustaka_tepat_15_block():
-    assert set(items_block()) == set(BLOCK_REQUIRED)
-    assert len(BLOK) == 15
+def test_library_exactly_15_blocks():
+    assert set(list_blocks()) == set(BLOCK_REQUIRED)
+    assert len(BLOCKS) == 15
 
 
-def test_each_block_punya_skema_klass_and_permission():
+def test_each_block_has_schema_klass_and_permission():
     for name in BLOCK_REQUIRED:
-        d = definisi_block(name)
-        assert d["masukan"] and d["output"], name
+        d = block_definition(name)
+        assert d["inputs"] and d["output"], name
         assert d["permission_class"] in ("Pembaca", "Pelaksana", "Pemeriksa"), name
-        assert set(d["permission"]) == {"connectors", "scope", "domain", "batas_belanja"}, name
+        assert set(d["permission"]) == {"connectors", "scope", "domain", "spending_limit"}, name
 
 
-def test_block_read_email_past_pembaca():
-    assert definisi_block("read_email")["permission_class"] == "Pembaca"
-    assert definisi_block("search_email")["permission"]["connectors"] == ["gmail"]
-    assert definisi_block("read_email")["permission"]["scope"] == ["gmail.readonly"]
+def test_block_read_email_reader_permission_class():
+    assert block_definition("read_email")["permission_class"] == "Pembaca"
+    assert block_definition("search_email")["permission"]["connectors"] == ["gmail"]
+    assert block_definition("read_email")["permission"]["scope"] == ["gmail.readonly"]
 
 
-def test_block_action_logout_hanya_create_event_and_siapkan_pay():
-    logout = {n for n, d in BLOK.items() if d["action_logout"]}
-    assert logout == {"create_event", "prepare_payment"}
+def test_block_action_logout_only_create_event_and_prepare_payment():
+    output = {n for n, d in BLOCKS.items() if d["outbound_action"]}
+    assert output == {"create_event", "prepare_payment"}
 
 
-def test_block_not_dikenal_rejected():
+def test_unknown_block_rejected():
     with pytest.raises(BlockError):
-        definisi_block("send_whatsapp")
-    assert periksa_step({"block": "send_whatsapp", "masukan": {}})
+        block_definition("send_whatsapp")
+    assert validate_step({"block": "send_whatsapp", "inputs": {}})
 
 
-def test_periksa_masukan_less_field():
-    assert periksa_masukan("check_bill", {"provider": "PLN"}) == ["number_pelanggan"]
-    assert periksa_masukan("check_bill",
-                            {"provider": "PLN", "number_pelanggan": "1"}) == []
+def test_check_input_with_fewer_fields():
+    assert validate_inputs("check_bill", {"provider": "PLN"}) == ["customer_number"]
+    assert validate_inputs("check_bill",
+                            {"provider": "PLN", "customer_number": "1"}) == []
 
 
-def test_batas_maks_10_step():
-    step = [{"block": "send_notification", "masukan": {"message": "x"}}] * 11
-    masalah = periksa_workflow(step)
-    assert any("maks 10" in m for m in masalah)
+def test_max_10_steps():
+    step = [{"block": "send_notification", "inputs": {"message": "x"}}] * 11
+    problems = validate_workflow(step)
+    assert any("maks 10" in m for m in problems)
 
 
-def test_batas_maks_2_level_percabangan():
-    dalam = {"block": "send_notification", "masukan": {"message": "x"}}
-    tiga = {"block": "condition", "masukan": {"ungkapan": "a == b"},
-            "maka": [{"block": "condition", "masukan": {"ungkapan": "a == b"},
-                      "maka": [{"block": "condition", "masukan": {"ungkapan": "a == b"},
-                                "maka": [dalam], "kalau_not": []}],
-                      "kalau_not": []}],
-            "kalau_not": []}
-    assert kedalaman_cabang([tiga]) == 3
-    assert any("maks 2" in m for m in periksa_workflow([tiga]))
+def test_max_2_branching_levels():
+    depth = {"block": "send_notification", "inputs": {"message": "x"}}
+    tiga = {"block": "condition", "inputs": {"expression": "a == b"},
+            "then": [{"block": "condition", "inputs": {"expression": "a == b"},
+                      "then": [{"block": "condition", "inputs": {"expression": "a == b"},
+                                "then": [depth], "else": []}],
+                      "else": []}],
+            "else": []}
+    assert branch_depth([tiga]) == 3
+    assert any("maks 2" in m for m in validate_workflow([tiga]))
 
 
-def test_cabang_2_level_passed():
-    dalam = {"block": "send_notification", "masukan": {"message": "x"}}
-    dua = {"block": "condition", "masukan": {"ungkapan": "a == b"},
-           "maka": [{"block": "condition", "masukan": {"ungkapan": "a == b"},
-                     "maka": [dalam], "kalau_not": []}],
-           "kalau_not": []}
-    assert kedalaman_cabang([dua]) == 2
-    assert periksa_workflow([dua]) == []
+def test_branch_2_levels_passed():
+    depth = {"block": "send_notification", "inputs": {"message": "x"}}
+    dua = {"block": "condition", "inputs": {"expression": "a == b"},
+           "then": [{"block": "condition", "inputs": {"expression": "a == b"},
+                     "then": [depth], "else": []}],
+           "else": []}
+    assert branch_depth([dua]) == 2
+    assert validate_workflow([dua]) == []
 
 
-def test_for_each_maks_20_item_dicek_di_runner():
-    step = {"block": "for_each", "masukan": {"items": list(range(21))},
-               "step_dalam": [{"block": "send_notification", "masukan": {"message": "x"}}]}
+def test_for_each_max_20_items_checked_in_runner():
+    step = {"block": "for_each", "inputs": {"items": list(range(21))},
+               "nested_steps": [{"block": "send_notification", "inputs": {"message": "x"}}]}
     # Skema langkah lolos (batas item dicek saat jalan, bukan saat susun).
-    assert periksa_step(step) == []
+    assert validate_step(step) == []

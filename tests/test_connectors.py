@@ -4,8 +4,8 @@ import httpx
 import pytest
 
 from puspa.connectors.google import ConnectorError, GoogleConnector
-from puspa.connectors.grants import (give_connector, cabut_connector,
-                                     items_connector, punya_connector, GrantError)
+from puspa.connectors.grants import (give_connector, revoke_connector,
+                                     list_connectors, has_connector, GrantError)
 
 
 def _client(handler):
@@ -17,7 +17,7 @@ def _connector(handler):
                            token_loader=lambda: "token-uji")
 
 
-def test_gmail_search_and_read_past_pembaca():
+def test_gmail_search_and_read_via_reader():
     def handler(request):
         if "messages" in str(request.url) and request.method == "GET" and "q=" in str(request.url):
             return httpx.Response(200, json={"messages": [{"id": "m1"}]})
@@ -31,8 +31,8 @@ def test_gmail_search_and_read_past_pembaca():
     from puspa.quarantine.reader import QuarantinedReader
 
     # Pembaca hanya menerima domain sumber yang diizinkan.
-    pembaca = QuarantinedReader({"mail.google.com"})
-    result = k.gmail_read("m1", pembaca=pembaca)
+    reader = QuarantinedReader({"mail.google.com"})
+    result = k.gmail_read("m1", reader=reader)
     assert result["source"].endswith("m1") or "mail.google.com" in result["source"]
 
 
@@ -42,8 +42,8 @@ def test_gmail_send_without_approval_rejected():
 
     k = _connector(handler)
     with pytest.raises(ConnectorError, match="approval"):
-        k.gmail_send(kepada="a@contoh.id", subjek="x", content="y", disetujui=False)
-    result = k.gmail_send(kepada="a@contoh.id", subjek="x", content="y", disetujui=True)
+        k.gmail_send(recipient="a@contoh.id", subject="x", content="y", approved=False)
+    result = k.gmail_send(recipient="a@contoh.id", subject="x", content="y", approved=True)
     assert result["id"] == "sent-1"
 
 
@@ -62,10 +62,10 @@ def test_drive_search_and_calendar():
     assert k.drive_search("nota")[0]["name"] == "nota.pdf"
     assert k.calendar_read(time_min="2026-11-17T00:00:00Z", time_max="2026-11-18T00:00:00Z")[0]["summaries"] == "Rapat"
     with pytest.raises(ConnectorError, match="approval"):
-        k.calendar_create_event(summary="Rapat", mulai="2026-11-17T10:00:00+07:00",
-                              completed_at="2026-11-17T11:00:00+07:00", disetujui=False)
-    assert k.calendar_create_event(summary="Rapat", mulai="2026-11-17T10:00:00+07:00",
-                                 completed_at="2026-11-17T11:00:00+07:00", disetujui=True)["id"] == "ev-1"
+        k.calendar_create_event(summary="Rapat", start="2026-11-17T10:00:00+07:00",
+                              completed_at="2026-11-17T11:00:00+07:00", approved=False)
+    assert k.calendar_create_event(summary="Rapat", start="2026-11-17T10:00:00+07:00",
+                                 completed_at="2026-11-17T11:00:00+07:00", approved=True)["id"] == "ev-1"
 
 
 def test_connector_without_token_rejected():
@@ -75,16 +75,16 @@ def test_connector_without_token_rejected():
         k.gmail_search("x")
 
 
-def test_pemberian_connector_per_agent(make_user):
+def test_connector_grant_per_agent(make_user):
     u = make_user()
     from puspa.runtime.agents import create_agent
 
     agent = create_agent(u["user_id"], "Agen Riset")
-    assert punya_connector(u["user_id"], agent["agent_id"], "gmail") is False
+    assert has_connector(u["user_id"], agent["agent_id"], "gmail") is False
     give_connector(u["user_id"], agent["agent_id"], "gmail")
-    assert punya_connector(u["user_id"], agent["agent_id"], "gmail") is True
-    assert items_connector(u["user_id"], agent["agent_id"])[0]["scope"] == ["read", "create_draft", "send"]
-    cabut_connector(u["user_id"], agent["agent_id"], "gmail")
-    assert punya_connector(u["user_id"], agent["agent_id"], "gmail") is False
+    assert has_connector(u["user_id"], agent["agent_id"], "gmail") is True
+    assert list_connectors(u["user_id"], agent["agent_id"])[0]["scope"] == ["read", "create_draft", "send"]
+    revoke_connector(u["user_id"], agent["agent_id"], "gmail")
+    assert has_connector(u["user_id"], agent["agent_id"], "gmail") is False
     with pytest.raises(GrantError):
         give_connector(u["user_id"], agent["agent_id"], "whatsapp")

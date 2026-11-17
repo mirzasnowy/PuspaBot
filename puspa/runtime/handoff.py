@@ -24,18 +24,18 @@ from datetime import datetime, timedelta, timezone
 KLASS_PERMISSION = ("Pembaca", "Pelaksana", "Pemeriksa")
 STATUS_START = "proposed"
 STATUS_END = ("passed", "rejected", "expired")
-BATAS_TIME_DEFAULT_DETIK = 45
-HEARTBEAT_DETIK = 15
-MACET_DETIK = 30
+DEFAULT_TIMEOUT_SECONDS = 45
+HEARTBEAT_SECONDS = 15
+STALLED_SECONDS = 30
 MAX_TRIAL = 2  # 1 percobaan awal + 1 percobaan ulang
-MAX_HANDOFF_ANTAR_AGENT = 3
+MAX_HANDOFF_BETWEEN_AGENTS = 3
 
 
 class HandoffError(Exception):
     """Kontrak handoff tidak valid / transisi status tidak sah."""
 
 
-def _sekarang() -> datetime:
+def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
@@ -43,25 +43,25 @@ def _sekarang() -> datetime:
 class HandoffContract:
     """Satu kontrak handoff; divalidasi penuh saat dibuat."""
 
-    dari_id: str
+    from_id: str
     to_id: str
     purpose: str
-    masukan: dict
+    inputs: dict
     expected_output: dict
-    timeout_seconds: int = BATAS_TIME_DEFAULT_DETIK
-    anggaran: dict = field(default_factory=lambda: {"step_max": 15, "token_max": 20000, "rupiah_max": 2000})
+    timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
+    budget: dict = field(default_factory=lambda: {"step_max": 15, "token_max": 20000, "rupiah_max": 2000})
     permission_class: str = "Pembaca"
     completion_definition: str = ""
     idempotency_key: str = ""
 
     def __post_init__(self) -> None:
-        if not self.dari_id or not self.to_id:
+        if not self.from_id or not self.to_id:
             raise HandoffError("dari dan ke wajib diisi")
-        if self.dari_id == self.to_id:
+        if self.from_id == self.to_id:
             raise HandoffError("handoff ke diri sendiri ditolak")
         if not self.purpose.strip():
             raise HandoffError("tujuan tidak boleh kosong")
-        if not isinstance(self.masukan, dict) or "type" not in self.masukan:
+        if not isinstance(self.inputs, dict) or "type" not in self.inputs:
             raise HandoffError("masukan harus dict ber-skema dengan kunci 'jenis'")
         if not isinstance(self.expected_output, dict) or "type" not in self.expected_output:
             raise HandoffError("expected_output harus dict ber-skema dengan kunci 'jenis'")
@@ -73,9 +73,9 @@ class HandoffContract:
             raise HandoffError("completion_definition tidak boleh kosong")
         if not self.idempotency_key:
             self.idempotency_key = f"handoff-{uuid.uuid4().hex}"
-        anggaran = self.anggaran
+        budget = self.budget
         for key in ("step_max", "token_max", "rupiah_max"):
-            if key not in anggaran or not isinstance(anggaran[key], (int, float)):
+            if key not in budget or not isinstance(budget[key], (int, float)):
                 raise HandoffError(f"anggaran.{key} wajib angka")
 
 
@@ -83,56 +83,56 @@ class HandoffContract:
 class Handoff:
     """Satu handoff yang sedang berjalan (mesin status + detak)."""
 
-    kontrak: HandoffContract
+    contract: HandoffContract
     id: str = field(default_factory=lambda: f"handoff-{uuid.uuid4().hex[:12]}")
     status: str = STATUS_START
     trial: int = 1
     last_heartbeat: datetime | None = None
-    created_at: datetime = field(default_factory=_sekarang)
+    created_at: datetime = field(default_factory=_now)
     result: dict | None = None
     reason: str = ""
 
     # -- transisi -----------------------------------------------------
-    def terima(self) -> None:
+    def accept(self) -> None:
         self._must_status("proposed")
         self.status = "accepted"
 
-    def mulai(self) -> None:
+    def start(self) -> None:
         self._must_status("accepted")
-        self.status = "berjalan"
-        self.last_heartbeat = _sekarang()
+        self.status = "running"
+        self.last_heartbeat = _now()
 
     def heartbeat(self, created_at: datetime | None = None) -> None:
-        if self.status != "berjalan":
+        if self.status != "running":
             raise HandoffError(f"detak hanya saat berjalan (status: {self.status})")
-        self.last_heartbeat = created_at or _sekarang()
+        self.last_heartbeat = created_at or _now()
 
-    def serahkan(self, result: dict) -> str:
+    def hand_over(self, result: dict) -> str:
         """Serahkan hasil; kembalikan 'lolos' atau 'ditolak'.
 
         Hasil harus dict ber-skema dengan kunci 'jenis' yang sama
         dengan `keluaran_diharapkan['jenis']`; kalau tidak, ditolak.
         """
-        self._must_status("berjalan")
+        self._must_status("running")
         self.result = result
-        if not isinstance(result, dict) or result.get("type") != self.kontrak.expected_output["type"]:
+        if not isinstance(result, dict) or result.get("type") != self.contract.expected_output["type"]:
             self.status = "rejected"
             self.reason = "keluaran tidak lolos skema"
             return "rejected"
         self.status = "handed_over_at"
         return "handed_over_at"
 
-    def nyatakan_passed(self) -> None:
+    def mark_passed(self) -> None:
         self._must_status("handed_over_at")
         self.status = "passed"
 
-    def tolak(self, reason: str) -> None:
+    def reject(self, reason: str) -> None:
         if self.status in STATUS_END:
             raise HandoffError(f"handoff sudah berakhir ({self.status})")
         self.status = "rejected"
         self.reason = reason
 
-    def coba_ulang(self) -> bool:
+    def retry(self) -> bool:
         """Satu percobaan ulang. False bila sudah habis (lapor user)."""
         if self.trial >= MAX_TRIAL:
             return False
@@ -143,41 +143,41 @@ class Handoff:
         return True
 
     # -- macet ---------------------------------------------------------
-    def macet(self, created_at: datetime | None = None) -> bool:
+    def is_stalled(self, created_at: datetime | None = None) -> bool:
         """True bila tanpa detak 30 detik atau lewat batas waktu."""
-        sekarang = created_at or _sekarang()
-        if self.status not in ("accepted", "berjalan"):
+        now = created_at or _now()
+        if self.status not in ("accepted", "running"):
             return False
         if self.last_heartbeat is None:
-            return (sekarang - self.created_at).total_seconds() > MACET_DETIK
-        if (sekarang - self.last_heartbeat).total_seconds() > MACET_DETIK:
+            return (now - self.created_at).total_seconds() > STALLED_SECONDS
+        if (now - self.last_heartbeat).total_seconds() > STALLED_SECONDS:
             return True
-        return (sekarang - self.created_at).total_seconds() > self.kontrak.timeout_seconds
+        return (now - self.created_at).total_seconds() > self.contract.timeout_seconds
 
-    def tandai_kedaluwarsa(self) -> None:
+    def mark_expired(self) -> None:
         if self.status in STATUS_END:
             raise HandoffError(f"handoff sudah berakhir ({self.status})")
         self.status = "expired"
         self.reason = "lewat batas waktu atau tanpa detak"
 
-    def _must_status(self, diharapkan: str) -> None:
-        if self.status != diharapkan:
+    def _must_status(self, expected: str) -> None:
+        if self.status != expected:
             raise HandoffError(
-                f"transisi tidak sah: status {self.status!r}, diharapkan {diharapkan!r}"
+                f"transisi tidak sah: status {self.status!r}, diharapkan {expected!r}"
             )
 
 
-def tolak_lingkaran(jalur: list[str], dari_id: str, to_id: str) -> None:
+def reject_cycle(path: list[str], from_id: str, to_id: str) -> None:
     """Tolak handoff antar-agen yang membentuk lingkaran (A ke B ke A).
 
     `jalur` = urutan agen yang sudah dilewati tugas ini. Kalau `ke_id`
     sudah ada di jalur, handoff itu kembali ke agen sebelumnya.
     """
-    if to_id in jalur:
-        raise HandoffError(f"handoff melingkar ditolak: {to_id!r} sudah di jalur {jalur}")
+    if to_id in path:
+        raise HandoffError(f"handoff melingkar ditolak: {to_id!r} sudah di jalur {path}")
 
 
-def check_batas_handoff_antar_agent(amount_so_far: int) -> None:
+def check_handoff_limit_between_agents(amount_so_far: int) -> None:
     """Maks 3 handoff antar-agen per tugas."""
-    if amount_so_far >= MAX_HANDOFF_ANTAR_AGENT:
-        raise HandoffError(f"maks {MAX_HANDOFF_ANTAR_AGENT} handoff antar-agen per tugas")
+    if amount_so_far >= MAX_HANDOFF_BETWEEN_AGENTS:
+        raise HandoffError(f"maks {MAX_HANDOFF_BETWEEN_AGENTS} handoff antar-agen per tugas")

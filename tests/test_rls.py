@@ -77,7 +77,7 @@ def app_conn(test_dsn):
 
 # --- SELECT: hanya baris sendiri yang terlihat -------------------------------
 
-def test_select_hanya_rows_own_own(app_conn, dua_user):
+def test_select_only_own_rows(app_conn, dua_user):
     a, b = dua_user["a"], dua_user["b"]
     with app_conn.transaction():
         with rls.as_user(app_conn, a):
@@ -109,7 +109,7 @@ def test_select_hanya_rows_own_own(app_conn, dua_user):
             ).fetchone()[0] == 1
 
 
-def test_rows_user_lain_not_terlihat_bukan_error(app_conn, dua_user):
+def test_other_user_rows_not_visible_without_error(app_conn, dua_user):
     """RLS menyaring, bukan melempar error: query eksplisit ke baris B
     sebagai A mengembalikan kosong."""
     a, b = dua_user["a"], dua_user["b"]
@@ -128,7 +128,7 @@ def test_rows_user_lain_not_terlihat_bukan_error(app_conn, dua_user):
 
 # --- INSERT / UPDATE / DELETE: tulis ke milik orang lain ditolak -------------
 
-def test_insert_user_id_orang_lain_rejected(app_conn, dua_user):
+def test_insert_other_person_user_id_rejected(app_conn, dua_user):
     a, b = dua_user["a"], dua_user["b"]
     # pytest.raises membungkus blok transaksi dari LUAR: error membuat
     # transaksi abort, jadi rollback harus jalan lewat keluarnya blok.
@@ -183,7 +183,7 @@ def test_insert_own_own_accepted(app_conn, dua_user):
         ).fetchone()[0] == 2
 
 
-def test_update_to_own_orang_lain_rejected(app_conn, dua_user):
+def test_update_to_own_other_person_row_rejected(app_conn, dua_user):
     a, b = dua_user["a"], dua_user["b"]
     # UPDATE baris B sebagai A: baris tidak terlihat -> 0 baris kena.
     with app_conn.transaction():
@@ -204,7 +204,7 @@ def test_update_to_own_orang_lain_rejected(app_conn, dua_user):
                 )
 
 
-def test_delete_hanya_own_own(app_conn, dua_user):
+def test_delete_only_own_rows(app_conn, dua_user):
     a, b = dua_user["a"], dua_user["b"]
     # DELETE baris B sebagai A: 0 baris kena, baris B tetap ada.
     with app_conn.transaction():
@@ -261,7 +261,7 @@ def test_without_current_user_fail_closed(app_conn, dua_user):
             )
 
 
-def test_insert_user_without_sesi_adalah_registrasi(app_conn):
+def test_insert_user_without_session_is_registration(app_conn):
     """Pengecualian yang disengaja: INSERT pengguna tanpa pengguna yang
     diset diizinkan — itu jalur registrasi (belum ada sesi). Setelah
     ada pengguna yang diset, INSERT pengguna lain ditolak (lihat
@@ -280,7 +280,7 @@ def test_insert_user_without_sesi_adalah_registrasi(app_conn):
 
 # --- Helper rls.py -----------------------------------------------------------
 
-def test_helper_as_user_set_and_bersihkan(app_conn, dua_user):
+def test_helper_as_user_set_and_cleanup(app_conn, dua_user):
     a = dua_user["a"]
     with app_conn.transaction():
         assert rls.current_user_id(app_conn) == ""
@@ -294,7 +294,7 @@ def test_helper_as_user_set_and_bersihkan(app_conn, dua_user):
         assert rls.current_user_id(app_conn) == ""
 
 
-def test_helper_tolak_user_id_bukan_uuid(app_conn):
+def test_helper_rejects_non_uuid_user_id(app_conn):
     with app_conn.transaction():
         with pytest.raises(ValueError):
             rls.set_current_user(app_conn, "bukan-uuid")
@@ -304,7 +304,7 @@ def test_helper_tolak_user_id_bukan_uuid(app_conn):
         assert rls.current_user_id(app_conn) == ""
 
 
-def test_helper_not_bocor_antar_transaction(app_conn, dua_user):
+def test_helper_does_not_leak_between_transactions(app_conn, dua_user):
     """SET LOCAL hilang sendiri saat transaksi berakhir."""
     a = dua_user["a"]
     with app_conn.transaction():
@@ -316,7 +316,7 @@ def test_helper_not_bocor_antar_transaction(app_conn, dua_user):
 
 # --- Keputusan tanpa-FORCE, didokumentasikan sebagai tes ---------------------
 
-def test_pemilik_table_melewati_rls_terdokumentasi(test_dsn, dua_user):
+def test_owner_table_bypasses_rls_documented(test_dsn, dua_user):
     """Pemilik tabel (root, superuser) melihat SEMUA baris walau RLS
     aktif — itu sifat Postgres tanpa FORCE ROW LEVEL SECURITY, dan
     disengaja: operasi istimewa (registrasi, validate_session,

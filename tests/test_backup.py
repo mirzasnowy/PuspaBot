@@ -32,13 +32,13 @@ def _delete_db_restore():
         conn.execute("DROP DATABASE IF EXISTS puspa_test_restore")
 
 
-def test_cadangan_without_key_rejected(tmp_path, test_dsn, monkeypatch):
+def test_backup_without_key_rejected(tmp_path, test_dsn, monkeypatch):
     monkeypatch.delenv("PUSPA_BACKUP_KEY", raising=False)
     with pytest.raises(BackupError):
         create_backup(dsn=test_dsn, backup_dir=tmp_path)
 
 
-def test_create_and_items_cadangan(make_user, test_dsn, backup_key, tmp_path):
+def test_create_and_backup_items(make_user, test_dsn, backup_key, tmp_path):
     u = make_user()
     profile.add_fact(u["user_id"], "name", "Nero", "user_stated", dsn=test_dsn)
     result = create_backup(dsn=test_dsn, backup_dir=tmp_path)
@@ -46,12 +46,12 @@ def test_create_and_items_cadangan(make_user, test_dsn, backup_key, tmp_path):
     assert path.exists() and path.stat().st_size > 0
     assert (path.parent / (path.name + ".json")).exists()
     assert result["manifest"]["database"] == "puspa_test"
-    assert result["manifest"]["ukuran_terenkripsi"] > 0
+    assert result["manifest"]["encrypted_size"] > 0
     items = list_backups(tmp_path)
     assert len(items) == 1 and items[0]["path"] == str(path)
 
 
-def test_retensi_14_day_menghapus_yang_tua(backup_key, tmp_path):
+def test_retention_14_day_deletes_older_ones(backup_key, tmp_path):
     old = datetime.now(timezone.utc) - timedelta(days=15)
     (tmp_path / "puspa-20200101-000000.dump.enc").write_bytes(b"x")
     new = tmp_path / f"puspa-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.dump.enc"
@@ -61,7 +61,7 @@ def test_retensi_14_day_menghapus_yang_tua(backup_key, tmp_path):
     assert new.exists()
 
 
-def test_restore_to_db_bersih_and_verifikasi(make_user, test_dsn, backup_key, tmp_path, ledger):
+def test_restore_to_clean_db_and_verify(make_user, test_dsn, backup_key, tmp_path, ledger):
     """Uji restore pertama (dijalankan nyata di Fase 1)."""
     u = make_user()
     profile.add_fact(u["user_id"], "name", "Nero", "user_stated", dsn=test_dsn)
@@ -82,7 +82,7 @@ def test_restore_to_db_bersih_and_verifikasi(make_user, test_dsn, backup_key, tm
         assert counts["profile_facts"] == 1
         assert counts["events"] == 1
         # Rantai hash Buku Kerja tetap utuh sesudah restore.
-        ok, masalah = Ledger(RESTORE_DSN).verify_chain(task_id)
-        assert ok, masalah
+        ok, problems = Ledger(RESTORE_DSN).verify_chain(task_id)
+        assert ok, problems
     finally:
         _delete_db_restore()

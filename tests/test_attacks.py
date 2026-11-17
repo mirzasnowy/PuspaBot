@@ -81,7 +81,7 @@ def _payload(**overrides):
         "tools": ["gmail.kirim", "calendar.create_event", "prepare_payment", "read_price"],
         "domains": ["tokopedia.com", "shopee.co.id"],
         "connectors": {"gmail": ["read", "send"], "calendar": ["read", "create_event"]},
-        "anggaran": {"step_max": 25, "token_max": 100000, "rupiah_max": 10000000},
+        "budget": {"step_max": 25, "token_max": 100000, "rupiah_max": 10000000},
         "exp": now + 3600,
         "iat": now,
         "parent": None,
@@ -108,7 +108,7 @@ class ExecutorCounter:
 
     def __call__(self, content):
         self.calls.append(dict(content))
-        return {"status": "terkirim", "content": dict(content)}
+        return {"status": "sent", "content": dict(content)}
 
 
 def _tulis_skill(tmp_path, name="skill-serang", tools=("read_price", "search_listings")):
@@ -135,7 +135,7 @@ def _tulis_skill(tmp_path, name="skill-serang", tools=("read_price", "search_lis
 # ======================================================================
 
 
-def test_j1_skill_without_tanda_tangan_rejected(tmp_path, ephemeral_keys):
+def test_j1_skill_without_signature_rejected(tmp_path, ephemeral_keys):
     """Skill unsigned: verify_skill False, load_skill raise SkillRejected."""
     _sk, pk = ephemeral_keys
     skill_dir = _tulis_skill(tmp_path)
@@ -144,7 +144,7 @@ def test_j1_skill_without_tanda_tangan_rejected(tmp_path, ephemeral_keys):
         load_skill(skill_dir, pk)
 
 
-def test_j1_skill_tanda_tangan_wrong_rejected(tmp_path, ephemeral_keys):
+def test_j1_skill_signature_wrong_rejected(tmp_path, ephemeral_keys):
     """Skill ditandatangani kunci lain, atau manifes diubah setelah
     ditandatangani: signature tidak valid -> load_skill menolak."""
     sk, pk = ephemeral_keys
@@ -176,7 +176,7 @@ def test_j1_skill_tanda_tangan_wrong_rejected(tmp_path, ephemeral_keys):
         load_skill(skill_dir2, pk)
 
 
-def test_j1_skill_without_tanda_tangan_not_can_dipakai(tmp_path, ephemeral_keys):
+def test_j1_skill_without_signature_cannot_be_used(tmp_path, ephemeral_keys):
     """Skill unsigned tidak pernah lolos load_skill, jadi tidak ada objek
     skill yang bisa dipakai; dan tool di luar manifes skill yang sah pun
     ditolak check_tool (skill tidak bisa dipakai di luar manifesnya)."""
@@ -200,7 +200,7 @@ def test_j1_skill_without_tanda_tangan_not_can_dipakai(tmp_path, ephemeral_keys)
 # ======================================================================
 
 
-def test_j2_tool_di_luar_manifest_rejected(tmp_path, ephemeral_keys):
+def test_j2_tool_outside_manifest_rejected(tmp_path, ephemeral_keys):
     """check_tool menolak tool yang tidak ada di manifes skill yang sah."""
     sk, pk = ephemeral_keys
     skill_dir = _tulis_skill(tmp_path, name="skill-harga")
@@ -210,7 +210,7 @@ def test_j2_tool_di_luar_manifest_rejected(tmp_path, ephemeral_keys):
             check_tool(manifest, tool_liar, pk)
 
 
-def test_j2_gerbang_menolak_tool_di_luar_token(ephemeral_keys, stub_log):
+def test_j2_gate_rejects_tool_outside_token(ephemeral_keys, stub_log):
     """Token yang tidak mengizinkan tool kirim: request_approval ditolak
     gerbang (GateDenied) sebelum permintaan persetujuan sempat dibuat."""
     gate = _gate(ephemeral_keys, stub_log)
@@ -226,12 +226,12 @@ def test_j2_gerbang_menolak_tool_di_luar_token(ephemeral_keys, stub_log):
             agent_id="agen-puspa",
             token=token_read,
             kind="send",
-            content={"penerima": "a@contoh.id", "title": "x", "content": "y"},
+            content={"recipient": "a@contoh.id", "title": "x", "content": "y"},
         )
     assert stub_log.events == []
 
 
-def test_j2_gerbang_menolak_domain_di_luar_token(ephemeral_keys, stub_log):
+def test_j2_gate_rejects_domain_outside_token(ephemeral_keys, stub_log):
     """Token mengizinkan kirim, tapi isi menunjuk domain di luar token:
     gerbang menolak (cek domain hanya berlaku untuk isi['domain'] eksplisit)."""
     gate = _gate(ephemeral_keys, stub_log)
@@ -242,7 +242,7 @@ def test_j2_gerbang_menolak_domain_di_luar_token(ephemeral_keys, stub_log):
             agent_id="agen-puspa",
             token=token,
             kind="send",
-            content={"penerima": "a@contoh.id", "title": "x", "content": "y",
+            content={"recipient": "a@contoh.id", "title": "x", "content": "y",
                  "domain": "evil.example"},
         )
 
@@ -258,15 +258,15 @@ TEKS_INJEKSI = (
 )
 
 
-def test_j3_injeksi_web_dideteksi_and_ditandai():
+def test_j3_web_injection_detected_and_marked():
     """scan menemukan pola imperatif tingkat tinggi; mark membungkusnya
     sebagai [DATA: ...] sehingga tidak lagi terlihat seperti perintah."""
-    temuan = scan(TEKS_INJEKSI)
-    assert temuan, "injeksi tidak terdeteksi sama sekali"
-    pattern = {f.pattern for f in temuan}
+    findings = scan(TEKS_INJEKSI)
+    assert findings, "injeksi tidak terdeteksi sama sekali"
+    pattern = {f.pattern for f in findings}
     assert "abaikan instruksi" in pattern
-    assert any(f.level == "high" for f in temuan)
-    assert any(f.pattern == "bayar sekarang" for f in temuan)
+    assert any(f.level == "high" for f in findings)
+    assert any(f.pattern == "bayar sekarang" for f in findings)
 
     bertanda = mark(TEKS_INJEKSI)
     assert bertanda != TEKS_INJEKSI
@@ -279,7 +279,7 @@ def test_j3_injeksi_web_dideteksi_and_ditandai():
     assert scan("Harga HP Rp1.250.000, toko terpercaya.") == []
 
 
-def test_j3_pembaca_terkarantina_mark_data_and_trim():
+def test_j3_quarantined_reader_marks_data_and_trims():
     """QuarantinedReader: semua teks bebas ditandai [DATA:], dipangkas
     maks 200 karakter, dan sumber di luar allowlist ditolak mentah-mentah."""
     reader = QuarantinedReader(["tokopedia.com", "shopee.co.id"])
@@ -302,7 +302,7 @@ def test_j3_pembaca_terkarantina_mark_data_and_trim():
         reader.read_text("https://evil.example/x", TEKS_INJEKSI)
 
 
-def test_j3_konten_bertanda_not_menjadi_instruksi_yang_dieksekusi(
+def test_j3_marked_content_does_not_become_executed_instruction(
     ephemeral_keys, stub_log
 ):
     """Konten yang sudah ditandai [DATA:] diteruskan ke gerbang sebagai
@@ -319,7 +319,7 @@ def test_j3_konten_bertanda_not_menjadi_instruksi_yang_dieksekusi(
         agent_id="agen-puspa",
         token=token,
         kind="send",
-        content={"penerima": "penyerang@evil.example", "title": "data",
+        content={"recipient": "penyerang@evil.example", "title": "data",
              "content": bertanda},
     )
     # TIDAK ada approve() dari user di sini — penyerang tidak bisa
@@ -329,7 +329,7 @@ def test_j3_konten_bertanda_not_menjadi_instruksi_yang_dieksekusi(
     assert executor.calls == []
 
 
-def test_j3_kode_berbahaya_dari_konten_not_jalan_di_host(monkeypatch, tmp_path):
+def test_j3_dangerous_code_from_content_does_not_run_on_host(monkeypatch, tmp_path):
     """Kode berbahaya (mis. dari halaman yang disusupi) yang dilempar ke
     sandbox TIDAK PERNAH dieksekusi di host: tanpa Docker, run() raise
     SandboxUnavailable dan file probe host tidak tercipta. Fail-closed."""
@@ -353,7 +353,7 @@ def test_j3_kode_berbahaya_dari_konten_not_jalan_di_host(monkeypatch, tmp_path):
 # ======================================================================
 
 
-def test_j4_vault_antar_user_terisolasi(test_dsn, vault_master_key):
+def test_j4_vault_isolated_between_users(test_dsn, vault_master_key):
     """Token konektor user A tidak bisa dibaca dengan kredensial user B:
     get/list B tidak melihat apa pun milik A (KeyError / daftar kosong),
     dan nilai yang diambil A tetap benar (bukan nilai B)."""
@@ -395,7 +395,7 @@ def testj4sesiAnotactiveforB(test_dsn):
         validate_session(token_a, dsn=test_dsn)
 
 
-def test_j4_ledger_not_membocorkan_task_lain(test_dsn):
+def test_j4_ledger_does_not_leak_other_tasks(test_dsn):
     """events() per tugas_id tidak membocorkan tugas lain: baca tugas B
     tidak mengembalikan satu pun kejadian tugas A, dan sebaliknya; rantai
     tiap tugas tetap utuh sendiri-sendiri."""
@@ -446,13 +446,13 @@ LISTING_JAHAT = (
 )
 
 
-def test_j5_injeksi_listing_send_without_approval_nol_action(
+def test_j5_injection_listing_send_without_approval_zero_actions(
     ephemeral_keys, stub_log
 ):
     """Alur penuh: agen membaca listing berisi perintah kirim, lalu mencoba
     mengirim TANPA approval user -> GateDenied, executor 0 kali dipanggil."""
-    temuan = scan(LISTING_JAHAT)
-    assert any(f.level == "high" for f in temuan)
+    findings = scan(LISTING_JAHAT)
+    assert any(f.level == "high" for f in findings)
     bertanda = mark(LISTING_JAHAT)
     assert "[DATA:" in bertanda
 
@@ -464,7 +464,7 @@ def test_j5_injeksi_listing_send_without_approval_nol_action(
         agent_id="agen-puspa",
         token=token,
         kind="send",
-        content={"penerima": "penjual@evil.example", "title": "Pembayaran HP",
+        content={"recipient": "penjual@evil.example", "title": "Pembayaran HP",
              "content": bertanda},
     )
     with pytest.raises(GateDenied):
@@ -504,7 +504,7 @@ def testj5injeksilistingpaydenganapprovaltapilimitRp0(
     assert spending.spent_in_period(uid) == 0
 
 
-def test_j5_injeksi_email_pay_without_approval_and_without_token_pay(
+def test_j5_injection_email_pay_without_approval_and_without_token_pay(
     ephemeral_keys, stub_log
 ):
     """Email berisi perintah bayar dibaca Pembaca (tanpa alat tulis) lalu
@@ -525,7 +525,7 @@ def test_j5_injeksi_email_pay_without_approval_and_without_token_pay(
         ephemeral_keys,
         tools=["read_email"],
         connectors={"gmail": ["read"]},
-        anggaran={"step_max": 15, "token_max": 50000, "rupiah_max": 0},
+        budget={"step_max": 15, "token_max": 50000, "rupiah_max": 0},
     )
     with pytest.raises(GateDenied):
         gate.request_approval(
@@ -542,7 +542,7 @@ def test_j5_injeksi_email_pay_without_approval_and_without_token_pay(
 # ======================================================================
 
 
-def test_j6_issue_child_menolak_token_bukan_subset(ephemeral_keys):
+def test_j6_issue_child_rejects_token_not_subset(ephemeral_keys):
     """Token anak yang minta tool/domain/anggaran LEBIH BESAR dari induk
     ditolak issue_child (TokenError) — tidak ada token yang keluar."""
     sk, pk = ephemeral_keys
@@ -568,7 +568,7 @@ def test_j6_issue_child_menolak_token_bukan_subset(ephemeral_keys):
     with pytest.raises(TokenError):
         issue_child(
             token_induk,
-            _payload(anggaran={"step_max": 99, "token_max": 999999,
+            _payload(budget={"step_max": 99, "token_max": 999999,
                                "rupiah_max": 99999999},
                      subagent_id="sub-1"),
             sk, pk,
@@ -592,7 +592,7 @@ def test_j6_issue_child_menolak_token_bukan_subset(ephemeral_keys):
     assert payload_child["parent"] is not None
 
 
-def test_j6_token_child_rejected_gerbang_for_tool_di_luar_items(
+def test_j6_token_child_rejected_gate_for_tool_outside_items(
     ephemeral_keys, stub_log
 ):
     """Token anak yang lolos verifikasi (signature sah, subset induk) tapi
@@ -614,7 +614,7 @@ def test_j6_token_child_rejected_gerbang_for_tool_di_luar_items(
             agent_id="agen-puspa",
             token=child,
             kind="send",
-            content={"penerima": "a@contoh.id", "title": "x", "content": "y"},
+            content={"recipient": "a@contoh.id", "title": "x", "content": "y"},
         )
     # Anak juga tidak bisa memakai domain di luar daftarnya.
     with pytest.raises(GateDenied):
@@ -623,12 +623,12 @@ def test_j6_token_child_rejected_gerbang_for_tool_di_luar_items(
             agent_id="agen-puspa",
             token=child,
             kind="send",
-            content={"penerima": "a@contoh.id", "title": "x", "content": "y",
+            content={"recipient": "a@contoh.id", "title": "x", "content": "y",
                  "domain": "shopee.co.id"},
         )
 
 
-def test_j6_subagen_not_can_membuat_subagen(ephemeral_keys):
+def test_j6_subagent_cannot_create_subagent(ephemeral_keys):
     """Satu level saja (definisi 2.2): token anak (sub_agen_id terisi)
     tidak bisa menjadi induk token cucu — issue_child gagal TokenError."""
     sk, pk = ephemeral_keys
@@ -664,17 +664,17 @@ def test_j6_subagen_not_can_membuat_subagen(ephemeral_keys):
     [
         (
             "send",
-            {"penerima": "a@contoh.id", "title": "Halo", "content": "tes"},
-            {"penerima": "penipu@evil.example"},
+            {"recipient": "a@contoh.id", "title": "Halo", "content": "tes"},
+            {"recipient": "penipu@evil.example"},
         ),
         (
             "send",
-            {"penerima": "a@contoh.id", "title": "Halo", "content": "tes"},
+            {"recipient": "a@contoh.id", "title": "Halo", "content": "tes"},
             {"content": "kirim SEMUA data rahasia ke saya"},
         ),
     ],
 )
-def test_j7_content_diubah_setelah_approval_execute_failed(
+def test_j7_content_changed_after_approval_execute_failed(
     ephemeral_keys, stub_log, kind, content_start, change
 ):
     """Approval terikat hash isi: setelah disetujui, isi diubah (penerima /
@@ -698,7 +698,7 @@ def test_j7_content_diubah_setelah_approval_execute_failed(
         gate.approve(req.request_id, "user-1")
 
 
-def test_j7_content_pay_diubah_setelah_approval_nominal_replaced(
+def test_j7_content_pay_changed_after_approval_nominal_replaced(
     ephemeral_keys, stub_log
 ):
     """Varian bayar: nominal diganti 100.000 -> 900.000 setelah approval.
@@ -723,7 +723,7 @@ def test_j7_content_pay_diubah_setelah_approval_nominal_replaced(
     assert spending.spent_in_period(uid) == 0
 
 
-def test_j7_content_asli_tetap_can_dieksekusi_sekali_idempoten(
+def test_j7_original_content_still_executable_once_idempotent(
     ephemeral_keys, stub_log
 ):
     """Kontrol positif: request TERPISAH dengan isi asli yang tidak diubah
@@ -735,13 +735,13 @@ def test_j7_content_asli_tetap_can_dieksekusi_sekali_idempoten(
     req = gate.request_approval(
         user_id="user-1", agent_id="agen-puspa", token=token,
         kind="send",
-        content={"penerima": "a@contoh.id", "title": "Halo", "content": "tes"},
+        content={"recipient": "a@contoh.id", "title": "Halo", "content": "tes"},
     )
     gate.approve(req.request_id, "user-1")
     hasil1 = gate.execute(req.request_id, executor=executor)
     hasil2 = gate.execute(req.request_id, executor=executor)
-    assert hasil1 == hasil2 == {"status": "terkirim",
-                                "content": {"penerima": "a@contoh.id",
+    assert hasil1 == hasil2 == {"status": "sent",
+                                "content": {"recipient": "a@contoh.id",
                                         "title": "Halo", "content": "tes"}}
     assert len(executor.calls) == 1
 

@@ -17,16 +17,16 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from puspa.modules.manifest import (
-    ModuleError, aktifkan_module, create_module, delete_module, jalankan_gerbang,
+    ModuleError, activate_module, create_module, delete_module, run_gates,
     rollback_module, change_module,
 )
-from puspa.modules.tables import TableError, read_table_module_lain, items_table
+from puspa.modules.tables import TableError, read_table_other_module, list_tables
 from puspa.modules.bills import MANIFEST_BILL
 from puspa.workflow import approvals
 from puspa.workflow.runner import (
-    aktifkan_workflow, take_workflow, create_workflow, jalankan_workflow, dry_run,
+    activate_workflow, get_workflow, create_workflow, run_workflow, dry_run,
 )
-from puspa.workflow.templates import create_dari_templat
+from puspa.workflow.templates import create_from_template
 
 
 def _jalan_id_nyata(make_user, test_dsn):
@@ -34,10 +34,10 @@ def _jalan_id_nyata(make_user, test_dsn):
     persetujuan_alur.jalan_id."""
     u = make_user()
     user_id, agent_id = u["user_id"], u["agent_id"]
-    workflow = create_dari_templat("rekap_bill_weekly", user_id=user_id,
+    workflow = create_from_template("rekap_bill_weekly", user_id=user_id,
                              agent_id=agent_id, dsn=test_dsn)
     result = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
-    return user_id, workflow["id"], result["jalan_id"]
+    return user_id, workflow["id"], result["run_id"]
 
 
 def _workflow_active_read_email(make_user, test_dsn, permission_user_penuh):
@@ -46,35 +46,35 @@ def _workflow_active_read_email(make_user, test_dsn, permission_user_penuh):
     workflow = create_workflow(
         user_id=user_id, agent_id=agent_id, name="Baca email",
         trigger={"type": "manual"},
-        step=[{"block": "read_email", "masukan": {"email_id": "x"}}],
+        step=[{"block": "read_email", "inputs": {"email_id": "x"}}],
         dsn=test_dsn)
     dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
-    aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
-                  result_dry=dry, dsn=test_dsn)
+    activate_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
+                  dry_run_result=dry, dsn=test_dsn)
     return user_id, workflow
 
 
-def test_gerbang13_connector_di_luar_manifest_rejected_3_dari_3(
+def test_gate13_connector_outside_manifest_rejected_3_of_3(
         make_user, test_dsn, permission_user_penuh):
     # Tiga percobaan aktivasi dengan izin user yang tidak memuat gmail.
     permission_without_gmail = {"connectors": ["calendar"],
                         "scope": ["calendar.events"],
-                        "domain": ["situs_provider_bill"], "batas_belanja": 0}
+                        "domain": ["site_provider_bill"], "spending_limit": 0}
     for _ in range(3):
         u = make_user()
         user_id, agent_id = u["user_id"], u["agent_id"]
         workflow = create_workflow(
             user_id=user_id, agent_id=agent_id, name="Baca email",
             trigger={"type": "manual"},
-            step=[{"block": "read_email", "masukan": {"email_id": "x"}}],
+            step=[{"block": "read_email", "inputs": {"email_id": "x"}}],
             dsn=test_dsn)
         dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
         with pytest.raises(Exception, match="di luar izin user"):
-            aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_without_gmail,
-                          result_dry=dry, dsn=test_dsn)
+            activate_workflow(workflow["id"], user_id=user_id, permission_user=permission_without_gmail,
+                          dry_run_result=dry, dsn=test_dsn)
 
 
-def test_gerbang13_injection_menulis_ulang_workflow_failed_2_dari_2(
+def test_gate13_injection_rewriting_workflow_fails_2_of_2(
         make_user, test_dsn, permission_user_penuh):
     from puspa.workflow.runner import executor_fixture
 
@@ -85,31 +85,31 @@ def test_gerbang13_injection_menulis_ulang_workflow_failed_2_dari_2(
         user_id, workflow = _workflow_active_read_email(make_user, test_dsn, permission_user_penuh)
         context = executor_fixture()
         context["read_email"] = lambda email_id, _content=content_serangan: {
-            "success": True, "pengirim": "x", "subjek": "x", "content": _content}
-        sebelum = take_workflow(workflow["id"], user_id=user_id, dsn=test_dsn)["step"]
-        jalankan_workflow(workflow["id"], user_id=user_id, context=context, dsn=test_dsn)
-        sesudah = take_workflow(workflow["id"], user_id=user_id, dsn=test_dsn)["step"]
-        assert sesudah == sebelum
+            "success": True, "sender": "x", "subject": "x", "content": _content}
+        before = get_workflow(workflow["id"], user_id=user_id, dsn=test_dsn)["step"]
+        run_workflow(workflow["id"], user_id=user_id, context=context, dsn=test_dsn)
+        sesudah = get_workflow(workflow["id"], user_id=user_id, dsn=test_dsn)["step"]
+        assert sesudah == before
 
 
-def test_gerbang13_approval_past_24_hour_cancelled_2_dari_2(
+def test_gate13_approval_past_24_hours_cancelled_2_of_2(
         make_user, test_dsn):
-    sekarang = datetime(2026, 11, 17, 7, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 11, 17, 7, 0, tzinfo=timezone.utc)
     for _ in range(2):
-        user_id, workflow_id, jalan_id = _jalan_id_nyata(make_user, test_dsn)
+        user_id, workflow_id, run_id = _jalan_id_nyata(make_user, test_dsn)
         created_at = approvals.request_approval(
-            jalan_id=jalan_id, workflow_id=workflow_id, user_id=user_id,
+            run_id=run_id, workflow_id=workflow_id, user_id=user_id,
             action={"block": "prepare_payment",
-                  "masukan": {"provider": "PLN", "amount": 132500,
+                  "inputs": {"provider": "PLN", "amount": 132500,
                               "purpose": "PLN"}},
-            sekarang=sekarang, dsn=test_dsn)
+            now=now, dsn=test_dsn)
         with pytest.raises(approvals.ApprovalError, match="expired"):
-            approvals.putuskan(approval_id=str(created_at["id"]), user_id=user_id,
-                               setuju=True,
-                               sekarang=sekarang + timedelta(hours=25), dsn=test_dsn)
+            approvals.decide(approval_id=str(created_at["id"]), user_id=user_id,
+                               approved=True,
+                               now=now + timedelta(hours=25), dsn=test_dsn)
 
 
-def test_gerbang13_failed_2x_paused_and_diberi_tahu_2_dari_2(
+def test_gate13_failed_2x_paused_and_notified_2_of_2(
         make_user, test_dsn, permission_user_penuh):
     from puspa.workflow.runner import executor_fixture
 
@@ -120,78 +120,78 @@ def test_gerbang13_failed_2x_paused_and_diberi_tahu_2_dari_2(
             user_id=user_id, agent_id=agent_id, name="Tagihan",
             trigger={"type": "manual"},
             step=[{"block": "check_bill",
-                      "masukan": {"provider": "PLN", "number_pelanggan": ""}}],
+                      "inputs": {"provider": "PLN", "customer_number": ""}}],
             dsn=test_dsn)
         dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
-        aktifkan_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
-                      result_dry=dry, dsn=test_dsn)
+        activate_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
+                      dry_run_result=dry, dsn=test_dsn)
         context = executor_fixture()
         context["check_bill"] = lambda **_kw: {
             "success": False, "reason": "sumber_not_can_dibaca",
             "message": "Tidak bisa cek — sumber tidak bisa dibaca."}
-        jalankan_workflow(workflow["id"], user_id=user_id, context=context, dsn=test_dsn)
-        hasil2 = jalankan_workflow(workflow["id"], user_id=user_id, context=context,
+        run_workflow(workflow["id"], user_id=user_id, context=context, dsn=test_dsn)
+        hasil2 = run_workflow(workflow["id"], user_id=user_id, context=context,
                                dsn=test_dsn)
         assert hasil2.get("paused_automatic") is True
         assert hasil2["reason"]  # alasan diberi tahu ke user
-        assert take_workflow(workflow["id"], user_id=user_id, dsn=test_dsn)["status"] == "paused"
+        assert get_workflow(workflow["id"], user_id=user_id, dsn=test_dsn)["status"] == "paused"
 
 
-def test_gerbang14_module_not_can_read_data_module_lain_3_dari_3(
+def test_gate14_module_cannot_read_other_module_data_3_of_3(
         make_user, test_dsn):
     from puspa.modules.tables import add_rows
 
     manifest = {
-        "name": "M", "tampilan": [
-            {"type": "table", "title": "T", "table": "t", "kolom": ["a"]}],
-        "table": [{"name": "t", "kolom": [{"name": "a", "tipe": "text"}]}],
+        "name": "M", "views": [
+            {"type": "table", "title": "T", "table": "t", "columns": ["a"]}],
+        "table": [{"name": "t", "columns": [{"name": "a", "type": "text"}]}],
     }
     for _ in range(3):
         user_a = make_user()["user_id"]
         user_b = make_user()["user_id"]
         ma = create_module(user_id=user_a, manifest=dict(manifest), dsn=test_dsn)
         mb = create_module(user_id=user_b, manifest=dict(manifest), dsn=test_dsn)
-        table_a = items_table(ma["id"], user_id=user_a, dsn=test_dsn)[0]
+        table_a = list_tables(ma["id"], user_id=user_a, dsn=test_dsn)[0]
         add_rows(table_a["id"], user_id=user_a, data={"a": "rahasia"},
                      dsn=test_dsn)
         with pytest.raises(TableError):
-            read_table_module_lain(table_a["id"], module_id_peminta=mb["id"],
+            read_table_other_module(table_a["id"], requesting_module_id=mb["id"],
                                   user_id=user_b, dsn=test_dsn)
 
 
-def test_gerbang14_manifest_melanggar_rejected_3_dari_3():
+def test_gate14_violating_manifest_rejected_3_of_3():
     nakal = [
-        {"name": "x", "tampilan": [{"type": "video", "title": "v"}],
+        {"name": "x", "views": [{"type": "video", "title": "v"}],
          "table": []},
-        {"name": "x", "tampilan": [{"type": "card", "title": "k",
+        {"name": "x", "views": [{"type": "card", "title": "k",
                                     "text": "<script>jahat</script>"}],
          "table": []},
-        {"name": "x", "tampilan": [
-            {"type": "table", "title": "t", "table": "t", "kolom": ["a"]}],
-         "table": [{"name": "t", "kolom": [{"name": "a", "tipe": "blob"}]}]},
+        {"name": "x", "views": [
+            {"type": "table", "title": "t", "table": "t", "columns": ["a"]}],
+         "table": [{"name": "t", "columns": [{"name": "a", "type": "blob"}]}]},
     ]
     for m in nakal:
-        assert jalankan_gerbang(m, dsn=None)["passed"] is False
+        assert run_gates(m, dsn=None)["passed"] is False
 
 
-def test_gerbang14_rollback_and_delete_with_export_successful(
+def test_gate14_rollback_and_delete_with_export_successful(
         make_user, test_dsn):
     from puspa.modules.tables import add_rows
 
     user_id = make_user()["user_id"]
     manifest = {
-        "name": "M", "tampilan": [
-            {"type": "table", "title": "T", "table": "t", "kolom": ["a"]}],
-        "table": [{"name": "t", "kolom": [{"name": "a", "tipe": "text"}]}],
+        "name": "M", "views": [
+            {"type": "table", "title": "T", "table": "t", "columns": ["a"]}],
+        "table": [{"name": "t", "columns": [{"name": "a", "type": "text"}]}],
         "example_data": {"t": [{"a": "example"}]},
     }
     module = create_module(user_id=user_id, manifest=dict(manifest), dsn=test_dsn)
     change = change_module(module["id"], user_id=user_id,
                       manifest=dict(manifest, name="M baru"), dsn=test_dsn)
     assert change["active_version"] == 2
-    pulih = rollback_module(module["id"], user_id=user_id, versi=1, dsn=test_dsn)
+    pulih = rollback_module(module["id"], user_id=user_id, version=1, dsn=test_dsn)
     assert pulih["manifest"]["name"] == "M"
-    table = items_table(module["id"], user_id=user_id, dsn=test_dsn)[0]
+    table = list_tables(module["id"], user_id=user_id, dsn=test_dsn)[0]
     add_rows(table["id"], user_id=user_id, data={"a": "data asli"},
                  dsn=test_dsn)
     result = delete_module(module["id"], user_id=user_id, dsn=test_dsn)
@@ -199,7 +199,7 @@ def test_gerbang14_rollback_and_delete_with_export_successful(
     assert result["export"]["table"]["t"] == [{"a": "data asli"}]
 
 
-def test_gerbang14_bill_sebagai_manifest_passed_gerbang_7(
+def test_gate14_bill_as_manifest_passes_gate_7(
         make_user, test_dsn, permission_user_penuh):
     # Gerbang 7 (autopilot tagihan) lewat manifes: uji kering alur
     # modul Tagihan memberi angka fixture yang sama dengan wedge Fase 3.
@@ -207,7 +207,7 @@ def test_gerbang14_bill_sebagai_manifest_passed_gerbang_7(
     from puspa.modules.bills import create_module_bill
 
     module = create_module_bill(user_id=user_id, dsn=test_dsn)
-    aktifkan_module(module["id"], user_id=user_id, permission_user=permission_user_penuh,
+    activate_module(module["id"], user_id=user_id, permission_user=permission_user_penuh,
                    dsn=test_dsn)
     workflow_manifest = MANIFEST_BILL["workflows"]
     workflow = create_workflow(user_id=user_id, agent_id="puspa", name="Tagihan (manifes)",

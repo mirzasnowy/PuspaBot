@@ -33,7 +33,7 @@ from ..memory.schema import resolve_dsn
 STYLES = {
     "santai": {
         "name": "Santai",
-        "deskripsi": "Bahasa sehari-hari, slang, singkat, hangat.",
+        "description": "Bahasa sehari-hari, slang, singkat, hangat.",
         "example": [
             "Siap, gue cek dulu ya.",
             "Oke, udah ketemu yang paling murah.",
@@ -42,7 +42,7 @@ STYLES = {
     },
     "rapi": {
         "name": "Rapi",
-        "deskripsi": "Bahasa baku yang sopan, kalimat lengkap.",
+        "description": "Bahasa baku yang sopan, kalimat lengkap.",
         "example": [
             "Baik, saya periksa terlebih dahulu.",
             "Saya sudah menemukan harga termurah untuk Anda.",
@@ -51,7 +51,7 @@ STYLES = {
     },
     "campur": {
         "name": "Campur kode",
-        "deskripsi": "Campur bahasa Indonesia dan Inggris, informal.",
+        "description": "Campur bahasa Indonesia dan Inggris, informal.",
         "example": [
             "Got it, aku cek dulu ya.",
             "Done — ini yang paling murah so far.",
@@ -64,7 +64,7 @@ MAX_EXAMPLE = 20
 
 #: Koreksi yang dikenali (frasa -> direktif). Frasa lain tetap disimpan
 #: mentah sebagai fakta koreksi dan berlaku sebagai catatan gaya.
-_KOREKSI_DIKENALI = (
+_KNOWN_CORRECTIONS = (
     ("lebih santai", "santai"),
     ("lebih formal", "formal"),
     ("lebih baku", "formal"),
@@ -84,7 +84,7 @@ def choose_style(user_id, style, dsn=None):
     if style not in STYLES:
         raise ValueError(f"gaya tidak dikenal: {style!r} (pilih: {sorted(STYLES)})")
     return profile.add_fact(
-        user_id, "gaya_bicara", style, "user_confirmed", dsn=dsn
+        user_id, "speaking_style", style, "user_confirmed", dsn=dsn
     )
 
 
@@ -97,12 +97,12 @@ def add_style_samples(user_id, messages, dsn=None):
         raise ValueError("messages harus list tak kosong")
     if len(messages) > MAX_EXAMPLE:
         raise ValueError(f"maks {MAX_EXAMPLE} pesan contoh sekali tempel")
-    bersih = [m.strip() for m in messages if isinstance(m, str) and m.strip()]
-    if not bersih:
+    clean = [m.strip() for m in messages if isinstance(m, str) and m.strip()]
+    if not clean:
         raise ValueError("tidak ada pesan contoh yang valid")
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            for text in bersih:
+            for text in clean:
                 cur.execute(
                     "INSERT INTO style_examples (user_id, text) VALUES (%s, %s)",
                     (user_id, text),
@@ -135,27 +135,27 @@ def list_style_samples(user_id, dsn=None):
             return [r["text"] for r in cur.fetchall()]
 
 
-def apply_correction(user_id, teks_koreksi, dsn=None):
+def apply_correction(user_id, correction_text, dsn=None):
     """Simpan koreksi gaya user; langsung berlaku.
 
     Kembalikan dict fakta koreksi + `direktif` yang dikenali (atau None
     kalau frasa tidak dikenali — tetap disimpan mentah).
     """
-    if not isinstance(teks_koreksi, str) or not teks_koreksi.strip():
+    if not isinstance(correction_text, str) or not correction_text.strip():
         raise ValueError("teks koreksi harus string tak kosong")
-    text = teks_koreksi.strip()
-    direktif = None
+    text = correction_text.strip()
+    directives = None
     lowered = text.lower()
-    for frasa, name in _KOREKSI_DIKENALI:
-        if frasa in lowered:
-            direktif = name
+    for phrase, name in _KNOWN_CORRECTIONS:
+        if phrase in lowered:
+            directives = name
             break
-    value = direktif or text
+    value = directives or text
     fact = profile.add_fact(
-        user_id, "koreksi_gaya", value, "user_confirmed", dsn=dsn
+        user_id, "style_correction", value, "user_confirmed", dsn=dsn
     )
-    fact["direktif"] = direktif
-    fact["teks_asli"] = text
+    fact["directive"] = directives
+    fact["original_text"] = text
     return fact
 
 
@@ -166,23 +166,23 @@ def get_persona(user_id, dsn=None):
     fakta `koreksi_gaya` yang masih berlaku sebagai direktif.
     """
     profile_data = profile.get_profile(user_id, dsn=dsn)
-    style = profile_data.get("gaya_bicara", "santai")
-    koreksi = [
-        f for f in profile.list_facts(user_id, key="koreksi_gaya", dsn=dsn)
+    style = profile_data.get("speaking_style", "santai")
+    corrections = [
+        f for f in profile.list_facts(user_id, key="style_correction", dsn=dsn)
         if f["status"] == "active"
     ]
-    direktif = [f["value"] for f in koreksi]
+    directives = [f["value"] for f in corrections]
     example = list_style_samples(user_id, dsn=dsn)
     return {
         "style": style,
-        "deskripsi": STYLES.get(style, STYLES["santai"])["deskripsi"],
-        "direktif": direktif,
-        "amount_example": len(example),
+        "description": STYLES.get(style, STYLES["santai"])["description"],
+        "directive": directives,
+        "example_count": len(example),
         "example": example,
     }
 
 
-def render_reply(persona, teks_dasar):
+def render_reply(persona, base_text):
     """Render balasan dengan gaya persona (deterministik, tanpa model).
 
     Transformasi sementara sampai render model Fase 2:
@@ -191,16 +191,16 @@ def render_reply(persona, teks_dasar):
     - direktif `formal`/`lebih formal`: gue->saya, lo->Anda.
     - direktif `singkat`: potong ke kalimat pertama.
     """
-    text = teks_dasar
-    direktif = persona.get("direktif", [])
-    if "without_gue" in direktif:
+    text = base_text
+    directives = persona.get("directive", [])
+    if "without_gue" in directives:
         text = re.sub(r"\bgue\b", "aku", text, flags=re.IGNORECASE)
-    if "without_lo" in direktif:
+    if "without_lo" in directives:
         text = re.sub(r"\blo\b", "kamu", text, flags=re.IGNORECASE)
-    if "formal" in direktif:
+    if "formal" in directives:
         text = re.sub(r"\bgue\b", "saya", text, flags=re.IGNORECASE)
         text = re.sub(r"\blo\b", "Anda", text, flags=re.IGNORECASE)
-    if "singkat" in direktif:
-        pertama = text.split(".")[0]
-        text = pertama.strip() + "." if pertama.strip() else text
+    if "singkat" in directives:
+        first_sentence = text.split(".")[0]
+        text = first_sentence.strip() + "." if first_sentence.strip() else text
     return text

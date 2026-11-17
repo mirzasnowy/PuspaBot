@@ -142,7 +142,7 @@ class PuspaTool(Tool):
         name = self.name
         payload = resolve_token_payload()
 
-        def _tolak(reason: str):
+        def _reject(reason: str):
             self._log_event(
                 "tool_called", {"tool": name, "status": "rejected", "reason": reason}
             )
@@ -152,19 +152,19 @@ class PuspaTool(Tool):
             return ToolResult.error(f"Ditolak Puspa: {reason}")
 
         if payload is None:
-            return _tolak("tidak ada token izin Puspa untuk turn ini")
+            return _reject("tidak ada token izin Puspa untuk turn ini")
         if name not in payload.get("tools", []):
-            return _tolak(f"tool {name!r} di luar token izin")
+            return _reject(f"tool {name!r} di luar token izin")
         if self._skill_manifest is not None:
             try:
                 check_tool(self._skill_manifest, name, self._public_key)
             except SkillRejected as exc:
-                return _tolak(f"skill tidak lolos verifikasi: {exc}")
+                return _reject(f"skill tidak lolos verifikasi: {exc}")
 
         kind = kind_for_tool(name)
         if kind is not None:
             if self._gate is None:
-                return _tolak(f"aksi keluar {kind!r} tanpa gerbang persetujuan")
+                return _reject(f"aksi keluar {kind!r} tanpa gerbang persetujuan")
             try:
                 request = self._gate.request_approval(
                     user_id=payload["user_id"],
@@ -174,7 +174,7 @@ class PuspaTool(Tool):
                     content=dict(kwargs),
                 )
             except GateDenied as exc:
-                return _tolak(f"gerbang menolak aksi {kind!r}: {exc}")
+                return _reject(f"gerbang menolak aksi {kind!r}: {exc}")
             self._log_event(
                 "tool_called",
                 {
@@ -197,10 +197,10 @@ class PuspaTool(Tool):
         status = "error" if isinstance(result, ToolResult) and result.is_error else "ok"
         content_completed: dict[str, Any] = {"tool": name, "status": status}
         if isinstance(result, str) and result:
-            temuan = scan(result)
-            if temuan:
-                content_completed["injeksi"] = [
-                    {"pattern": t.pattern, "level": t.level} for t in temuan
+            findings = scan(result)
+            if findings:
+                content_completed["injection"] = [
+                    {"pattern": t.pattern, "level": t.level} for t in findings
                 ]
         self._log_event("tool_completed", content_completed)
         return result

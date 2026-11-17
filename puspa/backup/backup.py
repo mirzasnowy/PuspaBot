@@ -106,14 +106,14 @@ def create_backup(dsn=None, backup_dir=None, pg_dump_cmd="pg_dump", now=None):
         "file": path.name,
         "database": db,
         "created_at": now.isoformat(),
-        "ukuran_terenkripsi": path.stat().st_size,
-        "ukuran_dump": len(plaintext),
+        "encrypted_size": path.stat().st_size,
+        "dump_size": len(plaintext),
     }
     (backup_dir / (path.name + ".json")).write_text(
         json.dumps(manifest, indent=2), encoding="utf-8"
     )
     pruned = prune_backups(backup_dir)
-    manifest["deleted_retensi"] = pruned
+    manifest["deleted_by_retention"] = pruned
     return {"path": str(path), "manifest": manifest}
 
 
@@ -137,7 +137,7 @@ def prune_backups(backup_dir=None, retention_days=RETENTION_DAYS, now=None):
     """Hapus cadangan lebih tua dari retensi. Kembalikan nama yang dihapus."""
     backup_dir = Path(backup_dir or Path(__file__).resolve().parent.parent.parent / "backups")
     now = now or datetime.now(timezone.utc)
-    batas = now - timedelta(days=retention_days)
+    cutoff = now - timedelta(days=retention_days)
     deleted = []
     if not backup_dir.exists():
         return deleted
@@ -148,7 +148,7 @@ def prune_backups(backup_dir=None, retention_days=RETENTION_DAYS, now=None):
         stamp = datetime.strptime(
             match.group(1) + match.group(2), "%Y%m%d%H%M%S"
         ).replace(tzinfo=timezone.utc)
-        if stamp < batas:
+        if stamp < cutoff:
             path.unlink(missing_ok=True)
             Path(str(path) + ".json").unlink(missing_ok=True)
             deleted.append(path.name)
@@ -184,8 +184,8 @@ def restore_backup(backup_path, target_dsn, pg_restore_cmd="pg_restore"):
                 "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
                 "ORDER BY tablename"
             )
-            tabels = [r[0] for r in cur.fetchall()]
-    return {"database": _db_name(target_dsn), "table": tabels}
+            tables = [r[0] for r in cur.fetchall()]
+    return {"database": _db_name(target_dsn), "table": tables}
 
 
 def verify_restored_counts(target_dsn, tables):

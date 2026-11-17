@@ -13,7 +13,7 @@ import os
 import psycopg
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
-CONNECTOR_DIIZINKAN = ("gmail", "drive", "calendar")
+ALLOWED_CONNECTORS = ("gmail", "drive", "calendar")
 SCOPE_PER_CONNECTOR = {
     "gmail": ["read", "create_draft", "send"],
     "drive": ["read"],
@@ -31,7 +31,7 @@ def _connect(dsn=None):
 
 def give_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> dict:
     """Beri konektor ke satu agen (scope minimal bawaan konektor)."""
-    if connector not in CONNECTOR_DIIZINKAN:
+    if connector not in ALLOWED_CONNECTORS:
         raise GrantError(f"konektor tidak dikenal: {connector!r}")
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
@@ -48,10 +48,10 @@ def give_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> dic
             )
         conn.commit()
     return {"agent_id": agent_id, "connectors": connector,
-            "scope": SCOPE_PER_CONNECTOR[connector], "terhubung": True}
+            "scope": SCOPE_PER_CONNECTOR[connector], "connected": True}
 
 
-def cabut_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> None:
+def revoke_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> None:
     """Cabut konektor dari satu agen."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
@@ -62,19 +62,19 @@ def cabut_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> No
         conn.commit()
 
 
-def items_connector(user_id: str, agent_id: str, dsn=None) -> list[dict]:
+def list_connectors(user_id: str, agent_id: str, dsn=None) -> list[dict]:
     """Konektor + scope + status terhubung untuk satu agen."""
     with _connect(dsn) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute(
-                "SELECT connector, scope, terhubung FROM agent_connectors"
+                "SELECT connector, scope, terhubung AS connected FROM agent_connectors"
                 " WHERE user_id = %s AND agent_id = %s ORDER BY connector",
                 (user_id, agent_id),
             )
             return [dict(r) for r in cur.fetchall()]
 
 
-def punya_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> bool:
+def has_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> bool:
     """True bila agen ini terhubung ke konektor itu."""
-    return any(k["connector"] == connector and k["terhubung"]
-               for k in items_connector(user_id, agent_id, dsn=dsn))
+    return any(k["connector"] == connector and k["connected"]
+               for k in list_connectors(user_id, agent_id, dsn=dsn))

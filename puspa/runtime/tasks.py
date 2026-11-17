@@ -32,10 +32,10 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 
-from puspa.runtime.budget import AnggaranHabis, BudgetTracker
+from puspa.runtime.budget import BudgetExhausted, BudgetTracker
 from puspa.runtime.handoff import Handoff, HandoffContract
 
-TAHAP = ("terima", "rencana", "jalankan", "periksa", "sajikan")
+STAGES = ("accept", "plan", "run", "verify", "present")
 
 
 class TaskError(Exception):
@@ -43,17 +43,17 @@ class TaskError(Exception):
 
 
 @dataclass
-class Langkah:
+class Step:
     """Satu langkah rencana."""
 
     name: str
-    masukan: dict
+    inputs: dict
     expected_output: dict
     permission_class: str = "Pelaksana"
-    anggaran: dict = field(default_factory=lambda: {"step_max": 15, "token_max": 20000, "rupiah_max": 2000})
-    syarat_completed: str = ""
-    action_logout: bool = False
-    paralel_dengan: list[str] = field(default_factory=list)
+    budget: dict = field(default_factory=lambda: {"step_max": 15, "token_max": 20000, "rupiah_max": 2000})
+    completion_condition: str = ""
+    outbound_action: bool = False
+    parallel_with: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -64,38 +64,38 @@ class Task:
     user_id: str
     agent_id: str
     purpose: str
-    rencana: list[Langkah] = field(default_factory=list)
+    plan: list[Step] = field(default_factory=list)
     status: str = "accepted"
-    tahap: str = "terima"
-    pertanyaan: str = ""
+    stage: str = "accept"
+    question: str = ""
     result: dict = field(default_factory=dict)
     cost_rp: int = 0
 
 
-def create_rencana(purpose: str, step: list[Langkah]) -> list[Langkah]:
+def create_plan(purpose: str, steps: list[Step]) -> list[Step]:
     """Validasi rencana: langkah 1..25, tiap langkah ber-skema."""
-    if not 1 <= len(step) <= 25:
+    if not 1 <= len(steps) <= 25:
         raise TaskError("rencana harus 1..25 langkah")
-    for lg in step:
-        if "type" not in lg.masukan or "type" not in lg.expected_output:
-            raise TaskError(f"langkah {lg.name!r}: masukan/keluaran harus ber-skema ('jenis')")
-        if lg.permission_class not in ("Pembaca", "Pelaksana", "Pemeriksa"):
-            raise TaskError(f"langkah {lg.name!r}: kelas_izin tidak dikenal")
-    return step
+    for step in steps:
+        if "type" not in step.inputs or "type" not in step.expected_output:
+            raise TaskError(f"langkah {step.name!r}: masukan/keluaran harus ber-skema ('jenis')")
+        if step.permission_class not in ("Pembaca", "Pelaksana", "Pemeriksa"):
+            raise TaskError(f"langkah {step.name!r}: kelas_izin tidak dikenal")
+    return steps
 
 
 class TaskRunner:
     """Menjalankan satu tugas lewat 5 tahap, menulis ke Buku Kerja."""
 
-    def __init__(self, *, sink=None, pelaksana=None, pemeriksa=None,
+    def __init__(self, *, sink=None, executor=None, verifier=None,
                  budget: BudgetTracker | None = None) -> None:
         # sink(jenis, isi): pencatat kejadian; default buang ke memori.
         self._event: list[dict] = []
         self.sink = sink or (lambda event_type, content: self._event.append({"type": event_type, "content": content}))
         # pelaksana(nama_langkah, masukan) -> dict hasil ber-skema.
-        self.pelaksana = pelaksana or (lambda name, masukan: {"type": masukan.get("type", "result"), "value": None})
+        self.executor = executor or (lambda name, inputs: {"type": inputs.get("type", "result"), "value": None})
         # pemeriksa(hasil) -> (lolos: bool, alasan: str).
-        self.pemeriksa = pemeriksa or (lambda result: (True, ""))
+        self.verifier = verifier or (lambda result: (True, ""))
         self.budget = budget or BudgetTracker()
 
     def _record(self, event_type: str, content: dict) -> None:
@@ -106,53 +106,53 @@ class TaskRunner:
             # Postgres mati tidak boleh menjatuhkan turn.
             pass
 
-    def jalankan(self, task: Task) -> Task:
+    def run(self, task: Task) -> Task:
         """Jalankan 5 tahap sampai selesai / gagal / menunggu."""
         self._record("task_created", {"task_id": task.task_id, "agent_id": task.agent_id, "purpose": task.purpose})
         # 1. Terima.
-        task.tahap = "terima"
+        task.stage = "accept"
         if len(task.purpose.split()) < 3:
-            task.pertanyaan = "Boleh dijelaskan sedikit lagi? Tujuanmu masih terlalu singkat."
+            task.question = "Boleh dijelaskan sedikit lagi? Tujuanmu masih terlalu singkat."
             task.status = "pending_user"
-            self._record("agent_message", {"task_id": task.task_id, "text": task.pertanyaan})
+            self._record("agent_message", {"task_id": task.task_id, "text": task.question})
             return task
         # 2. Rencana.
-        task.tahap = "rencana"
-        if task.rencana:
-            create_rencana(task.purpose, task.rencana)
+        task.stage = "plan"
+        if task.plan:
+            create_plan(task.purpose, task.plan)
         self._record("plan_created", {"task_id": task.task_id,
-                                       "step": [lg.name for lg in task.rencana]})
-        if any(lg.action_logout for lg in task.rencana):
+                                       "step": [step.name for step in task.plan]})
+        if any(step.outbound_action for step in task.plan):
             # Berhenti di titik persetujuan sebelum menjalankan apa pun.
             task.status = "pending_approval"
             self._record("approval_requested", {"task_id": task.task_id, "reason": "rencana memuat aksi keluar"})
             return task
         # 3. Jalankan.
-        task.tahap = "jalankan"
+        task.stage = "run"
         try:
-            for lg in task.rencana:
+            for step in task.plan:
                 self.budget.record_step(1)
-                kontrak = HandoffContract(
-                    dari_id=task.agent_id, to_id=f"{task.agent_id}:pelaksana",
-                    purpose=lg.name, masukan=lg.masukan,
-                    expected_output=lg.expected_output,
-                    anggaran=lg.anggaran, permission_class=lg.permission_class,
-                    completion_definition=lg.syarat_completed or lg.name,
+                contract = HandoffContract(
+                    from_id=task.agent_id, to_id=f"{task.agent_id}:pelaksana",
+                    purpose=step.name, inputs=step.inputs,
+                    expected_output=step.expected_output,
+                    budget=step.budget, permission_class=step.permission_class,
+                    completion_definition=step.completion_condition or step.name,
                 )
-                handoff = Handoff(kontrak)
-                self._record("handoff_proposed", {"task_id": task.task_id, "handoff_id": handoff.id, "purpose": lg.name})
-                handoff.terima()
-                handoff.mulai()
-                result = self.pelaksana(lg.name, lg.masukan)
-                status_serah = handoff.serahkan(result)
-                if status_serah == "rejected":
+                handoff = Handoff(contract)
+                self._record("handoff_proposed", {"task_id": task.task_id, "handoff_id": handoff.id, "purpose": step.name})
+                handoff.accept()
+                handoff.start()
+                result = self.executor(step.name, step.inputs)
+                hand_over_status = handoff.hand_over(result)
+                if hand_over_status == "rejected":
                     # serahkan() sudah menandai status 'ditolak' + alasan.
                     self._record("handoff_rejected", {"task_id": task.task_id, "handoff_id": handoff.id})
-                    raise TaskError(f"langkah {lg.name!r} ditolak: keluaran tidak lolos skema")
-                handoff.nyatakan_passed()
+                    raise TaskError(f"langkah {step.name!r} ditolak: keluaran tidak lolos skema")
+                handoff.mark_passed()
                 self._record("handoff_handed_over", {"task_id": task.task_id, "handoff_id": handoff.id})
-                task.result[lg.name] = result
-        except AnggaranHabis as exc:
+                task.result[step.name] = result
+        except BudgetExhausted as exc:
             task.status = "failed"
             self._record("budget_exhausted", {"task_id": task.task_id, "reason": str(exc)})
             self._record("task_failed", {"task_id": task.task_id, "reason": str(exc)})
@@ -162,17 +162,17 @@ class TaskRunner:
             self._record("task_failed", {"task_id": task.task_id, "reason": str(exc)})
             return task
         # 4. Periksa.
-        task.tahap = "periksa"
-        passed, reason = self.pemeriksa(task.result)
+        task.stage = "verify"
+        passed, reason = self.verifier(task.result)
         self._record("verification_completed", {"task_id": task.task_id, "passed": passed, "reason": reason})
         if not passed:
             task.status = "failed"
             self._record("task_failed", {"task_id": task.task_id, "reason": reason or "pemeriksaan gagal"})
             return task
         # 5. Sajikan (juru bicara tunggal = agen pemilik tugas).
-        task.tahap = "sajikan"
+        task.stage = "present"
         task.status = "completed"
-        task.cost_rp = self.budget.rupiah_terpakai
+        task.cost_rp = self.budget.rupiah_used
         self._record("task_completed", {"task_id": task.task_id, "agent_id": task.agent_id})
         return task
 
@@ -181,7 +181,7 @@ class TaskRunner:
         return list(self._event)
 
 
-def klaim_task_berikutnya(dsn: str, agent_id: str) -> dict | None:
+def claim_next_task(dsn: str, agent_id: str) -> dict | None:
     """Ambil satu tugas `diterima` lewat SELECT FOR UPDATE SKIP LOCKED.
 
     Kembalikan baris tugas (dict) atau None bila antrean kosong.
@@ -202,7 +202,7 @@ def klaim_task_berikutnya(dsn: str, agent_id: str) -> dict | None:
             row = cur.fetchone()
             if row is None:
                 return None
-            cur.execute("UPDATE tasks SET status = 'berjalan' WHERE id = %s", (row["id"],))
+            cur.execute("UPDATE tasks SET status = 'running' WHERE id = %s", (row["id"],))
         conn.commit()
     return dict(row)
 

@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from puspa.pwa.app import LAYAR, create_app
+from puspa.pwa.app import SCREENS, create_app
 
 
 @pytest.fixture
@@ -15,19 +15,19 @@ def client(make_user):
         yield c
 
 
-def test_tujuh_screen_ada_and_200(client):
-    for screen in LAYAR:
+def test_seven_screens_exist_and_200(client):
+    for screen in SCREENS:
         resp = client.get(f"/{screen}")
         assert resp.status_code == 200, screen
         assert "Puspa" in resp.text
 
 
-def test_not_ada_screen_kedelapan():
-    assert len(LAYAR) == 7
-    assert set(LAYAR) == {"chat", "tasks", "modules", "connectors", "memory", "settings", "office"}
+def test_no_eighth_screen_exists():
+    assert len(SCREENS) == 7
+    assert set(SCREENS) == {"chat", "tasks", "modules", "connectors", "memory", "settings", "office"}
 
 
-def test_without_login_dialihkan_to_login():
+def test_without_login_redirected_to_login():
     app = create_app(test_user_id=None)
     with TestClient(app) as c:
         resp = c.get("/chat", follow_redirects=False)
@@ -38,8 +38,8 @@ def test_without_login_dialihkan_to_login():
 def test_send_chat_and_sse(client):
     resp = client.post("/api/chat", data={"text": "halo Puspa"})
     assert resp.status_code == 200 and resp.json()["ok"] is True
-    halaman = client.get("/chat")
-    assert "halo Puspa" in halaman.text
+    page = client.get("/chat")
+    assert "halo Puspa" in page.text
     sse = client.get("/sse")
     assert sse.status_code == 200
     assert "text/event-stream" in sse.headers["content-type"]
@@ -47,7 +47,7 @@ def test_send_chat_and_sse(client):
 
 
 def test_api_agent_create_and_delete_puspa_rejected(client, make_user):
-    resp = client.post("/api/agen", data={"name": "Agen Riset", "peran": "riset", "purpose": "search"})
+    resp = client.post("/api/agen", data={"name": "Agen Riset", "role": "riset", "purpose": "search"})
     assert resp.status_code == 200
     agent_id = resp.json()["agent_id"]
     resp2 = client.post("/api/agen", data={"name": "Agen Ketiga"})
@@ -60,14 +60,14 @@ def test_api_agent_create_and_delete_puspa_rejected(client, make_user):
     assert hapus2.status_code == 200
 
 
-def test_api_task_and_hentikan(client):
+def test_api_task_and_stop(client):
     resp = client.post("/api/tugas", data={"purpose": "riset dan rangkum lima artikel"})
     assert resp.status_code == 200
     task_id = resp.json()["task_id"]
     assert resp.json()["status"] == "completed"
     henti = client.post(f"/api/tugas/{task_id}/hentikan")
     assert henti.status_code == 200
-    assert henti.json()["dihentikan"] == 0  # tidak ada sub-agen aktif
+    assert henti.json()["stopped"] == 0  # tidak ada sub-agen aktif
 
 
 def test_service_worker_and_manifest(client):

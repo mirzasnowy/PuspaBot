@@ -10,21 +10,21 @@ evaluator kondisi alur) — bukan model.
 
 from __future__ import annotations
 
-from puspa.workflow.runner import evaluasi_ungkapan
+from puspa.workflow.runner import evaluate_expression
 
 
-def evaluasi_notif(manifest: dict, data: dict) -> list[dict]:
+def evaluate_notifications(manifest: dict, data: dict) -> list[dict]:
     """Kembalikan daftar notif yang harus dikirim:
     [{tabel, baris, pesan}]."""
-    logout = []
-    for aturan in manifest.get("notif", []) or []:
-        table = aturan.get("table")
+    output = []
+    for rule in manifest.get("notifications", []) or []:
+        table = rule.get("table")
         rows_list = data.get(table, []) if table else []
-        for rows in rows_list:
+        for row in rows_list:
             try:
-                if evaluasi_ungkapan(aturan.get("condition", ""), dict(rows)):
-                    logout.append({"table": table, "rows": rows,
-                                   "message": aturan.get("message", "")})
+                if evaluate_expression(rule.get("condition", ""), dict(row)):
+                    output.append({"table": table, "rows": row,
+                                   "message": rule.get("message", "")})
             except Exception:  # noqa: BLE001 — kondisi rusak = tidak memicu
                 continue
-    return logout
+    return output

@@ -9,7 +9,7 @@ from puspa.memory import procedural
 LANGKAH = ["buka situs pln", "masukkan nomor pelanggan", "baca jumlah tagihan"]
 
 
-def test_task_successful_menjadi_prosedur_trial(make_user, test_dsn):
+def test_task_successful_becomes_procedure_trial(make_user, test_dsn):
     u = make_user()
     proc = procedural.record_successful_task(
         u["user_id"], "check_pln", LANGKAH, agent_id=u["agent_id"], dsn=test_dsn
@@ -19,7 +19,7 @@ def test_task_successful_menjadi_prosedur_trial(make_user, test_dsn):
     assert proc["step"] == LANGKAH
 
 
-def test_task_same_not_menduplikasi_prosedur(make_user, test_dsn):
+def test_same_task_does_not_duplicate_procedure(make_user, test_dsn):
     u = make_user()
     procedural.record_successful_task(u["user_id"], "check_pln", LANGKAH, agent_id=u["agent_id"], dsn=test_dsn)
     proc = procedural.record_successful_task(u["user_id"], "check_pln", LANGKAH, agent_id=u["agent_id"], dsn=test_dsn)
@@ -27,7 +27,7 @@ def test_task_same_not_menduplikasi_prosedur(make_user, test_dsn):
     assert len(procedural.list_procedures(u["user_id"], dsn=test_dsn)) == 1
 
 
-def test_prosedur_verified_setelah_3_jalan_2_agent(make_user, test_dsn):
+def test_procedure_verified_after_3_runs_by_2_agents(make_user, test_dsn):
     u = make_user()
     agen2 = str(uuid.uuid4())
     proc = procedural.record_successful_task(
@@ -40,7 +40,7 @@ def test_prosedur_verified_setelah_3_jalan_2_agent(make_user, test_dsn):
     assert proc["successful_runs"] == 3
 
 
-def test_prosedur_broken_setelah_2_failed_berturut(make_user, test_dsn):
+def test_procedure_broken_after_2_consecutive_failures(make_user, test_dsn):
     u = make_user()
     proc = procedural.record_successful_task(u["user_id"], "check_pln", LANGKAH, dsn=test_dsn)
     proc = procedural.mark_run(proc["id"], u["user_id"], False, dsn=test_dsn)
@@ -50,7 +50,7 @@ def test_prosedur_broken_setelah_2_failed_berturut(make_user, test_dsn):
     assert proc["consecutive_failed_runs"] == 2
 
 
-def test_prosedur_without_data_pribadi(make_user, test_dsn):
+def test_procedure_without_private_data(make_user, test_dsn):
     """Prosedur adalah templat: nomor pelanggan tidak boleh masuk."""
     u = make_user()
     proc = procedural.record_successful_task(
@@ -60,7 +60,7 @@ def test_prosedur_without_data_pribadi(make_user, test_dsn):
     assert proc["user_id"] == u["user_id"]
 
 
-def test_prosedur_terisolasi_antar_user(make_user, test_dsn):
+def test_procedure_isolated_between_users(make_user, test_dsn):
     a, b = make_user(), make_user()
     proc = procedural.record_successful_task(a["user_id"], "check_pln", LANGKAH, dsn=test_dsn)
     assert procedural.list_procedures(b["user_id"], dsn=test_dsn) == []

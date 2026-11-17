@@ -107,7 +107,7 @@ def test_auth_url_pkce_state_and_challenge():
         build_auth_url("c", "https://contoh.id/callback", code_verifier="short")
 
 
-def test_exchange_refresh_revoke_dengan_http_mock():
+def test_exchange_refresh_revoke_with_http_mock():
     http = FakeHttp()
     tokens = exchange_code(
         "code-1", "v" * 50, "cid", "secret", "https://contoh.id/callback",
@@ -119,7 +119,7 @@ def test_exchange_refresh_revoke_dengan_http_mock():
     assert revoke_tokens("access-1", http_client=http) is True
 
 
-def test_verify_id_token_asli_and_palsu():
+def test_verify_id_token_real_and_fake():
     jwt, jwks = _create_jwt_and_jwks()
     payload = verify_id_token(jwt, jwks, "client-id-tes")
     assert payload["email"] == "nero@contoh.id"
@@ -131,7 +131,7 @@ def test_verify_id_token_asli_and_palsu():
         verify_id_token("bukan.jwt", jwks, "client-id-tes")
 
 
-def test_login_google_lengkap_create_user_and_sesi(
+def test_login_google_complete_create_user_and_session(
     make_user, test_dsn, vault_master_key
 ):
     jwt, jwks = _create_jwt_and_jwks()
@@ -155,7 +155,7 @@ def test_login_google_lengkap_create_user_and_sesi(
     assert find_user_by_email("NERO@contoh.id", dsn=test_dsn) == result["user_id"]
 
 
-def test_user_google_only_not_use_kata_sandi_biasa(test_dsn):
+def test_google_only_user_cannot_use_regular_password(test_dsn):
     from puspa.accounts.users import AuthError, authenticate
 
     user_id = create_google_user("baru@contoh.id", dsn=test_dsn)
@@ -176,7 +176,7 @@ def test_token_vault_can_deleted(make_user, test_dsn, vault_master_key):
 
 # --- Tautan email -----------------------------------------------------------
 
-def test_tautan_email_sekali_use(email_link_secret, test_dsn):
+def test_link_email_single_use(email_link_secret, test_dsn):
     url = create_email_link("nero@contoh.id", "https://contoh.id/masuk", secret=email_link_secret)
     token = url.split("token=")[1]
     assert verify_email_link(token, secret=email_link_secret, dsn=test_dsn) == "nero@contoh.id"
@@ -184,7 +184,7 @@ def test_tautan_email_sekali_use(email_link_secret, test_dsn):
         verify_email_link(token, secret=email_link_secret, dsn=test_dsn)
 
 
-def test_tautan_email_kedaluwarsa_and_dipalsukan(email_link_secret, test_dsn):
+def test_link_email_expired_and_forged(email_link_secret, test_dsn):
     url = create_email_link(
         "nero@contoh.id", "https://contoh.id/masuk",
         secret=email_link_secret, ttl_seconds=-10,

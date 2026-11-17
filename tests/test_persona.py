@@ -19,13 +19,13 @@ EXAMPLE_ASLI = [f"pesan asli user nomor {i} tentang kopi dan tagihan" for i in r
 BALASAN_DASAR = [f"gue cek dulu harga barang {i} ya" for i in range(10)]
 
 
-def test_tiga_gaya_example_tersedia():
+def test_three_style_examples_available():
     assert set(STYLES) == {"santai", "rapi", "campur"}
     for style in STYLES.values():
-        assert style["example"] and style["deskripsi"]
+        assert style["example"] and style["description"]
 
 
-def test_pilih_gaya_tersimpan_sebagai_fact_profile(make_user, test_dsn):
+def test_selected_style_stored_as_profile_fact(make_user, test_dsn):
     u = make_user()
     choose_style(u["user_id"], "campur", dsn=test_dsn)
     persona = get_persona(u["user_id"], dsn=test_dsn)
@@ -34,7 +34,7 @@ def test_pilih_gaya_tersimpan_sebagai_fact_profile(make_user, test_dsn):
         choose_style(u["user_id"], "galak", dsn=test_dsn)
 
 
-def test_example_message_maks_20_tertua_dibuang(make_user, test_dsn):
+def test_example_message_max_20_oldest_discarded(make_user, test_dsn):
     u = make_user()
     assert add_style_samples(u["user_id"], EXAMPLE_ASLI[:10], dsn=test_dsn) == 10
     assert add_style_samples(u["user_id"], [f"tambahan {i}" for i in range(12)], dsn=test_dsn) == 20
@@ -45,25 +45,25 @@ def test_example_message_maks_20_tertua_dibuang(make_user, test_dsn):
         add_style_samples(u["user_id"], [f"x{i}" for i in range(21)], dsn=test_dsn)
 
 
-def test_koreksi_langsung_active_and_tersimpan(make_user, test_dsn):
+def test_direct_correction_active_and_stored(make_user, test_dsn):
     u = make_user()
     choose_style(u["user_id"], "santai", dsn=test_dsn)
     fact = apply_correction(u["user_id"], "jangan pakai gue", dsn=test_dsn)
     assert fact["source"] == "user_confirmed"
-    assert fact["direktif"] == "without_gue"
+    assert fact["directive"] == "without_gue"
     persona = get_persona(u["user_id"], dsn=test_dsn)
-    assert "without_gue" in persona["direktif"]
+    assert "without_gue" in persona["directive"]
     assert render_reply(persona, "gue cek dulu ya") == "aku cek dulu ya"
 
 
-def test_koreksi_not_dikenali_tetap_disimpan_mentah(make_user, test_dsn):
+def test_unrecognized_correction_still_stored_raw(make_user, test_dsn):
     u = make_user()
     fact = apply_correction(u["user_id"], "pakai bahasa Betawi dikit", dsn=test_dsn)
-    assert fact["direktif"] is None
-    assert "Betawi" in get_persona(u["user_id"], dsn=test_dsn)["direktif"][0]
+    assert fact["directive"] is None
+    assert "Betawi" in get_persona(u["user_id"], dsn=test_dsn)["directive"][0]
 
 
-def test_harness_test_buta_20_item_separuh_asli(make_user, test_dsn):
+def test_blind_test_harness_20_items_half_original(make_user, test_dsn):
     u = make_user()
     choose_style(u["user_id"], "santai", dsn=test_dsn)
     add_style_samples(u["user_id"], EXAMPLE_ASLI, dsn=test_dsn)
@@ -79,14 +79,14 @@ def test_harness_test_buta_20_item_separuh_asli(make_user, test_dsn):
     assert "UJI BUTA PERSONA" in sheet
 
 
-def test_harness_need_10_example_and_10_balasan(make_user, test_dsn):
+def test_harness_need_10_example_and_10_reply(make_user, test_dsn):
     u = make_user()
     choose_style(u["user_id"], "santai", dsn=test_dsn)
     with pytest.raises(ValueError):
         build_blind_test(u["user_id"], BALASAN_DASAR, dsn=test_dsn)
 
 
-def test_penilaian_test_buta_and_ambang_60_persen(make_user, test_dsn):
+def test_blind_test_assessment_and_60_percent_threshold(make_user, test_dsn):
     u = make_user()
     choose_style(u["user_id"], "santai", dsn=test_dsn)
     add_style_samples(u["user_id"], EXAMPLE_ASLI, dsn=test_dsn)

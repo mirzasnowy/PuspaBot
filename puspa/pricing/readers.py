@@ -55,7 +55,7 @@ class ResultRead:
     page_hash: str = ""
 
 
-def _tandai_data(text: str) -> str:
+def _mark_data(text: str) -> str:
     """Tandai teks bebas dari konten tak tepercaya sebagai data (§2.6)."""
     return "[DATA: " + " ".join(str(text).split())[:EXCERPT_MAX] + "]"
 
@@ -73,7 +73,7 @@ def _parse_rupiah(text: str) -> float | None:
         return None
 
 
-def ekstrak_price_dari_html(html: str) -> dict:
+def extract_price_from_html(html: str) -> dict:
     """Ekstrak harga/nama dari HTML lewat JSON-LD + meta generik.
 
     Kembalikan {"harga": float|None, "nama": str, "potongan": str}.
@@ -101,7 +101,7 @@ def ekstrak_price_dari_html(html: str) -> dict:
                 try:
                     return {"price": float(price),
                             "name": str(item.get("name", ""))[:EXCERPT_MAX],
-                            "excerpt": _tandai_data(item.get("name", ""))}
+                            "excerpt": _mark_data(item.get("name", ""))}
                 except (TypeError, ValueError):
                     pass
     # Meta product:price:amount.
@@ -109,12 +109,12 @@ def ekstrak_price_dari_html(html: str) -> dict:
         r'property="product:price:amount"\s+content="([\d.]+)"', html)
     if match:
         return {"price": float(match.group(1)), "name": "",
-                "excerpt": _tandai_data(match.group(0))}
+                "excerpt": _mark_data(match.group(0))}
     # Pola teks "Rp..." pertama sebagai jalan terakhir yang jujur:
     # hanya dipakai bila halaman memuat SATU harga yang jelas.
     price = _parse_rupiah(html)
     return {"price": price, "name": "",
-            "excerpt": _tandai_data(html[:EXCERPT_MAX]) if price else ""}
+            "excerpt": _mark_data(html[:EXCERPT_MAX]) if price else ""}
 
 
 @dataclass
@@ -150,16 +150,16 @@ class HttpReader:
         if "captcha" in resp.text.lower()[:2000]:
             return ResultRead(success=False, marketplace=self.marketplace,
                              listing_url=listing_url, reason="captcha_terdeteksi")
-        ekstrak = ekstrak_price_dari_html(resp.text)
-        if ekstrak["price"] is None:
+        extracted = extract_price_from_html(resp.text)
+        if extracted["price"] is None:
             return ResultRead(success=False, marketplace=self.marketplace,
                              listing_url=listing_url, reason="price_not_ditemukan")
         import hashlib
 
         return ResultRead(
             success=True, marketplace=self.marketplace, listing_url=listing_url,
-            price=ekstrak["price"], name=ekstrak["name"],
-            text_excerpt=ekstrak["excerpt"],
+            price=extracted["price"], name=extracted["name"],
+            text_excerpt=extracted["excerpt"],
             page_hash=hashlib.sha256(resp.text.encode("utf-8")).hexdigest())
 
 
@@ -175,7 +175,7 @@ class PlaywrightReader:
     marketplace: str
 
     @staticmethod
-    def tersedia() -> bool:
+    def is_available() -> bool:
         try:
             import playwright  # noqa: F401
         except ImportError:
@@ -212,22 +212,22 @@ class PlaywrightReader:
             return ResultRead(success=False, marketplace=self.marketplace,
                              listing_url=listing_url,
                              reason=f"browser_gagal: {exc!r}"[:200])
-        ekstrak = ekstrak_price_dari_html(html)
-        if ekstrak["price"] is None:
+        extracted = extract_price_from_html(html)
+        if extracted["price"] is None:
             return ResultRead(success=False, marketplace=self.marketplace,
                              listing_url=listing_url, reason="price_not_ditemukan")
         import hashlib
 
         return ResultRead(success=True, marketplace=self.marketplace,
-                         listing_url=listing_url, price=ekstrak["price"],
-                         name=ekstrak["name"], text_excerpt=ekstrak["excerpt"],
+                         listing_url=listing_url, price=extracted["price"],
+                         name=extracted["name"], text_excerpt=extracted["excerpt"],
                          page_hash=hashlib.sha256(html.encode("utf-8")).hexdigest())
 
 
-def create_pembaca(marketplace: str, *, client: httpx.Client | None = None):
+def create_reader(marketplace: str, *, client: httpx.Client | None = None):
     """Pabrik Pembaca: Playwright bila tersedia, kalau tidak HTTP fetch.
     Kembalikan (pembaca, jalur) dengan jalur 'playwright'/'http'/'tidak_tersedia'.
     """
-    if PlaywrightReader.tersedia():
+    if PlaywrightReader.is_available():
         return PlaywrightReader(marketplace), "playwright"
     return HttpReader(marketplace, client=client), "http"

@@ -46,7 +46,7 @@ def _payload(**overrides):
         "tools": ["gmail.kirim", "calendar.create_event", "prepare_payment"],
         "domains": ["tokopedia.com"],
         "connectors": {"gmail": ["read", "send"], "calendar": ["read", "create_event"]},
-        "anggaran": {"step_max": 25, "token_max": 100000, "rupiah_max": 1000000},
+        "budget": {"step_max": 25, "token_max": 100000, "rupiah_max": 1000000},
         "exp": now + 3600,
         "iat": now,
         "parent": None,
@@ -75,9 +75,9 @@ def test_request_approve_execute_ok(ephemeral_keys, stub_log):
         agent_id="agen-puspa",
         token=token,
         kind="send",
-        content={"penerima": "a@contoh.id", "title": "Halo", "content": "tes"},
+        content={"recipient": "a@contoh.id", "title": "Halo", "content": "tes"},
     )
-    assert req.status == "diminta"
+    assert req.status == "requested"
     assert ("approval_requested", req.request_id) in [
         (j, i.get("request_id")) for j, i in stub_log.events
     ]
@@ -88,25 +88,25 @@ def test_request_approve_execute_ok(ephemeral_keys, stub_log):
     assert calls == []
 
     gate.approve(req.request_id, "user-1")
-    assert req.status == "disetujui"
+    assert req.status == "approved"
     assert any(j == "approval_granted" for j, _ in stub_log.events)
 
-    result = gate.execute(req.request_id, executor=lambda content: {"terkirim": content["penerima"]})
-    assert result == {"terkirim": "a@contoh.id"}
-    assert req.status == "dieksekusi"
+    result = gate.execute(req.request_id, executor=lambda content: {"sent": content["recipient"]})
+    assert result == {"sent": "a@contoh.id"}
+    assert req.status == "executed"
 
 
 def test_approve_only_owner(ephemeral_keys, stub_log):
     gate = _gate(ephemeral_keys, stub_log)
     req = gate.request_approval(
         user_id="user-1", agent_id="agen-puspa", token=_token(ephemeral_keys),
-        kind="send", content={"penerima": "a@contoh.id"},
+        kind="send", content={"recipient": "a@contoh.id"},
     )
     with pytest.raises(GateDenied):
         gate.approve(req.request_id, "user-2")
     # Pemilik tetap bisa menyetujui setelah itu.
     gate.approve(req.request_id, "user-1")
-    assert req.status == "disetujui"
+    assert req.status == "approved"
 
 
 def test_request_kind_not_allowed_by_token(ephemeral_keys, stub_log):
@@ -115,7 +115,7 @@ def test_request_kind_not_allowed_by_token(ephemeral_keys, stub_log):
     with pytest.raises(GateDenied):
         gate.request_approval(
             user_id="user-1", agent_id="agen-puspa", token=token,
-            kind="send", content={"penerima": "a@contoh.id"},
+            kind="send", content={"recipient": "a@contoh.id"},
         )
 
 
@@ -125,7 +125,7 @@ def test_request_expired_token_denied(ephemeral_keys, stub_log):
     with pytest.raises(GateDenied):
         gate.request_approval(
             user_id="user-1", agent_id="agen-puspa", token=token,
-            kind="send", content={"penerima": "a@contoh.id"},
+            kind="send", content={"recipient": "a@contoh.id"},
         )
 
 
@@ -248,7 +248,7 @@ def test_revoked_token_rejected_at_execute(ephemeral_keys, stub_log):
     token = _token(ephemeral_keys)
     req = gate.request_approval(
         user_id="user-1", agent_id="agen-puspa", token=token,
-        kind="send", content={"penerima": "a@contoh.id"},
+        kind="send", content={"recipient": "a@contoh.id"},
     )
     gate.approve(req.request_id, "user-1")
     revoke(token_id(token))
@@ -265,7 +265,7 @@ def test_revoked_token_rejected_at_request(ephemeral_keys, stub_log):
     with pytest.raises(GateDenied):
         gate.request_approval(
             user_id="user-1", agent_id="agen-puspa", token=token,
-            kind="send", content={"penerima": "a@contoh.id"},
+            kind="send", content={"recipient": "a@contoh.id"},
         )
 
 
@@ -274,5 +274,5 @@ def test_gate_without_public_key_rejects_string_token(ephemeral_keys, stub_log):
     with pytest.raises(GateDenied):
         gate.request_approval(
             user_id="user-1", agent_id="agen-puspa", token=_token(ephemeral_keys),
-            kind="send", content={"penerima": "a@contoh.id"},
+            kind="send", content={"recipient": "a@contoh.id"},
         )

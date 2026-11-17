@@ -71,7 +71,7 @@ class ApprovalRequest:
     content_hash: str
     token_payload: dict
     token_id: str
-    status: str = "diminta"  # diminta | disetujui | ditolak | dieksekusi
+    status: str = "requested"  # diminta | disetujui | ditolak | dieksekusi
     result: object = None
     executed: bool = False
 
@@ -167,7 +167,7 @@ class Gate:
         if kind == "prepare_payment":
             nominal = content.get("nominal")
             if nominal is not None:
-                rupiah_max = payload.get("anggaran", {}).get("rupiah_max")
+                rupiah_max = payload.get("budget", {}).get("rupiah_max")
                 if rupiah_max is not None and nominal > rupiah_max:
                     raise GateDenied(
                         f"nominal Rp{nominal} melebihi anggaran token Rp{rupiah_max}"
@@ -216,9 +216,9 @@ class Gate:
             raise GateDenied(f"permintaan tidak dikenal: {request_id!r}")
         if request.user_id != user_id:
             raise GateDenied("hanya pemilik user yang boleh menyetujui")
-        if request.status != "diminta":
+        if request.status != "requested":
             raise GateDenied(f"permintaan sudah berstatus {request.status!r}")
-        request.status = "disetujui"
+        request.status = "approved"
         self._log(
             "approval_granted",
             {"request_id": request.request_id, "user_id": user_id, "kind": request.kind},
@@ -240,7 +240,7 @@ class Gate:
             raise GateDenied(f"permintaan tidak dikenal: {request_id!r}")
         if request.executed:
             return request.result
-        if request.status != "disetujui":
+        if request.status != "approved":
             self._deny(request, f"aksi belum disetujui (status: {request.status!r})")
         if _content_hash(request.content) != request.content_hash:
             self._deny(request, "action content changed after approval; approval void", invalidate=True)
@@ -262,7 +262,7 @@ class Gate:
         result = executor(request.content)
         request.result = result
         request.executed = True
-        request.status = "dieksekusi"
+        request.status = "executed"
         return result
 
     def _spending_ok(self, user_id, nominal) -> bool:

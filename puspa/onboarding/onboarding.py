@@ -34,9 +34,9 @@ from ..memory import episodic
 from ..memory.schema import resolve_dsn
 from ..persona import choose_style
 
-TARGET_MINUTE = 5
+TARGET_MINUTES = 5
 
-TEMPLATE_WORKFLOW_BAWAAN = (
+BUILTIN_WORKFLOW_TEMPLATES = (
     "Tagihan bulanan",
     "Pantau harga barang",
     "Rekap tagihan minggu ini",
@@ -128,15 +128,15 @@ def complete_step1(user_id, name, style, example_message=None, dsn=None):
                 raise KeyError(f"onboarding belum dimulai: {user_id}")
         conn.commit()
     status = _row(row)
-    status["fact_gaya_id"] = fact["id"]
+    status["style_fact_id"] = fact["id"]
     return status
 
 
 def complete_step2(user_id, notifier=None, dsn=None):
     """Langkah 2: izinkan notif + uji kirim (dicatat apa adanya)."""
     notifier = notifier or StubNotifier()
-    terkirim, detail = notifier.test_send(user_id)
-    result = f"terkirim={terkirim}; {detail}"
+    sent, detail = notifier.test_send(user_id)
+    result = f"terkirim={sent}; {detail}"
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -149,7 +149,7 @@ def complete_step2(user_id, notifier=None, dsn=None):
                 raise KeyError(f"onboarding belum dimulai: {user_id}")
         conn.commit()
     status = _row(row)
-    status["notif_terkirim"] = terkirim
+    status["notification_sent"] = sent
     return status
 
 
@@ -183,15 +183,15 @@ def run_first_task(user_id, event_type, target, dsn=None, ledger=None, agent_id=
         raise ValueError(f"jenis tugas pertama tidak dikenal: {event_type!r}")
     if not target or not isinstance(target, str):
         raise ValueError("target harus string tak kosong")
-    mulai = time.monotonic()
+    start = time.monotonic()
     import uuid
 
     task_id = str(uuid.uuid4())
     event_ids = []
     if ledger is not None and agent_id is not None:
-        for jenis_event in ("task_created", "task_completed"):
+        for event_kind in ("task_created", "task_completed"):
             ev = ledger.append_event(
-                task_id=task_id, agent_id=agent_id, event_type=jenis_event,
+                task_id=task_id, agent_id=agent_id, event_type=event_kind,
                 content={"tasks": event_type, "target": target, "stub": True},
             )
             event_ids.append(str(ev["id"]))
@@ -201,7 +201,7 @@ def run_first_task(user_id, event_type, target, dsn=None, ledger=None, agent_id=
         "task_completed", agent_id=agent_id, task_id=task_id,
         event_id=event_ids[-1] if event_ids else None, dsn=dsn,
     )
-    durasi = time.monotonic() - mulai
+    duration = time.monotonic() - start
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -222,15 +222,15 @@ def run_first_task(user_id, event_type, target, dsn=None, ledger=None, agent_id=
         "task_id": task_id,
         "type": event_type,
         "target": target,
-        "terbukti": False,
+        "verified": False,
         "reason": (
             "Wedge bandingkan harga / autopilot tagihan dibangun Fase 3; "
             "tugas pertama di Fase 1 adalah stub terukur (jalur nyata: "
             "Buku Kerja + episodik + ukur waktu)."
         ),
-        "durasi_detik_task": durasi,
+        "task_duration_seconds": duration,
         "event_ids": event_ids,
-        "templat_workflow_ditawarkan": list(TEMPLATE_WORKFLOW_BAWAAN),
+        "offered_workflow_templates": list(BUILTIN_WORKFLOW_TEMPLATES),
     }
 
 
@@ -243,5 +243,5 @@ def measure_onboarding_seconds(status):
 
 def within_target(status):
     """True kalau onboarding selesai dalam target 5 menit."""
-    durasi = measure_onboarding_seconds(status)
-    return durasi is not None and durasi <= TARGET_MINUTE * 60
+    duration = measure_onboarding_seconds(status)
+    return duration is not None and duration <= TARGET_MINUTES * 60

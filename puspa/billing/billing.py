@@ -30,44 +30,44 @@ import re
 from datetime import date, datetime, timedelta, timezone
 
 from puspa.evidence.evidence import record_evidence
-from puspa.evidence.verifier import periksa
-from puspa.graphs import service as graf_service
-from puspa.pricing.tos import boleh_read
+from puspa.evidence.verifier import verify
+from puspa.graphs import service as graph_service
+from puspa.pricing.tos import may_read
 
 PROVIDER_MVP = ("PLN", "PDAM", "airtime", "paket data")
 
 # Prosedur bawaan per provider (langkah sebagai data, tanpa nomor
 # pelanggan — nomor disuntikkan dari memori saat jalan, bukan disimpan
 # di prosedur).
-STEP_PROSEDUR = {
+PROCEDURE_STEPS = {
     "PLN": [
-        {"step": "open_situs_resmi", "situs": "layanan.pln.co.id",
-         "catatan": "login akun pelanggan + captcha bila diminta"},
-        {"step": "input_id_pelanggan_dari_memory"},
+        {"step": "open_official_site", "site": "layanan.pln.co.id",
+         "notes": "login akun pelanggan + captcha bila diminta"},
+        {"step": "input_customer_id_from_memory"},
         {"step": "read_amount_bill_and_due_date"},
-        {"step": "pemeriksa_read_ulang"},
+        {"step": "verifier_reread"},
     ],
     "PDAM": [
-        {"step": "open_situs_pdam_daerah_dari_memory"},
-        {"step": "input_number_pelanggan_dari_memory"},
+        {"step": "open_regional_pdam_site_from_memory"},
+        {"step": "input_customer_number_from_memory"},
         {"step": "read_amount_bill_and_due_date"},
-        {"step": "pemeriksa_read_ulang"},
+        {"step": "verifier_reread"},
     ],
     "airtime": [
-        {"step": "open_kanal_resmi_operator_dari_memory"},
-        {"step": "check_balance_airtime_number_phone_dari_memory"},
-        {"step": "pemeriksa_read_ulang"},
+        {"step": "open_official_operator_channel_from_memory"},
+        {"step": "check_airtime_balance_phone_number_from_memory"},
+        {"step": "verifier_reread"},
     ],
     "paket data": [
-        {"step": "open_kanal_resmi_operator_dari_memory"},
-        {"step": "check_sisa_kuota_and_masa_active_number_phone_dari_memory"},
-        {"step": "pemeriksa_read_ulang"},
+        {"step": "open_official_operator_channel_from_memory"},
+        {"step": "check_remaining_quota_and_active_period_phone_number_from_memory"},
+        {"step": "verifier_reread"},
     ],
 }
 
-SKEMA_OUTPUT_BILL = {
+BILL_OUTPUT_SCHEMA = {
     "amount": "Rp", "due_date": "date", "status": "text",
-    "periode": "text", "evidence_id": "text",
+    "period": "text", "evidence_id": "text",
 }
 
 
@@ -95,23 +95,23 @@ def _parse_status(text: str) -> str:
     return match.group(1) if match else "unknown"
 
 
-def pastikan_prosedur(*, user_id: str, provider: str, agent_id: str,
+def ensure_procedure(*, user_id: str, provider: str, agent_id: str,
                       dsn=None) -> dict:
     """Ambil prosedur provider; kalau belum ada, temukan + tulis
     sebagai prosedur percobaan (§4.2), baru kembalikan."""
     if provider not in PROVIDER_MVP:
         raise BillingError(f"provider di luar MVP: {provider!r} (TIDAK ADA BPJS)")
-    for prosedur in graf_service.items_prosedur(user_id, dsn=dsn):
-        if prosedur["service"] == provider:
-            return prosedur
-    return graf_service.tulis_prosedur(
-        user_id=user_id, service=provider, step=STEP_PROSEDUR[provider],
-        agent_id=agent_id, output_schema=SKEMA_OUTPUT_BILL,
-        required_checks=["pemeriksa_read_ulang"], dsn=dsn)
+    for procedure in graph_service.list_procedures(user_id, dsn=dsn):
+        if procedure["service"] == provider:
+            return procedure
+    return graph_service.write_procedure(
+        user_id=user_id, service=provider, step=PROCEDURE_STEPS[provider],
+        agent_id=agent_id, output_schema=BILL_OUTPUT_SCHEMA,
+        required_checks=["verifier_reread"], dsn=dsn)
 
 
 def check_bill(*, user_id: str, agent_id: str, provider: str,
-                number_pelanggan: str, read_situs, reread,
+                customer_number: str, read_site, reread,
                 task_id: str, mode: str = "fixture", dsn=None) -> dict:
     """Cek satu tagihan. `baca_situs(url) -> teks` dan `baca_ulang(url)
     -> {"nilai", ...}` disuntikkan (Pembaca terkarantina / Pemeriksa).
@@ -123,19 +123,19 @@ def check_bill(*, user_id: str, agent_id: str, provider: str,
     if provider not in PROVIDER_MVP:
         return {"success": False, "reason": "provider_di_luar_mvp",
                 "message": f"Provider {provider!r} bukan provider MVP (PLN, PDAM, pulsa, paket data; tidak ada BPJS)."}
-    if mode == "live" and not boleh_read(provider, mode="live"):
+    if mode == "live" and not may_read(provider, mode="live"):
         return {"success": False, "reason": "syarat_service_pending_keputusan_nero",
                 "message": f"{provider} belum diizinkan dibaca live — menunggu keputusan Nero (keputusan 15)."}
-    prosedur = pastikan_prosedur(user_id=user_id, provider=provider,
+    procedure = ensure_procedure(user_id=user_id, provider=provider,
                                  agent_id=agent_id, dsn=dsn)
-    if prosedur["status"] == "broken":
+    if procedure["status"] == "broken":
         return {"success": False, "reason": "prosedur_broken",
                 "message": "tidak bisa cek — prosedur tagihannya rusak, agen tidak memakai prosedur yang mungkin salah"}
 
-    def _jalan(_prosedur):
-        url = read_situs_url(provider, number_pelanggan, mode=mode)
+    def _run(_prosedur):
+        url = read_site_url(provider, customer_number, mode=mode)
         try:
-            text = read_situs(url)
+            text = read_site(url)
         except Exception as exc:  # noqa: BLE001
             return {"success": False, "reason": "situs_not_can_dibaca", "message": str(exc)[:200]}
         amount = _parse_amount(text)
@@ -152,42 +152,42 @@ def check_bill(*, user_id: str, agent_id: str, provider: str,
             from puspa.evidence.evidence import EvidenceRecord, create_evidence_id
 
             evidence = EvidenceRecord(
-                evidence_id=create_evidence_id(), klaim=f"tagihan {provider}",
+                evidence_id=create_evidence_id(), claim=f"tagihan {provider}",
                 value=amount, unit="Rp",
-                sumber_url=url if url.startswith("http") else "fixture://situs-uji",
+                source_url=url if url.startswith("http") else "fixture://situs-uji",
                 time_take=datetime.now(timezone.utc),
                 text_excerpt=text[:200].replace("\n", " "),
                 page_hash="", reader_id=f"pembaca-{provider.lower().replace(' ', '_')}")
             try:
-                ulang = reread(url)
-                value_ulang = float(ulang["value"])
-                name_ulang = ulang.get("name", "")
+                reread_result = reread(url)
+                reread_value = float(reread_result["value"])
+                reread_name = reread_result.get("name", "")
             except Exception:
-                evidence.vonis = "Cannot be determined"
+                evidence.verdict = "Cannot be determined"
             else:
-                if name_ulang and name_ulang != evidence.klaim:
-                    evidence.vonis = "Cannot be determined"
-                elif value_ulang == evidence.value:
-                    evidence.vonis = "Verified"
+                if reread_name and reread_name != evidence.claim:
+                    evidence.verdict = "Cannot be determined"
+                elif reread_value == evidence.value:
+                    evidence.verdict = "Verified"
                 else:
-                    evidence.vonis = "Uncertain"
+                    evidence.verdict = "Uncertain"
         else:
             evidence = record_evidence(
-                task_id=task_id, klaim=f"tagihan {provider}",
-                value=amount, unit="Rp", sumber_url=url,
-                text_excerpt=text[:200].replace("\n", " "), halaman=text,
+                task_id=task_id, claim=f"tagihan {provider}",
+                value=amount, unit="Rp", source_url=url,
+                text_excerpt=text[:200].replace("\n", " "), page=text,
                 reader_id=f"pembaca-{provider.lower().replace(' ', '_')}")
-            evidence = periksa(evidence, reread=reread)
-        if evidence.vonis == "Cannot be determined":
+            evidence = verify(evidence, reread=reread)
+        if evidence.verdict == "Cannot be determined":
             return {"success": False, "reason": "not_can_dipastikan",
                     "message": "Pemeriksa tidak bisa memastikan angka tagihannya — angka tidak ditampilkan"}
         return {"success": True, "amount": amount,
                 "due_date": _parse_due_date(text),
                 "status": _parse_status(text),
-                "evidence_id": evidence.evidence_id, "vonis": evidence.vonis}
+                "evidence_id": evidence.evidence_id, "verdict": evidence.verdict}
 
-    result = graf_service.jalankan_prosedur(
-        prosedur, jalankan=_jalan, agent_id=agent_id, user_id=user_id,
+    result = graph_service.run_procedure(
+        procedure, run=_run, agent_id=agent_id, user_id=user_id,
         task_id=task_id, dsn=dsn)
     if not result["success"]:
         return {"success": False, "reason": result.get("result", {}).get("reason", "failed_runs"),
@@ -197,20 +197,20 @@ def check_bill(*, user_id: str, agent_id: str, provider: str,
     return jalan
 
 
-def read_situs_url(provider: str, number_pelanggan: str, mode: str = "fixture") -> str:
+def read_site_url(provider: str, customer_number: str, mode: str = "fixture") -> str:
     """URL situs yang dibaca. Mode fixture: URL disuntikkan pemanggil
     lewat `baca_situs` (situs uji lokal) — fungsi ini hanya memberi
     URL resmi untuk mode live."""
     if mode == "fixture":
         # Pemanggil fixture memakai URL situs uji lokalnya sendiri;
         # nilai ini hanya penanda (tidak pernah di-fetch langsung).
-        return f"fixture://{provider}/{number_pelanggan}"
+        return f"fixture://{provider}/{customer_number}"
     if provider == "PLN":
         return "https://layanan.pln.co.id/informasi-tagihan-listrik-pembelian-token-pln"
     return f"https://{provider.lower().replace(' ', '')}.co.id/"
 
 
-def reminder_due_date(*, due_date: str | None, day_sebelum: int = 3,
+def reminder_due_date(*, due_date: str | None, days_before: int = 3,
                           today: date | None = None) -> dict:
     """Pengingat sebelum jatuh tempo (gratis, §4.2).
 
@@ -218,15 +218,15 @@ def reminder_due_date(*, due_date: str | None, day_sebelum: int = 3,
     Tanpa jatuh tempo (mis. pulsa) -> tidak ada pengingat.
     """
     if not due_date:
-        return {"perlu_remind": False, "day_lagi": None}
+        return {"needs_reminder": False, "days_left": None}
     due = date.fromisoformat(due_date)
     today = today or datetime.now(timezone.utc).date()
-    day_lagi = (due - today).days
-    return {"perlu_remind": 0 <= day_lagi <= day_sebelum,
-            "day_lagi": day_lagi}
+    days_left = (due - today).days
+    return {"needs_reminder": 0 <= days_left <= days_before,
+            "days_left": days_left}
 
 
-def siapkan_pay(*, provider: str, amount, due_date: str | None,
+def prepare_pay(*, provider: str, amount, due_date: str | None,
                   number_pelanggan_masked: str, dsn=None) -> dict:
     """Siapkan bayar — MODE BAYAR AMAN (§4.2, §2.6).
 

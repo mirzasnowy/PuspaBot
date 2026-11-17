@@ -22,13 +22,13 @@ from urllib.parse import quote, unquote
 # Nilai uji (bukan tagihan nyata siapa pun).
 DATA_TEST = {
     "pln": {"amount": 132500, "due_date": "2026-11-20", "status": "not_yet_pay",
-            "periode": "November 2026"},
+            "period": "November 2026"},
     "pdam": {"amount": 87500, "due_date": "2026-11-25", "status": "not_yet_pay",
-             "periode": "November 2026"},
+             "period": "November 2026"},
     "airtime": {"amount": 50000, "due_date": None, "status": "active",
-              "periode": "balance"},
+              "period": "balance"},
     "paket data": {"amount": 75000, "due_date": "2026-12-01", "status": "active",
-                   "periode": "30 hari"},
+                   "period": "30 hari"},
 }
 
 
@@ -51,18 +51,18 @@ class _Handler(BaseHTTPRequestHandler):
             f"<p>Jumlah tagihan: Rp{content['amount']:,}</p>".replace(",", ".")
             + (f"<p>Jatuh tempo: {content['due_date']}</p>" if content["due_date"] else "")
             + f"<p>Status: {content['status']}</p>"
-            + f"<p>Periode: {content['periode']}</p>"
+            + f"<p>Periode: {content['period']}</p>"
             + "</body></html>"
         )
-        badan = html.encode("utf-8")
+        body = html.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(badan)))
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(badan)
+        self.wfile.write(body)
 
 
-class SitusTest:
+class SiteFixture:
     """Situs uji tagihan di localhost (port acak)."""
 
     def __init__(self):
@@ -88,5 +88,5 @@ class SitusTest:
         _Handler.data[provider] = {**_Handler.data[provider], **value}
 
     @staticmethod
-    def pulihkan(provider: str) -> None:
+    def restore(provider: str) -> None:
         _Handler.data[provider] = dict(DATA_TEST[provider])

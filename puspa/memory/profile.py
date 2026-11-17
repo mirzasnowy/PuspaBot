@@ -69,7 +69,7 @@ def add_fact(user_id, key, value, source, agent_id=None, event_id=None, dsn=None
     status = STATUS_PROPOSED if source == "inferred" else STATUS_ACTIVE
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            konflik_dengan = None
+            conflicts_with = None
             if status == STATUS_ACTIVE:
                 cur.execute(
                     "SELECT id, value FROM profile_facts WHERE user_id = %s "
@@ -78,7 +78,7 @@ def add_fact(user_id, key, value, source, agent_id=None, event_id=None, dsn=None
                     (user_id, key, agent_id),
                 )
                 for old in cur.fetchall():
-                    konflik_dengan = str(old["id"])
+                    conflicts_with = str(old["id"])
                     cur.execute(
                         "UPDATE profile_facts SET status = 'replaced', "
                         "valid_until = now() WHERE id = %s",
@@ -93,7 +93,7 @@ def add_fact(user_id, key, value, source, agent_id=None, event_id=None, dsn=None
             row = cur.fetchone()
         conn.commit()
     fact = _row_to_fact(row)
-    fact["konflik_dengan"] = konflik_dengan
+    fact["conflicts_with"] = conflicts_with
     return fact
 
 

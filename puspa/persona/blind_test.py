@@ -56,7 +56,7 @@ def build_blind_test(user_id, base_replies, dsn=None, seed=7):
     return {
         "user_id": user_id,
         "style": persona["style"],
-        "direktif": persona["direktif"],
+        "directive": persona["directive"],
         "seed": seed,
         "items": items,
         "amount_juri": 0,

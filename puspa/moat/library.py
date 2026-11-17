@@ -54,7 +54,7 @@ def record_workflow_success(*, user_id: str, name: str, block: list,
     return {"id": str(row["id"]), "successful_runs": int(row["successful_runs"])}
 
 
-def record_permintaan_block(*, user_id: str, block: str, reason: str = "",
+def record_block_request(*, user_id: str, block: str, reason: str = "",
                           dsn=None) -> dict:
     """Catat blok yang diminta tapi belum ada (Permintaan Blok)."""
     with _connect(dsn) as conn:
@@ -68,17 +68,17 @@ def record_permintaan_block(*, user_id: str, block: str, reason: str = "",
     return {"id": str(row["id"])}
 
 
-def pemakaian_block(dsn=None) -> list[dict]:
+def block_usage(dsn=None) -> list[dict]:
     """Blok apa yang dipakai, berapa kali — bahan peta jalan."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT block, successful_runs FROM workflow_library")
-            hitung: dict[str, int] = {}
+            counts: dict[str, int] = {}
             for r in cur.fetchall():
                 for b in (r["block"] or []):
-                    hitung[str(b)] = hitung.get(str(b), 0) + int(r["successful_runs"])
+                    counts[str(b)] = counts.get(str(b), 0) + int(r["successful_runs"])
             cur.execute(
                 "SELECT block, COUNT(*) AS n FROM block_requests GROUP BY block")
-            diminta = {r["block"]: int(r["n"]) for r in cur.fetchall()}
-    return [{"block": b, "dipakai": n, "diminta_tapi_not_yet_ada": diminta.get(b, 0)}
-            for b, n in sorted(hitung.items(), key=lambda kv: -kv[1])]
+            requested = {r["block"]: int(r["n"]) for r in cur.fetchall()}
+    return [{"block": b, "used": n, "diminta_tapi_not_yet_ada": requested.get(b, 0)}
+            for b, n in sorted(counts.items(), key=lambda kv: -kv[1])]

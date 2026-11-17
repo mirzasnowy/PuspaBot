@@ -2,108 +2,108 @@
 
 import pytest
 
-from puspa.runtime.budget import (AnggaranHabis, BudgetTracker,
-                                  kalibrasi_dari_ledger)
-from puspa.runtime.tasks import (Langkah, Task, TaskRunner, create_rencana,
+from puspa.runtime.budget import (BudgetExhausted, BudgetTracker,
+                                  calibrate_from_ledger)
+from puspa.runtime.tasks import (Step, Task, TaskRunner, create_plan,
                                  TaskError)
 
 
 def _step(name="search", jenis_logout="result"):
-    return Langkah(name=name, masukan={"type": "search", "q": "x"},
+    return Step(name=name, inputs={"type": "search", "q": "x"},
                    expected_output={"type": jenis_logout},
-                   syarat_completed="hasil ditemukan")
+                   completion_condition="hasil ditemukan")
 
 
-def test_anggaran_step_and_rupiah():
+def test_budget_step_and_rupiah():
     b = BudgetTracker(rupiah_max=2000, step_max=25)
     b.record_step(25)
-    with pytest.raises(AnggaranHabis):
+    with pytest.raises(BudgetExhausted):
         b.record_step(1)
     b2 = BudgetTracker()
     b2.record_cost(1999)
-    with pytest.raises(AnggaranHabis):
+    with pytest.raises(BudgetExhausted):
         b2.record_cost(2)
 
 
-def test_anggaran_subagen_menyempit_to_bawah():
+def test_budget_subagent_narrows_downward():
     b = BudgetTracker(rupiah_max=2000, step_max=25)
     b.record_step(20)
     b.record_cost(1500)
-    sub = b.anggaran_subagen()
+    sub = b.subagent_budget()
     assert sub["step_max"] == 5
     assert sub["rupiah_max"] == 500
 
 
-def test_kalibrasi_dari_ledger_without_data_jujur():
-    result = kalibrasi_dari_ledger([])
-    assert result["amount_task"] == 0 and result["rata_rata_rp"] is None
+def test_calibration_from_ledger_without_honest_data():
+    result = calibrate_from_ledger([])
+    assert result["amount_task"] == 0 and result["average_rp"] is None
 
 
-def test_kalibrasi_dari_ledger_dengan_data():
+def test_calibration_from_ledger_with_data():
     event = [
         {"task_id": "t1", "content": {"cost_rp": 500}},
         {"task_id": "t1", "content": {"cost_rp": 300}},
         {"task_id": "t2", "content": {"cost_rp": 1200}},
     ]
-    result = kalibrasi_dari_ledger(event)
+    result = calibrate_from_ledger(event)
     assert result["amount_task"] == 2
-    assert result["rata_rata_rp"] == 1000
-    assert result["maks_rp"] == 1200
+    assert result["average_rp"] == 1000
+    assert result["max_rp"] == 1200
 
 
-def test_siklus_lima_tahap_completed():
-    runner = TaskRunner(pelaksana=lambda name, masukan: {"type": "result", "value": 42})
-    task = runner.jalankan(Task(task_id="tugas-1", user_id="u1", agent_id="puspa",
+def test_cycle_five_stage_completed():
+    runner = TaskRunner(executor=lambda name, inputs: {"type": "result", "value": 42})
+    task = runner.run(Task(task_id="tugas-1", user_id="u1", agent_id="puspa",
                                 purpose="riset dan rangkum lima artikel",
-                                rencana=[_step("search"), _step("rangkum")]))
-    assert task.status == "completed" and task.tahap == "sajikan"
+                                plan=[_step("search"), _step("rangkum")]))
+    assert task.status == "completed" and task.stage == "present"
     event_type = [e["type"] for e in runner.event_memory()]
     for required in ("task_created", "plan_created", "handoff_proposed",
                   "handoff_handed_over", "verification_completed", "task_completed"):
         assert required in event_type
 
 
-def test_purpose_ambigu_ask_satu_pertanyaan():
+def test_ambiguous_purpose_asks_one_question():
     runner = TaskRunner()
-    task = runner.jalankan(Task(task_id="tugas-2", user_id="u1", agent_id="puspa",
+    task = runner.run(Task(task_id="tugas-2", user_id="u1", agent_id="puspa",
                                 purpose="cek harga"))
     assert task.status == "pending_user"
-    assert task.pertanyaan  # maks 1 pertanyaan
+    assert task.question  # maks 1 pertanyaan
 
 
-def test_rencana_action_logout_berhenti_di_approval():
-    lg = _step("send")
-    lg.action_logout = True
+def test_plan_action_logout_stops_at_approval():
+    step = _step("send")
+    step.outbound_action = True
     runner = TaskRunner()
-    task = runner.jalankan(Task(task_id="tugas-3", user_id="u1", agent_id="puspa",
+    task = runner.run(Task(task_id="tugas-3", user_id="u1", agent_id="puspa",
                                 purpose="kirim email ke tim keuangan",
-                                rencana=[lg]))
+                                plan=[step]))
     assert task.status == "pending_approval"
     assert task.result == {}
 
 
-def test_step_not_passed_skema_task_failed():
-    runner = TaskRunner(pelaksana=lambda name, masukan: {"type": "wrong"})
-    task = runner.jalankan(Task(task_id="tugas-4", user_id="u1", agent_id="puspa",
+def test_step_failing_schema_fails_task():
+    runner = TaskRunner(executor=lambda name, inputs: {"type": "wrong"})
+    task = runner.run(Task(task_id="tugas-4", user_id="u1", agent_id="puspa",
                                 purpose="riset dan rangkum lima artikel",
-                                rencana=[_step()]))
+                                plan=[_step()]))
     assert task.status == "failed"
 
 
-def test_anggaran_habis_task_berhenti_and_melapor():
+def test_budget_exhausted_task_stops_and_reports():
     budget = BudgetTracker(rupiah_max=2000, step_max=1)
     runner = TaskRunner(budget=budget,
-                        pelaksana=lambda name, masukan: {"type": "result", "value": 1})
-    task = runner.jalankan(Task(task_id="tugas-5", user_id="u1", agent_id="puspa",
+                        executor=lambda name, inputs: {"type": "result", "value": 1})
+    task = runner.run(Task(task_id="tugas-5", user_id="u1", agent_id="puspa",
                                 purpose="riset dan rangkum lima artikel",
-                                rencana=[_step("a"), _step("b")]))
+                                plan=[_step("a"), _step("b")]))
     assert task.status == "failed"
     assert "budget_exhausted" in [e["type"] for e in runner.event_memory()]
 
 
-def test_rencana_more_dari_25_step_rejected():
+def test_plan_with_more_than_25_steps_rejected():
     with pytest.raises(TaskError):
-        create_rencana("tujuan panjang untuk uji batas langkah", [_step(f"l{i}") for i in range(26)])
+        create_plan("tujuan panjang untuk uji batas langkah", [_step(f"l{i}") for i in range(26)])
 
 
 def test_tombstone_delete_task_without_update_ledger(tmp_path):

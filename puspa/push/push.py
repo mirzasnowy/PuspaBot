@@ -46,25 +46,25 @@ def _b64url_decode(data: str) -> bytes:
     return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
 
 
-def create_key_vapid() -> dict:
+def create_vapid_key() -> dict:
     """Buat pasangan kunci VAPID baru. Kembalikan dict kunci publik
     (b64url, untuk service worker) + privat (b64url, simpan aman)."""
-    privat = ec.generate_private_key(ec.SECP256R1())
-    publik = privat.public_key().public_numbers()
-    x = publik.x.to_bytes(32, "big")
-    y = publik.y.to_bytes(32, "big")
-    key_publik = _b64url(b"\x04" + x + y)
-    d = privat.private_numbers().private_value.to_bytes(32, "big")
-    return {"publik": key_publik, "privat": _b64url(d)}
+    private = ec.generate_private_key(ec.SECP256R1())
+    public = private.public_key().public_numbers()
+    x = public.x.to_bytes(32, "big")
+    y = public.y.to_bytes(32, "big")
+    public_key = _b64url(b"\x04" + x + y)
+    d = private.private_numbers().private_value.to_bytes(32, "big")
+    return {"public": public_key, "private": _b64url(d)}
 
 
-def _muat_privat(privat_b64: str):
-    d = int.from_bytes(_b64url_decode(privat_b64), "big")
+def _load_private(private_b64: str):
+    d = int.from_bytes(_b64url_decode(private_b64), "big")
     return ec.derive_private_key(d, ec.SECP256R1())
 
 
-def _muat_publik(publik_b64: str):
-    raw = _b64url_decode(publik_b64)
+def _load_public(public_b64: str):
+    raw = _b64url_decode(public_b64)
     if len(raw) != 65 or raw[0] != 4:
         raise PushError("kunci publik VAPID tidak valid")
     return ec.EllipticCurvePublicNumbers(
@@ -72,19 +72,19 @@ def _muat_publik(publik_b64: str):
         ec.SECP256R1()).public_key()
 
 
-def _jwt_vapid(*, endpoint: str, subjek: str, privat_b64: str,
-               kedaluwarsa_detik: int = 12 * 3600) -> str:
+def _jwt_vapid(*, endpoint: str, subject: str, private_b64: str,
+               expiry_seconds: int = 12 * 3600) -> str:
     """JWT VAPID ES256: aud = origin endpoint, exp = 12 jam."""
     from urllib.parse import urlparse
 
     aud = f"{urlparse(endpoint).scheme}://{urlparse(endpoint).netloc}"
     header = _b64url(json.dumps({"typ": "JWT", "alg": "ES256"}, separators=(",", ":")).encode())
     payload = _b64url(json.dumps(
-        {"aud": aud, "exp": int(time.time()) + kedaluwarsa_detik, "sub": subjek},
+        {"aud": aud, "exp": int(time.time()) + expiry_seconds, "sub": subject},
         separators=(",", ":")).encode())
     message = f"{header}.{payload}".encode()
-    privat = _muat_privat(privat_b64)
-    der = privat.sign(message, ec.ECDSA(hashes.SHA256()))
+    private = _load_private(private_b64)
+    der = private.sign(message, ec.ECDSA(hashes.SHA256()))
     # DER -> raw r||s (JOSE).
     r_len = der[3]
     r = der[4:4 + r_len]
@@ -94,71 +94,71 @@ def _jwt_vapid(*, endpoint: str, subjek: str, privat_b64: str,
     return f"{header}.{payload}.{_b64url(r + s)}"
 
 
-def _hkdf(garam: bytes, ikm: bytes, info: bytes, long: int) -> bytes:
-    return HKDF(algorithm=hashes.SHA256(), length=long, salt=garam, info=info).derive(ikm)
+def _hkdf(salt: bytes, ikm: bytes, info: bytes, long: int) -> bytes:
+    return HKDF(algorithm=hashes.SHA256(), length=long, salt=salt, info=info).derive(ikm)
 
 
-def enkripsi_payload(content: bytes, *, p256dh_penerima_b64: str, auth_b64: str) -> tuple[bytes, str, str]:
+def encrypt_payload(content: bytes, *, p256dh_recipient_b64: str, auth_b64: str) -> tuple[bytes, str, str]:
     """Enkripsi aes128gcm. Kembalikan (body, kunci_publik_server_b64, garam_b64)."""
-    penerima = _muat_publik(p256dh_penerima_b64)
+    recipient = _load_public(p256dh_recipient_b64)
     auth = _b64url_decode(auth_b64)
-    server_privat = ec.generate_private_key(ec.SECP256R1())
-    server_publik = server_privat.public_key()
-    shared = server_privat.exchange(ec.ECDH(), penerima)
-    garam = os.urandom(16)
-    info_key = b"WebPush: info\x00" + _b64url_decode(p256dh_penerima_b64) + _b64url_decode(
-        _b64url(server_publik.public_bytes(serialization.Encoding.X962,
+    server_private = ec.generate_private_key(ec.SECP256R1())
+    server_public_key = server_private.public_key()
+    shared = server_private.exchange(ec.ECDH(), recipient)
+    salt = os.urandom(16)
+    info_key = b"WebPush: info\x00" + _b64url_decode(p256dh_recipient_b64) + _b64url_decode(
+        _b64url(server_public_key.public_bytes(serialization.Encoding.X962,
                                            serialization.PublicFormat.UncompressedPoint)))
     prk = _hkdf(auth, shared, info_key, 32)
-    key = _hkdf(garam, prk, b"Content-Encoding: aes128gcm\x00", 16)
-    nonce = _hkdf(garam, prk, b"Content-Encoding: nonce\x00", 12)
+    key = _hkdf(salt, prk, b"Content-Encoding: aes128gcm\x00", 16)
+    nonce = _hkdf(salt, prk, b"Content-Encoding: nonce\x00", 12)
     content_pad = content + b"\x02"  # delimiter padding (RFC 8291)
-    badan = AESGCM(key).encrypt(nonce, content_pad, None)
-    publik_server = _b64url(server_publik.public_bytes(
+    body = AESGCM(key).encrypt(nonce, content_pad, None)
+    server_public_b64 = _b64url(server_public_key.public_bytes(
         serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint))
-    return badan, publik_server, _b64url(garam)
+    return body, server_public_b64, _b64url(salt)
 
 
-def dekripsi_payload(badan: bytes, *, garam_b64: str, key_server_b64: str,
-                     privat_penerima_b64: str, auth_b64: str) -> bytes:
+def decrypt_payload(body: bytes, *, salt_b64: str, server_key_b64: str,
+                     recipient_private_b64: str, auth_b64: str) -> bytes:
     """Kebalikan `enkripsi_payload` (untuk tes bolak-balik)."""
-    penerima_privat = _muat_privat(privat_penerima_b64)
-    server_publik = _muat_publik(key_server_b64)
-    shared = penerima_privat.exchange(ec.ECDH(), server_publik)
-    garam = _b64url_decode(garam_b64)
+    recipient_private = _load_private(recipient_private_b64)
+    server_public_key = _load_public(server_key_b64)
+    shared = recipient_private.exchange(ec.ECDH(), server_public_key)
+    salt = _b64url_decode(salt_b64)
     auth = _b64url_decode(auth_b64)
-    publik_penerima = _b64url(penerima_privat.public_key().public_bytes(
+    recipient_public_b64 = _b64url(recipient_private.public_key().public_bytes(
         serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint))
-    info_key = b"WebPush: info\x00" + _b64url_decode(publik_penerima) + _b64url_decode(key_server_b64)
+    info_key = b"WebPush: info\x00" + _b64url_decode(recipient_public_b64) + _b64url_decode(server_key_b64)
     prk = _hkdf(auth, shared, info_key, 32)
-    key = _hkdf(garam, prk, b"Content-Encoding: aes128gcm\x00", 16)
-    nonce = _hkdf(garam, prk, b"Content-Encoding: nonce\x00", 12)
-    jelas = AESGCM(key).decrypt(nonce, badan, None)
-    return jelas[:-1]  # buang delimiter
+    key = _hkdf(salt, prk, b"Content-Encoding: aes128gcm\x00", 16)
+    nonce = _hkdf(salt, prk, b"Content-Encoding: nonce\x00", 12)
+    plaintext = AESGCM(key).decrypt(nonce, body, None)
+    return plaintext[:-1]  # buang delimiter
 
 
 def send(*, endpoint: str, p256dh: str, auth: str, content: bytes | None,
-          vapid_publik: str, vapid_privat: str, subjek: str = "mailto:puspa@contoh.id",
+          vapid_public: str, vapid_private: str, subject: str = "mailto:puspa@contoh.id",
           http_client=None, ttl: int = 86400) -> dict:
     """Kirim satu push. `isi=None` = push kosong (bangunkan saja)."""
-    jwt = _jwt_vapid(endpoint=endpoint, subjek=subjek, privat_b64=vapid_privat)
-    headers = {"Authorization": f"vapid t={jwt}, k={vapid_publik}", "TTL": str(ttl)}
+    jwt = _jwt_vapid(endpoint=endpoint, subject=subject, private_b64=vapid_private)
+    headers = {"Authorization": f"vapid t={jwt}, k={vapid_public}", "TTL": str(ttl)}
     if content is None:
-        badan, headers["Content-Length"] = b"", "0"
+        body, headers["Content-Length"] = b"", "0"
     else:
-        badan, key_server, garam = enkripsi_payload(content, p256dh_penerima_b64=p256dh, auth_b64=auth)
+        body, server_key, salt = encrypt_payload(content, p256dh_recipient_b64=p256dh, auth_b64=auth)
         headers["Content-Encoding"] = "aes128gcm"
-        headers["Encryption"] = f"salt={garam}"
-        headers["Crypto-Key"] = f"dh={key_server}"
-        headers["Content-Length"] = str(len(badan))
+        headers["Encryption"] = f"salt={salt}"
+        headers["Crypto-Key"] = f"dh={server_key}"
+        headers["Content-Length"] = str(len(body))
     client = http_client or httpx.Client(timeout=30.0)
-    resp = client.post(endpoint, content=badan, headers=headers)
+    resp = client.post(endpoint, content=body, headers=headers)
     if resp.status_code not in (200, 201, 202):
         raise PushError(f"push gagal: {resp.status_code}")
     return {"status": resp.status_code, "endpoint": endpoint}
 
 
-def save_langganan(user_id: str, *, endpoint: str, p256dh: str, auth: str,
+def save_subscription(user_id: str, *, endpoint: str, p256dh: str, auth: str,
                      dsn=None) -> str:
     """Simpan langganan push pengguna. Kembalikan id langganan."""
     import uuid
@@ -166,19 +166,19 @@ def save_langganan(user_id: str, *, endpoint: str, p256dh: str, auth: str,
     import psycopg
 
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
-    langganan_id = f"push-{uuid.uuid4().hex[:12]}"
+    subscription_id = f"push-{uuid.uuid4().hex[:12]}"
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth)"
                 " VALUES (%s, %s, %s, %s, %s)",
-                (langganan_id, user_id, endpoint, p256dh, auth),
+                (subscription_id, user_id, endpoint, p256dh, auth),
             )
         conn.commit()
-    return langganan_id
+    return subscription_id
 
 
-def items_langganan(user_id: str, dsn=None) -> list[dict]:
+def list_subscriptions(user_id: str, dsn=None) -> list[dict]:
     """Semua langganan push satu pengguna."""
     import psycopg
 

@@ -8,7 +8,7 @@ ToS (pembaca TIDAK dipanggil sama sekali).
 
 import pytest
 
-from puspa.graphs.identity import price_terkini, add_product
+from puspa.graphs.identity import current_prices, add_product
 from puspa.pricing import cache as cache_evidence
 from puspa.pricing import credits as credit
 from puspa.pricing.compare import compare_price, check_detail
@@ -32,15 +32,15 @@ class PembacaPalsu:
 
     def read(self, url):
         self.dipanggil += 1
-        pasar = "Tokopedia" if "tokopedia" in url else "Shopee" if "shopee" in url else "Blibli"
-        return ResultRead(success=True, marketplace=pasar, listing_url=url,
-                         price=self.price[pasar], shipping=15000, store_rating=4.9,
+        marketplace = "Tokopedia" if "tokopedia" in url else "Shopee" if "shopee" in url else "Blibli"
+        return ResultRead(success=True, marketplace=marketplace, listing_url=url,
+                         price=self.price[marketplace], shipping=15000, store_rating=4.9,
                          name=self.name, text_excerpt="[DATA: Galaxy S24 Rp12.499.000]")
 
 
 def _read_ulang_correct(url):
-    pasar = "Tokopedia" if "tokopedia" in url else "Shopee" if "shopee" in url else "Blibli"
-    return {"value": HARGA[pasar], "name": "Samsung Galaxy S24"}
+    marketplace = "Tokopedia" if "tokopedia" in url else "Shopee" if "shopee" in url else "Blibli"
+    return {"value": HARGA[marketplace], "name": "Samsung Galaxy S24"}
 
 
 def _siapkan_product(make_user, test_dsn):
@@ -52,62 +52,62 @@ def _siapkan_product(make_user, test_dsn):
 
 def test_compare_fixture_3_marketplace(make_user, test_dsn):
     user = _siapkan_product(make_user, test_dsn)
-    pembaca = {p: PembacaPalsu(HARGA) for p in URLS}
+    reader = {p: PembacaPalsu(HARGA) for p in URLS}
     result = compare_price(
         user_id=user["user_id"], agent_id=user["agent_id"], model_number="SM-S921B",
-        brand="Samsung", category="phone", listing_urls=URLS, pembaca=pembaca,
+        brand="Samsung", category="phone", listing_urls=URLS, reader=reader,
         reread=_read_ulang_correct, token=1200, mode="fixture", dsn=test_dsn)
     assert result["success"] is True
-    assert result["termurah"] == "Shopee"
-    assert result["selisih"] == 500000.0
-    for pasar in URLS:
-        assert result["result"][pasar]["vonis"] == "Verified"
-        assert result["result"][pasar]["evidence_id"]
+    assert result["cheapest"] == "Shopee"
+    assert result["spread"] == 500000.0
+    for marketplace in URLS:
+        assert result["result"][marketplace]["verdict"] == "Verified"
+        assert result["result"][marketplace]["evidence_id"]
     # Graf terisi: harga terkini dari wedge.
-    terkini = price_terkini(result["product"]["id"], dsn=test_dsn)
+    terkini = current_prices(result["product"]["id"], dsn=test_dsn)
     assert len(terkini) == 3
 
 
-def test_compare_ragu_ask_user_bukan_tebak(make_user, test_dsn):
+def test_compare_when_uncertain_asks_user_not_guess(make_user, test_dsn):
     user = make_user()
-    pembaca = {p: PembacaPalsu(HARGA) for p in URLS}
+    reader = {p: PembacaPalsu(HARGA) for p in URLS}
     result = compare_price(
         user_id=user["user_id"], agent_id=user["agent_id"], model_number="SM-S999Z",
-        brand="Samsung", category="phone", listing_urls=URLS, pembaca=pembaca,
+        brand="Samsung", category="phone", listing_urls=URLS, reader=reader,
         reread=_read_ulang_correct, mode="fixture", dsn=test_dsn)
     assert result["perlu_ask"] is True
-    assert all(p.dipanggil == 0 for p in pembaca.values())
+    assert all(p.dipanggil == 0 for p in reader.values())
 
 
-def test_compare_di_luar_scope_rejected(make_user, test_dsn):
+def test_compare_outside_scope_rejected(make_user, test_dsn):
     user = make_user()
-    pembaca = {p: PembacaPalsu(HARGA) for p in URLS}
+    reader = {p: PembacaPalsu(HARGA) for p in URLS}
     result = compare_price(
         user_id=user["user_id"], agent_id=user["agent_id"], model_number="AIRMAX90",
-        category="fashion", listing_urls=URLS, pembaca=pembaca,
+        category="fashion", listing_urls=URLS, reader=reader,
         reread=_read_ulang_correct, mode="fixture", dsn=test_dsn)
     assert result["success"] is False and result["reason"] == "di_luar_scope"
     assert "di luar scope" in result["message"]
-    assert all(p.dipanggil == 0 for p in pembaca.values())
+    assert all(p.dipanggil == 0 for p in reader.values())
 
 
-def test_compare_live_marketplace_ditahan_gerbang_tos(make_user, test_dsn):
+def test_compare_live_marketplace_held_by_tos_gate(make_user, test_dsn):
     user = _siapkan_product(make_user, test_dsn)
-    pembaca = {p: PembacaPalsu(HARGA) for p in URLS}
+    reader = {p: PembacaPalsu(HARGA) for p in URLS}
     result = compare_price(
         user_id=user["user_id"], agent_id=user["agent_id"], model_number="SM-S921B",
-        brand="Samsung", category="phone", listing_urls=URLS, pembaca=pembaca,
+        brand="Samsung", category="phone", listing_urls=URLS, reader=reader,
         reread=_read_ulang_correct, mode="live", dsn=test_dsn)
     assert result["success"] is True
     # TIDAK ADA upaya baca live sama sekali.
-    assert all(p.dipanggil == 0 for p in pembaca.values())
-    for pasar in URLS:
-        assert result["result"][pasar]["not_can_dicek"] is True
-        assert result["result"][pasar]["reason"] == "syarat_service_pending_keputusan_nero"
-    assert result["termurah"] is None
+    assert all(p.dipanggil == 0 for p in reader.values())
+    for marketplace in URLS:
+        assert result["result"][marketplace]["not_can_dicek"] is True
+        assert result["result"][marketplace]["reason"] == "syarat_service_pending_keputusan_nero"
+    assert result["cheapest"] is None
 
 
-def test_satu_marketplace_failed_sisanya_tetap_disajikan(make_user, test_dsn):
+def test_one_marketplace_failed_rest_still_presented(make_user, test_dsn):
     """Aturan gagal terlihat (§4.1): satu marketplace tidak bisa dibaca
     -> bilang tidak bisa cek + tetap sajikan sisanya."""
     user = _siapkan_product(make_user, test_dsn)
@@ -117,21 +117,21 @@ def test_satu_marketplace_failed_sisanya_tetap_disajikan(make_user, test_dsn):
             return ResultRead(success=False, marketplace="Blibli", listing_url=url,
                              reason="sumber_memblokir_http_403")
 
-    pembaca = {"Tokopedia": PembacaPalsu(HARGA), "Shopee": PembacaPalsu(HARGA),
+    reader = {"Tokopedia": PembacaPalsu(HARGA), "Shopee": PembacaPalsu(HARGA),
                "Blibli": PembacaFailed()}
     result = compare_price(
         user_id=user["user_id"], agent_id=user["agent_id"], model_number="SM-S921B",
-        brand="Samsung", category="phone", listing_urls=URLS, pembaca=pembaca,
+        brand="Samsung", category="phone", listing_urls=URLS, reader=reader,
         reread=_read_ulang_correct, mode="fixture", dsn=test_dsn)
     assert result["success"] is True
-    assert result["termurah"] == "Shopee"
+    assert result["cheapest"] == "Shopee"
     assert result["result"]["Blibli"]["not_can_dicek"] is True
     assert "tidak bisa dicek" in result["result"]["Blibli"]["message"]
 
 
-def test_pemeriksa_menangkap_price_wrong_yang_disuntik(make_user, test_dsn):
+def test_verifier_catches_injected_wrong_price(make_user, test_dsn):
     user = _siapkan_product(make_user, test_dsn)
-    pembaca = {p: PembacaPalsu(HARGA) for p in URLS}
+    reader = {p: PembacaPalsu(HARGA) for p in URLS}
 
     def read_ulang_wrong(url):
         # Pembaca bilang 12.499.000, baca ulang menemukan 9.999.000.
@@ -139,16 +139,16 @@ def test_pemeriksa_menangkap_price_wrong_yang_disuntik(make_user, test_dsn):
 
     result = compare_price(
         user_id=user["user_id"], agent_id=user["agent_id"], model_number="SM-S921B",
-        brand="Samsung", category="phone", listing_urls=URLS, pembaca=pembaca,
+        brand="Samsung", category="phone", listing_urls=URLS, reader=reader,
         reread=read_ulang_wrong, mode="fixture", dsn=test_dsn)
-    assert all(result["result"][p]["vonis"] != "Verified" for p in URLS)
+    assert all(result["result"][p]["verdict"] != "Verified" for p in URLS)
 
 
-def test_pemeriksa_not_use_cache_evidence(make_user, test_dsn):
+def test_verifier_does_not_use_evidence_cache(make_user, test_dsn):
     """Cache dipakai Pembaca; Pemeriksa membaca ulang independen —
     dibuktikan: baca_ulang tetap dipanggil walau cache terisi."""
     user = _siapkan_product(make_user, test_dsn)
-    cache_evidence.save("Shopee:https://shopee.co.id/galaxy-s24", sumber="Shopee",
+    cache_evidence.save("Shopee:https://shopee.co.id/galaxy-s24", source="Shopee",
                        value={"price": 1.0, "name": "old"}, evidence_id="bukti-lama",
                        dsn=test_dsn)
     panggilan = {"n": 0}
@@ -157,16 +157,16 @@ def test_pemeriksa_not_use_cache_evidence(make_user, test_dsn):
         panggilan["n"] += 1
         return _read_ulang_correct(url)
 
-    pembaca = {p: PembacaPalsu(HARGA) for p in URLS}
+    reader = {p: PembacaPalsu(HARGA) for p in URLS}
     result = compare_price(
         user_id=user["user_id"], agent_id=user["agent_id"], model_number="SM-S921B",
-        brand="Samsung", category="phone", listing_urls=URLS, pembaca=pembaca,
+        brand="Samsung", category="phone", listing_urls=URLS, reader=reader,
         reread=reread, mode="fixture", dsn=test_dsn)
     assert panggilan["n"] == 3
-    assert result["result"]["Shopee"]["vonis"] == "Verified"
+    assert result["result"]["Shopee"]["verdict"] == "Verified"
 
 
-def test_skor_low_menurunkan_vonis(make_user, test_dsn):
+def test_score_low_lowers_verdict(make_user, test_dsn):
     """Sumber < 80% Terverifikasi -> hasil maksimal Belum pasti (§3.4)."""
     import psycopg
 
@@ -174,31 +174,31 @@ def test_skor_low_menurunkan_vonis(make_user, test_dsn):
     with psycopg.connect(test_dsn) as conn:
         with conn.cursor() as cur:
             for i in range(10):
-                vonis = "Verified" if i < 5 else "Cannot be determined"
+                verdict = "Verified" if i < 5 else "Cannot be determined"
                 cur.execute(
                     "INSERT INTO source_readings (user_id, sumber, category, vonis)"
-                    " VALUES (%s, 'Shopee', 'phone', %s)", (user["user_id"], vonis))
+                    " VALUES (%s, 'Shopee', 'phone', %s)", (user["user_id"], verdict))
         conn.commit()
-    pembaca = {p: PembacaPalsu(HARGA) for p in URLS}
+    reader = {p: PembacaPalsu(HARGA) for p in URLS}
     result = compare_price(
         user_id=user["user_id"], agent_id=user["agent_id"], model_number="SM-S921B",
-        brand="Samsung", category="phone", listing_urls=URLS, pembaca=pembaca,
+        brand="Samsung", category="phone", listing_urls=URLS, reader=reader,
         reread=_read_ulang_correct, mode="fixture", dsn=test_dsn)
-    assert result["result"]["Shopee"]["vonis"] == "Uncertain"
-    assert result["result"]["Tokopedia"]["vonis"] == "Verified"
+    assert result["result"]["Shopee"]["verdict"] == "Uncertain"
+    assert result["result"]["Tokopedia"]["verdict"] == "Verified"
 
 
-def test_check_detail_1_credit_and_credit_habis(make_user, test_dsn):
+def test_check_detail_1_credit_and_credit_exhausted(make_user, test_dsn):
     user = _siapkan_product(make_user, test_dsn)
     product_id = None
     from puspa.graphs.identity import search_product
 
     product_id = search_product("SM-S921B", dsn=test_dsn)["id"]
-    assert credit.sisa_credit(user["user_id"], dsn=test_dsn) == 15
+    assert credit.remaining_credit(user["user_id"], dsn=test_dsn) == 15
     detail = check_detail(user_id=user["user_id"], product_id=product_id, dsn=test_dsn)
-    assert detail["sisa_credit"] == 14
+    assert detail["remaining_credit"] == 14
     for _ in range(14):
         credit.use_credit(user["user_id"], dsn=test_dsn)
-    assert credit.sisa_credit(user["user_id"], dsn=test_dsn) == 0
+    assert credit.remaining_credit(user["user_id"], dsn=test_dsn) == 0
     with pytest.raises(credit.CreditError):
         credit.use_credit(user["user_id"], dsn=test_dsn)

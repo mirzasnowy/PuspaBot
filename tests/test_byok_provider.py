@@ -59,15 +59,15 @@ def _no_proxy(monkeypatch):
     ("claude-sonnet-4-6", "anthropic"),
     ("gemini-2.5-flash", "gemini"),
 ])
-def test_resolve_provider_dari_prefix_model(model, provider):
+def test_resolve_provider_from_prefix_model(model, provider):
     assert resolve_provider_name(None, model) == provider
 
 
-def test_resolve_provider_name_eksplisit_menang():
+def test_resolve_provider_name_explicit_wins():
     assert resolve_provider_name("openai", "anthropic/claude-sonnet-4-6") == "openai"
 
 
-def test_resolve_provider_prefix_tak_dikenal_failed_terlihat():
+def test_resolve_provider_unknown_prefix_fails_visibly():
     with pytest.raises(ValueError, match="provider tidak bisa ditebak"):
         resolve_provider_name(None, "model-tanpa-prefix-jelas")
 
@@ -93,14 +93,14 @@ def test_build_gemini_base_url_google():
     assert prov.api_base == "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
-def test_build_groq_deepseek_dari_registry_nanobot():
+def test_build_groq_deepseek_from_registry_nanobot():
     groq = build_byok_provider("groq", "llama-3.1-8b-instant", key=MOCK_KEY)
     assert groq.api_base == "https://api.groq.com/openai/v1"
     deepseek = build_byok_provider("deepseek", "deepseek-chat", key=MOCK_KEY)
     assert deepseek.api_base == "https://api.deepseek.com"
 
 
-def test_build_together_evidence_satu_rows_config():
+def test_build_together_evidence_one_row_config():
     # "together" TIDAK ada di registry nanobot; cukup satu baris
     # register_provider di byok_provider.py untuk masuk factory.
     from nanobot.providers.registry import find_by_name
@@ -111,7 +111,7 @@ def test_build_together_evidence_satu_rows_config():
     assert prov.api_base == "https://api.together.xyz/v1"
 
 
-def test_register_provider_new_satu_rows():
+def test_register_provider_new_one_row():
     name = register_provider("vendor-contoh-tes", "https://api.vendor.example/v1")
     prov = build_byok_provider(name, "model-contoh", key=MOCK_KEY)
     assert prov.api_base == "https://api.vendor.example/v1"
@@ -133,7 +133,7 @@ def test_build_ollama_without_key():
     assert prov.api_base == "http://localhost:11434/v1"
 
 
-def test_build_openai_compatible_generik_need_base_url():
+def test_build_openai_compatible_generic_need_base_url():
     with pytest.raises(ValueError, match="butuh base_url"):
         build_byok_provider("openai_compatible", "m", key=MOCK_KEY)
     prov = build_byok_provider("openai_compatible", "m", key=MOCK_KEY,
@@ -146,18 +146,18 @@ def test_build_azure_need_endpoint():
         build_byok_provider("azure_openai", "dep-mock", key=MOCK_KEY)
 
 
-def test_build_provider_tak_dikenal_failed_terlihat():
+def test_build_unknown_provider_fails_visibly():
     with pytest.raises(ValueError, match="tidak dikenal"):
         build_byok_provider("vendor_not_ada", "model-x", key=MOCK_KEY)
 
 
-def test_build_without_key_failed_terlihat(monkeypatch):
+def test_build_without_key_fails_visibly(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with pytest.raises(KeyError, match="kunci provider 'openai' belum ada"):
         build_byok_provider("openai", "gpt-4o-mini")
 
 
-def test_build_model_kosong_failed():
+def test_build_empty_model_fails():
     with pytest.raises(ValueError, match="model tidak boleh kosong"):
         build_byok_provider("openai", "  ", key=MOCK_KEY)
 
@@ -169,20 +169,20 @@ def test_build_model_kosong_failed():
     ("github_copilot", "github-copilot/gpt-4.1", "GitHubCopilotProvider"),
     ("openai_codex", "openai-codex/gpt-5.6-sol", "OpenAICodexProvider"),
 ])
-def test_build_oauth_konstruksi_without_kredensial(name, model, klass):
+def test_build_oauth_construction_without_credentials(name, model, klass):
     prov = build_byok_provider(name, model)
     assert isinstance(prov, LLMProvider)
     assert type(prov).__name__ == klass
 
 
-def test_build_bedrock_without_boto3_failed_di_konstruksi():
+def test_build_bedrock_without_boto3_fails_in_construction():
     # boto3 tidak terpasang di venv ini: konstruksi tanpa client inject
     # harus gagal jelas (bukan klaim mock). Dengan fake client, jalan.
     with pytest.raises(RuntimeError, match="boto3"):
         build_byok_provider("bedrock", "anthropic.claude-sonnet-4-6", region="us-east-1")
 
 
-def test_build_bedrock_dengan_fake_client():
+def test_build_bedrock_with_fake_client():
     prov = build_byok_provider("bedrock", "anthropic.claude-sonnet-4-6",
                                region="us-east-1", client=FakeBedrockClient())
     assert prov.provider_name == "bedrock"
@@ -242,20 +242,20 @@ def test_mock_groq_deepseek():
         assert asyncio.run(check_openai_compat("deepseek", "deepseek-chat", server))["result"] == "mock passed"
 
 
-def test_mock_together_satu_rows_config():
+def test_mock_together_one_row_config():
     with MockProviderServer() as server:
         summarize = asyncio.run(check_openai_compat(
             "together", "meta-llama/Llama-3.1-8b-Instruct", server))
     assert summarize["result"] == "mock passed"
 
 
-def test_mock_openai_compatible_generik():
+def test_mock_openai_compatible_generic():
     with MockProviderServer() as server:
         summarize = asyncio.run(check_openai_compat("openai_compatible", "model-generik-mock", server))
     assert summarize["result"] == "mock passed"
 
 
-def test_mock_ollama_lokal():
+def test_mock_ollama_local():
     with MockProviderServer() as server:
         summarize = asyncio.run(check_openai_compat("ollama", "llama3.1:8b", server))
     assert summarize["result"] == "mock passed"
@@ -280,7 +280,7 @@ def test_mock_bedrock_fake_client():
     assert summarize["result"] == "mock passed (fake client)"
 
 
-def test_mock_all_provider_sekaligus(tmp_path):
+def test_mock_all_providers_at_once(tmp_path):
     result = asyncio.run(run_mock_checks(tmp_path))
     assert len(result) == 10
     assert all("passed" in h["result"] for h in result)

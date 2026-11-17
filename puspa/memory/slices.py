@@ -30,7 +30,7 @@ def _connect(dsn=None):
     return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
-def grant_slice(user_id, agent_id, subagent_id, query, kolom, token_ref,
+def grant_slice(user_id, agent_id, subagent_id, query, columns, token_ref,
                 dsn=None):
     """Beri irisan memori ke satu sub-agen; kembalikan data irisannya.
 
@@ -44,32 +44,32 @@ def grant_slice(user_id, agent_id, subagent_id, query, kolom, token_ref,
     """
     if not isinstance(query, str) or not query or len(query) > 500:
         raise ValueError("query harus string tak kosong, maks 500 karakter")
-    kolom = tuple(kolom or [])
-    if not kolom:
+    columns = tuple(columns or [])
+    if not columns:
         raise ValueError("kolom irisan tidak boleh kosong")
-    if not set(kolom) <= ALLOWED_COLUMNS:
-        raise ValueError(f"kolom tidak diizinkan: {sorted(set(kolom) - ALLOWED_COLUMNS)}")
+    if not set(columns) <= ALLOWED_COLUMNS:
+        raise ValueError(f"kolom tidak diizinkan: {sorted(set(columns) - ALLOWED_COLUMNS)}")
     if not token_ref or not isinstance(token_ref, str):
         raise ValueError("token_ref harus string tak kosong")
     data = {}
-    if "profile" in kolom:
+    if "profile" in columns:
         profile_data = profile.get_profile(user_id, agent_id=agent_id, dsn=dsn)
         query_lower = query.lower()
         data["profile"] = {
             k: v for k, v in profile_data.items()
             if query_lower in k.lower() or query_lower in v.lower()
         } or profile_data
-    if "episodic" in kolom:
+    if "episodic" in columns:
         data["episodic"] = episodic.search_episodes(
             user_id, query, limit=5, agent_id=agent_id, dsn=dsn
         )
-    if "procedures" in kolom:
+    if "procedures" in columns:
         from . import procedural
 
-        semua = procedural.list_procedures(user_id, dsn=dsn)
+        all_procedures = procedural.list_procedures(user_id, dsn=dsn)
         query_lower = query.lower()
         data["procedures"] = [
-            p for p in semua if query_lower in p["service"].lower()
+            p for p in all_procedures if query_lower in p["service"].lower()
         ]
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
@@ -77,12 +77,12 @@ def grant_slice(user_id, agent_id, subagent_id, query, kolom, token_ref,
                 "INSERT INTO slice_grants (user_id, agent_id, subagent_id, "
                 "query, kolom, token_ref) VALUES (%s, %s, %s, %s, %s, %s) "
                 "RETURNING id, created_at",
-                (user_id, agent_id, subagent_id, query, list(kolom), token_ref),
+                (user_id, agent_id, subagent_id, query, list(columns), token_ref),
             )
             row = cur.fetchone()
         conn.commit()
-    data["_irisan_id"] = str(row["id"])
-    data["_dicatat_pada"] = row["created_at"]
+    data["_slice_id"] = str(row["id"])
+    data["_recorded_at"] = row["created_at"]
     return data
 
 
@@ -103,7 +103,7 @@ def list_grants(user_id, dsn=None):
                     "agent_id": str(r["agent_id"]) if r["agent_id"] else None,
                     "subagent_id": str(r["subagent_id"]) if r["subagent_id"] else None,
                     "query": r["query"],
-                    "kolom": list(r["kolom"]),
+                    "columns": list(r["kolom"]),
                     "token_ref": r["token_ref"],
                     "event_id": str(r["event_id"]) if r["event_id"] else None,
                     "created_at": r["created_at"],

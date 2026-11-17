@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 import psycopg
 from psycopg.rows import dict_row
 
-from puspa.evidence.evidence import skor_keandalan
+from puspa.evidence.evidence import reliability_score
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
@@ -31,7 +31,7 @@ def _connect(dsn=None):
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
-def skor_sumber(sumber: str, category: str = "", dsn=None) -> dict:
+def source_score(source: str, category: str = "", dsn=None) -> dict:
     """Skor Keandalan satu sumber (marketplace x kategori).
 
     Kembalikan {"persen_terverifikasi", "jumlah", "turunkan_vonis",
@@ -44,45 +44,45 @@ def skor_sumber(sumber: str, category: str = "", dsn=None) -> dict:
                 "SELECT vonis, created_at FROM source_readings"
                 " WHERE sumber = %s AND category = %s"
                 " ORDER BY created_at DESC LIMIT 50",
-                (sumber, category))
+                (source, category))
             rows = cur.fetchall()
     if not rows:
-        return {"persen_verified": None, "amount": 0,
-                "turunkan_vonis": False, "umur_pembacaan_terakhir_detik": None}
+        return {"percent_verified": None, "amount": 0,
+                "downgrade_verdict": False, "last_reading_age_seconds": None}
     # skor_keandalan memakai 50 TERAKHIR dalam urutan kronologis.
-    result = skor_keandalan([r["vonis"] for r in reversed(rows)])
+    result = reliability_score([r["vonis"] for r in reversed(rows)])
     umur = (datetime.now(timezone.utc) - rows[0]["created_at"]).total_seconds()
-    result["umur_pembacaan_terakhir_detik"] = round(umur, 1)
+    result["last_reading_age_seconds"] = round(umur, 1)
     return result
 
 
-def skor_prosedur(prosedur_id: str, user_id: str, dsn=None) -> dict:
+def procedure_score(procedure_id: str, user_id: str, dsn=None) -> dict:
     """Skor Keandalan satu prosedur dari jalan canary + jalan biasa.
 
     Di sini: % jalan sukses dari 50 jalan terakhir (canary + jalan
     prosedur tercatat di `prosedur`). Tanpa jalan -> persen None.
     """
-    from puspa.graphs.service import take_prosedur
+    from puspa.graphs.service import get_procedure
 
     try:
-        prosedur = take_prosedur(prosedur_id, user_id, dsn=dsn)
+        procedure = get_procedure(procedure_id, user_id, dsn=dsn)
     except KeyError:
-        return {"persen_verified": None, "amount": 0, "turunkan_vonis": False}
-    total = prosedur["successful_runs"] + prosedur["failed_runs"]
+        return {"percent_verified": None, "amount": 0, "downgrade_verdict": False}
+    total = procedure["successful_runs"] + procedure["failed_runs"]
     if total == 0:
-        return {"persen_verified": None, "amount": 0, "turunkan_vonis": False}
-    persen = round(prosedur["successful_runs"] / total * 100, 1)
-    return {"persen_verified": persen, "amount": total,
-            "turunkan_vonis": persen < 80.0,
-            "status": prosedur["status"]}
+        return {"percent_verified": None, "amount": 0, "downgrade_verdict": False}
+    percent = round(procedure["successful_runs"] / total * 100, 1)
+    return {"percent_verified": percent, "amount": total,
+            "downgrade_verdict": percent < 80.0,
+            "status": procedure["status"]}
 
 
-def label_panel(sumber: str, category: str = "", dsn=None) -> str:
+def label_panel(source: str, category: str = "", dsn=None) -> str:
     """Label jujur untuk panel Bukti, mis. "Shopee, kategori TV: 92%
     terverifikasi dari 50 pembacaan terakhir"."""
-    skor = skor_sumber(sumber, category, dsn=dsn)
-    if skor["amount"] == 0:
-        return f"{sumber}, kategori {category or '-'}: belum ada pembacaan"
-    return (f"{sumber}, kategori {category or '-'}: "
-            f"{skor['persen_verified']}% terverifikasi dari "
-            f"{skor['amount']} pembacaan terakhir")
+    score = source_score(source, category, dsn=dsn)
+    if score["amount"] == 0:
+        return f"{source}, kategori {category or '-'}: belum ada pembacaan"
+    return (f"{source}, kategori {category or '-'}: "
+            f"{score['percent_verified']}% terverifikasi dari "
+            f"{score['amount']} pembacaan terakhir")

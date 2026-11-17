@@ -19,7 +19,7 @@ KODE_TULIS_HOST = (
 # --- allowlist ---------------------------------------------------------------
 
 
-def test_allowlist_terima_domain_default():
+def test_allowlist_accepts_default_domain():
     assert is_allowed("https://www.tokopedia.com/barang/123")
     assert is_allowed("shopee.co.id")
     assert is_allowed("https://blibli.com/x")
@@ -30,7 +30,7 @@ def test_allowlist_terima_domain_default():
     assert "pln.co.id" in DEFAULT_ALLOWLIST
 
 
-def test_allowlist_tolak_domain_di_luar_items():
+def test_allowlist_rejects_domain_outside_items():
     assert not is_allowed("https://evil.com/x")
     assert not is_allowed("https://example.com/")
     assert not is_allowed("https://tokopedia.com.evil.com/x")
@@ -44,13 +44,13 @@ def test_allowlist_subdomain_accepted():
     assert is_allowed("https://www.shopee.co.id/cart")
 
 
-def test_allowlist_pdam_per_daerah():
+def test_allowlist_pdam_per_region():
     assert is_allowed("https://pdam-tirtamarta.co.id/tagihan")
     assert is_allowed("https://www.pdamkotamakassar.go.id/")
     assert not is_allowed("https://pdamphishing.com/")
 
 
-def test_allowlist_localhost_hanya_for_test_double():
+def test_allowlist_localhost_only_for_test_double():
     assert not is_allowed("http://localhost:8000/x")
     assert not is_allowed("http://127.0.0.1:9000/x")
     test_only = Allowlist(allow_test_localhost=True)
@@ -62,7 +62,7 @@ def test_allowlist_localhost_hanya_for_test_double():
 # --- fail-closed: Docker tidak tersedia --------------------------------------
 
 
-def test_run_without_binary_docker_raise_and_not_mengeksekusi(monkeypatch, tmp_path):
+def test_run_without_docker_binary_raises_and_does_not_execute(monkeypatch, tmp_path):
     """PATH tanpa docker -> SandboxUnavailable; kode tulis-file tidak jalan."""
     monkeypatch.setenv("PATH", str(tmp_path))
     if os.path.exists(PROBE_HOST):
@@ -74,7 +74,7 @@ def test_run_without_binary_docker_raise_and_not_mengeksekusi(monkeypatch, tmp_p
     assert not os.path.exists(PROBE_HOST)
 
 
-def test_run_dengan_daemon_mati_raise_and_not_mengeksekusi(monkeypatch):
+def test_run_with_dead_daemon_raises_and_does_not_execute(monkeypatch):
     """DOCKER_HOST ke endpoint mati -> SandboxUnavailable; tanpa eksekusi."""
     monkeypatch.setenv("DOCKER_HOST", "tcp://127.0.0.1:9")
     if os.path.exists(PROBE_HOST):
@@ -86,7 +86,7 @@ def test_run_dengan_daemon_mati_raise_and_not_mengeksekusi(monkeypatch):
     assert not os.path.exists(PROBE_HOST)
 
 
-def test_run_validasi_input_without_menyentuh_docker():
+def test_run_validates_input_without_touching_docker():
     sandbox = Sandbox()
     with pytest.raises(TypeError):
         sandbox.run(123)
@@ -99,7 +99,7 @@ def test_run_validasi_input_without_menyentuh_docker():
 # --- Docker tersedia: eksekusi nyata di container ----------------------------
 
 
-def test_run_print_ok_di_container():
+def test_run_print_ok_in_container():
     sandbox = Sandbox()
     if not sandbox.check_available():
         pytest.skip("Docker tidak bisa mengeksekusi di VM ini (fail-closed aktif)")
@@ -110,7 +110,7 @@ def test_run_print_ok_di_container():
     assert result["timed_out"] is False
 
 
-def test_run_kode_failed_tetap_result_bukan_unavailable():
+def test_failed_run_code_still_returns_result_not_unavailable():
     sandbox = Sandbox()
     if not sandbox.check_available():
         pytest.skip("Docker tidak bisa mengeksekusi di VM ini (fail-closed aktif)")
@@ -120,7 +120,7 @@ def test_run_kode_failed_tetap_result_bukan_unavailable():
     assert "RuntimeError" in result["stderr"]
 
 
-def test_run_jaringan_to_domain_luar_allowlist_rejected():
+def test_run_network_to_domain_outside_allowlist_rejected():
     sandbox = Sandbox()
     if not sandbox.check_available():
         pytest.skip("Docker tidak bisa mengeksekusi di VM ini (fail-closed aktif)")
@@ -134,7 +134,7 @@ def test_run_jaringan_to_domain_luar_allowlist_rejected():
     assert "jaringan-lolos" not in result["stdout"]
 
 
-def test_run_not_can_menulis_to_host():
+def test_run_cannot_write_to_host():
     sandbox = Sandbox()
     if not sandbox.check_available():
         pytest.skip("Docker tidak bisa mengeksekusi di VM ini (fail-closed aktif)")

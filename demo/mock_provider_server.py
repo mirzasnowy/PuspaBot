@@ -372,25 +372,25 @@ async def run_mock_checks(out_dir: str | Path | None = None) -> list[dict[str, A
             ("openai_compatible", "model-generik-mock"),
         ]
         for name, model in compat_cases:
-            sebelum = len(server.requests)
+            before = len(server.requests)
             summarize = await check_openai_compat(name, model, server)
             summarize["request_log"] = str(out / f"{name}.json")
             result.append(summarize)
             # Simpan HANYA request milik cek ini.
             (out / f"{name}.json").write_text(
-                json.dumps(server.requests[sebelum:], indent=2, ensure_ascii=False), encoding="utf-8")
-        sebelum = len(server.requests)
+                json.dumps(server.requests[before:], indent=2, ensure_ascii=False), encoding="utf-8")
+        before = len(server.requests)
         summarize = await check_anthropic(server)
         summarize["request_log"] = str(out / "anthropic.json")
         result.append(summarize)
         (out / "anthropic.json").write_text(
-            json.dumps(server.requests[sebelum:], indent=2, ensure_ascii=False), encoding="utf-8")
-        sebelum = len(server.requests)
+            json.dumps(server.requests[before:], indent=2, ensure_ascii=False), encoding="utf-8")
+        before = len(server.requests)
         summarize = await check_azure(server)
         summarize["request_log"] = str(out / "azure_openai.json")
         result.append(summarize)
         (out / "azure_openai.json").write_text(
-            json.dumps(server.requests[sebelum:], indent=2, ensure_ascii=False), encoding="utf-8")
+            json.dumps(server.requests[before:], indent=2, ensure_ascii=False), encoding="utf-8")
     summarize = await check_bedrock_fake_client()
     summarize["request_log"] = "(fake client boto3 — kwargs converse, bukan HTTP; lihat tes)"
     result.append(summarize)
