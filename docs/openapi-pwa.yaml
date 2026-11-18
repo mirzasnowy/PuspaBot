@@ -3,15 +3,17 @@ info:
   title: Puspa PWA API
   version: 1.0.0
   description: |
-    Contract for the Puspa progressive web app (7 screens, revision 7).
-    This spec is the source of truth for the TypeScript client in
-    `apps/pwa/src/api/` (types generated with openapi-typescript; the
-    thin fetch wrapper in `client.ts` is hand-written against those
-    generated types). The server implementation is
-    `puspa/pwa/app.py` (FastAPI). Form posts use
-    `application/x-www-form-urlencoded`; JSON bodies are used only
-    where the server reads `request.json()` (push subscription,
-    onboarding time).
+    Contract for the Puspa progressive web app (9 screens: 7 from
+    revision 7, plus Insights and Onboarding from the G28
+    maturity work). This spec is the source of truth for the
+    TypeScript client in `apps/pwa/src/api/` (types generated
+    with openapi-typescript; the thin fetch wrapper in
+    `client.ts` is hand-written against those generated types).
+    The server implementation is `puspa/pwa/app.py` (FastAPI).
+    Form posts use `application/x-www-form-urlencoded`; JSON
+    bodies are used only where the server reads `request.json()`
+    (push subscription, onboarding time, model settings,
+    onboarding steps, hints).
   license:
     name: License pending (Nero's decision)
 servers:
@@ -31,7 +33,9 @@ tags:
   - name: push
     description: Web Push subscription
   - name: onboarding
-    description: Onboarding telemetry
+    description: Onboarding flow (4 steps) and one-time hints (G28)
+  - name: insights
+    description: Cost and token insights from the usage ledger (G28)
   - name: office
     description: Office screen and operator panels (G31 serve modes)
   - name: settings
@@ -179,6 +183,32 @@ paths:
       responses:
         "200":
           description: Office screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /insights:
+    get:
+      tags: [pages]
+      summary: Insights screen
+      responses:
+        "200":
+          description: Insights screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /onboarding:
+    get:
+      tags: [pages]
+      summary: Onboarding screen
+      responses:
+        "200":
+          description: Onboarding screen (HTML, SPA shell with server bootstrap)
           content:
             text/html:
               schema:
@@ -544,6 +574,312 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/insights:
+    get:
+      tags: [insights]
+      summary: Cost and token insights report for the logged-in user
+      description: |
+        G28: summarises the usage ledger over the last N calendar
+        days ending today (default 7, allowed 1..90). All costs
+        are exact integer Rupiah plus server-rendered labels; the
+        client never re-derives a cost. A user with no recorded
+        turns gets honest zeros, never invented data.
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 7
+            minimum: 1
+            maximum: 90
+      responses:
+        "200":
+          description: Insights report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsightsReport"
+        "400":
+          description: days outside 1..90
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/onboarding:
+    get:
+      tags: [onboarding]
+      summary: Read the user's onboarding status
+      description: |
+        G28: returns the 4-step onboarding status, or
+        `{"started": false, "current_step": 0}` when the user
+        never started onboarding.
+      responses:
+        "200":
+          description: Onboarding status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingStatus"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/onboarding/start:
+    post:
+      tags: [onboarding]
+      summary: Start onboarding (idempotent)
+      responses:
+        "200":
+          description: Onboarding status with started true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingStatus"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/onboarding/step1:
+    post:
+      tags: [onboarding]
+      summary: Complete step 1 (name + speaking style)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, style]
+              properties:
+                name:
+                  type: string
+                style:
+                  type: string
+                  enum: [santai, rapi, campur]
+                example_message:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Onboarding status after step 1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingStatus"
+        "400":
+          description: Onboarding not started, or unknown style
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/onboarding/step2:
+    post:
+      tags: [onboarding]
+      summary: Complete step 2 (notification test)
+      description: |
+        Honest limit: Web Push is not built yet, so the test is
+        recorded as NOT sent (`notification_sent` false) — never
+        faked as delivered.
+      responses:
+        "200":
+          description: Onboarding status after step 2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingStatus"
+        "400":
+          description: Onboarding not started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/onboarding/step3:
+    post:
+      tags: [onboarding]
+      summary: Complete step 3 (connector choice)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                connector:
+                  type: string
+                  enum: [nanti, gmail, drive, calendar, all]
+                  default: nanti
+      responses:
+        "200":
+          description: Onboarding status after step 3
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingStatus"
+        "400":
+          description: Onboarding not started, or unknown connector
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/onboarding/first-task:
+    post:
+      tags: [onboarding]
+      summary: Run the guided first task (step 4)
+      description: |
+        Honest limit: the price-compare / bill wedges are not
+        built yet, so the task is a measured stub (`verified`
+        false, with a reason); no price or bill result is ever
+        invented.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event_type, target]
+              properties:
+                event_type:
+                  type: string
+                  enum: [compare_prices, check_bill]
+                target:
+                  type: string
+      responses:
+        "200":
+          description: First-task result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FirstTaskResult"
+        "400":
+          description: Onboarding not started, or unknown task type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/onboarding/hints:
+    get:
+      tags: [onboarding]
+      summary: Hints due right now for the reported branch
+      description: |
+        G28: the client reports the branch it just reached as
+        query params — `screen`, `first_visit`,
+        `approval_requested`, `memory_used`, `task_cost_idr`,
+        `billing_rows` — and the server returns only the unseen
+        hints that branch makes due, in registry order. Only
+        branch facts are accepted; no other client data is
+        stored.
+      parameters:
+        - name: screen
+          in: query
+          schema:
+            type: string
+        - name: first_visit
+          in: query
+          schema:
+            type: boolean
+        - name: approval_requested
+          in: query
+          schema:
+            type: boolean
+        - name: memory_used
+          in: query
+          schema:
+            type: boolean
+        - name: task_cost_idr
+          in: query
+          schema:
+            type: integer
+        - name: billing_rows
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Due hints (possibly empty)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HintsResponse"
+        "400":
+          description: Unparseable integer param
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/onboarding/hints/{flag}/seen:
+    post:
+      tags: [onboarding]
+      summary: Mark one hint seen (shown or dismissed)
+      description: |
+        Idempotent: marking twice is a no-op. An unknown flag is
+        a 400, never a silent no-op.
+      parameters:
+        - name: flag
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [first_modules_visit, first_approval, first_memory_use, first_costly_task, first_billing_row]
+      responses:
+        "200":
+          description: Hint marked seen
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HintSeenResult"
+        "400":
+          description: Unknown hint flag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/onboarding/waktu:
     post:
       tags: [onboarding]
@@ -762,6 +1098,280 @@ components:
         has_byok_key:
           type: boolean
           description: Whether a BYOK key for `provider` exists in the vault.
+    InsightsReport:
+      type: object
+      description: |
+        G28: cost and token totals from the usage ledger over the
+        last N calendar days ending today. Costs are exact integer
+        Rupiah plus server-rendered labels; the per-1k-token rate
+        is null (not zero) when no tokens were recorded.
+      required: [window_days, since, until, turns, tokens, cost, per_model, per_driver, tool_usage, module_usage, activity_per_day, top_costly_tasks, tool_errors, task_cost_ceiling_idr]
+      properties:
+        window_days:
+          type: integer
+        since:
+          type: string
+          format: date-time
+        until:
+          type: string
+          format: date-time
+        turns:
+          type: integer
+        tokens:
+          $ref: "#/components/schemas/TokenTotals"
+        cost:
+          $ref: "#/components/schemas/CostSummary"
+        per_model:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelBreakdown"
+        per_driver:
+          type: array
+          items:
+            $ref: "#/components/schemas/DriverBreakdown"
+        tool_usage:
+          type: array
+          items:
+            $ref: "#/components/schemas/ToolUsage"
+        module_usage:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModuleUsage"
+        activity_per_day:
+          type: array
+          items:
+            $ref: "#/components/schemas/DayActivity"
+        top_costly_tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/CostlyTask"
+        tool_errors:
+          type: integer
+        task_cost_ceiling_idr:
+          type: integer
+    TokenTotals:
+      type: object
+      required: [input, output, cached, total]
+      properties:
+        input:
+          type: integer
+        output:
+          type: integer
+        cached:
+          type: integer
+        total:
+          type: integer
+    CostSummary:
+      type: object
+      required: [total_idr, label, avg_per_turn_idr, avg_per_turn_label, per_1k_tokens_idr, per_1k_tokens_label]
+      properties:
+        total_idr:
+          type: integer
+        label:
+          type: string
+          example: Rp1.500
+        avg_per_turn_idr:
+          type: number
+        avg_per_turn_label:
+          type: string
+        per_1k_tokens_idr:
+          type: number
+          nullable: true
+        per_1k_tokens_label:
+          type: string
+          nullable: true
+          description: Four-decimal rate label, or null when no tokens were recorded.
+    ModelBreakdown:
+      type: object
+      required: [model, turns, tokens, cost_idr, share]
+      properties:
+        model:
+          type: string
+        turns:
+          type: integer
+        tokens:
+          type: integer
+        cost_idr:
+          type: integer
+        share:
+          type: number
+    DriverBreakdown:
+      type: object
+      required: [driver, turns, tokens, cost_idr, share]
+      properties:
+        driver:
+          type: string
+        turns:
+          type: integer
+        tokens:
+          type: integer
+        cost_idr:
+          type: integer
+        share:
+          type: number
+    ToolUsage:
+      type: object
+      required: [tool, uses]
+      properties:
+        tool:
+          type: string
+        uses:
+          type: integer
+    ModuleUsage:
+      type: object
+      required: [module_id, turns, cost_idr]
+      properties:
+        module_id:
+          type: string
+        turns:
+          type: integer
+        cost_idr:
+          type: integer
+    DayActivity:
+      type: object
+      required: [date, turns, tokens, cost_idr]
+      properties:
+        date:
+          type: string
+          format: date
+        turns:
+          type: integer
+        tokens:
+          type: integer
+        cost_idr:
+          type: integer
+    CostlyTask:
+      type: object
+      required: [task_id, turns, tokens, cost_idr]
+      properties:
+        task_id:
+          type: string
+        turns:
+          type: integer
+        tokens:
+          type: integer
+        cost_idr:
+          type: integer
+    OnboardingStatus:
+      type: object
+      description: |
+        G28: the 4-step first-run onboarding status. Before start
+        the server returns only `started: false` and
+        `current_step: 0`.
+      required: [started, current_step]
+      properties:
+        started:
+          type: boolean
+        current_step:
+          type: integer
+          description: Steps completed so far (0..4)
+        user_id:
+          type: string
+        name:
+          type: string
+          nullable: true
+        style:
+          type: string
+          nullable: true
+          enum: [santai, rapi, campur]
+        test_notification:
+          type: string
+          nullable: true
+        connector:
+          type: string
+          nullable: true
+        first_task:
+          type: string
+          nullable: true
+        first_result_verified:
+          type: boolean
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        duration_seconds:
+          type: number
+          nullable: true
+        style_fact_id:
+          type: string
+          description: Id of the saved style fact (step 1 response only).
+        notification_sent:
+          type: boolean
+          description: Whether the step 2 test notification was sent (step 2 response only; false until Web Push exists).
+    FirstTaskResult:
+      type: object
+      description: |
+        G28: the guided first task (step 4). Always `verified:
+        false` for now: the price-compare / bill wedges are not
+        built yet, so the task is a measured stub.
+      required: [status, task_id, type, target, verified, reason, task_duration_seconds, event_ids, offered_workflow_templates]
+      properties:
+        status:
+          $ref: "#/components/schemas/OnboardingStatus"
+        task_id:
+          type: string
+        type:
+          type: string
+          enum: [compare_prices, check_bill]
+        target:
+          type: string
+        verified:
+          type: boolean
+        reason:
+          type: string
+        task_duration_seconds:
+          type: number
+        event_ids:
+          type: array
+          items:
+            type: string
+        offered_workflow_templates:
+          type: array
+          items:
+            type: string
+    Hint:
+      type: object
+      description: |
+        G28: one contextual, one-time hint. Plain text plus the
+        target screen name; never a secret, never an action.
+      required: [flag, trigger, title, body, screen, action_label]
+      properties:
+        flag:
+          type: string
+          enum: [first_modules_visit, first_approval, first_memory_use, first_costly_task, first_billing_row]
+        trigger:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        screen:
+          type: string
+        action_label:
+          type: string
+    HintsResponse:
+      type: object
+      required: [hints]
+      properties:
+        hints:
+          type: array
+          items:
+            $ref: "#/components/schemas/Hint"
+    HintSeenResult:
+      type: object
+      required: [user_id, flag, seen]
+      properties:
+        user_id:
+          type: string
+        flag:
+          type: string
+        seen:
+          type: boolean
     ChatMessage:
       type: object
       required: [sender, text, created_at]
@@ -945,7 +1555,7 @@ components:
       properties:
         screen:
           type: string
-          enum: [chat, tasks, modules, connectors, memory, settings, office, login]
+          enum: [chat, tasks, modules, connectors, memory, settings, office, insights, onboarding, login]
         user_id:
           type: string
         messages:

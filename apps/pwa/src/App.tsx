@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { Bootstrap } from "./api/client";
 import type { ScreenName } from "./api/bootstrap";
 import { ChatScreen } from "./screens/ChatScreen";
@@ -7,25 +8,49 @@ import { ConnectorsScreen } from "./screens/ConnectorsScreen";
 import { MemoryScreen } from "./screens/MemoryScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { OfficeScreen } from "./screens/OfficeScreen";
+import { InsightsScreen } from "./screens/InsightsScreen";
+import { OnboardingScreen } from "./screens/OnboardingScreen";
 import { LoginScreen } from "./screens/LoginScreen";
+import { HintBanner } from "./components/HintBanner";
 
 export function App({ bootstrap, screen }: { bootstrap: Bootstrap; screen: ScreenName }) {
+  if (screen === "login") {
+    return <LoginScreen />;
+  }
+  let content: ReactNode;
   switch (screen) {
     case "chat":
-      return <ChatScreen bootstrap={bootstrap} />;
+      content = <ChatScreen bootstrap={bootstrap} />;
+      break;
     case "tasks":
-      return <TasksScreen bootstrap={bootstrap} />;
+      content = <TasksScreen bootstrap={bootstrap} />;
+      break;
     case "modules":
-      return <ModulesScreen />;
+      content = <ModulesScreen />;
+      break;
     case "connectors":
-      return <ConnectorsScreen bootstrap={bootstrap} />;
+      content = <ConnectorsScreen bootstrap={bootstrap} />;
+      break;
     case "memory":
-      return <MemoryScreen bootstrap={bootstrap} />;
+      content = <MemoryScreen bootstrap={bootstrap} />;
+      break;
     case "settings":
-      return <SettingsScreen />;
+      content = <SettingsScreen />;
+      break;
     case "office":
-      return <OfficeScreen bootstrap={bootstrap} />;
-    case "login":
-      return <LoginScreen />;
+      content = <OfficeScreen bootstrap={bootstrap} />;
+      break;
+    case "insights":
+      content = <InsightsScreen />;
+      break;
+    case "onboarding":
+      content = <OnboardingScreen />;
+      break;
   }
+  return (
+    <>
+      <HintBanner key={screen} screen={screen} bootstrap={bootstrap} />
+      {content}
+    </>
+  );
 }
