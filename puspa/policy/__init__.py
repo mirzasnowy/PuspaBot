@@ -8,6 +8,7 @@ from .gate import ApprovalRequest, Gate, GateDenied
 from .skill_signing import SkillRejected, check_tool, load_skill, sign_skill, verify_skill
 from .spending import SpendingLimit
 from .tokens import (
+    TOOL_PERMISSION_LEVELS,
     TokenError,
     issue_child,
     issue_token,
@@ -16,6 +17,7 @@ from .tokens import (
     revoke,
     revoke_all_for_task,
     token_id,
+    tool_permission,
     verify_token,
 )
 
@@ -25,6 +27,7 @@ __all__ = [
     "GateDenied",
     "SkillRejected",
     "SpendingLimit",
+    "TOOL_PERMISSION_LEVELS",
     "TokenError",
     "check_tool",
     "issue_child",
@@ -36,6 +39,7 @@ __all__ = [
     "revoke_all_for_task",
     "sign_skill",
     "token_id",
+    "tool_permission",
     "verify_skill",
     "verify_token",
 ]

@@ -198,3 +198,150 @@ it here.
 - `summaries` — consolidation output (§2.7: "job summarising old
   episodic [memory]"). A common word.
 - No new domain terms were introduced into the definition.
+
+## Brain phase
+
+One new dependency: `fastembed==0.9.1` (MIT) - local embedding
+model for the learning loop and memory retrieval. It is OPTIONAL:
+`puspa/memory/embeddings.py` loads it lazily and falls back to the
+built-in `HashEmbedding` when fastembed or the model is unavailable.
+The model is BAAI/bge-small-en-v1.5, dimension 384, the same as
+`EMBEDDING_DIM`, so it is a drop-in replacement with no schema
+migration. fastembed 0.9.1 requires `loguru<0.8`, so `loguru` was
+downgraded from 0.8.0 to `0.7.3` in `requirements.txt` (which still
+satisfies nanobot-ai's `loguru>=0.7.3`). `pip check` after the
+change reports only the pre-existing conflict `sse-starlette 3.7.0
+requires starlette>=0.49.1, but starlette 0.46.2 is installed`.
+The MCP SDK (`mcp==1.30.0`, MIT) was already installed as a nanobot
+dependency; nothing was installed for the planner workstream.
+Everything else in this phase adapts only PATTERNS (rewritten, not
+copied). Full per-workstream detail is in the tables below.
+
+### World model (`puspa/world/`)
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| Memory stream plus reflection into higher level inferences plus plans retrieved and revised | joonspk-research/generative_agents (MIT) | The shape only: observations feed a structured model, a missed prediction revises the model, plans are simulated against the model before acting | `puspa/world/model.py`: entities plus relations plus learned price and bill beliefs as plain in-memory data; `predict` before acting; `update` corrects on a miss |
+| Automatic curriculum plus self-verification plus a growing skill library | MineDojo/Voyager (MIT) | The self-verification shape only: every prediction is checked against the observation that follows it, and a miss corrects the model and is reported onward | `puspa/world/model.py`: prediction scoring, misprediction records, trend adoption only after a repeated daily move; `puspa/world/simulator.py`: deterministic bill plus price watch world as the verification ground |
+| Learning loop as the consumer of mispredictions | NousResearch/hermes-agent (MIT) | The idea that a miss is learning material, not just an error log | The seam in `puspa/world/model.py`: lazy import of `record_misprediction` from `puspa/memory/learning_loop` inside `_report_misprediction`, record dict with keys `task`, `predicted`, `observed`, `error`, `context`; best effort, never raises, model works without the loop module |
+
+Evidence (deterministic simulated world, 3 episodes, 17 scored
+predictions each): episode 1 accuracy 0.647 (11 of 17, flat-price
+predictions miss both drifting stores until the daily trend is
+confirmed after 3 repeated moves); episode 2 accuracy 1.000 (17 of
+17, learned daily drifts predict every price exactly); episode 3
+accuracy 1.000 (17 of 17, learning persists across episodes).
+Test: `test_prediction_accuracy_improves_across_episodes` in
+`tests/test_world_model.py` (13 tests).
+
+### Coding harness (`puspa/harness/`)
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| Coding agent loop: write code, run tests, read the failure, fix it, repeat until green or a limit | anomalyco/opencode (MIT) | The loop shape itself: attempt, execute, grade by test exit code, feed the failure back to the next attempt | `puspa/harness/loop.py`: `CodingHarness.run()`, `AttemptRecord` (code plus its test result per attempt), `default_verdict()` (grades the exit code only, never the agent's words) |
+| Per-tool permission model: allow / ask / deny per tool, not one blanket allow per turn | anomalyco/opencode (MIT) | The three levels and the rule that a child token may only narrow a permission, never widen it | `puspa/policy/tokens.py`: optional `tool_permissions` map on the token payload, `tool_permission()`, `is_subset()` extended with the deny < ask < allow ordering; `puspa/policy/gate.py`: `Gate.authorize_tool()` |
+| Per-tool permission model and approval before acting | anthropics/claude-code (PROPRIETARY, DO NOT USE ITS CODE) | The idea only: permissions per tool, and a hard approval step before a consequential action (here: deploy) | Same Puspa code as the opencode row above, plus kind `"deploy"` in `puspa/policy/gate.py` and `CodingHarness.request_deploy()` / `deploy()` (approval, then exactly-once execution through the gate) |
+| Harness shape: fixed FAIL_TO_PASS tests decide pass/fail; a task is an issue plus a repo snapshot plus its tests | SWE-bench/SWE-bench (MIT) | The task shape: fixed acceptance tests carried by the task, graded by running them | `puspa/harness/loop.py`: `CodingTask` (description plus fixed `test_code`), pass defined as the generated program (implementation plus those tests) exiting 0; no PASS_TO_PASS set yet, that is future work for the self-develop module evaluation |
+| Self-verification: generated code is trusted only after it is actually run | MineDojo/Voyager (MIT, dormant research archive, DO NOT USE AS A DEPENDENCY) | The self-verification step only: test generated code by running it in the sandbox before trusting it | `puspa/harness/executor.py`: `SandboxExecutor` runs every attempt through `puspa/sandbox/runner.py`; the Minecraft code, the curriculum, and the skill library are NOT part of this workstream |
+| Readable handoffs between steps: each step leaves a record the next step can read | OpenBMB/ChatDev (Apache-2.0) | The handoff idea: every attempt leaves its code and its test result behind, so the next attempt (and a human reader) can see exactly what failed | `puspa/harness/loop.py`: `AttemptRecord` plus the in-memory event log (`harness_started`, `attempt_started`, `attempt_finished`, `harness_passed`, `harness_failed`, `budget_exhausted`, `sandbox_unavailable`, `deploy_requested`) |
+| Fail-closed sandbox execution: no host fallback, ever | puspa/sandbox/runner.py (Puspa's own, Phase 0) | The existing fail-closed contract: `SandboxUnavailable` means nothing runs anywhere | `puspa/harness/executor.py` and `loop.py`: `SandboxUnavailable` ends the run with status `sandbox_unavailable`; `production=True` rejects any executor that is not a `SandboxExecutor`; `create_production_harness()` can only build a sandbox executor |
+
+Environment note (honest limitation): on this dev VM the real
+Docker sandbox cannot start (the kernel rejects the `setns`
+syscall, so `runc` fails and `Sandbox.check_available()` returns
+False). The production path is therefore fail-closed here:
+`SandboxExecutor.run()` raises `SandboxUnavailable` and no
+generated code runs anywhere. The end-to-end loop test
+(`test_e2e_loop_to_green`) runs on the test-only
+`LocalTestExecutor`, which executes the generated code in a temp
+directory on the host with a scrubbed environment. That executor
+is test-only by construction (rejected when `production=True`,
+unreachable from `create_production_harness()`), and it is NOT a
+production bypass: the production path stays sandbox-only and
+fail-closed. A real end-to-end sandbox run still needs a host with
+working Docker (for example the Contabo VPS), and has not been done
+yet.
+
+### Learning loop + memory hardening (`puspa/memory/`)
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| Skills created and repaired automatically; persistent user model; learning loop | NousResearch/hermes-agent (MIT) | The idea of a learning loop that drafts skills from successful tasks | `puspa/memory/learning_loop.py`: curriculum, experience log, correction table, skill library; every learned skill stays inactive until the user approves it; learning never overwrites a manual user edit |
+| Automatic curriculum, self-verification, skill library of tested executable code indexed by embeddings | MineDojo/Voyager (MIT, dormant research archive) | The shape only: curriculum proposes the next task, verification tests generated code, successful code is stored with an embedding key | `learning_loop.py` (`propose_next_task`, `verify_skill`, `find_reusable_skill`) plus draft persistence in `puspa/memory/procedural.py` under the `learned_draft:` service prefix; the Minecraft code is not reusable and was not used |
+| Self-improvement from experience | letta-ai/letta-code (Apache-2.0) | The idea of improving procedures from experience | Decay in `procedural.py` (`apply_decay`, `decay_stale_procedures`); contradiction handling (`detect_contradiction`, `propose_conflicting_procedure`, `resolve_contradiction`). A demotion rule (one failure drops a verified procedure to trial) was tried in this phase and removed during integration because it broke the revision 7 canary contract (see `procedural.py`). |
+| Reflection turns episodes into higher-level inferences | joonspk-research/generative_agents (MIT) | The reflection step as an idea: episodes become inferences | `puspa/memory/consolidate.py` (`reflect_episodes`, `reflect_and_propose`): deterministic, keyword-based inferences routed through Proposals in `puspa/memory/profile.py`, never written to the profile silently; each inference carries its evidence event ids and needs at least 2 |
+| Dual-level retrieval: specific entities plus abstract concepts, over a graph plus vectors | HKUDS/LightRAG (MIT) | The dual-level retrieval idea (entity level + concept level + vector similarity) | `puspa/memory/episodic.py` (`extract_entities`, `extract_concepts`, `dual_level_search`, `search_episodes_dual`) and `puspa/graphs/identity.py` (`rank_products`, `search_products_dual`) on top of the existing Postgres + pgvector store; the library was not installed |
+| Temporal facts; procedures as templates without personal data | getzep/graphiti (Apache-2.0) | Already the pattern behind `profile.py` and `procedural.py` | Decay reuses the existing trial/verified/broken statuses, so no schema change was needed |
+| Memory extraction with provenance; inferred facts held for confirmation | mem0ai/mem0 (Apache-2.0) | Already the pattern behind `profile.py` Proposals | Reflection proposals reuse `profile.add_fact` with source `inferred` (status `proposed`) |
+
+Approval gap, recorded honestly: `puspa/policy/gate.py` has no
+kind for skill activation (its kinds cover outbound actions only)
+and that file must not be modified by this phase. Skill activation
+therefore reuses an approved Gate request record:
+`LearningLoop.activate_skill` verifies through the Gate's stored
+requests that an approval for the user exists with status
+`approved` or `executed`. The caller obtains that approval through
+the Gate with the activation described in the request content. A
+dedicated Gate kind for skill activation would need a change owned
+by the gate workstream.
+
+Database coverage: the DB-backed wrappers (`decay_stale_procedures`,
+`propose_conflicting_procedure`, `search_episodes_dual`,
+`search_products_dual`, `consolidate_idle` with `reflect=True`) are
+covered against Postgres by `tests/test_memory_brain_db.py` (11
+tests, added during integration).
+
+### Planner + evaluation + skills/hooks (`puspa/runtime/planner.py`, `puspa/evidence/eval_harness.py`, `puspa/memory/optimizer.py`)
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| Goal to plan to tool loop with replanning on failure | FoundationAgents/OpenManus (MIT) and the classic AutoGPT loop (MIT core) | The loop shape: decompose, execute step by step, feed the failure back into a revised plan, with a hard cap on replans | `puspa/runtime/planner.py`: keyword decomposition into `Step` objects, `Planner.run()` driving the existing `TaskRunner`, retry-then-drop replan strategy, `max_replans` default 2 |
+| Stateful orchestration with checkpoints and resume | langchain-ai/langgraph (MIT) | The idea of a resumable, checkpointed run only | Nothing from the library: the no-LangGraph decision stands (zero LangGraph imports). Checkpointing here is the append-only ledger plus the replan record, not a graph runtime |
+| Task, solver, scorer structure; multi-turn tool use; sandboxed execution; scoring from evidence, not words | UKGovernmentBEIS/inspect_ai (MIT) | The task/solver/scorer shape and the rule that the scorer checks a record, not the agent's words | `puspa/evidence/eval_harness.py`: `EvalTask` (versioned, pinned cassette, expected state, policy), `cassette_solver` (replays recordings), `score_state` (final-state comparison with per-key details) |
+| Simulated user plus domain policy plus final database state decides success | sierra-research/tau-bench (MIT) | The simulated-user shape and the final-state check; the policy the agent must not break | `puspa/evidence/eval_harness.py`: `cassette_solver` accepts a simulated-user callable, `derive_expected_state` builds the goal state from the cassette by code, the policy list travels on every task |
+| Versioned task configs with a pinned prompt and scorer, so regression runs are reproducible | EleutherAI/lm-evaluation-harness (MIT) | The versioned-config shape only | `puspa/evidence/eval_harness.py`: `HARNESS_VERSION = "1.0.0"` pinned on every report, one `EvalTask` per reference cassette, `EvalReport.summary()` computed by code |
+| Programs, not prompts: declarative modules tuned by an optimiser against a metric on a fixed dataset | stanfordnlp/dspy (MIT) | The program-plus-optimiser shape and the rule that the optimiser tunes prompts, never security rules | `puspa/memory/optimizer.py`: `PromptProgram` (planner/reader/checker templates plus tunable knobs), `Optimizer.optimize()` scoring deterministic variants against the 10 cassettes, `plan_coverage` as the metric, hard refusal of any gate target |
+| Type-safe structured output: numbers filled by code from evidence, never typed by the model | pydantic/pydantic-ai (MIT) | The type-safe tool and structured-output pattern | `puspa/chassis/tools.py`: `McpToolSpec` as a pydantic model validated at registration; `puspa/evidence/eval_harness.py`: `render_report` fills markers through the existing `puspa/evidence/renderer.py`, and all report numbers are computed by code |
+| Official MCP client: the standard way tools are exposed to agents | modelcontextprotocol/python-sdk (MIT) | The client shape: list tools, call a tool with typed arguments, over stdio | `puspa/chassis/tools.py`: `McpClientWrapper` plus `StdioMcpTransport` (official SDK `ClientSession` + `stdio_client`, installed already as `mcp==1.30.0`, MIT, verified from distribution metadata, no install needed) plus `StubMcpTransport` for offline tests. The signed-skill gate and the outbound gate sit in front of every call; the SDK is never given an unguarded path |
+| Skill collection plus hooks: a hook point fires when a skill is installed or used | affaan-m/ECC (MIT) | The hook-point idea only | `puspa/chassis/hooks.py`: `SkillHookRegistry` (register, emit, unregister, broken-listener isolation), hook points for install, use, approve, reject, block. Enforcement stays in the signed-skill gate and the outbound gate, never in the hooks |
+| Learning loop: skills created from successful tasks, kept inactive until the user approves | NousResearch/hermes-agent (MIT) and MineDojo/Voyager (MIT, dormant research archive) | The gated-learning idea: a learned skill is a draft until approved, and learning never overwrites manual edits | `puspa/chassis/hooks.py`: `LearnedSkill` (`is_active` is False unless status is `approved`), `LearnedSkillStore` (read-only view; `from_procedures` maps `trial` to pending approval and `verified` to approved; no write methods exist), `check_skill_use()` (emits `skill_blocked` for unapproved skills). The learning loop itself (`puspa/memory/learning_loop.py`) is built by the learning workstream; this module only reads its draft store |
+| Model-driven agent loop with Cedar-style approval policies | strands-agents/harness-sdk (Apache-2.0) | The approval-policy idea only | No SDK adopted. The approval policy already exists as `puspa/policy/gate.py`; the MCP wrapper routes outbound kinds through it, and the planner never replans around it |
+
+Evidence: reference evaluation through the new harness: 10/10
+reference tasks passed (score 1.0); price-injection test passed
+(tampered price Rp1.000 against the true cheapest Rp11.999.000,
+verifier verdict Uncertain, not Verified). Optimiser on the 10
+cassettes: planner program baseline score 1.0 (all 10 reference
+tasks covered); best variant equals the baseline, so no prompt
+change was adopted.
+
+**Not used in the Brain phase (recorded so it is not repeated):**
+- No code was copied from any repo above. No fork was created.
+  Voyager is dormant as a research archive and its Minecraft code
+  is not reusable; only its self-verification pattern was studied.
+- claude code source code (proprietary, all rights reserved):
+  pattern study only, from public docs. The leaked March 2026
+  source-map code was never looked at and never used.
+- opencode as a chassis or dependency (TypeScript coding agent, no
+  channels, memory, cron, or per-bot computer): pattern only.
+- Kilo-Org/kilocode (MIT): its modes and agents plus MCP pattern
+  was studied for `puspa/runtime/subagents.py`, but no mode system
+  was built in the harness workstream; the harness loop has no
+  modes. That row stays open for the sub-agents workstream.
+- letta-ai/letta-code (Apache-2.0): its self-improvement-from-
+  experience loop was studied, but no learning loop was built in
+  the harness workstream; the harness only verifies code.
+- SWE-bench as a benchmark or dependency: only its task shape was
+  adapted. No SWE-bench dataset, instance, or score is used, and no
+  score is claimed.
+- DSPy, inspect_ai, tau-bench, and lm-evaluation-harness as
+  libraries (not installed): only their program-plus-optimiser,
+  task/solver/scorer, simulated-user, and versioned-config shapes
+  were adapted.
+- langgraph / langchain as libraries (not installed, by explicit
+  decision): only the checkpointed-orchestration idea was noted.
+- strands-agents SDK (not installed): only its approval-policy idea
+  was noted; Puspa's own gate already implements it.
+- LightRAG as a library (not installed): only the dual-level
+  retrieval idea was adapted on top of Postgres + pgvector.
+- No GPL, AGPL, SSPL, PolyForm, or CC BY-NC code was used.

@@ -11,6 +11,14 @@ tanpa model) — biaya Rp0 dan hasilnya bisa diuji. Ringkasan
 berbasis model adalah peningkatan Fase 2+ (tetap menunjuk ke
 kejadian asal yang sama). Penjadwal yang memanggil job ini saat idle
 adalah bagian Fase 2 (2.14); di sini job-nya bisa dipanggil manual.
+
+Refleksi (pola Generative Agents, MIT, ditulis ulang, bukan
+disalin): `reflect_episodes` mengubah episode menjadi inferensi
+tingkat tinggi (layanan yang andal, kegagalan berulang, preferensi
+user). Setiap inferensi diusulkan sebagai fakta profil lewat
+Usulan di `puspa/memory/profile.py`, tidak pernah masuk profil
+diam-diam. Setiap inferensi menunjuk ke kejadian asal
+(`evidence_event_ids`) dan butuh minimal 2 bukti.
 """
 
 from __future__ import annotations
@@ -20,10 +28,110 @@ from datetime import datetime, timedelta, timezone
 import psycopg
 from psycopg.rows import dict_row
 
-from . import episodic, procedural
+from . import episodic, procedural, profile
 from .schema import resolve_dsn
 
 MAX_SUMMARY_CHARS = 2000
+REFLECTION_MIN_EVIDENCE = 2
+
+_PREFERENCE_MARKERS = (
+    "prefer", "always", "likes", "like", "suka", "selalu", "gemar",
+)
+_SUCCESS_MARKERS = ("successful", "berhasil", "success", "selesai")
+_FAILURE_MARKERS = ("failed", "gagal", "failure", "error")
+
+
+def _service_of(content):
+    """Service token of an episode: text before the first colon."""
+    return str(content).split(":", 1)[0].strip().lower()
+
+
+def reflect_episodes(episodes):
+    """Turn episodes into higher-level inferences (deterministic).
+
+    `episodes` is a list of dicts with keys `type`, `content`
+    and `event_id`. Returns a list of inferences, each a dict
+    with `key`, `value`, `confidence`, `source` ("inferred")
+    and `evidence_event_ids`. Rules, all deterministic:
+
+    - 2+ successful completions for one service ->
+      ("reliable_service", service).
+    - 2+ failures for one service -> ("repeated_failure", service).
+    - a user message carrying a preference marker ("prefer",
+      "always", "suka", ...) -> ("user_preference", phrase).
+
+    Inferences with fewer than 2 evidence events are dropped.
+    Nothing here writes to the profile: callers must route
+    inferences through Proposals (see `reflect_and_propose`).
+    """
+    successes = {}
+    failures = {}
+    preferences = {}
+    for ep in episodes or []:
+        content = str(ep.get("content") or "")
+        event_id = ep.get("event_id")
+        lowered = content.lower()
+        if ep.get("type") == "task_completed":
+            service = _service_of(content)
+            if not service:
+                continue
+            if any(w in lowered for w in _SUCCESS_MARKERS):
+                successes.setdefault(service, []).append(event_id)
+            elif any(w in lowered for w in _FAILURE_MARKERS):
+                failures.setdefault(service, []).append(event_id)
+        elif ep.get("type") == "user_message":
+            if any(w in lowered for w in _PREFERENCE_MARKERS):
+                phrase = " ".join(content.split())[:200]
+                preferences.setdefault(phrase, []).append(event_id)
+    inferences = []
+    for service, events in sorted(successes.items()):
+        events = [e for e in events if e]
+        if len(events) >= REFLECTION_MIN_EVIDENCE:
+            inferences.append({
+                "key": "reliable_service", "value": service,
+                "confidence": 0.9, "source": "inferred",
+                "evidence_event_ids": sorted(set(events)),
+            })
+    for service, events in sorted(failures.items()):
+        events = [e for e in events if e]
+        if len(events) >= REFLECTION_MIN_EVIDENCE:
+            inferences.append({
+                "key": "repeated_failure", "value": service,
+                "confidence": 0.9, "source": "inferred",
+                "evidence_event_ids": sorted(set(events)),
+            })
+    for phrase, events in sorted(preferences.items()):
+        events = [e for e in events if e]
+        if len(events) >= REFLECTION_MIN_EVIDENCE:
+            inferences.append({
+                "key": "user_preference", "value": phrase,
+                "confidence": 0.7, "source": "inferred",
+                "evidence_event_ids": sorted(set(events)),
+            })
+    return inferences
+
+
+def reflect_and_propose(user_id, episodes, *, agent_id=None, propose=None,
+                        dsn=None):
+    """Reflect episodes into profile Proposals (never active facts).
+
+    Each inference from `reflect_episodes` is proposed through
+    `profile.add_fact` with source "inferred", which stores it
+    as status "proposed" until the user confirms it. `propose`
+    is an injectable callable
+    `propose(user_id, key, value, source, agent_id, event_id, dsn)`
+    used by tests to avoid the database; it defaults to
+    `profile.add_fact`. Returns the list of proposal dicts.
+    """
+    propose = propose or profile.add_fact
+    proposals = []
+    for inference in reflect_episodes(episodes):
+        event_id = inference["evidence_event_ids"][0] if inference["evidence_event_ids"] else None
+        proposals.append(propose(
+            user_id, inference["key"], inference["value"], "inferred",
+            agent_id=agent_id, event_id=event_id, dsn=dsn,
+        ))
+    return proposals
 
 
 def _connect(dsn=None):
@@ -47,12 +155,15 @@ def _extractive_summary(episodes):
 
 
 def consolidate_idle(user_id, older_than_days=30, agent_id=None, dsn=None,
-                     now=None):
+                     now=None, reflect=False):
     """Jalankan satu putaran konsolidasi untuk user ini.
 
     Kembalikan dict {ringkasan_dibuat, prosedur_dipromosikan, tugas}.
     Episode yang sudah masuk ringkasan tidak diringkas ulang (dicek
-    lewat `kejadian_ids` yang sudah tersimpan).
+    lewat `kejadian_ids` yang sudah tersimpan). Dengan
+    `reflect=True`, episode juga direfleksikan menjadi Usulan
+    profil (lihat `reflect_and_propose`); hasilnya dilaporkan
+    sebagai `proposals_created`.
     """
     now = now or datetime.now(timezone.utc)
     cutoff = now - timedelta(days=older_than_days)
@@ -73,6 +184,7 @@ def consolidate_idle(user_id, older_than_days=30, agent_id=None, dsn=None,
                 already.update(str(k) for k in (r["event_ids"] or []))
     summaries_created = 0
     procedures_promoted = 0
+    proposals_created = 0
     processed_tasks = []
     for task_id in task_ids:
         with _connect(dsn) as conn:
@@ -121,9 +233,13 @@ def consolidate_idle(user_id, older_than_days=30, agent_id=None, dsn=None,
                 dsn=dsn,
             )
             procedures_promoted += 1
+        if reflect:
+            proposals_created += len(reflect_and_propose(
+                user_id, new, agent_id=agent_id, dsn=dsn))
     return {
         "summaries_created": summaries_created,
         "procedures_promoted": procedures_promoted,
+        "proposals_created": proposals_created,
         "tasks": processed_tasks,
     }
 

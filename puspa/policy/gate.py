@@ -29,12 +29,19 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
-from .tokens import TokenError, canonical_json, is_revoked, token_id, verify_token
+from .tokens import (
+    TokenError,
+    canonical_json,
+    is_revoked,
+    token_id,
+    tool_permission,
+    verify_token,
+)
 
 __all__ = ["ApprovalRequest", "Gate", "GateDenied"]
 
 # kind aksi keluar yang diakui gerbang.
-KINDS = frozenset({"send", "create_event", "prepare_payment", "delete"})
+KINDS = frozenset({"send", "create_event", "prepare_payment", "delete", "deploy"})
 
 # Tool yang mengizinkan tiap kind (nama persis atau nama konektor).
 KIND_TOOLS = {
@@ -42,6 +49,7 @@ KIND_TOOLS = {
     "create_event": {"create_event", "calendar.create_event", "calendar.create"},
     "prepare_payment": {"prepare_payment", "pay", "payment.bayar"},
     "delete": {"delete", "delete"},
+    "deploy": {"deploy"},
 }
 
 # Scope konektor yang mengizinkan tiap kind.
@@ -50,6 +58,7 @@ KIND_SCOPES = {
     "create_event": {"create_event", "write", "create"},
     "prepare_payment": {"prepare_payment", "pay"},
     "delete": {"delete", "delete"},
+    "deploy": {"deploy"},
 }
 
 
@@ -81,9 +90,13 @@ def _content_hash(content: dict) -> str:
 
 
 def _token_allows_kind(payload: dict, kind: str) -> bool:
-    tools = set(payload.get("tools", []))
-    if tools & KIND_TOOLS.get(kind, set()):
-        return True
+    # A tool at level "allow" or "ask" may request approval for this
+    # kind ("ask" means allowed only after the user approves, and
+    # requesting approval is that flow). A "deny" tool may not even
+    # ask. Connector scopes keep their old meaning.
+    for tool in KIND_TOOLS.get(kind, set()):
+        if tool_permission(payload, tool) in ("allow", "ask"):
+            return True
     scopes = KIND_SCOPES.get(kind, set())
     for items_scope in payload.get("connectors", {}).values():
         if set(items_scope) & scopes:
@@ -131,6 +144,20 @@ class Gate:
         raise GateDenied(reason)
 
     # -- token --------------------------------------------------------
+    def authorize_tool(self, token_payload: dict, tool: str) -> str:
+        """Per-tool permission check (opencode / claude code model).
+
+        ``token_payload`` is an already verified token payload dict.
+        Returns "allow" or "ask". Raises GateDenied for "deny": the
+        tool must not run at all. An "ask" tool needs a user approval
+        (via ``request_approval``) before it runs; this method only
+        reports the level, it never approves anything by itself.
+        """
+        level = tool_permission(token_payload, tool)
+        if level == "deny":
+            raise GateDenied(f"token tidak mengizinkan tool {tool!r}")
+        return level
+
     def _resolve_token(self, token, user_id, agent_id):
         """Kembalikan (payload, token_id). Token string diverifikasi
         kriptografis; payload dict dianggap sudah diverifikasi

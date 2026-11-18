@@ -27,6 +27,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 __all__ = [
+    "TOOL_PERMISSION_LEVELS",
+    "TOOL_PERMISSION_RANK",
     "TokenError",
     "canonical_json",
     "decode_payload",
@@ -37,6 +39,7 @@ __all__ = [
     "revoke",
     "revoke_all_for_task",
     "token_id",
+    "tool_permission",
     "verify_token",
 ]
 
@@ -64,6 +67,20 @@ REQUIRED_FIELDS = frozenset(
 
 # Field wajib di dalam anggaran.
 BUDGET_FIELDS = frozenset({"step_max", "token_max", "rupiah_max"})
+
+# Per-tool permission model, adapted from the opencode / claude code
+# pattern (see docs/brain-repo-list.md): every tool has one of three
+# levels instead of a single per-turn allow. "allow" runs without
+# asking, "ask" needs a user approval for that use, "deny" never runs.
+# A token may carry an optional "tool_permissions" map
+# {tool_name: level}; a tool missing from the map falls back to the
+# plain "tools" list (listed -> "allow", unlisted -> "deny"), so
+# tokens issued before this field existed keep their old meaning.
+TOOL_PERMISSION_LEVELS = frozenset({"allow", "ask", "deny"})
+
+# Ordering used by is_subset: a child may only narrow a permission,
+# never widen it (deny < ask < allow).
+TOOL_PERMISSION_RANK = {"deny": 0, "ask": 1, "allow": 2}
 
 # Registri in-memory: token_id -> payload (untuk revoke_all_for_tugas).
 _issued: dict[str, dict] = {}
@@ -148,6 +165,15 @@ def _validate_payload(payload: dict) -> None:
         raise TokenError("field subagent_id harus str atau null")
     if payload["parent"] is not None and not isinstance(payload["parent"], str):
         raise TokenError("field parent harus str atau null")
+    permissions = payload.get("tool_permissions")
+    if permissions is not None:
+        if not isinstance(permissions, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) and v in TOOL_PERMISSION_LEVELS
+            for k, v in permissions.items()
+        ):
+            raise TokenError(
+                "field tool_permissions harus {nama_tool: 'allow'|'ask'|'deny'}"
+            )
 
 
 def issue_token(payload: dict, signing_key: Ed25519PrivateKey) -> str:
@@ -213,12 +239,43 @@ def verify_token(token: str, public_key: Ed25519PublicKey) -> dict:
     return payload
 
 
+def tool_permission(payload: dict, tool: str) -> str:
+    """Per-tool permission level for ``tool`` under ``payload``.
+
+    The explicit ``tool_permissions`` entry wins; otherwise a tool
+    listed in ``tools`` is "allow" and any other tool is "deny".
+    Unknown tools are always "deny" (fail-closed). Raises TokenError
+    for a payload that is not a dict.
+    """
+    if not isinstance(payload, dict):
+        raise TokenError("payload token harus dict")
+    explicit = payload.get("tool_permissions") or {}
+    level = explicit.get(tool)
+    if level is not None:
+        return level
+    if tool in (payload.get("tools") or []):
+        return "allow"
+    return "deny"
+
+
+def _effective_permissions(payload: dict) -> dict[str, str]:
+    """Effective level per tool: explicit map plus the plain tools
+    list (listed tools default to "allow")."""
+    effective = {tool: "allow" for tool in (payload.get("tools") or [])}
+    for tool, level in (payload.get("tool_permissions") or {}).items():
+        effective[tool] = level
+    return effective
+
+
 def is_subset(child: dict, parent: dict) -> bool:
     """Benar kalau izin child seluruhnya di dalam izin parent.
 
     tools ⊆, domains ⊆, tiap scope konektor ⊆, tiap anggaran ≤,
     exp ≤, user_id sama, agen_id sama; sub_agen_id hanya boleh
     terisi kalau parent adalah token agen (sub_agen_id null).
+    Per-tool: the child effective level for every tool must be no
+    wider than the parent effective level (deny < ask < allow), so a
+    child can never upgrade "ask" to "allow" or "deny" to "ask".
     """
     try:
         if child["user_id"] != parent["user_id"]:
@@ -227,6 +284,12 @@ def is_subset(child: dict, parent: dict) -> bool:
             return False
         if set(child["tools"]) - set(parent["tools"]):
             return False
+        child_levels = _effective_permissions(child)
+        parent_levels = _effective_permissions(parent)
+        for tool, level in child_levels.items():
+            parent_level = parent_levels.get(tool, "deny")
+            if TOOL_PERMISSION_RANK[level] > TOOL_PERMISSION_RANK[parent_level]:
+                return False
         if set(child["domains"]) - set(parent["domains"]):
             return False
         for name, scopes in child["connectors"].items():

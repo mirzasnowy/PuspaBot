@@ -18,6 +18,16 @@ fork hidup Kuzu) — pola graf embedded: node dan edge sebagai baris
 relasional, bukan server graf terpisah. Di Puspa, node = produk
 kanonik, edge = tautan listing; deret waktu = baris `harga_seri`.
 Lihat REUSE.md.
+
+Retrieval dual-level (pola LightRAG, MIT, ditulis ulang, bukan
+disalin): pencarian produk menggabungkan dua level, entitas
+spesifik (nomor model) dan konsep abstrak (merek, seri, kategori),
+di atas Postgres + pgvector. `rank_products` murni (in-memory);
+`search_products_dual` adalah jalur database yang sama. Aturan
+bukti tetap: tidak ada fakta graf yang ditampilkan tanpa proof
+id. Setiap hasil membawa `evidence_ids` (id tautan listing dan
+id bukti harga); fakta harga hanya dimuat bila `evidence_id`
+ada, yang sudah ditegakkan `record_price`.
 """
 
 from __future__ import annotations
@@ -29,6 +39,8 @@ from datetime import datetime, timedelta, timezone
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+
+from puspa.memory.episodic import extract_concepts, extract_entities
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
@@ -265,3 +277,103 @@ def match_automatic(*, model_number: str, brand: str | None = None,
         return {"match": product, "kandidat": [], "perlu_ask": False}
     candidates = identity_candidates(brand=brand, model_number=model_number, dsn=dsn)
     return {"match": None, "kandidat": candidates, "perlu_ask": True}
+
+
+# --- Dual-level retrieval (LightRAG pattern, rewritten) ------------
+
+def rank_products(products, query):
+    """Rank canonical products by dual-level retrieval (pure).
+
+    `products` is a list of product dicts (brand, series,
+    model_number, category). Entity level: a model-like code
+    from the query matches the product model number. Concept
+    level: query keywords overlap the brand / series / category
+    words. Returns a list of {"product", "level", "score"},
+    entity matches first, then concept matches, best first.
+    Products matching neither level are dropped.
+    """
+    if not isinstance(query, str) or query == "":
+        raise ValueError("query must be a non-empty string")
+    query_entities = extract_entities(query)
+    query_concepts = set(extract_concepts(query))
+    query_model = normalize_model_number(query)
+    ranked = []
+    for product in products or []:
+        model_key = normalize_model_number(product.get("model_number") or "")
+        entity_hit = bool(model_key) and (
+            model_key in query_model
+            or any(normalize_model_number(e) == model_key for e in query_entities)
+            or any(normalize_model_number(e) in model_key for e in query_entities if e)
+        )
+        concept_words = set()
+        for field in ("brand", "series", "category"):
+            concept_words.update(
+                extract_concepts(str(product.get(field) or "")))
+        concept_overlap = (
+            len(query_concepts & concept_words) / len(query_concepts)
+            if query_concepts else 0.0
+        )
+        if entity_hit:
+            ranked.append({"product": product, "level": "entity", "score": 1.0})
+        elif concept_overlap > 0:
+            ranked.append({
+                "product": product, "level": "concept",
+                "score": round(concept_overlap, 4),
+            })
+    ranked.sort(key=lambda r: (r["level"] != "entity", -r["score"]))
+    return ranked
+
+
+def search_products_dual(query, *, dsn=None):
+    """Dual-level product search on Postgres (entity + concept).
+
+    Entity candidates come from model-number matching,
+    concept candidates from brand / series keyword matching.
+    Every result carries `evidence_ids` (listing link ids and
+    price evidence ids) and `prices` (current prices, each
+    with its own `evidence_id`); a product with no price
+    evidence simply reports empty prices, never an
+    evidence-free price. Returns
+    {"entity_matches": [...], "concept_matches": [...]}.
+    """
+    if not isinstance(query, str) or query == "":
+        raise ValueError("query must be a non-empty string")
+    entity_codes = [
+        e for e in extract_entities(query)
+        if any(ch.isdigit() for ch in e)
+    ]
+    concept_tokens = extract_concepts(query)
+    candidates = []
+    seen = set()
+    for code in entity_codes:
+        for product in identity_candidates(model_number=code, dsn=dsn):
+            if product["id"] not in seen:
+                candidates.append(product)
+                seen.add(product["id"])
+    for token in concept_tokens[:3]:
+        for product in identity_candidates(brand=token, dsn=dsn):
+            if product["id"] not in seen:
+                candidates.append(product)
+                seen.add(product["id"])
+        for product in identity_candidates(series=token, dsn=dsn):
+            if product["id"] not in seen:
+                candidates.append(product)
+                seen.add(product["id"])
+    ranked = rank_products(candidates, query)
+    entity_matches, concept_matches = [], []
+    for item in ranked:
+        product = item["product"]
+        prices = current_prices(product["id"], dsn=dsn)
+        evidence_ids = [p["evidence_id"] for p in prices if p.get("evidence_id")]
+        entry = {
+            "product": product,
+            "level": item["level"],
+            "score": item["score"],
+            "prices": prices,
+            "evidence_ids": evidence_ids,
+        }
+        if item["level"] == "entity":
+            entity_matches.append(entry)
+        else:
+            concept_matches.append(entry)
+    return {"entity_matches": entity_matches, "concept_matches": concept_matches}
