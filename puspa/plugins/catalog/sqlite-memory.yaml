@@ -1,0 +1,12 @@
+id: sqlite-memory
+name: SQLite Memory
+version: 2.0.0
+description: File-based memory provider for offline use.
+author: Acme Example (hello@example.com)
+license: BSD-3-Clause
+repository: https://github.com/acme/sqlite-memory
+entry_point: sqlite_memory.plugin
+kind: memory_provider
+api_version: 1
+dependencies: []
+price_credits: 5

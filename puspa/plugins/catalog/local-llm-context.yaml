@@ -1,0 +1,12 @@
+id: local-llm-context
+name: Local LLM Context
+version: 0.3.1
+description: Build turn context from a local document folder.
+author: Acme Example (hello@example.com)
+license: Apache-2.0
+repository: https://github.com/acme/local-llm-context
+entry_point: local_llm_context.plugin
+kind: context_engine
+api_version: 1
+dependencies: []
+price_credits: 10
