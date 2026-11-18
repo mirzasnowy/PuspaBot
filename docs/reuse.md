@@ -1021,6 +1021,53 @@ from the provider's actual plan); costs come from catalog
 rates (public OpenRouter prices, Nov 2026), not live
 provider bills, the same as the existing `compute_cost`.
 
+### 9Router: auto OAuth refresh + format translation (mechanism 3 of 3)
+
+Pattern: decolua/9router (MIT, verified from three
+independent sources 18 Nov 2026: the GitHub README via a
+mirror, x-cmd, and FollowAgents/reporadar, all saying MIT;
+re-confirmed by web search 18 Nov 2026). No code copied, no
+fork, no sub-project studied or used (RTK, Headroom, Ponytail
+not touched by this mechanism). `puspa/router/oauth.py` (new,
+560 lines): generic OAuth2 refresh-token grant (RFC 6749
+section 6) with proactive refresh inside a 300-second leeway
+(the same 5-minute margin nanobot uses for xAI), single-flight
+refresh per provider (lock plus re-check, two parallel
+callers cause exactly one endpoint call), clear
+`TokenRefreshError` (provider, status, error code,
+`reauth_required` on `invalid_grant`), refresh-token
+rotation, and in-memory storage only with token values never
+logged, printed, or written (redacted `__repr__`, audit
+events carry outcomes only). `puspa/router/translate.py`
+(new, 781 lines): request/response translation between the
+two formats the BYOK path already serves, OpenAI
+chat-completions and Anthropic Messages, with every unmapped
+field reported in `TranslationReport` instead of silently
+dropped (OpenAI `frequency_penalty` / `response_format` /
+`logit_bias` / `n` / `seed`, Anthropic `thinking` blocks and
+`cache_control`, cache-creation tokens, extra choices).
+Wiring in `puspa/router/router.py` (about 70 lines):
+`register_known_oauth_providers()` (xai, github_copilot,
+openai_codex as simulated registrations),
+`get_valid_oauth_token()`, `translate_chat_request/response()`,
+all delegating with lazy imports. Tests:
+`tests/test_router_oauth_translate.py`, 39 tests, 39 passed,
+all in-memory with a fake token endpoint and a fake clock.
+Honest limits: token storage is in-memory (vault persistence
+under `byok:oauth:<provider>` is a follow-up, needs user id +
+DSN); the three named providers are simulated (xAI carries
+its token URL and public client id from nanobot's source,
+Copilot has no client id wired, Codex has no token URL wired
+— neither was invented); no interactive login flow lives
+here (authorization/device code stays in nanobot); Azure
+Responses and Bedrock Converse are not translated (outside
+the router catalog); Anthropic `max_tokens` defaults to 4096
+when the OpenAI request has none (recorded in the report);
+`finish_reason=content_filter` maps to
+`stop_reason=end_turn` as the nearest neutral equivalent
+(reported); no retry/backoff on transport failure (one
+attempt, then a clear error).
+
 ### mem0: extraction quality + ranked recall
 
 Pattern: mem0ai/mem0 (Apache-2.0). No code copied, no fork.
