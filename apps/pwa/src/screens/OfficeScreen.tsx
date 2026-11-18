@@ -1,18 +1,28 @@
 import { useEffect, useState } from "react";
 import {
+  fetchOperatorStatus,
   formatRupiah,
   parseSseEvent,
   stopTask,
   type Bootstrap,
   type OfficeProjection,
+  type OperatorStatus,
 } from "../api/client";
 import { applyOfficeEvent, officeAgents, totalRunningCostRp, workingCount } from "../state/office";
+import { OperatorPanel } from "../components/OperatorPanel";
 
 export const SPENDING_CAP_RP = 2000;
+
+/** The operator status is polled: the SSE stream carries the office
+ * projection, not the operator panels (G31). */
+export const OPERATOR_POLL_MS = 5000;
 
 export function OfficeScreen({ bootstrap }: { bootstrap: Bootstrap }) {
   const [office, setOffice] = useState<OfficeProjection | null>(bootstrap.office ?? null);
   const [error, setError] = useState<string | null>(null);
+  const [operatorStatus, setOperatorStatus] = useState<OperatorStatus | null>(null);
+  const [operatorLoading, setOperatorLoading] = useState(true);
+  const [operatorError, setOperatorError] = useState<string | null>(null);
 
   useEffect(() => {
     const source = new EventSource("/sse");
@@ -21,6 +31,31 @@ export function OfficeScreen({ bootstrap }: { bootstrap: Bootstrap }) {
       if (parsed) setOffice((prev) => applyOfficeEvent(prev, parsed));
     };
     return () => source.close();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOperatorStatus() {
+      try {
+        const status = await fetchOperatorStatus();
+        if (!cancelled) {
+          setOperatorStatus(status);
+          setOperatorError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setOperatorError(err instanceof Error ? err.message : "Gagal memuat status operator.");
+        }
+      } finally {
+        if (!cancelled) setOperatorLoading(false);
+      }
+    }
+    loadOperatorStatus();
+    const timer = setInterval(loadOperatorStatus, OPERATOR_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, []);
 
   const agents = officeAgents(office);
@@ -84,6 +119,7 @@ export function OfficeScreen({ bootstrap }: { bootstrap: Bootstrap }) {
           </div>
         ))
       )}
+      <OperatorPanel status={operatorStatus} loading={operatorLoading} error={operatorError} />
     </div>
   );
 }

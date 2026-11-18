@@ -34,6 +34,7 @@ import secrets
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 from .errors import AddressLockedError, PairingError
 
@@ -195,6 +196,45 @@ class PairingStore:
         """Revoke one pairing session. Idempotent."""
         if isinstance(token, str) and token:
             self._sessions.pop(_sha256_hex(token), None)
+
+    def status_snapshot(self) -> dict:
+        """Read-only operator view of the live store (G31).
+
+        Counts of outstanding codes and sessions, the sessions
+        themselves (user id, device label, expiry), and the
+        currently locked-out addresses (address, failure count,
+        lock expiry). Codes and session tokens are never exposed:
+        only their hashes are stored, and this snapshot does not
+        even carry those. Expired entries are not counted.
+        """
+        now = self._now()
+        sessions: list[dict[str, Any]] = [
+            {
+                "user_id": record.user_id,
+                "device_label": record.device_label,
+                "expires_at": record.expires_at,
+            }
+            for record in self._sessions.values()
+            if now < record.expires_at
+        ]
+        sessions.sort(key=lambda item: item["expires_at"])
+        locks: list[dict[str, Any]] = [
+            {
+                "address": address,
+                "failures": state.failures,
+                "locked_until": state.locked_until,
+            }
+            for address, state in self._addresses.items()
+            if now < state.locked_until
+        ]
+        locks.sort(key=lambda item: item["locked_until"])
+        return {
+            "active_codes": sum(1 for record in self._codes.values() if now < record.expires_at),
+            "active_sessions": len(sessions),
+            "sessions": sessions,
+            "locked_addresses": len(locks),
+            "locks": locks,
+        }
 
     def purge_expired(self) -> dict:
         """Drop expired codes, expired sessions, and spent lockouts.
