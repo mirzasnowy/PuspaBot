@@ -278,3 +278,73 @@ def test_tick_never_breaks_when_curriculum_fails(monkeypatch):
 
     # A broken curriculum must not change the trigger result.
     assert scheduler.tick(curriculum=_BrokenRunner()) == []
+
+
+# --- ledger budget gate (G8: curriculum sits on the general scheduler) ------
+
+def test_budget_hold_when_no_budget_remaining():
+    loop = _gap_loop("compare laptop prices across stores")
+    runner = _idle_runner(
+        loop, budget_check=lambda user_id, task_id, cap_rp=2000: 0)
+    outcome = runner.run_once()
+    assert outcome["status"] == "budget_hold"
+    assert outcome["ran"] is False
+    assert outcome["runs_today"] == 0  # a hold consumes no daily run
+    assert loop.propose_next_task() is not None  # gap untouched
+
+
+def test_budget_check_with_remaining_budget_runs():
+    loop = _gap_loop("compare laptop prices across stores")
+    seen = {}
+
+    def stub_check(user_id, task_id, cap_rp=2000):
+        seen["call"] = (user_id, task_id, cap_rp)
+        return 1500
+
+    runner = _idle_runner(loop, budget_check=stub_check)
+    outcome = runner.run_once()
+    assert outcome["status"] == "completed"
+    assert seen["call"] == ("system",
+                            "compare laptop prices across stores", 2000)
+
+
+def test_budget_check_none_means_no_gate():
+    loop = _gap_loop("compare laptop prices across stores")
+    runner = _idle_runner(loop, budget_check=lambda *a, **k: None)
+    assert runner.run_once()["status"] == "completed"
+
+
+def test_default_budget_check_resolves_to_the_ledger():
+    # The G2 worker landed puspa/billing/ledger.py with exactly the
+    # specified signature, so the default resolver now returns a
+    # real callable: no spend recorded means the full cap remains.
+    from puspa.scheduler.curriculum import default_task_budget_check
+
+    check = default_task_budget_check()
+    assert callable(check)
+    assert check("system", "a-fresh-task", cap_rp=2000) == 2000
+    loop = _gap_loop("compare laptop prices across stores")
+    runner = _idle_runner(loop)
+    assert runner.budget_check is not None
+    assert runner.run_once()["status"] == "completed"
+
+
+def test_default_budget_check_is_fail_soft_without_ledger(monkeypatch):
+    # Hide the ledger module: the resolver must return None
+    # instead of raising, and the runner must run ungated.
+    import sys
+
+    from puspa.scheduler.curriculum import default_task_budget_check
+
+    monkeypatch.setitem(sys.modules, "puspa.billing.ledger", None)
+    assert default_task_budget_check() is None
+
+
+def test_budget_check_failure_is_fail_soft():
+    loop = _gap_loop("compare laptop prices across stores")
+
+    def broken_check(user_id, task_id, cap_rp=2000):
+        raise RuntimeError("ledger down")
+
+    runner = _idle_runner(loop, budget_check=broken_check)
+    assert runner.run_once()["status"] == "completed"
