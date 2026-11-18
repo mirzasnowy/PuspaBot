@@ -375,7 +375,9 @@ its own iteration with commit + push):
    sentence-transformers as a dependency.
 2. HippoRAG 2 triple filter: deterministic rules today, not an
    LLM judge like the original. Fix: LLM-based filter through
-   the provider seam.
+   the provider seam. DONE 18 Nov 2026, commit
+   cfd50b7f3495fd314a7d40ed04bd0a17cad99e91 (see Rework progress
+   below).
 3. LlamaIndex question decomposer: regex split on "and", "vs",
    ";" and "?" today, not an LLM decomposer. Fix: LLM-based
    decomposer through the provider seam.
@@ -383,6 +385,65 @@ its own iteration with commit + push):
    Fulcio, no Rekor, no real keyless identity. Fix: verify a
    real sigstore bundle OR rename the scope to "local keyless
    signing" and drop the sigstore claim.
+
+## Rework progress
+
+### Rework 2: HippoRAG 2 triple filter, LLM judge (done, 18 Nov 2026)
+
+Commit cfd50b7f3495fd314a7d40ed04bd0a17cad99e91.
+
+- `puspa/retrieval/triple_filter.py` (new, 275 lines) +
+  `puspa/retrieval/hipporag.py` (constructor +
+  `_filtered_adjacency` + docstring, about 60 lines changed) +
+  `tests/test_hipporag_llm_filter.py` (14 tests, 14 passed).
+  `TripleDecision` is one verdict per triple (`keep`, one
+  sentence `reason`, `source` `"llm"` or `"deterministic"`).
+  `LLMTripleJudge` takes a `complete(prompt)` callable (the
+  same seam as `JsonTripleExtractor` in `knowledge_graph.py`),
+  sends triples in batches (default 50 per call), and requires
+  a strict JSON reply (`{"decisions": [{"index", "keep",
+  "reason"}]}`); a bad reply (invalid JSON, out-of-range or
+  duplicate index, non-boolean `keep`, empty reason,
+  incomplete verdicts) raises `ValueError` and that batch
+  falls back to the deterministic filter, not the whole graph.
+  Call failures fall back per batch too, and the fallback
+  reason records why. `DeterministicTripleFilter` is the old
+  rules moved unchanged (touch a seed, neighbour of a seed, or
+  share a query-concept token) and stays as the fallback.
+  The retriever takes `triple_filter=None` (any filter object)
+  or `llm_complete=None` (a `complete(prompt)` callable,
+  auto-wrapped in `LLMTripleJudge` with deterministic
+  fallback); both together raise `ValueError`; neither means
+  deterministic as before. `_filtered_adjacency` now judges
+  ALL triples through the filter (seeds widened one hop first,
+  as before), only `keep` triples become edges, and all
+  verdicts are stored in `retriever.last_filter_decisions`.
+  What the tests prove: the prompt carries the query and all
+  numbered triples; the parser accepts complete verdicts and
+  rejects bad JSON, empty lists, duplicate/out-of-range
+  indices, non-boolean `keep`, and empty reasons; one LLM call
+  judges 6 triples at once, `batch_size=2` means 3 calls, zero
+  triples means zero calls; non-JSON replies and raising
+  callables fall back per batch with `source="deterministic"`;
+  on the same graph the LLM keeps `(promo, is_a, fake promo)`
+  and `(fake promo, reported_in, fraud report fr-88)` that the
+  rules drop, and drops `(samsung galaxy s24, mentioned_with,
+  galaxy tab a9)` and `(galaxy tab a9, sells, toko abal)` that
+  the rules keep; without an LLM the fraud-report passage p5
+  never appears in results, with a stub LLM p5 appears with
+  `graph_score` 0.073 (above 0.05) and beats the irrelevant
+  seller passage p7. Regression: 37 old retrieval tests still
+  green. Honest limits: the judge is NOT wired to a live LLM
+  yet (`llm_complete` must be injected; without it the
+  retriever uses the deterministic filter with the status
+  recorded) — follow-up: wire a provider-layer completion
+  function as `llm_complete` (cheapest router model reader,
+  for example `qwen/qwen3-32b` via OpenRouter); verdict quality
+  depends on the model and prompt and has not been evaluated
+  against a real model (follow-up: test the judge with the
+  cheapest router model on the existing eval graph before live
+  recall use); no verdict caching (the same triple is judged
+  again every retrieval).
 
 ## Tier 2 Batch A (done, 18 Nov 2026)
 
