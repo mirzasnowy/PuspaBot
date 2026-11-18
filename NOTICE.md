@@ -183,7 +183,9 @@ to be included here because no third-party code is vendored.
 - **LlamaIndex** (MIT License) - pattern: reranker as a node
   postprocessor between retrieval and synthesis, and query
   decomposition into sub-questions. Used as a pattern in
-  `puspa/retrieval/reranker.py`.
+  `puspa/retrieval/reranker.py`. The cross-encoder itself is
+  `cross-encoder/ms-marco-MiniLM-L-6-v2` (Apache License 2.0)
+  via sentence-transformers 6.3.0 (Apache License 2.0).
 - **google/adk-python** (Apache License 2.0) - pattern:
   hierarchical multi-agent composition (sequential/parallel/loop),
   session state with user/app/temp scopes, memory service, tool

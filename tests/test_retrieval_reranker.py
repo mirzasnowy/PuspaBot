@@ -68,15 +68,19 @@ def test_deterministic_reranker_scores_signals():
         reranker.rerank("", [{"text": "x"}])
 
 
-def test_cross_encoder_backend_is_honestly_unavailable():
-    # fastembed 0.9.1 ships no reranker, so the backend raises
-    # instead of pretending a cross-encoder exists.
+def test_cross_encoder_fastembed_backend_is_honestly_unavailable():
+    # fastembed 0.9.1 ships no reranker, so that backend raises
+    # instead of pretending a cross-encoder exists. The working
+    # backend is sentence-transformers, covered in
+    # tests/test_reranker_cross_encoder.py.
     with pytest.raises(RerankerUnavailable):
         CrossEncoderReranker.from_fastembed()
     with pytest.raises(RerankerUnavailable):
-        make_reranker("cross_encoder")
+        make_reranker("cross_encoder", backend="fastembed")
     with pytest.raises(ValueError):
         make_reranker("bogus")
+    with pytest.raises(ValueError):
+        make_reranker("cross_encoder", backend="bogus")
 
 
 def test_cross_encoder_reranker_uses_an_injected_scorer():
