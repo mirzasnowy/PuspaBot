@@ -29,6 +29,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from . import episodic, procedural, profile
+from .limits import truncate_narrative
 from .schema import resolve_dsn
 
 MAX_SUMMARY_CHARS = 2000
@@ -151,7 +152,9 @@ def _extractive_summary(episodes):
             break
         lines.append(rows)
         total += len(rows)
-    return "\n".join(lines)
+    # G7 narrative cap: the summary writer enforces the 200-line /
+    # 24,000-byte limit before the text is stored.
+    return truncate_narrative("\n".join(lines))
 
 
 def consolidate_idle(user_id, older_than_days=30, agent_id=None, dsn=None,
