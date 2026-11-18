@@ -1428,7 +1428,7 @@ the sentinel's detectors are the verifier's eyes; keep the
 verifier module separate from the detectors so the two can evolve
 independently.
 
-## Wave 10: G11+G12 (multi-tenant auth/relay + Sentinel, in progress 18 Nov 2026)
+## Wave 10: G11+G12 (multi-tenant auth/relay + Sentinel, DONE 18 Nov 2026)
 
 Coordinator handover mid-wave: the first maturity coordinator
 (1af6c4c4) stopped after Wave 9; continuation coordinator
@@ -1549,5 +1549,9 @@ invoking `run_sentinel_scan`, not this trigger; insights read
 to any real call site (same follow-up as G26); no live sentinel
 run against the real ledger yet (first live scan is a follow-up
 once the scheduler runs on a host). Wave 10 central SOLO suite:
-pending at docs time (runs after this commit; number lands here
-once it is green).
+first run 2,461 passed, 2 failed — both ratchet tests, tripped by
+G1's `package-lock.json` (3,201 lines) and `generated-types.ts`
+(1,299 lines) landing mid-run; fixed by excluding generated files
+from the ratchet (lockfiles, `generated-*`, `dist/`,
+`node_modules/` — commit c499e487). Re-run: **2,463 passed, 9
+skipped, 1 warning, 14m24s, EXIT 0** — Wave 10 green.
