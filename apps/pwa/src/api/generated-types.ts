@@ -463,6 +463,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Insights screen */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Insights screen (HTML, SPA shell with server bootstrap) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Redirect to /masuk when not logged in */
+                302: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Onboarding screen */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Onboarding screen (HTML, SPA shell with server bootstrap) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Redirect to /masuk when not logged in */
+                302: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sse": {
         parameters: {
             query?: never;
@@ -1116,6 +1202,548 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cost and token insights report for the logged-in user
+         * @description G28: summarises the usage ledger over the last N calendar
+         *     days ending today (default 7, allowed 1..90). All costs
+         *     are exact integer Rupiah plus server-rendered labels; the
+         *     client never re-derives a cost. A user with no recorded
+         *     turns gets honest zeros, never invented data.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    days?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Insights report */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["InsightsReport"];
+                    };
+                };
+                /** @description days outside 1..90 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the user's onboarding status
+         * @description G28: returns the 4-step onboarding status, or
+         *     `{"started": false, "current_step": 0}` when the user
+         *     never started onboarding.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Onboarding status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OnboardingStatus"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onboarding/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start onboarding (idempotent) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Onboarding status with started true */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OnboardingStatus"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onboarding/step1": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete step 1 (name + speaking style) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        /** @enum {string} */
+                        style: "santai" | "rapi" | "campur";
+                        example_message?: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Onboarding status after step 1 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OnboardingStatus"];
+                    };
+                };
+                /** @description Onboarding not started, or unknown style */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onboarding/step2": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete step 2 (notification test)
+         * @description Honest limit: Web Push is not built yet, so the test is
+         *     recorded as NOT sent (`notification_sent` false) — never
+         *     faked as delivered.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Onboarding status after step 2 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OnboardingStatus"];
+                    };
+                };
+                /** @description Onboarding not started */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onboarding/step3": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete step 3 (connector choice) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /**
+                         * @default nanti
+                         * @enum {string}
+                         */
+                        connector?: "nanti" | "gmail" | "drive" | "calendar" | "all";
+                    };
+                };
+            };
+            responses: {
+                /** @description Onboarding status after step 3 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OnboardingStatus"];
+                    };
+                };
+                /** @description Onboarding not started, or unknown connector */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onboarding/first-task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run the guided first task (step 4)
+         * @description Honest limit: the price-compare / bill wedges are not
+         *     built yet, so the task is a measured stub (`verified`
+         *     false, with a reason); no price or bill result is ever
+         *     invented.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        event_type: "compare_prices" | "check_bill";
+                        target: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description First-task result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FirstTaskResult"];
+                    };
+                };
+                /** @description Onboarding not started, or unknown task type */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onboarding/hints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Hints due right now for the reported branch
+         * @description G28: the client reports the branch it just reached as
+         *     query params — `screen`, `first_visit`,
+         *     `approval_requested`, `memory_used`, `task_cost_idr`,
+         *     `billing_rows` — and the server returns only the unseen
+         *     hints that branch makes due, in registry order. Only
+         *     branch facts are accepted; no other client data is
+         *     stored.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    screen?: string;
+                    first_visit?: boolean;
+                    approval_requested?: boolean;
+                    memory_used?: boolean;
+                    task_cost_idr?: number;
+                    billing_rows?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Due hints (possibly empty) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HintsResponse"];
+                    };
+                };
+                /** @description Unparseable integer param */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onboarding/hints/{flag}/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark one hint seen (shown or dismissed)
+         * @description Idempotent: marking twice is a no-op. An unknown flag is
+         *     a 400, never a silent no-op.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    flag: "first_modules_visit" | "first_approval" | "first_memory_use" | "first_costly_task" | "first_billing_row";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Hint marked seen */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HintSeenResult"];
+                    };
+                };
+                /** @description Unknown hint flag */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/onboarding/waktu": {
         parameters: {
             query?: never;
@@ -1458,6 +2086,147 @@ export interface components {
             /** @description Whether a BYOK key for `provider` exists in the vault. */
             has_byok_key: boolean;
         };
+        /**
+         * @description G28: cost and token totals from the usage ledger over the
+         *     last N calendar days ending today. Costs are exact integer
+         *     Rupiah plus server-rendered labels; the per-1k-token rate
+         *     is null (not zero) when no tokens were recorded.
+         */
+        InsightsReport: {
+            window_days: number;
+            /** Format: date-time */
+            since: string;
+            /** Format: date-time */
+            until: string;
+            turns: number;
+            tokens: components["schemas"]["TokenTotals"];
+            cost: components["schemas"]["CostSummary"];
+            per_model: components["schemas"]["ModelBreakdown"][];
+            per_driver: components["schemas"]["DriverBreakdown"][];
+            tool_usage: components["schemas"]["ToolUsage"][];
+            module_usage: components["schemas"]["ModuleUsage"][];
+            activity_per_day: components["schemas"]["DayActivity"][];
+            top_costly_tasks: components["schemas"]["CostlyTask"][];
+            tool_errors: number;
+            task_cost_ceiling_idr: number;
+        };
+        TokenTotals: {
+            input: number;
+            output: number;
+            cached: number;
+            total: number;
+        };
+        CostSummary: {
+            total_idr: number;
+            /** @example Rp1.500 */
+            label: string;
+            avg_per_turn_idr: number;
+            avg_per_turn_label: string;
+            per_1k_tokens_idr: number | null;
+            /** @description Four-decimal rate label, or null when no tokens were recorded. */
+            per_1k_tokens_label: string | null;
+        };
+        ModelBreakdown: {
+            model: string;
+            turns: number;
+            tokens: number;
+            cost_idr: number;
+            share: number;
+        };
+        DriverBreakdown: {
+            driver: string;
+            turns: number;
+            tokens: number;
+            cost_idr: number;
+            share: number;
+        };
+        ToolUsage: {
+            tool: string;
+            uses: number;
+        };
+        ModuleUsage: {
+            module_id: string;
+            turns: number;
+            cost_idr: number;
+        };
+        DayActivity: {
+            /** Format: date */
+            date: string;
+            turns: number;
+            tokens: number;
+            cost_idr: number;
+        };
+        CostlyTask: {
+            task_id: string;
+            turns: number;
+            tokens: number;
+            cost_idr: number;
+        };
+        /**
+         * @description G28: the 4-step first-run onboarding status. Before start
+         *     the server returns only `started: false` and
+         *     `current_step: 0`.
+         */
+        OnboardingStatus: {
+            started: boolean;
+            /** @description Steps completed so far (0..4) */
+            current_step: number;
+            user_id?: string;
+            name?: string | null;
+            /** @enum {string|null} */
+            style?: "santai" | "rapi" | "campur" | null;
+            test_notification?: string | null;
+            connector?: string | null;
+            first_task?: string | null;
+            first_result_verified?: boolean | null;
+            /** Format: date-time */
+            started_at?: string | null;
+            /** Format: date-time */
+            completed_at?: string | null;
+            duration_seconds?: number | null;
+            /** @description Id of the saved style fact (step 1 response only). */
+            style_fact_id?: string;
+            /** @description Whether the step 2 test notification was sent (step 2 response only; false until Web Push exists). */
+            notification_sent?: boolean;
+        };
+        /**
+         * @description G28: the guided first task (step 4). Always `verified:
+         *     false` for now: the price-compare / bill wedges are not
+         *     built yet, so the task is a measured stub.
+         */
+        FirstTaskResult: {
+            status: components["schemas"]["OnboardingStatus"];
+            task_id: string;
+            /** @enum {string} */
+            type: "compare_prices" | "check_bill";
+            target: string;
+            verified: boolean;
+            reason: string;
+            task_duration_seconds: number;
+            event_ids: string[];
+            offered_workflow_templates: string[];
+        };
+        /**
+         * @description G28: one contextual, one-time hint. Plain text plus the
+         *     target screen name; never a secret, never an action.
+         */
+        Hint: {
+            /** @enum {string} */
+            flag: "first_modules_visit" | "first_approval" | "first_memory_use" | "first_costly_task" | "first_billing_row";
+            trigger: string;
+            title: string;
+            body: string;
+            screen: string;
+            action_label: string;
+        };
+        HintsResponse: {
+            hints: components["schemas"]["Hint"][];
+        };
+        HintSeenResult: {
+            user_id: string;
+            flag: string;
+            seen: boolean;
+        };
         ChatMessage: {
             /** @description Sender id ("users" for the user in the demo store) */
             sender: string;
@@ -1561,7 +2330,7 @@ export interface components {
          */
         Bootstrap: {
             /** @enum {string} */
-            screen?: "chat" | "tasks" | "modules" | "connectors" | "memory" | "settings" | "office" | "login";
+            screen?: "chat" | "tasks" | "modules" | "connectors" | "memory" | "settings" | "office" | "insights" | "onboarding" | "login";
             user_id?: string;
             messages?: components["schemas"]["ChatMessage"][];
             approvals?: components["schemas"]["ApprovalRequest"][];

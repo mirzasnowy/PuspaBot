@@ -1,4 +1,5 @@
-"""PWA Puspa — 7 layar, tidak lebih (§2.1 revisi 7).
+"""PWA Puspa — 9 layar (7 dari revisi 7, ditambah Insights dan
+Onboarding oleh kerja kematangan G28).
 
 Stack (keputusan 1, diperbarui G1): FastAPI + TypeScript SPA
 (React 19 + Vite, `apps/pwa/`, dibangun ke `apps/pwa/dist`) + service
@@ -6,8 +7,15 @@ worker. Kalau `dist` belum dibangun, layar jatuh kembali ke template
 Jinja lama. Kontrak API: `docs/openapi-pwa.yaml`.
 Update live lewat SSE dari proyeksi Buku Kerja, tanpa WebSocket
 di MVP. Layar: Chat, Tugas, Modul, Konektor, Memori, Pengaturan,
-Kantor. Bukti, Rencana, Rekor Otonomi, alur, dan modul kustom adalah
-panel di dalam layar yang sudah ada — bukan layar baru.
+Kantor, Insights, Onboarding. Bukti, Rencana, Rekor Otonomi, alur,
+dan modul kustom adalah panel di dalam layar yang sudah ada —
+bukan layar baru.
+
+Catatan jujur soal jumlah layar: revisi 7 membatasi PWA pada 7
+layar, tetapi perintah kematangan Nero (kerjakan semua 28 celah
+G1-G28) mewajibkan halaman Insights (celah biaya/token) dan
+Onboarding pertama kali (G28). Batas 7 layar itu sudah tidak
+berlaku lagi setelah penambahan kematangan; total sekarang 9.
 
 Login: Google (keputusan 16, fondasi Fase 1 `puspa.auth`); sesi
 cookie httpOnly via `puspa.accounts.user_sessions`. Di tes, `create_app`
@@ -36,7 +44,17 @@ STATIC_DIR = BASE_DIR / "apps" / "pwa" / "static"
 DIST_DIR = BASE_DIR / "apps" / "pwa" / "dist"
 BOOTSTRAP_MARKER = "<!--PUSPA_BOOTSTRAP-->"
 
-SCREENS = ("chat", "tasks", "modules", "connectors", "memory", "settings", "office")
+SCREENS = (
+    "chat",
+    "tasks",
+    "modules",
+    "connectors",
+    "memory",
+    "settings",
+    "office",
+    "insights",
+    "onboarding",
+)
 
 
 def _jinja(template_dir=None):
@@ -655,6 +673,18 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
             return JSONResponse({"error": str(exc)}, status_code=400)
 
     # -- end G33 ---------------------------------------------------------
+
+    # -- G28: insights + onboarding (wiring) ---------------------------
+    # The two G28 API modules mount their own routes on this app
+    # with the app's login resolver; the pages themselves already
+    # exist through the SCREENS loop above. Insights and Onboarding
+    # fetch all their data through these APIs, so _context_screen
+    # needs no new bootstrap data for them.
+    from puspa.pwa import insights_api, onboarding_api
+
+    insights_api.register_routes(app, need_user)
+    onboarding_api.register_routes(app, need_user)
+    # -- end G28 ---------------------------------------------------------
 
     @app.post("/api/onboarding/waktu")
     async def api_onboarding_time(request: Request):

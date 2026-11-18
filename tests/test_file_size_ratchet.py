@@ -96,14 +96,25 @@ BASELINE_LINES = {
     # (model settings) pushed it past 1000 lines in Wave 16
     # (19 Nov 2026). Split only if a second spec file earns its
     # own contract.
-    "docs/openapi-pwa.yaml": 1097,
-    # Maturity phase status log, re-added 19 Nov 2026: the live
-    # log was archived at 2051 lines on 18 Nov 2026 (entry
-    # removed at 859 lines) and regrew past the soft cap with
-    # the Waves 15-16 entries (G29, G30, G31, G32, G33). Same
-    # rule as before: shrinks only by archiving old sections
-    # into a dated archive doc, never by deleting history.
-    "docs/status-maturity.md": 1055,
+    # Re-baselined 19 Nov 2026 (Wave 17, G28 wiring): 9 new
+    # endpoints (GET /api/insights, the 4-step onboarding flow,
+    # hints read + seen) plus the InsightsReport,
+    # OnboardingStatus, FirstTaskResult and Hint schemas: +610
+    # lines, all new API surface ordered by the maturity work.
+    # The ratchet resumes from 1707.
+    "docs/openapi-pwa.yaml": 1707,
+    # Maturity phase status log: re-added 19 Nov 2026 at 1055
+    # lines (regrown past the soft cap with the Waves 15-16
+    # entries) and archived again the same day — Waves 9-13
+    # moved to docs/status-maturity-archive-2026-11-19.md
+    # (580 lines, under the soft cap) when the live log hit
+    # 1060 lines. The live log is now 591 lines (Wave 14
+    # onwards + Wave 17), under the soft cap, so this entry
+    # is removed per test_baseline_entries_are_still_large_or_gone.
+    # Same rule as before: shrinks only by archiving old
+    # sections into a dated archive doc, never by deleting history.
+    # (No "docs/status-maturity.md" entry while it stays under
+    # 1000 lines; re-add it with a reason if it ever crosses.)
 }
 
 #: Puspa-owned top-level directories covered by the ratchet.

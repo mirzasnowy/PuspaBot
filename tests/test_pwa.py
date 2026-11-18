@@ -1,4 +1,10 @@
-"""Tes PWA 7 layar (FastAPI + Jinja + SSE)."""
+"""Tes PWA 9 layar (FastAPI + Jinja + SSE).
+
+Revisi 7 membatasi PWA pada 7 layar, tetapi kerja kematangan G28
+menambah Insights dan Onboarding (perintah Nero: kerjakan semua
+28 celah), jadi total sekarang 9. Tes jumlah layar di bawah
+mencerminkan batas baru itu.
+"""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,15 +21,15 @@ def client(make_user):
         yield c
 
 
-def test_seven_screens_exist_and_200(client):
+def test_nine_screens_exist_and_200(client):
     for screen in SCREENS:
         resp = client.get(f"/{screen}")
         assert resp.status_code == 200, screen
         assert "Puspa" in resp.text
 
 
-def test_no_eighth_screen_exists():
-    assert len(SCREENS) == 7
+def test_no_tenth_screen_exists():
+    assert len(SCREENS) == 9
     assert set(SCREENS) == {
         "chat",
         "tasks",
@@ -32,6 +38,8 @@ def test_no_eighth_screen_exists():
         "memory",
         "settings",
         "office",
+        "insights",
+        "onboarding",
     }
 
 
