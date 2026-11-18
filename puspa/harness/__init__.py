@@ -20,11 +20,13 @@ from .diff import (
     parse_diff,
 )
 from .executor import (
+    BackendExecutor,
     ExecutionResult,
     Executor,
     LocalTestExecutor,
     SandboxExecutor,
     SandboxUnavailable,
+    backend_executor,
 )
 from .loop import (
     AttemptRecord,
@@ -88,6 +90,7 @@ __all__ = [
     "PROFILE_READ_ONLY",
     "PROFILE_WORKSPACE_WRITE",
     "AttemptRecord",
+    "BackendExecutor",
     "CodingHarness",
     "CodingTask",
     "DiffApplyError",
@@ -110,6 +113,7 @@ __all__ = [
     "SandboxProfile",
     "SandboxUnavailable",
     "apply_diff",
+    "backend_executor",
     "build_repo_map",
     "build_reproduction",
     "check_tool",

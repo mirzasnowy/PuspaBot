@@ -589,3 +589,88 @@ Remaining: G16 (computer use, principles first) -> G18 (i18n) ->
 G17 (skill narrowing + search_tools) -> Kosmos K1, K3, K4, K5, K6,
 K10, K11, K12, K13. Then uji + 15 gates + 10 reference tasks
 (waiting on Nero's decisions).
+
+## Wave 18: G16 (computer use / per-bot sandbox, principles first, DONE 19 Nov 2026)
+
+G16 is BIG and deferred until after the MVP: no computer use /
+live browser automation was built. What was built is the
+principles plus real, tested seams (worker 1579b6a4, verified
+centrally by the coordinator).
+
+What was built (10 new files, `puspa/computer/`, all under 1000
+lines; tests 857 lines; docs 143 lines):
+- `backends.py` — ExecutionBackend ABC + CommandResult +
+  name→variant registry (no silent fallback on unknown names);
+  `local.py` — local backend (subprocess, scrubbed env,
+  scope-enforced cwd, credential-looking env keys refused
+  outright; test/dev only, NOT a security boundary);
+  `docker.py` — docker backend wrapping the hardened
+  puspa.sandbox (`--network none`, read-only, `--cap-drop ALL`);
+  `scope.py` — SandboxScope reusing the harness write-path
+  profile rules; `sync.py` — FileSync ABC (LocalFileSync /
+  NoFileSync); `config.py` — ComputerConfig (dict/env, default
+  local, unknown backend refused); `errors.py` —
+  BackendError / BackendUnavailable / BrowserUnavailable /
+  BrowserSessionBusy / UnknownToken / TokenExpired / TokenRevoked.
+- `broker.py` — CredentialBroker ABC + BrokerToken + in-memory
+  TEST-ONLY broker: credential never in env/log/repr/error
+  (fingerprints only), child gets only PUSPA_BROKER_TOKEN,
+  tokens die on expiry / revoke / context-exit / close() /
+  process exit (atexit). Reuses the G22 pool conceptually,
+  does not duplicate it. No real broker service (post-MVP
+  follow-up).
+- `browser.py` — INTERFACE ONLY: BrowserSession (per-task),
+  profile_dir_for (one profile per agent, agent id validated
+  so a crafted id cannot escape the profiles base),
+  TakeoverRequest (sign-in / captcha / 2FA — no password field
+  anywhere by design), SessionRegistry (one live session per
+  agent, orphan reaping by heartbeat), BrowserLauncher ABC,
+  UnavailableBrowserLauncher (raises BrowserUnavailable naming
+  the Docker-host + human-takeover-UI dependency). No CDP
+  driving, no Chromium, no live browser.
+- Harness wiring (3 modified files): `BackendExecutor` in
+  puspa/harness/executor.py (production_safe only for docker,
+  test_only for local) + `backend_executor()` factory; loop.py
+  production gate accepts SandboxExecutor or docker-backed
+  BackendExecutor, main attempt loop catches BackendUnavailable
+  exactly like SandboxUnavailable (fail-closed →
+  sandbox_unavailable, no host fallback).
+- `docs/computer-use.md` — the 4 principles, backend table,
+  conformance rules, broker rules, browser-session contract,
+  honest limits, post-MVP follow-up schedule (Docker host/VPS
+  first → real broker service → human-takeover UI → launcher
+  + CDP).
+
+Coordinator fix (pre-existing gap found by the worker, fixed by
+the coordinator before the push): the reproduce-first starter
+probe (loop.py) did not catch executor exceptions, so a dead
+backend during that probe raised out of harness.run instead of
+stopping fail-closed — already true for
+SandboxExecutor/SandboxUnavailable before G16. Wrapped in the
+same (SandboxUnavailable, BackendUnavailable) catch as the main
+attempt loop, plus a test
+(test_docker_backend_unavailable_in_reproduce_probe_stops_loop:
+docker-backed executor + reproduce_first task →
+sandbox_unavailable, generator never called, no host probe file).
+
+Suite (coordinator, SOLO, 19 Nov 2026): 3,094 passed, 23 skipped,
+1 warning, 19m24s, EXIT 0 (log hidden_files/suite-wave18-g16.log).
+Reconciliation: 3,028 (Wave 17 post-ratchet-fix baseline) + 66
+(G16 module tests incl. the coordinator's probe test) = 3,094;
+9 + 14 (Docker conformance skips) = 23. Module tests
+(coordinator re-run): 66 passed, 14 skipped. Harness/sandbox
+regression files (coordinator re-run): 59 passed, 4 skipped
+(the worker's "124 passed, 18 skipped" was the combined total
+of both runs: 65+59 passed, 14+4 skipped, before the
+coordinator's +1 probe test). Ruff check + format: clean. Mypy
+on the changed files: clean.
+
+Honest limits: docker backend NEVER live-tested on this host
+(check_available() False, every run raises BackendUnavailable —
+nothing faked); broker is interface + in-memory test broker
+only; browser is contract + registry only. First live check
+needs a Docker host/VPS, after the MVP.
+
+Remaining: G18 (i18n) -> G17 (skill narrowing + search_tools) ->
+Kosmos K1, K3, K4, K5, K6, K10, K11, K12, K13. Then uji + 15 gates
++ 10 reference tasks (waiting on Nero's decisions).

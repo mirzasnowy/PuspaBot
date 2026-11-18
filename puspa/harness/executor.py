@@ -51,12 +51,14 @@ from puspa.sandbox import Sandbox, SandboxUnavailable
 from .sandbox_profiles import ProfileDenied, check_write_path
 
 __all__ = [
+    "BackendExecutor",
     "ExecutionResult",
     "Executor",
     "LocalTestExecutor",
     "ProfileDenied",
     "SandboxExecutor",
     "SandboxUnavailable",
+    "backend_executor",
 ]
 
 _MAX_OUTPUT_CHARS = 100_000
@@ -100,6 +102,71 @@ class Executor(abc.ABC):
         raise NotImplementedError(
             f"{type(self).__name__} has no writable filesystem; edits run through run() only"
         )
+
+
+class BackendExecutor(Executor):
+    """Harness executor that runs through a computer backend (G16).
+
+    The seam between the coding harness and
+    :mod:`puspa.computer`: the loop keeps calling ``run(code)``,
+    and the backend decides where the code actually executes.
+    ``production_safe`` is True only for the Docker backend;
+    ``test_only`` is True for the local backend, which preserves
+    :class:`LocalTestExecutor` behaviour exactly (subprocess on
+    this host, scrubbed env, no security boundary). A
+    ``BackendExecutor`` over the local backend is refused by the
+    harness constructor when ``production=True``, exactly like
+    :class:`LocalTestExecutor`.
+    """
+
+    def __init__(self, backend) -> None:
+        self.backend = backend
+
+    @property
+    def production_safe(self) -> bool:
+        """True only when the backend is Docker (the production backend)."""
+        return self.backend.name == "docker"
+
+    @property
+    def test_only(self) -> bool:
+        """True for the local backend (test/dev only, like LocalTestExecutor)."""
+        return self.backend.name == "local"
+
+    def run(self, code: str, *, timeout_s: int = 30) -> ExecutionResult:
+        # BackendUnavailable propagates untouched: fail-closed, no
+        # host fallback, no retry on the host.
+        result = self.backend.run_python(code, timeout_s=timeout_s)
+        return ExecutionResult(
+            ok=bool(result.ok),
+            stdout=result.stdout,
+            stderr=result.stderr,
+            exit_code=result.exit_code,
+            timed_out=bool(result.timed_out),
+        )
+
+    def write_file(
+        self, path: str | Path, content: str, *, profile: str = "workspace_write"
+    ) -> Path:
+        """Write through the backend's file sync (scope-enforced).
+
+        Backends without a persistent filesystem (Docker) refuse
+        with BackendError: edits in production run through run()
+        only, exactly like :class:`SandboxExecutor`.
+        """
+        return self.backend.sync.write(path, content, profile=profile)
+
+
+def backend_executor(backend_name: str = "local", **kwargs) -> BackendExecutor:
+    """Build a :class:`BackendExecutor` for the named backend.
+
+    ``backend_name`` is a registered backend name (``"local"``,
+    ``"docker"``); ``kwargs`` go to the backend constructor.
+    The import is lazy so importing this module never pulls in
+    the computer package at module load time.
+    """
+    from puspa.computer import get_backend
+
+    return BackendExecutor(get_backend(backend_name, **kwargs))
 
 
 class SandboxExecutor(Executor):
