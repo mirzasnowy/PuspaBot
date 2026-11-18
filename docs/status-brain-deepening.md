@@ -373,7 +373,18 @@ collected (26 + 15 + 16 + 18 + 16 + 16 + 42).
   production rewriter is an LLM call, so the module takes it as
   an injected callable and ships only the deterministic
   `lookup_rewriter` as the built-in (a real repair, but a narrow
-  one). A model-based rewriter is the follow-up.
+  one). A model-based rewriter is the follow-up. Two more
+  follow-ups from the worker handoff: repair is NOT wired into
+  `propose_next_task` (the gap is never cleared, so a repair
+  proposal there would be shadowed forever; it needs a clear-gap
+  mechanism first) and is driven through `repair_suspect_skills()`
+  by the curriculum runner instead; procedure versioning in
+  Postgres is incomplete (`procedural.record_successful_task`
+  does not bump the `versi` column, version + `supersedes` travel
+  in `output_schema`; full versioning is only proven in
+  `InMemoryProcedureStore`), and repair history itself is
+  session-only (corrections and drafts persist, the repair trail
+  does not).
 - LightRAG incremental graph update: worker reported complete.
   `puspa/retrieval/incremental.py` (new, 528 lines:
   IncrementalUpdater with add/update/remove passage and document,
@@ -466,7 +477,12 @@ collected (26 + 15 + 16 + 18 + 16 + 16 + 42).
   Honest limits: static text matching, not execution and not an
   LLM judge; the scanner cannot prove intent, only the pattern.
   No CI workflow file was added (the repo has no
-  `.github/workflows/` yet; CI is maturity-phase item G15).
+  `.github/workflows/` yet; CI is maturity-phase item G15). Two
+  more follow-ups from the worker handoff:
+  `puspa/policy/__init__.py` was not given an export, so outside
+  use is `from puspa.policy.agent_scan import ...` until wired;
+  and there is no wiring yet into `PuspaSkillsLoader` or the
+  signed-skill gate.
 
 After Batch A: gorilla (BFCL eval format, sequential, shares
 `puspa/evidence/` with AgentBench), then 9Router (3 mechanisms,
