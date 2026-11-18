@@ -37,6 +37,7 @@ TRIGGER_TYPES = (
     "consolidation",
     "trust_root_refresh",
     "dream",
+    "sentinel_scan",
 )
 
 
@@ -295,6 +296,26 @@ def schedule_dream(user_id: str, *, hour: int = 3, dsn=None) -> Trigger:
     return create_trigger(user_id, "dream", tomorrow, schedule=f"daily {hour:02d}:00", dsn=dsn)
 
 
+def schedule_sentinel_scan(user_id: str, *, hour: int = 3, dsn=None) -> Trigger:
+    """Register the periodic sentinel scan as a trigger.
+
+    Running this trigger calls
+    ``puspa.sentinel.scanner.run_sentinel_scan`` through
+    ``run_scheduled_job`` below. The scheduler moves the trigger
+    one day forward on each run (see ``run_trigger``), so this
+    registration gives a daily scan at most; the 30-minute
+    rescan interval lives inside the scanner state (a scan
+    requested sooner is a no-op unless forced). A 30-minute
+    cadence needs a caller that invokes ``run_sentinel_scan``
+    every 30 minutes — for example a G8 cron job
+    (``every 30m``) — not this daily trigger.
+    """
+    tomorrow = (_now() + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
+    return create_trigger(
+        user_id, "sentinel_scan", tomorrow, schedule=f"daily {hour:02d}:00", dsn=dsn
+    )
+
+
 def run_scheduled_job(run: dict, *, dsn=None) -> dict:
     """Eksekusi job sistem untuk satu jalan pemicu (backup/konsolidasi).
 
@@ -328,4 +349,9 @@ def run_scheduled_job(run: dict, *, dsn=None) -> dict:
 
         result = run_dream_job(str(user_id), dsn=dsn)
         return {"job": "dream", "result": result}
+    if event_type == "sentinel_scan":
+        from puspa.sentinel.scanner import run_sentinel_scan
+
+        result = run_sentinel_scan(user_id=str(user_id), dsn=dsn)
+        return {"job": "sentinel_scan", "result": result}
     return {"job": "regular_task", "result": run["task_id"]}
