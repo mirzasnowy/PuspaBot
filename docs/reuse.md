@@ -841,6 +841,50 @@ mechanism), not live databases, shells, or shops; the follow-up
 is a sandbox-based solver with live environments (needs a
 sandbox host, no outside service or new dependency).
 
+### gorilla: BFCL eval format only
+
+Pattern: ShishirPatil/gorilla, Berkeley Function Calling
+Leaderboard (Apache-2.0, verified from the root LICENSE 18 Nov
+2026). No code copied, no fork, no BFCL task data copied.
+`puspa/evidence/bfcl_checker.py` (new, 508 lines): a real AST
+checker, not string matching. `ToolCall` reads from a dict, an
+OpenAI-style payload, or Python source parsed with `ast.parse`
+(argument values read from the syntax tree via
+`ast.literal_eval`); comparison is recursive and strict on
+function name, argument values AND types (bool is not int, int
+is not float, a digit string is not a number, `None` is not
+`""`), missing and extra arguments, down into nested dicts and
+lists with paths like `arguments.attendees[1]`; per turn it
+checks order (same set in different order is `wrong_order`),
+missing and extra calls; per task it scores turn accuracy and
+call accuracy, and a task only passes when every turn matches
+exactly (the BFCL rule). `puspa/evidence/bfcl_tasks.py` (new,
+645 lines): a catalog of 11 real Puspa tools with JSON schemas
+plus 8 held-out tasks written by Puspa itself (12 turns, 16
+reference calls), including a 3-turn multi-turn task, a user
+correction in turn 2, omitted optional arguments, an empty
+string argument, a digit-string customer number, a float
+threshold, and an odd amount; `reference_agent`,
+`make_bfcl_solver` / `bfcl_solver` (runs through the cassette
+player, simulated tool output per turn), `score_bfcl` (partial
+credit is turn accuracy, pass is all turns correct), and
+`summarize_bfcl`. `puspa/evidence/eval_harness.py` (wiring
+only): `run_bfcl_eval(agent=None)` plus an `__all__` entry;
+AgentBench wiring untouched. Tests:
+`tests/test_bfcl_eval.py`, 43 tests, 43 passed. Measured
+accuracy on the held-out set: reference agent 8/8 (100%, mean
+turn accuracy 1.0, mean call accuracy 1.0); order-reversing
+agent 4/8 (50%); number-to-string agent 2/8 (25%, mean turn
+accuracy 0.354, mean call accuracy 0.417); silent agent 0/8
+(0%). Honest limits: no live model was scored (the reference
+agent replays reference calls, so 8/8 proves the checker and
+the harness wiring work and the reference calls are
+consistent, not that a model would score 1.0; follow-up is a
+model client plugged in as `agent` in `make_bfcl_solver`, no
+schedule yet); tool output is simulated from inline cassettes,
+not live tools (deliberate, consistent with AgentBench); float
+comparison is exact, no epsilon tolerance yet.
+
 ### mem0: extraction quality + ranked recall
 
 Pattern: mem0ai/mem0 (Apache-2.0). No code copied, no fork.

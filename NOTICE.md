@@ -236,6 +236,14 @@ to be included here because no third-party code is vendored.
   injection, and toxic flow, as a gate before the signed-skill
   gate. Used as a pattern in `puspa/policy/agent_scan.py`
   (static text matching, not execution and not an LLM judge).
+- **ShishirPatil/gorilla** (Apache License 2.0) - pattern:
+  BFCL-style evaluation format (multi-turn tasks, per-turn
+  reference function calls, exact-match scoring on function
+  name, argument values and types, call order, missing and
+  extra calls). Used as a pattern in
+  `puspa/evidence/bfcl_checker.py` and
+  `puspa/evidence/bfcl_tasks.py`; all Puspa task data is
+  original, no BFCL task data was copied.
 
 ## Puspa license
 

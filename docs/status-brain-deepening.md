@@ -484,6 +484,52 @@ collected (26 + 15 + 16 + 18 + 16 + 16 + 42).
   and there is no wiring yet into `PuspaSkillsLoader` or the
   signed-skill gate.
 
-After Batch A: gorilla (BFCL eval format, sequential, shares
-`puspa/evidence/` with AgentBench), then 9Router (3 mechanisms,
-sequential), then the 4 rework items, then the maturity phase.
+## Tier 2: gorilla, BFCL eval format (done, 18 Nov 2026)
+
+Sequential after Batch A (shares `puspa/evidence/` with
+AgentBench). Commit dcdbfe9a2d6a7a70c5a4439fb4cc9a4a287a3514.
+
+- `puspa/evidence/bfcl_checker.py` (new, 508 lines) +
+  `puspa/evidence/bfcl_tasks.py` (new, 645 lines) +
+  `puspa/evidence/eval_harness.py` (wiring only: `run_bfcl_eval`
+  + `__all__` entry) + `tests/test_bfcl_eval.py` (43 tests, 43
+  passed). The checker is a real AST checker, not string
+  matching: `ToolCall` reads from a dict, an OpenAI-style
+  payload, or Python source parsed with `ast.parse` (argument
+  values read from the syntax tree via `ast.literal_eval`);
+  comparison is recursive and strict on function name, argument
+  values AND types (bool is not int, int is not float, a digit
+  string is not a number, `None` is not `""`), missing and extra
+  arguments, down into nested dicts and lists with paths like
+  `arguments.attendees[1]`; per turn it checks order (same set
+  in different order is `wrong_order`), missing and extra calls;
+  per task it scores turn accuracy and call accuracy, and a task
+  only passes when every turn matches exactly (the BFCL rule).
+  The task set is 8 held-out tasks written by Puspa itself (12
+  turns, 16 reference calls) over a catalog of 11 real Puspa
+  tools (`read_price`, `read_bill`, `prepare_payment`,
+  `watch_prices`, `create_trigger`, `gmail_search`, `gmail_read`,
+  `gmail_create_draft`, `calendar_create_event`, `drive_search`,
+  `read_memory`), including a 3-turn multi-turn task, a user
+  correction in turn 2, omitted optional arguments, an empty
+  string argument (`note=""`), a digit-string customer number
+  (`"512345678901"`), a float threshold (`899999.5`), and an odd
+  amount (`499999`). Task ids are disjoint from dev + AgentBench.
+  Measured accuracy on the held-out set: reference agent 8/8
+  (100%, mean turn accuracy 1.0, mean call accuracy 1.0);
+  order-reversing agent 4/8 (50%); number-to-string agent 2/8
+  (25%, mean turn accuracy 0.354, mean call accuracy 0.417);
+  silent agent 0/8 (0%). Honest limits: NO live model was scored
+  (the reference agent replays reference calls, so 8/8 proves
+  the checker + harness wiring work and the reference calls are
+  consistent, not that a model would score 1.0; follow-up is a
+  model client plugged in as `agent` in `make_bfcl_solver`, no
+  schedule yet); tool output is simulated from inline cassettes,
+  not live tools (deliberate, consistent with AgentBench);
+  float comparison is exact, no epsilon tolerance yet. No BFCL
+  task data was copied: all prompts, entities, values, and
+  reference calls are Puspa's own writing in BFCL format; only
+  the pattern was studied (gorilla, Apache 2.0, verified).
+
+After gorilla: 9Router (3 mechanisms, sequential), then the 4
+rework items, then the maturity phase.
