@@ -3,8 +3,11 @@
 - ``puspa.world.model``: the structured world model (predict before
   acting, update from observation, correct on misprediction).
   Beliefs cover prices, bills, schedules (how long a task kind
-  usually takes and how reliable its deadline is), and capabilities
-  (what the agent can and cannot do per task kind).
+  usually takes and how reliable its deadline is), capabilities
+  (what the agent can and cannot do per task kind), contacts
+  (how one contact usually responds, from observed interactions
+  only), and habits (recurring patterns in the user's own task
+  history, from repeated tasks only).
 - ``puspa.world.simulator``: a small deterministic bill plus price
   watch world used as proof that prediction accuracy improves.
 - ``puspa.world.noisy_simulator``: the same world with noisy price

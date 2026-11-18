@@ -8,9 +8,12 @@ does the whole round trip. One row per (user_id, agent_id); a later
 save overwrites the earlier row (upsert).
 
 What is stored: entities, relations, day, price beliefs, bill
-beliefs, schedule beliefs, capability beliefs, and belief
-contradictions. That is the durable knowledge: beliefs and the
-corrections folded into them. What is NOT stored: the transient
+beliefs, schedule beliefs, capability beliefs, contact beliefs,
+habit beliefs, and belief contradictions. That is the durable
+knowledge: beliefs and the corrections folded into them. No
+schema change was needed for the contact and habit beliefs:
+``world_beliefs.state`` is one JSONB snapshot, so the new keys
+ride in the same column (see ``infra/schema_world.sql``). What is NOT stored: the transient
 prediction stats (``stats``, ``episode_accuracies``,
 ``mispredictions``), the pending prediction, and the session
 learning loop (its corrections live in ``LearningLoop`` in memory;
@@ -43,6 +46,8 @@ from psycopg.types.json import Jsonb
 from .model import (
     _BillBelief,
     _CapabilityBelief,
+    _ContactBelief,
+    _HabitBelief,
     _PriceBelief,
     _ScheduleBelief,
     WorldModel,
@@ -56,6 +61,8 @@ _BELIEF_TYPES = {
     "bill_beliefs": _BillBelief,
     "schedule_beliefs": _ScheduleBelief,
     "capability_beliefs": _CapabilityBelief,
+    "contact_beliefs": _ContactBelief,
+    "habit_beliefs": _HabitBelief,
 }
 
 #: Keys of a world state dict (see ``WorldModel.state``).
@@ -67,6 +74,8 @@ _STATE_KEYS = (
     "bill_beliefs",
     "schedule_beliefs",
     "capability_beliefs",
+    "contact_beliefs",
+    "habit_beliefs",
     "belief_contradictions",
 )
 
