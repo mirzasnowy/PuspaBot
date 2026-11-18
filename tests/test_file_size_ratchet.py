@@ -73,9 +73,10 @@ BASELINE_LINES = {
     # Maturity phase status log, append-only by design (same rule as
     # status-brain-deepening.md); shrinks only by archiving old sections
     # into a dated archive doc, never by deleting history. Count
-    # updated with the Wave 8 + CI status entries (18 Nov 2026) and
-    # the Wave 9 status entries (18 Nov 2026).
-    "docs/status-maturity.md": 1429,
+    # updated with the Wave 8 + CI status entries (18 Nov 2026), the
+    # Wave 9 status entries (18 Nov 2026), and the Wave 10 G11 status
+    # entry (18 Nov 2026).
+    "docs/status-maturity.md": 1497,
 }
 
 #: Puspa-owned top-level directories covered by the ratchet.
