@@ -382,7 +382,9 @@ its own iteration with commit + push):
    below).
 3. LlamaIndex question decomposer: regex split on "and", "vs",
    ";" and "?" today, not an LLM decomposer. Fix: LLM-based
-   decomposer through the provider seam.
+   decomposer through the provider seam. DONE 18 Nov 2026,
+   commit ef5249b0c4d49f5fd3dfcd5f2c37f58d0e4bdcaf (see
+   Rework progress below).
 4. Sigstore: local shape only in `puspa/policy/signing.py`, no
    Fulcio, no Rekor, no real keyless identity. Fix: verify a
    real sigstore bundle OR rename the scope to "local keyless
@@ -451,6 +453,72 @@ Commit 94fbcf256deba5ad721f5a1a163c5f6e8c2ac5cd.
   workspace. Full suite SOLO after this push (with rework
   3 and 4 files also present): 1321 passed, 5 skipped,
   1 warning.
+
+### Rework 3: LLM query decomposer (done, 18 Nov 2026)
+
+Commit ef5249b0c4d49f5fd3dfcd5f2c37f58d0e4bdcaf.
+
+- `puspa/retrieval/reranker.py` (560 lines, decompose section
+  only; the cross-encoder part untouched) +
+  `tests/test_decomposer_llm.py` (new, 303 lines, 25 tests,
+  25 passed). `LLMQueryDecomposer(complete,
+  max_subquestions=4)` follows the seam already in the repo
+  (`JsonTripleExtractor` / `LLMTripleJudge`): one LLM call per
+  query, the prompt in `build_decompose_prompt()` asks for
+  JSON only `{"subquestions": [...]}` with each sub-question
+  self-contained (names and context repeated in each part,
+  like LlamaIndex `SubQuestionQueryEngine`); the reply is
+  parsed strictly by `parse_decompose_reply()`, deduped by
+  `_dedupe_subquestions()` (case-insensitive duplicates plus
+  a sub-question fully contained in a longer one are dropped,
+  LLM order kept), then capped at `max_subquestions`.
+  `Decomposition` carries `subquestions` + `source` (`"llm"`
+  or `"regex"`); `DecomposerError` (a `ValueError` subclass)
+  for an unusable LLM reply or a failed LLM call, rejected
+  clearly and NEVER silently replaced by the regex split.
+  `RegexQueryDecomposer` wraps the old `decompose_query`
+  unchanged as the explicit fallback with `source="regex"`.
+  `retrieve_with_decomposition(retrieve_fn, query, top_k,
+  max_subquestions, decomposer=None, llm_complete=None)` uses
+  `decomposer` when given, builds an `LLMQueryDecomposer`
+  from `llm_complete` when given, else the regex fallback;
+  both together is an error. Each merged entry records
+  `decomposition_source` and the sub-questions that retrieved
+  it. RRF and single-sub-question behavior unchanged. What
+  the tests prove: a stub LLM returns 3 self-contained
+  sub-questions for "cheap Galaxy S24 deal trustworthy and
+  compare with official store price", each repeating the
+  "Galaxy S24" context and different from the regex split;
+  a simple query stays whole; the prompt asks JSON only with
+  self-contained parts; a non-callable `complete`,
+  `max_subquestions=0`, and an empty query are rejected;
+  case-insensitive duplicates dropped; a short sub-question
+  contained in a longer one is dropped and the longer kept;
+  the result is capped at `max_subquestions`; 9 bad LLM
+  replies (empty string, not JSON, not an object, empty
+  list, not a list, empty string inside the list, non-string
+  item, wrong key) all raise `DecomposerError`; a raising
+  LLM call is wrapped in `DecomposerError`; retrieval with a
+  broken LLM raises instead of silently using regex; without
+  an LLM the result equals the old `decompose_query` with
+  `source="regex"`; each sub-question is retrieved (call
+  order follows the stub order), passages from each leg enter
+  the RRF merge with `decomposition_source="llm"`; an
+  injected decomposer object works; `decomposer` +
+  `llm_complete` together is rejected. Honest limits: the
+  default decomposer is still a seam/callable and NOT wired
+  to a live LLM — there is no `complete(prompt)` function
+  anywhere in the repo (the router only picks models and
+  prices them), so the default path is regex with
+  `source="regex"` recorded, not an LLM claim; follow-up is
+  to build a provider-layer `complete(prompt)` (cheapest
+  router reader model, for example `google/gemma-3-4b-it`)
+  and wire it via `llm_complete=` / `LLMQueryDecomposer`.
+  `_dedupe_subquestions` uses case-insensitive substring
+  matching, so a short sub-question whose words happen to sit
+  inside a longer one is dropped; for normal LLM output this
+  is right, but a legitimate one-word generic sub-question
+  could be dropped too. No new dependency.
 
 ### Rework 2: HippoRAG 2 triple filter, LLM judge (done, 18 Nov 2026)
 
