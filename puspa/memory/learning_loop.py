@@ -73,7 +73,11 @@ behaviour is testable without a database. Durable storage is
 an adapter: pass a `procedure_store` (an object with
 `record_successful_task` / `list_procedures` / `mark_run`,
 such as the `puspa.memory.procedural` module) and drafts are
-also persisted as trial procedures there.
+also persisted as trial procedures there. The correction table
+itself is persisted through `puspa.memory.loop_store`
+(`loop_state` / `restore_loop_state` below): corrections plus
+the experiences that carry them survive a restart, while
+skills, manual edits, and feedback proposals stay session-only.
 """
 
 from __future__ import annotations
@@ -312,6 +316,54 @@ class LearningLoop:
         if correction is None:
             return default
         return correction["observed"]
+
+    # -- durable state: corrections survive a restart ----------
+
+    def loop_state(self):
+        """Durable snapshot: the correction table plus its experiences.
+
+        Plain dicts only, so the store (`puspa.memory.loop_store`)
+        can JSON-encode them. Only corrections and the experiences
+        that carry them are in the snapshot: positive feedback,
+        gaps without a correction, draft skills, manual edits, and
+        feedback proposals are session-only and are not restored.
+        Gaps are rebuilt from the corrections on restore.
+        """
+        return {
+            "corrections": {
+                task: dict(correction)
+                for task, correction in self.corrections.items()
+            },
+            "experiences": [dict(exp) for exp in self.experiences],
+        }
+
+    def restore_loop_state(self, state):
+        """Replace this loop's corrections with a saved snapshot.
+
+        `state` is a dict as returned by `loop_state` (corrections
+        plus experiences). Gaps are rebuilt from the corrections
+        (count and last error), so `propose_next_task` offers the
+        same retry after a restart and `predict` answers with the
+        same corrected values. Skills, manual edits, and feedback
+        proposals are not in the snapshot and are left untouched.
+        Returns the restored snapshot.
+        """
+        if not isinstance(state, dict):
+            raise ValueError("state must be a dict")
+        corrections = state.get("corrections") or {}
+        experiences = state.get("experiences") or []
+        self.corrections = {
+            str(task): dict(correction)
+            for task, correction in corrections.items()
+        }
+        self.experiences = [dict(exp) for exp in experiences]
+        self.gaps = {}
+        for task, correction in self.corrections.items():
+            self.gaps[task] = {
+                "mispredictions": int(correction.get("count", 1)),
+                "last_error": correction.get("error"),
+            }
+        return self.loop_state()
 
     # -- curriculum: propose the next task from observed gaps ----
 
