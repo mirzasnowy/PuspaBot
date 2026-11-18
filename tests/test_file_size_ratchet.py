@@ -17,6 +17,13 @@ Scope: Puspa-owned source and docs only. Excluded, with reasons:
 - ``backups/`` and ``cassettes/`` — snapshots and recorded fixtures, not
   source.
 - ``.venv/``, ``__pycache__`` and ``.pytest_cache`` — generated.
+- ``node_modules/`` and ``dist/`` — generated (npm install, build output).
+- ``package-lock.json`` / ``yarn.lock`` / ``pnpm-lock.yaml`` — generated
+  lockfiles; committed with the code they lock, but not hand-written
+  source, so the ratchet does not count them.
+- Files named ``generated-*`` — generated output (e.g. the TypeScript
+  client types from the OpenAPI spec); the spec is the source of
+  truth and it IS counted, the output is reproducible from it.
 
 Line counting matches ``wc -l`` for files that end with a newline
 (``bytes.splitlines()``); all four baseline files do.
@@ -97,7 +104,20 @@ SKIPPED_DIRS = {
     "backups",
     "cassettes",
     "node_modules",
+    "dist",
 }
+
+#: Generated lockfiles: committed with the code they lock, but not
+#: hand-written source, so the ratchet does not count their lines.
+SKIPPED_FILES = {
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+}
+
+#: Generated output (e.g. TypeScript types from the OpenAPI spec):
+#: reproducible from a counted source file, so not counted itself.
+GENERATED_PREFIX = "generated-"
 
 
 def _repo_root() -> Path:
@@ -119,12 +139,16 @@ def _scoped_files(root: Path) -> list[Path]:
                 continue
             if any(part in SKIPPED_DIRS for part in path.relative_to(root).parts):
                 continue
+            if path.name in SKIPPED_FILES:
+                continue
+            if path.name.startswith(GENERATED_PREFIX):
+                continue
             if path.suffix not in COUNTED_SUFFIXES:
                 continue
             files.append(path)
     # Root-level text files (README, NOTICE, helper scripts).
     for path in sorted(root.iterdir()):
-        if path.is_file() and path.suffix in COUNTED_SUFFIXES:
+        if path.is_file() and path.name not in SKIPPED_FILES and not path.name.startswith(GENERATED_PREFIX) and path.suffix in COUNTED_SUFFIXES:
             files.append(path)
     return files
 
