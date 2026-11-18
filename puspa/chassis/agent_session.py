@@ -35,6 +35,7 @@ sebelumnya. ``reset_session_brains`` hanya untuk tes.
 
 from __future__ import annotations
 
+import contextlib
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -76,10 +77,8 @@ class AgentBrain:
             self.learning_loop = LearningLoop()
         # Route the model's misprediction reports to this session's
         # loop instead of the module-level default loop.
-        try:
+        with contextlib.suppress(Exception):
             self.world_model.learning_loop = self.learning_loop
-        except Exception:
-            pass
 
 
 #: Session brains, keyed by (user_id, agent_id). In-memory only.
@@ -105,10 +104,8 @@ def _load_saved_loop(brain, dsn):
     if saved is None:
         return
     brain.learning_loop = saved
-    try:
+    with contextlib.suppress(Exception):
         brain.world_model.learning_loop = saved
-    except Exception:
-        pass
 
 
 def get_session_brain(user_id: str, agent_id: str, *, dsn=None) -> AgentBrain:
@@ -172,19 +169,20 @@ def bind_turn(
     if world_model is not None or learning_loop is not None:
         brain = _SESSION_BRAINS.get((str(user_id), str(agent_id)))
         if brain is None:
-            brain = AgentBrain(user_id=str(user_id), agent_id=str(agent_id),
-                              world_model=world_model,
-                              learning_loop=learning_loop)
+            brain = AgentBrain(
+                user_id=str(user_id),
+                agent_id=str(agent_id),
+                world_model=world_model,
+                learning_loop=learning_loop,
+            )
             _SESSION_BRAINS[(str(user_id), str(agent_id))] = brain
         else:
             if world_model is not None:
                 brain.world_model = world_model
             if learning_loop is not None:
                 brain.learning_loop = learning_loop
-            try:
+            with contextlib.suppress(Exception):
                 brain.world_model.learning_loop = brain.learning_loop
-            except Exception:
-                pass
     else:
         get_session_brain(user_id, agent_id, dsn=dsn)
     now = int(time.time())
@@ -195,10 +193,7 @@ def bind_turn(
         "tools": list(tools),
         "domains": list(domains or []),
         "connectors": dict(connector or {}),
-        "budget": dict(
-            budget
-            or {"step_max": 25, "token_max": 100_000, "rupiah_max": 0}
-        ),
+        "budget": dict(budget or {"step_max": 25, "token_max": 100_000, "rupiah_max": 0}),
         "exp": now + exp_seconds,
         "iat": now,
         "parent": None,

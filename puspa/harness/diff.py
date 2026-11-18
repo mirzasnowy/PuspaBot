@@ -57,7 +57,9 @@ class DiffApplyError(Exception):
     partially.
     """
 
-    def __init__(self, message: str, *, failed_hunks: list[int] | None = None, detail: str = "") -> None:
+    def __init__(
+        self, message: str, *, failed_hunks: list[int] | None = None, detail: str = ""
+    ) -> None:
         super().__init__(message)
         self.failed_hunks = list(failed_hunks or [])
         self.detail = detail
@@ -116,11 +118,9 @@ def is_diff(text: str) -> bool:
     if not lines:
         return False
     for line in lines:
-        if line.startswith("diff --git ") or line.startswith("--- ") or line.startswith("+++ "):
+        if line.startswith(("diff --git ", "--- ", "+++ ")):
             continue
-        if line.startswith("@@ "):
-            return True
-        return False
+        return bool(line.startswith("@@ "))
     return False
 
 
@@ -141,15 +141,14 @@ def parse_diff(diff_text: str) -> ParsedDiff:
         line = raw_line
         if line.startswith("+++ "):
             name = line[4:].strip()
-            if name.startswith("b/"):
-                name = name[2:]
+            name = name.removeprefix("b/")
             filename = name
             continue
         if line.startswith("--- "):
             continue
         if line.startswith("diff --git "):
             continue
-        if line.startswith("Index: ") or line.startswith("===="):
+        if line.startswith(("Index: ", "====")):
             continue
         match = _HUNK_HEADER.match(line)
         if match:
@@ -214,16 +213,18 @@ def _find_hunk(original: list[str], hunk: DiffHunk, start_at: int) -> int | None
     old block (pure insertion) matches at its declared position.
     """
     if not hunk.old_lines:
-        anchor = max(0, min(hunk.old_start - 1 + start_at, len(original)))
-        return anchor
+        return max(0, min(hunk.old_start - 1 + start_at, len(original)))
     expected = max(0, hunk.old_start - 1 + start_at)
     width = len(hunk.old_lines)
-    if expected + width <= len(original) and original[expected:expected + width] == hunk.old_lines:
+    if (
+        expected + width <= len(original)
+        and original[expected : expected + width] == hunk.old_lines
+    ):
         return expected
     matches = [
         index
         for index in range(len(original) - width + 1)
-        if original[index:index + width] == hunk.old_lines
+        if original[index : index + width] == hunk.old_lines
     ]
     if len(matches) == 1:
         return matches[0]
@@ -272,11 +273,10 @@ def apply_diff(original_text: str, diff_text: str) -> tuple[str, list[int]]:
     # earlier positions stay valid.
     result = list(original)
     for hunk, found in reversed(positions):
-        result[found:found + len(hunk.old_lines)] = hunk.new_lines
+        result[found : found + len(hunk.old_lines)] = hunk.new_lines
     new_text = "\n".join(result)
-    if original_text.endswith("\n") or result:
-        # Preserve the original trailing newline when the result is
-        # non-empty; splitlines/join drops it otherwise.
-        if original_text.endswith("\n"):
-            new_text += "\n"
+    if original_text.endswith("\n"):
+        # Preserve the original trailing newline; splitlines/join
+        # drops it otherwise.
+        new_text += "\n"
     return new_text, [hunk.number for hunk, _ in positions]

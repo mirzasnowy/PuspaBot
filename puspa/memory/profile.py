@@ -103,40 +103,38 @@ def get_profile(user_id, agent_id=None, dsn=None):
     Selalu memuat profil inti (agen_id NULL, milik Puspa); ditambah
     fakta agen itu sendiri kalau `agen_id` diberikan.
     """
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            if agent_id is None:
-                cur.execute(
-                    "SELECT key, value FROM profile_facts WHERE user_id = %s "
-                    "AND agent_id IS NULL AND status = 'active'",
-                    (user_id,),
-                )
-            else:
-                cur.execute(
-                    "SELECT key, value FROM profile_facts WHERE user_id = %s "
-                    "AND (agent_id IS NULL OR agent_id = %s) AND status = 'active'",
-                    (user_id, agent_id),
-                )
-            return {r["key"]: r["value"] for r in cur.fetchall()}
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        if agent_id is None:
+            cur.execute(
+                "SELECT key, value FROM profile_facts WHERE user_id = %s "
+                "AND agent_id IS NULL AND status = 'active'",
+                (user_id,),
+            )
+        else:
+            cur.execute(
+                "SELECT key, value FROM profile_facts WHERE user_id = %s "
+                "AND (agent_id IS NULL OR agent_id = %s) AND status = 'active'",
+                (user_id, agent_id),
+            )
+        return {r["key"]: r["value"] for r in cur.fetchall()}
 
 
 def list_facts(user_id, key=None, status=None, include_history=False, dsn=None):
     """Daftar fakta user; `include_history=True` memuat versi `diganti`."""
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            query = "SELECT * FROM profile_facts WHERE user_id = %s"
-            params = [user_id]
-            if key is not None:
-                query += " AND key = %s"
-                params.append(key)
-            if status is not None:
-                query += " AND status = %s"
-                params.append(status)
-            elif not include_history:
-                query += " AND status IN ('active', 'proposed')"
-            query += " ORDER BY created_at ASC"
-            cur.execute(query, params)
-            return [_row_to_fact(r) for r in cur.fetchall()]
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        query = "SELECT * FROM profile_facts WHERE user_id = %s"
+        params = [user_id]
+        if key is not None:
+            query += " AND key = %s"
+            params.append(key)
+        if status is not None:
+            query += " AND status = %s"
+            params.append(status)
+        elif not include_history:
+            query += " AND status IN ('active', 'proposed')"
+        query += " ORDER BY created_at ASC"
+        cur.execute(query, params)
+        return [_row_to_fact(r) for r in cur.fetchall()]
 
 
 def list_proposals(user_id, dsn=None):
@@ -195,8 +193,13 @@ def reject_proposal(fact_id, user_id, dsn=None):
 def correct_fact(user_id, key, value, agent_id=None, event_id=None, dsn=None):
     """Koreksi user: sama dengan tambah fakta `dikonfirmasi_user`."""
     return add_fact(
-        user_id, key, value, "user_confirmed",
-        agent_id=agent_id, event_id=event_id, dsn=dsn,
+        user_id,
+        key,
+        value,
+        "user_confirmed",
+        agent_id=agent_id,
+        event_id=event_id,
+        dsn=dsn,
     )
 
 

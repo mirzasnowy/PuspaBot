@@ -35,11 +35,10 @@ from __future__ import annotations
 import os
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from .config import TASK_COST_CEILING_IDR, BillingConfig, default_config
 
-UTC = timezone.utc
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 USAGE_SCHEMA_SQL = """
@@ -103,8 +102,7 @@ class UsageRow:
             raise ValueError("usage ledger currency is always IDR")
         if self.cost_idr < 0:
             raise ValueError("cost_idr must be >= 0")
-        for name in ("input_tokens", "output_tokens", "cached_tokens",
-                     "steps", "tool_errors"):
+        for name in ("input_tokens", "output_tokens", "cached_tokens", "steps", "tool_errors"):
             if getattr(self, name) < 0:
                 raise ValueError(f"{name} must be >= 0")
         if self.recorded_at is None:
@@ -130,8 +128,7 @@ class UsageRow:
             "currency": self.currency,
             "provider": self.provider,
             "module_id": self.module_id,
-            "recorded_at": self.recorded_at.isoformat()
-            if self.recorded_at else None,
+            "recorded_at": self.recorded_at.isoformat() if self.recorded_at else None,
         }
 
 
@@ -145,16 +142,14 @@ class MemoryUsageStore:
         self.rows.append(row)
         return row
 
-    def rows_for_user(self, user_id: str,
-                      since: datetime | None = None) -> list[UsageRow]:
+    def rows_for_user(self, user_id: str, since: datetime | None = None) -> list[UsageRow]:
         rows = [r for r in self.rows if r.user_id == user_id]
         if since is not None:
             rows = [r for r in rows if r.recorded_at and r.recorded_at >= since]
         return rows
 
     def rows_for_task(self, user_id: str, task_id: str) -> list[UsageRow]:
-        return [r for r in self.rows
-                if r.user_id == user_id and r.task_id == task_id]
+        return [r for r in self.rows if r.user_id == user_id and r.task_id == task_id]
 
     def clear(self) -> None:
         self.rows.clear()
@@ -191,63 +186,85 @@ class PostgresUsageStore:
                     "  tools, tool_errors, currency, provider, module_id)"
                     " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,"
                     "  %s, %s, %s, %s, %s, %s, %s, %s)",
-                    (row.recorded_at, row.user_id, row.bot_id, row.thread_id,
-                     row.task_id, row.driver, row.model, row.input_tokens,
-                     row.output_tokens, row.cached_tokens, row.cost_idr,
-                     row.trigger, row.outcome, row.steps, Jsonb(row.tools),
-                     row.tool_errors, row.currency, row.provider,
-                     row.module_id))
+                    (
+                        row.recorded_at,
+                        row.user_id,
+                        row.bot_id,
+                        row.thread_id,
+                        row.task_id,
+                        row.driver,
+                        row.model,
+                        row.input_tokens,
+                        row.output_tokens,
+                        row.cached_tokens,
+                        row.cost_idr,
+                        row.trigger,
+                        row.outcome,
+                        row.steps,
+                        Jsonb(row.tools),
+                        row.tool_errors,
+                        row.currency,
+                        row.provider,
+                        row.module_id,
+                    ),
+                )
             conn.commit()
         return row
 
     @staticmethod
     def _from_db(record: dict) -> UsageRow:
         return UsageRow(
-            user_id=record["user_id"], bot_id=record["bot_id"],
-            thread_id=record["thread_id"], task_id=record["task_id"],
-            driver=record["driver"], model=record["model"],
+            user_id=record["user_id"],
+            bot_id=record["bot_id"],
+            thread_id=record["thread_id"],
+            task_id=record["task_id"],
+            driver=record["driver"],
+            model=record["model"],
             input_tokens=record["input_tokens"],
             output_tokens=record["output_tokens"],
             cached_tokens=record["cached_tokens"],
-            cost_idr=record["cost_idr"], trigger=record["trigger"],
-            outcome=record["outcome"], steps=record["steps"],
+            cost_idr=record["cost_idr"],
+            trigger=record["trigger"],
+            outcome=record["outcome"],
+            steps=record["steps"],
             tools=list(record["tools"] or []),
             tool_errors=record["tool_errors"],
-            currency=record["currency"], provider=record["provider"],
+            currency=record["currency"],
+            provider=record["provider"],
             module_id=record["module_id"],
-            recorded_at=record["recorded_at"])
+            recorded_at=record["recorded_at"],
+        )
 
-    def rows_for_user(self, user_id: str,
-                      since: datetime | None = None) -> list[UsageRow]:
+    def rows_for_user(self, user_id: str, since: datetime | None = None) -> list[UsageRow]:
         import psycopg
         from psycopg.rows import dict_row
 
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
-            with conn.cursor() as cur:
-                if since is None:
-                    cur.execute(
-                        "SELECT * FROM billing_usage_rows"
-                        " WHERE user_id = %s ORDER BY recorded_at",
-                        (user_id,))
-                else:
-                    cur.execute(
-                        "SELECT * FROM billing_usage_rows"
-                        " WHERE user_id = %s AND recorded_at >= %s"
-                        " ORDER BY recorded_at",
-                        (user_id, since))
-                return [self._from_db(r) for r in cur.fetchall()]
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn, conn.cursor() as cur:
+            if since is None:
+                cur.execute(
+                    "SELECT * FROM billing_usage_rows WHERE user_id = %s ORDER BY recorded_at",
+                    (user_id,),
+                )
+            else:
+                cur.execute(
+                    "SELECT * FROM billing_usage_rows"
+                    " WHERE user_id = %s AND recorded_at >= %s"
+                    " ORDER BY recorded_at",
+                    (user_id, since),
+                )
+            return [self._from_db(r) for r in cur.fetchall()]
 
     def rows_for_task(self, user_id: str, task_id: str) -> list[UsageRow]:
         import psycopg
         from psycopg.rows import dict_row
 
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT * FROM billing_usage_rows"
-                    " WHERE user_id = %s AND task_id = %s ORDER BY recorded_at",
-                    (user_id, task_id))
-                return [self._from_db(r) for r in cur.fetchall()]
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM billing_usage_rows"
+                " WHERE user_id = %s AND task_id = %s ORDER BY recorded_at",
+                (user_id, task_id),
+            )
+            return [self._from_db(r) for r in cur.fetchall()]
 
 
 #: Process-wide in-memory store used when ``task_budget_remaining`` is
@@ -260,10 +277,14 @@ def default_memory_store() -> MemoryUsageStore:
     return _DEFAULT_MEMORY_STORE
 
 
-def task_budget_remaining(user_id: str, task_id: str, *,
-                          cap_rp: int = TASK_COST_CEILING_IDR,
-                          dsn: str | None = None,
-                          store=None) -> int:
+def task_budget_remaining(
+    user_id: str,
+    task_id: str,
+    *,
+    cap_rp: int = TASK_COST_CEILING_IDR,
+    dsn: str | None = None,
+    store=None,
+) -> int:
     """Rupiah left for one task: cap minus recorded usage for that task.
 
     Shared interface with the scheduler (G8): name and signature must
@@ -277,8 +298,9 @@ def task_budget_remaining(user_id: str, task_id: str, *,
     return max(0, cap_rp - spent)
 
 
-def battery_view(rows: list[UsageRow], *, now: datetime | None = None,
-                 days: int = 7, cap_idr: int | None = None) -> dict:
+def battery_view(
+    rows: list[UsageRow], *, now: datetime | None = None, days: int = 7, cap_idr: int | None = None
+) -> dict:
     """Battery view: totals for the last ``days`` days, per bot/routine.
 
     Each entry carries its total cost, its share of the total, and the
@@ -297,10 +319,8 @@ def battery_view(rows: list[UsageRow], *, now: datetime | None = None,
 
     def _entries(grouped: dict[str, int]) -> list[dict]:
         return [
-            {"key": key, "total_idr": value,
-             "share": (value / total) if total else 0.0}
-            for key, value in sorted(grouped.items(),
-                                     key=lambda kv: -kv[1])
+            {"key": key, "total_idr": value, "share": (value / total) if total else 0.0}
+            for key, value in sorted(grouped.items(), key=lambda kv: -kv[1])
         ]
 
     return {
@@ -315,9 +335,9 @@ def battery_view(rows: list[UsageRow], *, now: datetime | None = None,
     }
 
 
-def forecast_routines(rows: list[UsageRow], *,
-                      frequent_min_runs: int = 5,
-                      costly_min_avg_idr: int = 500) -> list[dict]:
+def forecast_routines(
+    rows: list[UsageRow], *, frequent_min_runs: int = 5, costly_min_avg_idr: int = 500
+) -> list[dict]:
     """Forecast per routine: ``"frequent"`` and/or ``"costly"``.
 
     A routine is frequent when it ran at least ``frequent_min_runs``
@@ -340,18 +360,28 @@ def forecast_routines(rows: list[UsageRow], *,
         if avg >= costly_min_avg_idr:
             flags.append("costly")
         if flags:
-            forecast.append({
-                "routine": key, "runs": runs[key],
-                "total_idr": cost[key], "avg_idr": avg, "flags": flags,
-            })
+            forecast.append(
+                {
+                    "routine": key,
+                    "runs": runs[key],
+                    "total_idr": cost[key],
+                    "avg_idr": avg,
+                    "flags": flags,
+                }
+            )
     forecast.sort(key=lambda item: -item["total_idr"])
     return forecast
 
 
-def upsell_due(*, bots: int, messages: int, routines: int,
-               snoozed_until: datetime | None = None,
-               now: datetime | None = None,
-               config: BillingConfig | None = None) -> dict:
+def upsell_due(
+    *,
+    bots: int,
+    messages: int,
+    routines: int,
+    snoozed_until: datetime | None = None,
+    now: datetime | None = None,
+    config: BillingConfig | None = None,
+) -> dict:
     """Should the upsell be shown? Invested thresholds + 10-day snooze.
 
     A user counts as invested at 3 bots, 50 messages, or 3 routines
@@ -371,8 +401,7 @@ def upsell_due(*, bots: int, messages: int, routines: int,
         "due": due,
         "invested": invested,
         "snoozed": snoozed,
-        "snooze_until": (now + timedelta(days=cfg.upsell_snooze_days)).isoformat()
-        if due else None,
+        "snooze_until": (now + timedelta(days=cfg.upsell_snooze_days)).isoformat() if due else None,
         "thresholds": {
             "bots": cfg.invested_min_bots,
             "messages": cfg.invested_min_messages,

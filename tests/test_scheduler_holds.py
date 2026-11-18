@@ -1,6 +1,6 @@
 """Tests for holds, quiet hours, and check pacing (holds.py). In-memory."""
 
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta
 
 import pytest
 
@@ -11,10 +11,11 @@ from puspa.scheduler.holds import (
     parse_quiet_window,
 )
 
-NOW = datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
 
 
 # --- holds ------------------------------------------------------------------
+
 
 def test_hold_blocks_until_cleared():
     holds = HoldStore()
@@ -44,6 +45,7 @@ def test_holds_are_scoped():
 
 # --- pacing -------------------------------------------------------------------
 
+
 def test_pacer_allows_first_check_then_enforces_interval():
     pacer = Pacer(min_interval=timedelta(hours=1))
     assert pacer.should_check("price", NOW) is True
@@ -67,6 +69,7 @@ def test_pacer_rejects_negative_interval():
 
 # --- quiet hours --------------------------------------------------------------
 
+
 def test_quiet_window_parsing():
     assert parse_quiet_window("23:00-07:00") == (time(23, 0), time(7, 0))
     with pytest.raises(ValueError):
@@ -74,17 +77,14 @@ def test_quiet_window_parsing():
 
 
 def test_is_quiet_inside_and_outside_window():
-    assert is_quiet(datetime(2026, 11, 18, 0, 30, tzinfo=timezone.utc),
-                    "23:00-07:00") is True
-    assert is_quiet(datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc),
-                    "23:00-07:00") is False
-    assert is_quiet(datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc),
-                    "12:00-13:00") is True
-    assert is_quiet(datetime(2026, 11, 18, 13, 0, tzinfo=timezone.utc),
-                    "12:00-13:00") is False
+    assert is_quiet(datetime(2026, 11, 18, 0, 30, tzinfo=UTC), "23:00-07:00") is True
+    assert is_quiet(datetime(2026, 11, 18, 12, 0, tzinfo=UTC), "23:00-07:00") is False
+    assert is_quiet(datetime(2026, 11, 18, 12, 0, tzinfo=UTC), "12:00-13:00") is True
+    assert is_quiet(datetime(2026, 11, 18, 13, 0, tzinfo=UTC), "12:00-13:00") is False
 
 
 def test_is_quiet_applies_timezone():
     # 00:30 UTC is 07:30 Asia/Jakarta: outside a 23:00-07:00 window.
-    assert is_quiet(datetime(2026, 11, 18, 0, 30, tzinfo=timezone.utc),
-                    "23:00-07:00", "Asia/Jakarta") is False
+    assert (
+        is_quiet(datetime(2026, 11, 18, 0, 30, tzinfo=UTC), "23:00-07:00", "Asia/Jakarta") is False
+    )

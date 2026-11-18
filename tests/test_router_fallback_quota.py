@@ -32,7 +32,7 @@ holder the QuotaStore reads through ``now_fn``.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -52,9 +52,11 @@ from puspa.router.fallback import (
 from puspa.router.quota import QuotaStore
 from puspa.router.router import (
     choose,
-    choose_with_quota as router_choose_with_quota,
     compute_cost,
     default_chain,
+)
+from puspa.router.router import (
+    choose_with_quota as router_choose_with_quota,
 )
 from puspa.runtime.budget import BudgetExhausted, BudgetTracker
 
@@ -73,7 +75,7 @@ def _reset_tables():
 # Helpers: fake clock + scripted fake providers
 # ---------------------------------------------------------------------------
 
-BASE_TIME = datetime(2026, 11, 18, 12, 0, 0, tzinfo=timezone.utc)
+BASE_TIME = datetime(2026, 11, 18, 12, 0, 0, tzinfo=UTC)
 
 
 class FakeClock:
@@ -100,8 +102,7 @@ def scripted_provider(script):
     raise. A list is consumed in order (one entry per call). Calls
     are recorded on the returned function as ``.calls`` (models).
     """
-    remaining = {model: (list(v) if isinstance(v, list) else [v])
-                 for model, v in script.items()}
+    remaining = {model: (list(v) if isinstance(v, list) else [v]) for model, v in script.items()}
     calls: list[str] = []
 
     def call_fn(entry):
@@ -120,10 +121,10 @@ def scripted_provider(script):
 # Chain shape: subscription -> cheap -> free, expensive first
 # ---------------------------------------------------------------------------
 
+
 def test_chain_order_and_distinct_models():
     chain = build_chain("pembaca")
-    assert [entry.tier for entry in chain] == [
-        TIER_SUBSCRIPTION, TIER_CHEAP, TIER_FREE]
+    assert [entry.tier for entry in chain] == [TIER_SUBSCRIPTION, TIER_CHEAP, TIER_FREE]
     models = [entry.model for entry in chain]
     assert len(set(models)) == 3
     totals = [e.rp_per_1k_input + e.rp_per_1k_output for e in chain]
@@ -143,13 +144,11 @@ def test_chain_for_planner_uses_reference_passed_models():
 def test_verifier_chain_excludes_creator_family():
     chain = build_chain("pemeriksa", creator_family="deepseek")
     assert all(entry.family != "deepseek" for entry in chain)
-    assert [entry.tier for entry in chain] == [
-        TIER_SUBSCRIPTION, TIER_CHEAP, TIER_FREE]
+    assert [entry.tier for entry in chain] == [TIER_SUBSCRIPTION, TIER_CHEAP, TIER_FREE]
 
 
 def test_router_default_chain_wiring_matches_fallback():
-    assert [e.model for e in default_chain("pembaca")] == [
-        e.model for e in build_chain("pembaca")]
+    assert [e.model for e in default_chain("pembaca")] == [e.model for e in build_chain("pembaca")]
 
 
 def test_empty_chain_rejected():
@@ -166,19 +165,21 @@ def test_unknown_role_rejected():
 # Fallback really switches tiers on 429 / 5xx / quota exhaustion
 # ---------------------------------------------------------------------------
 
+
 def test_first_tier_429_then_second_succeeds():
     chain = build_chain("pembaca")
     first, second = chain[0].model, chain[1].model
-    call_fn = scripted_provider({
-        first: RateLimited("slow down", retry_after_seconds=30),
-        second: CallResult("done-by-cheap", 1000, 500),
-    })
+    call_fn = scripted_provider(
+        {
+            first: RateLimited("slow down", retry_after_seconds=30),
+            second: CallResult("done-by-cheap", 1000, 500),
+        }
+    )
     result = call_with_fallback(chain, call_fn)
     assert result.value == "done-by-cheap"
     assert result.tier_used.model == second
     assert result.tier_used.tier == TIER_CHEAP
-    assert [a.tier for a in result.attempts] == [
-        TIER_SUBSCRIPTION, TIER_CHEAP]
+    assert [a.tier for a in result.attempts] == [TIER_SUBSCRIPTION, TIER_CHEAP]
     assert result.attempts[0].outcome == "failed"
     assert result.attempts[0].reason == "rate_limited"
     assert result.attempts[0].status == 429
@@ -195,10 +196,12 @@ def test_first_tier_429_then_second_succeeds():
 def test_first_tier_5xx_then_second_succeeds():
     chain = build_chain("pembaca")
     first, second = chain[0].model, chain[1].model
-    call_fn = scripted_provider({
-        first: ProviderError("upstream down", status=503),
-        second: CallResult("done-by-cheap", 200, 100),
-    })
+    call_fn = scripted_provider(
+        {
+            first: ProviderError("upstream down", status=503),
+            second: CallResult("done-by-cheap", 200, 100),
+        }
+    )
     result = call_with_fallback(chain, call_fn)
     assert result.value == "done-by-cheap"
     assert result.tier_used.tier == TIER_CHEAP
@@ -209,10 +212,12 @@ def test_first_tier_5xx_then_second_succeeds():
 def test_quota_exhausted_signal_falls_through():
     chain = build_chain("pembaca")
     first, second = chain[0].model, chain[1].model
-    call_fn = scripted_provider({
-        first: QuotaExhaustedError("insufficient_quota", status=429),
-        second: CallResult("done-by-cheap", 100, 50),
-    })
+    call_fn = scripted_provider(
+        {
+            first: QuotaExhaustedError("insufficient_quota", status=429),
+            second: CallResult("done-by-cheap", 100, 50),
+        }
+    )
     result = call_with_fallback(chain, call_fn)
     assert result.tier_used.tier == TIER_CHEAP
     assert result.attempts[0].reason == "quota_exhausted"
@@ -223,13 +228,14 @@ def test_429_marks_provider_blocked_in_quota_store():
     clock = FakeClock()
     store = make_store(clock)
     chain = build_chain("pembaca")
-    seed_chain_quotas(store, chain, limit_tokens=100000,
-                      reset_after_seconds=18000)
+    seed_chain_quotas(store, chain, limit_tokens=100000, reset_after_seconds=18000)
     first = chain[0].model
-    call_fn = scripted_provider({
-        first: RateLimited("slow down", retry_after_seconds=120),
-        chain[1].model: CallResult("ok", 10, 5),
-    })
+    call_fn = scripted_provider(
+        {
+            first: RateLimited("slow down", retry_after_seconds=120),
+            chain[1].model: CallResult("ok", 10, 5),
+        }
+    )
     call_with_fallback(chain, call_fn, quota_store=store)
     assert store.is_exhausted(chain[0].provider_key) is True
     assert store.remaining_tokens(chain[0].provider_key) == 0
@@ -241,14 +247,15 @@ def test_exhausted_tier_skipped_without_being_called():
     clock = FakeClock()
     store = make_store(clock)
     chain = build_chain("pembaca")
-    seed_chain_quotas(store, chain, limit_tokens=100,
-                      reset_after_seconds=18000)
+    seed_chain_quotas(store, chain, limit_tokens=100, reset_after_seconds=18000)
     # Drain the subscription tier's whole quota.
     store.record_usage(chain[0].provider_key, 60, 40)
     assert store.is_exhausted(chain[0].provider_key) is True
-    call_fn = scripted_provider({
-        chain[1].model: CallResult("done-by-cheap", 10, 5),
-    })
+    call_fn = scripted_provider(
+        {
+            chain[1].model: CallResult("done-by-cheap", 10, 5),
+        }
+    )
     result = call_with_fallback(chain, call_fn, quota_store=store)
     assert chain[0].model not in call_fn.calls
     assert result.tier_used.tier == TIER_CHEAP
@@ -262,23 +269,26 @@ def test_exhausted_tier_skipped_without_being_called():
 
 def test_all_tiers_fail_reports_every_tier_and_reason():
     chain = build_chain("pembaca")
-    call_fn = scripted_provider({
-        chain[0].model: RateLimited("slow down"),
-        chain[1].model: ProviderError("upstream down", status=503),
-        chain[2].model: QuotaExhaustedError("insufficient_quota"),
-    })
+    call_fn = scripted_provider(
+        {
+            chain[0].model: RateLimited("slow down"),
+            chain[1].model: ProviderError("upstream down", status=503),
+            chain[2].model: QuotaExhaustedError("insufficient_quota"),
+        }
+    )
     with pytest.raises(AllTiersFailed) as excinfo:
         call_with_fallback(chain, call_fn)
     error = excinfo.value
     assert len(error.attempts) == 3
     assert [a.outcome for a in error.attempts] == ["failed"] * 3
     assert [a.reason for a in error.attempts] == [
-        "rate_limited", "provider_error", "quota_exhausted"]
+        "rate_limited",
+        "provider_error",
+        "quota_exhausted",
+    ]
     assert len(error.hops) == 2
-    assert (error.hops[0].from_tier, error.hops[0].to_tier) == (
-        TIER_SUBSCRIPTION, TIER_CHEAP)
-    assert (error.hops[1].from_tier, error.hops[1].to_tier) == (
-        TIER_CHEAP, TIER_FREE)
+    assert (error.hops[0].from_tier, error.hops[0].to_tier) == (TIER_SUBSCRIPTION, TIER_CHEAP)
+    assert (error.hops[1].from_tier, error.hops[1].to_tier) == (TIER_CHEAP, TIER_FREE)
     message = str(error)
     for entry in chain:
         assert entry.tier in message
@@ -287,10 +297,12 @@ def test_all_tiers_fail_reports_every_tier_and_reason():
 
 def test_deterministic_400_does_not_fall_through():
     chain = build_chain("pembaca")
-    call_fn = scripted_provider({
-        chain[0].model: NonRetryableError("bad request", status=400),
-        chain[1].model: CallResult("must-not-run", 1, 1),
-    })
+    call_fn = scripted_provider(
+        {
+            chain[0].model: NonRetryableError("bad request", status=400),
+            chain[1].model: CallResult("must-not-run", 1, 1),
+        }
+    )
     with pytest.raises(NonRetryableError) as excinfo:
         call_with_fallback(chain, call_fn)
     assert excinfo.value.status == 400
@@ -324,13 +336,13 @@ def test_classify_failure_table():
 # Quota tracking: remaining, reset countdown, rollover, headers
 # ---------------------------------------------------------------------------
 
+
 def test_quota_remaining_and_cost_after_usage():
     clock = FakeClock()
     store = make_store(clock)
     chain = build_chain("pembaca")
     entry = chain[0]
-    seed_chain_quotas(store, chain, limit_tokens=1000,
-                      reset_after_seconds=18000)
+    seed_chain_quotas(store, chain, limit_tokens=1000, reset_after_seconds=18000)
     assert store.remaining_tokens(entry.provider_key) == 1000
     assert store.seconds_until_reset(entry.provider_key) == 18000
     cost = store.record_usage(entry.provider_key, 400, 100)
@@ -349,8 +361,7 @@ def test_quota_reset_countdown_ticks_and_rolls_over():
     store = make_store(clock)
     chain = build_chain("pembaca")
     entry = chain[0]
-    seed_chain_quotas(store, chain, limit_tokens=1000,
-                      reset_after_seconds=18000)
+    seed_chain_quotas(store, chain, limit_tokens=1000, reset_after_seconds=18000)
     store.record_usage(entry.provider_key, 1000, 0)
     assert store.is_exhausted(entry.provider_key) is True
     assert store.remaining_tokens(entry.provider_key) == 0
@@ -372,8 +383,7 @@ def test_quota_multiple_windows_roll_forward():
     store = make_store(clock)
     chain = build_chain("pembaca")
     entry = chain[0]
-    seed_chain_quotas(store, chain, limit_tokens=100,
-                      reset_after_seconds=3600)
+    seed_chain_quotas(store, chain, limit_tokens=100, reset_after_seconds=3600)
     store.record_usage(entry.provider_key, 100, 0)
     clock.advance(seconds=3600 * 3 + 10)  # three whole windows pass
     assert store.is_exhausted(entry.provider_key) is False
@@ -386,10 +396,14 @@ def test_quota_no_window_never_resets():
     store = make_store(clock)
     chain = build_chain("pembaca")
     entry = chain[0]
-    store.register(entry.provider_key, tier=entry.tier, limit_tokens=100,
-                   reset_after_seconds=0,
-                   rp_per_1k_input=entry.rp_per_1k_input,
-                   rp_per_1k_output=entry.rp_per_1k_output)
+    store.register(
+        entry.provider_key,
+        tier=entry.tier,
+        limit_tokens=100,
+        reset_after_seconds=0,
+        rp_per_1k_input=entry.rp_per_1k_input,
+        rp_per_1k_output=entry.rp_per_1k_output,
+    )
     assert store.seconds_until_reset(entry.provider_key) is None
     store.record_usage(entry.provider_key, 100, 0)
     clock.advance(days=30)
@@ -401,25 +415,22 @@ def test_rate_limit_headers_block_then_release():
     store = make_store(clock)
     chain = build_chain("pembaca")
     entry = chain[0]
-    seed_chain_quotas(store, chain, limit_tokens=100000,
-                      reset_after_seconds=18000)
-    assert store.apply_rate_limit_headers(
-        entry.provider_key, {"Retry-After": "90"}) is True
+    seed_chain_quotas(store, chain, limit_tokens=100000, reset_after_seconds=18000)
+    assert store.apply_rate_limit_headers(entry.provider_key, {"Retry-After": "90"}) is True
     assert store.is_exhausted(entry.provider_key) is True
     clock.advance(seconds=89)
     assert store.is_exhausted(entry.provider_key) is True
     clock.advance(seconds=2)
     assert store.is_exhausted(entry.provider_key) is False
     # Remaining 0 with no Retry-After blocks until the window reset.
-    assert store.apply_rate_limit_headers(
-        entry.provider_key, {"X-RateLimit-Remaining": "0"}) is True
+    assert (
+        store.apply_rate_limit_headers(entry.provider_key, {"X-RateLimit-Remaining": "0"}) is True
+    )
     assert store.is_exhausted(entry.provider_key) is True
     # Unknown headers are ignored, never raised.
-    assert store.apply_rate_limit_headers(
-        entry.provider_key, {"X-Weird": "nonsense"}) is True
+    assert store.apply_rate_limit_headers(entry.provider_key, {"X-Weird": "nonsense"}) is True
     # An unregistered provider reports False, never raises.
-    assert store.apply_rate_limit_headers(
-        "openrouter:no-such-model", {"Retry-After": "5"}) is False
+    assert store.apply_rate_limit_headers("openrouter:no-such-model", {"Retry-After": "5"}) is False
 
 
 def test_rate_limit_reset_header_moves_reset():
@@ -427,11 +438,9 @@ def test_rate_limit_reset_header_moves_reset():
     store = make_store(clock)
     chain = build_chain("pembaca")
     entry = chain[0]
-    seed_chain_quotas(store, chain, limit_tokens=1000,
-                      reset_after_seconds=18000)
+    seed_chain_quotas(store, chain, limit_tokens=1000, reset_after_seconds=18000)
     reset_epoch = int((BASE_TIME + timedelta(seconds=600)).timestamp())
-    store.apply_rate_limit_headers(
-        entry.provider_key, {"X-RateLimit-Reset": str(reset_epoch)})
+    store.apply_rate_limit_headers(entry.provider_key, {"X-RateLimit-Reset": str(reset_epoch)})
     assert store.seconds_until_reset(entry.provider_key) == 600
 
 
@@ -440,50 +449,60 @@ def test_unregistered_provider_is_available_not_exhausted():
     assert store.is_exhausted("openrouter:never-registered") is False
     assert store.remaining_tokens("openrouter:never-registered") is None
     assert store.record_usage("openrouter:never-registered", 10, 5) is None
-    assert store.estimate_cost_rp(
-        "openrouter:never-registered", 10, 5) is None
+    assert store.estimate_cost_rp("openrouter:never-registered", 10, 5) is None
     assert store.snapshot("openrouter:never-registered") is None
 
 
 def test_register_rejects_negative_values():
     store = make_store(FakeClock())
     with pytest.raises(ValueError):
-        store.register("openrouter:x", tier="cheap", limit_tokens=-1,
-                       reset_after_seconds=60, rp_per_1k_input=1,
-                       rp_per_1k_output=1)
+        store.register(
+            "openrouter:x",
+            tier="cheap",
+            limit_tokens=-1,
+            reset_after_seconds=60,
+            rp_per_1k_input=1,
+            rp_per_1k_output=1,
+        )
     with pytest.raises(ValueError):
-        store.register("openrouter:x", tier="cheap", limit_tokens=10,
-                       reset_after_seconds=-5, rp_per_1k_input=1,
-                       rp_per_1k_output=1)
+        store.register(
+            "openrouter:x",
+            tier="cheap",
+            limit_tokens=10,
+            reset_after_seconds=-5,
+            rp_per_1k_input=1,
+            rp_per_1k_output=1,
+        )
 
 
 # ---------------------------------------------------------------------------
 # Cost estimates: same Rupiah unit as the Puspa budget
 # ---------------------------------------------------------------------------
 
+
 def test_cost_estimate_matches_router_compute_cost():
     clock = FakeClock()
     store = make_store(clock)
     chain = build_chain("pembaca")
-    seed_chain_quotas(store, chain, limit_tokens=100000,
-                      reset_after_seconds=18000)
+    seed_chain_quotas(store, chain, limit_tokens=100000, reset_after_seconds=18000)
     for entry in chain:
-        assert store.estimate_cost_rp(entry.provider_key, 1000, 500) == \
-            compute_cost(entry.choice, 1000, 500)
-        assert entry.estimate_cost_rp(1000, 500) == \
-            compute_cost(entry.choice, 1000, 500)
+        assert store.estimate_cost_rp(entry.provider_key, 1000, 500) == compute_cost(
+            entry.choice, 1000, 500
+        )
+        assert entry.estimate_cost_rp(1000, 500) == compute_cost(entry.choice, 1000, 500)
 
 
 def test_successful_call_charges_quota_and_reports_cost():
     clock = FakeClock()
     store = make_store(clock)
     chain = build_chain("pembaca")
-    seed_chain_quotas(store, chain, limit_tokens=100000,
-                      reset_after_seconds=18000)
+    seed_chain_quotas(store, chain, limit_tokens=100000, reset_after_seconds=18000)
     entry = chain[0]
-    call_fn = scripted_provider({
-        entry.model: CallResult("ok", 1000, 500),
-    })
+    call_fn = scripted_provider(
+        {
+            entry.model: CallResult("ok", 1000, 500),
+        }
+    )
     result = call_with_fallback(chain, call_fn, quota_store=store)
     expected = compute_cost(entry.choice, 1000, 500)
     assert result.total_cost_rp == expected
@@ -497,12 +516,12 @@ def test_successful_call_charges_quota_and_reports_cost():
 # Quota-aware routing: never pick an exhausted tier while one remains
 # ---------------------------------------------------------------------------
 
+
 def test_quota_aware_routing_skips_exhausted_tier():
     clock = FakeClock()
     store = make_store(clock)
     chain = build_chain("pembaca")
-    seed_chain_quotas(store, chain, limit_tokens=100,
-                      reset_after_seconds=18000)
+    seed_chain_quotas(store, chain, limit_tokens=100, reset_after_seconds=18000)
     assert choose_with_quota("pembaca", store).tier == TIER_SUBSCRIPTION
     store.record_usage(chain[0].provider_key, 100, 0)
     picked = choose_with_quota("pembaca", store)
@@ -520,8 +539,7 @@ def test_quota_aware_routing_recovers_after_reset():
     clock = FakeClock()
     store = make_store(clock)
     chain = build_chain("pembaca")
-    seed_chain_quotas(store, chain, limit_tokens=100,
-                      reset_after_seconds=3600)
+    seed_chain_quotas(store, chain, limit_tokens=100, reset_after_seconds=3600)
     for entry in chain:
         store.record_usage(entry.provider_key, 100, 0)
     assert choose_with_quota("pembaca", store) is None
@@ -535,8 +553,7 @@ def test_router_wiring_choose_with_quota_matches():
     clock = FakeClock()
     store = make_store(clock)
     chain = build_chain("pembaca")
-    seed_chain_quotas(store, chain, limit_tokens=100,
-                      reset_after_seconds=18000)
+    seed_chain_quotas(store, chain, limit_tokens=100, reset_after_seconds=18000)
     store.record_usage(chain[0].provider_key, 100, 0)
     picked = router_choose_with_quota("pembaca", store)
     assert picked is not None
@@ -546,23 +563,24 @@ def test_router_wiring_choose_with_quota_matches():
     # model plain choose() returns: quota-aware routing drains the
     # subscription tier first, per the 9Router rule.
     fresh = make_store(FakeClock())
-    assert router_choose_with_quota("pembaca", fresh).model == \
-        chain[0].model
-    assert router_choose_with_quota("pembaca", fresh).model != \
-        choose("pembaca").model
+    assert router_choose_with_quota("pembaca", fresh).model == chain[0].model
+    assert router_choose_with_quota("pembaca", fresh).model != choose("pembaca").model
 
 
 # ---------------------------------------------------------------------------
 # Budget ceiling: fallback must never dodge it
 # ---------------------------------------------------------------------------
 
+
 def test_budget_exhausted_before_any_tier_calls_nothing():
     chain = build_chain("pembaca")
     budget = BudgetTracker(rupiah_max=2000)
     budget.record_cost(2000)
-    call_fn = scripted_provider({
-        chain[0].model: CallResult("must-not-run", 1, 1),
-    })
+    call_fn = scripted_provider(
+        {
+            chain[0].model: CallResult("must-not-run", 1, 1),
+        }
+    )
     with pytest.raises(BudgetExhausted):
         call_with_fallback(chain, call_fn, budget=budget)
     assert call_fn.calls == []
@@ -575,10 +593,12 @@ def test_budget_exceeded_by_success_does_not_fall_back():
     # Rp16/1k in + Rp80/1k out) costs Rp56; a Rp50 ceiling is exceeded
     # by the first tier, and the cheap tier must NOT be tried to dodge it.
     budget = BudgetTracker(rupiah_max=50)
-    call_fn = scripted_provider({
-        chain[0].model: CallResult("expensive-ok", 1000, 500),
-        chain[1].model: CallResult("must-not-run", 1, 1),
-    })
+    call_fn = scripted_provider(
+        {
+            chain[0].model: CallResult("expensive-ok", 1000, 500),
+            chain[1].model: CallResult("must-not-run", 1, 1),
+        }
+    )
     with pytest.raises(BudgetExhausted):
         call_with_fallback(chain, call_fn, budget=budget)
     assert call_fn.calls == [chain[0].model]
@@ -589,9 +609,11 @@ def test_budget_charge_recorded_on_success_within_ceiling():
     chain = build_chain("pembaca")
     budget = BudgetTracker(rupiah_max=2000)
     entry = chain[0]
-    call_fn = scripted_provider({
-        entry.model: CallResult("ok", 1000, 500),
-    })
+    call_fn = scripted_provider(
+        {
+            entry.model: CallResult("ok", 1000, 500),
+        }
+    )
     result = call_with_fallback(chain, call_fn, budget=budget)
     assert budget.rupiah_used == result.total_cost_rp
     assert budget.rupiah_used == compute_cost(entry.choice, 1000, 500)
@@ -602,15 +624,15 @@ def test_failed_tiers_cost_nothing_to_budget_or_quota():
     clock = FakeClock()
     store = make_store(clock)
     chain = build_chain("pembaca")
-    seed_chain_quotas(store, chain, limit_tokens=100000,
-                      reset_after_seconds=18000)
+    seed_chain_quotas(store, chain, limit_tokens=100000, reset_after_seconds=18000)
     budget = BudgetTracker(rupiah_max=2000)
-    call_fn = scripted_provider({
-        chain[0].model: RateLimited("slow down"),
-        chain[1].model: CallResult("ok", 1000, 500),
-    })
-    result = call_with_fallback(chain, call_fn, quota_store=store,
-                                budget=budget)
+    call_fn = scripted_provider(
+        {
+            chain[0].model: RateLimited("slow down"),
+            chain[1].model: CallResult("ok", 1000, 500),
+        }
+    )
+    result = call_with_fallback(chain, call_fn, quota_store=store, budget=budget)
     assert budget.rupiah_used == result.total_cost_rp
     # The failed tier consumed no tokens in the quota store.
     assert store.snapshot(chain[0].provider_key)["tokens_used"] == 0
@@ -621,13 +643,16 @@ def test_failed_tiers_cost_nothing_to_budget_or_quota():
 # Audit trail completeness
 # ---------------------------------------------------------------------------
 
+
 def test_every_hop_has_reason_source_and_destination():
     chain = build_chain("pembaca")
-    call_fn = scripted_provider({
-        chain[0].model: RateLimited("slow down"),
-        chain[1].model: ProviderError("down", status=502),
-        chain[2].model: CallResult("done-by-free", 10, 5),
-    })
+    call_fn = scripted_provider(
+        {
+            chain[0].model: RateLimited("slow down"),
+            chain[1].model: ProviderError("down", status=502),
+            chain[2].model: CallResult("done-by-free", 10, 5),
+        }
+    )
     result = call_with_fallback(chain, call_fn)
     assert result.tier_used.tier == TIER_FREE
     assert len(result.hops) == 2
@@ -636,7 +661,6 @@ def test_every_hop_has_reason_source_and_destination():
         assert hop.to_tier in (TIER_SUBSCRIPTION, TIER_CHEAP, TIER_FREE)
         assert hop.from_tier != hop.to_tier
         assert hop.reason
-    assert [h.from_tier for h in result.hops] == [
-        TIER_SUBSCRIPTION, TIER_CHEAP]
+    assert [h.from_tier for h in result.hops] == [TIER_SUBSCRIPTION, TIER_CHEAP]
     assert [h.to_tier for h in result.hops] == [TIER_CHEAP, TIER_FREE]
     assert result.tiers_tried == [TIER_SUBSCRIPTION, TIER_CHEAP, TIER_FREE]

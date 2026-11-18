@@ -26,9 +26,7 @@ from puspa.plugins.single_select import SINGLE_SELECT_KINDS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 API_SPEC = json.loads(
-    (REPO_ROOT / "puspa" / "plugins" / "plugin_api.json").read_text(
-        encoding="utf-8"
-    )
+    (REPO_ROOT / "puspa" / "plugins" / "plugin_api.json").read_text(encoding="utf-8")
 )
 
 
@@ -101,7 +99,10 @@ def test_name_patterns_match_spec():
 def test_register_tool_hook_command_happy_path():
     ctx = _ctx()
     ctx.register_tool(
-        "my_tool", "Does a thing.", _params(), lambda text: text,
+        "my_tool",
+        "Does a thing.",
+        _params(),
+        lambda text: text,
         read_only=True,
     )
     ctx.register_hook("after_run", lambda event, payload: None)
@@ -135,9 +136,7 @@ def test_register_tool_rejects_bad_parameter_schema():
     with pytest.raises(PluginStructureError, match="parameters must be a dict"):
         ctx.register_tool("tool_a", "desc", ["not", "a", "dict"], lambda: None)
     with pytest.raises(PluginStructureError, match="must be 'object'"):
-        ctx.register_tool(
-            "tool_b", "desc", {"type": "string"}, lambda: None
-        )
+        ctx.register_tool("tool_b", "desc", {"type": "string"}, lambda: None)
     with pytest.raises(PluginStructureError, match="not in properties"):
         ctx.register_tool(
             "tool_c",

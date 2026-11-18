@@ -50,9 +50,7 @@ def test_serialize_deserialize_round_trip_keeps_corrections():
     assert restored.predict("pay_bill") == "paid 75000"
     assert restored.predict("check_bill") is None
     assert restored.predict("track_order") is None
-    assert restored.correction_for("watch_price") == loop.correction_for(
-        "watch_price"
-    )
+    assert restored.correction_for("watch_price") == loop.correction_for("watch_price")
     assert restored.correction_for("pay_bill") == loop.correction_for("pay_bill")
     assert restored.correction_for("check_bill") is None
     assert restored.correction_for("track_order") is None

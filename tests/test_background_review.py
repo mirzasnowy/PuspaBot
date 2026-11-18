@@ -17,9 +17,7 @@ def _snapshot(*contents, user_id="user-1"):
     return TurnSnapshot(
         user_id=user_id,
         turn_id="turn-1",
-        messages=[
-            {"role": "user", "content": content} for content in contents
-        ],
+        messages=[{"role": "user", "content": content} for content in contents],
     )
 
 
@@ -38,9 +36,7 @@ class _StubStore:
 
 def test_review_records_facts_from_user_messages_sync():
     store = _StubStore()
-    snapshot = _snapshot(
-        "User prefers dark mode for the dashboard and pays bills on the 5th."
-    )
+    snapshot = _snapshot("User prefers dark mode for the dashboard and pays bills on the 5th.")
     result = review_turn(snapshot, record_fact=store.record_fact, sync=True)
     assert result.status == "completed"
     assert result.facts_considered >= 1
@@ -77,20 +73,20 @@ def test_review_skips_turn_with_no_user_messages():
 def test_review_dedupes_inside_the_turn():
     store = _StubStore()
     text = "User prefers dark mode for the dashboard and pays bills on the 5th."
-    result = review_turn(
-        _snapshot(text, text), record_fact=store.record_fact, sync=True
-    )
+    result = review_turn(_snapshot(text, text), record_fact=store.record_fact, sync=True)
     assert result.status == "completed"
     assert len(store.records) == len({item["content"] for item in store.records})
 
 
 def test_review_dedupes_against_recall_seam():
     store = _StubStore()
-    known = [{
-        "id": "old",
-        "content": "User prefers dark mode for the dashboard and pays bills on the 5th.",
-        "status": "active",
-    }]
+    known = [
+        {
+            "id": "old",
+            "content": "User prefers dark mode for the dashboard and pays bills on the 5th.",
+            "status": "active",
+        }
+    ]
 
     def recall_facts(query_text):
         return known
@@ -174,11 +170,13 @@ def test_review_default_record_fact_writes_to_g7_store():
             TurnSnapshot(
                 user_id=user_id,
                 turn_id="turn-default",
-                messages=[{
-                    "role": "user",
-                    "content": "User prefers dark mode for the dashboard "
-                               "and pays bills on the 5th.",
-                }],
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "User prefers dark mode for the dashboard "
+                        "and pays bills on the 5th.",
+                    }
+                ],
             ),
             sync=True,
         )
@@ -196,9 +194,7 @@ def test_review_default_record_fact_writes_to_g7_store():
             "dbname=puspa_test user=root host=/var/run/postgresql",
             autocommit=True,
         ) as conn:
-            conn.execute(
-                "DELETE FROM profile_facts WHERE user_id = %s", (user_id,)
-            )
+            conn.execute("DELETE FROM profile_facts WHERE user_id = %s", (user_id,))
 
 
 def test_review_async_handle_returns_result():

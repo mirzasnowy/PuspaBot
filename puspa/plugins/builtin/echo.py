@@ -23,9 +23,7 @@ def register(ctx):
         "Echo the given text back, prefixed with 'echo: '.",
         {
             "type": "object",
-            "properties": {
-                "text": {"type": "string", "description": "Text to echo."}
-            },
+            "properties": {"text": {"type": "string", "description": "Text to echo."}},
             "required": ["text"],
         },
         echo_tool,
@@ -33,9 +31,7 @@ def register(ctx):
     )
 
     def after_run(event, payload):
-        ctx.shared.setdefault("events", []).append(
-            {"event": event, "payload": payload}
-        )
+        ctx.shared.setdefault("events", []).append({"event": event, "payload": payload})
 
     ctx.register_hook("after_run", after_run)
 
@@ -43,6 +39,4 @@ def register(ctx):
         ctx.shared.setdefault("command_calls", []).append(list(argv))
         return 0
 
-    ctx.register_command(
-        "echo", "Echo the command arguments (exit code 0).", echo_command
-    )
+    ctx.register_command("echo", "Echo the command arguments (exit code 0).", echo_command)

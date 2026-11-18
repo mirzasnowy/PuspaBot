@@ -55,6 +55,7 @@ from .trust import (
 )
 
 __all__ = [
+    "DEFAULT_SHARE_MODE",
     "MAX_CHANGES_PER_REVIEW",
     "MAX_CONSECUTIVE_FAILURES",
     "MAX_DIRECT_TOOLS",
@@ -67,7 +68,6 @@ __all__ = [
     "SEARCH_TOOLS_NAME",
     "SHARE_MODES",
     "TOOL_LIMIT_REFUSED_EVENT",
-    "DEFAULT_SHARE_MODE",
     "EntitlementError",
     "LearningStep",
     "ManifestError",

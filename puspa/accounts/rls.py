@@ -94,9 +94,7 @@ def current_user_id(conn) -> str:
     ``set_current_user``/``clear_current_user`` dan policy RLS.
     """
     with conn.cursor() as cur:
-        cur.execute(
-            "SELECT coalesce(current_setting(%s, true), '')", (SETTING_NAME,)
-        )
+        cur.execute("SELECT coalesce(current_setting(%s, true), '')", (SETTING_NAME,))
         row = cur.fetchone()
     return row[0] if row else ""
 
@@ -131,10 +129,8 @@ def as_user(conn, user_id):
     try:
         yield user_id
     finally:
-        try:
+        # Keluar dari context manager tidak boleh menutupi error
+        # asli; dan kalau transaksi sudah selesai/rollback,
+        # SET LOCAL sudah hilang sendiri.
+        with contextlib.suppress(Exception):
             clear_current_user(conn)
-        except Exception:
-            # Keluar dari context manager tidak boleh menutupi error
-            # asli; dan kalau transaksi sudah selesai/rollback,
-            # SET LOCAL sudah hilang sendiri.
-            pass

@@ -12,7 +12,9 @@ def _content_pembacaan(test_dsn, user_id, source, category, verified, total):
                 verdict = "Verified" if i < verified else "Uncertain"
                 cur.execute(
                     "INSERT INTO source_readings (user_id, sumber, category, vonis)"
-                    " VALUES (%s, %s, %s, %s)", (user_id, source, category, verdict))
+                    " VALUES (%s, %s, %s, %s)",
+                    (user_id, source, category, verdict),
+                )
         conn.commit()
 
 
@@ -48,12 +50,18 @@ def test_procedure_score_from_runs(make_user, test_dsn):
     from puspa.graphs import service as graf
 
     user = make_user()
-    procedure = graf.write_procedure(user_id=user["user_id"], service="PLN",
-                                   step=[{"step": "read"}], agent_id=user["agent_id"],
-                                   dsn=test_dsn)
+    procedure = graf.write_procedure(
+        user_id=user["user_id"],
+        service="PLN",
+        step=[{"step": "read"}],
+        agent_id=user["agent_id"],
+        dsn=test_dsn,
+    )
     score = reliability.procedure_score(procedure["id"], user["user_id"], dsn=test_dsn)
     assert score["percent_verified"] == 100.0  # 1 jalan sukses saat tulis
-    graf.record_run(procedure["id"], user["user_id"], False, agent_id=user["agent_id"], dsn=test_dsn)
+    graf.record_run(
+        procedure["id"], user["user_id"], False, agent_id=user["agent_id"], dsn=test_dsn
+    )
     score = reliability.procedure_score(procedure["id"], user["user_id"], dsn=test_dsn)
     assert score["percent_verified"] == 50.0
     assert score["downgrade_verdict"] is True
@@ -64,9 +72,16 @@ def test_wrong_report_lowers_score_and_is_recorded_in_ledger(make_user, test_dsn
     _content_pembacaan(test_dsn, user["user_id"], "Shopee", "phone", 50, 50)
     assert reliability.source_score("Shopee", "phone", dsn=test_dsn)["percent_verified"] == 100.0
     result = report.report_wrong(
-        evidence_id="bukti-1", user_id=user["user_id"], reason="harga salah",
-        source="Shopee", category="phone", task_id="tugas-lapor-1",
-        agent_id=user["agent_id"], dsn=test_dsn, ledger=ledger)
+        evidence_id="bukti-1",
+        user_id=user["user_id"],
+        reason="harga salah",
+        source="Shopee",
+        category="phone",
+        task_id="tugas-lapor-1",
+        agent_id=user["agent_id"],
+        dsn=test_dsn,
+        ledger=ledger,
+    )
     assert result["reread_requested"] is True
     # Satu laporan "Tidak bisa dipastikan" masuk 50 terakhir -> 49/50 = 98%.
     assert reliability.source_score("Shopee", "phone", dsn=test_dsn)["percent_verified"] == 98.0

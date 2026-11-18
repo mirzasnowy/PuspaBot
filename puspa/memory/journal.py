@@ -16,12 +16,12 @@ them with :meth:`Journal.list_quarantined`.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
 def _now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Journal:
@@ -36,10 +36,10 @@ class Journal:
 
     def _load(self):
         for line in self.path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
+            stripped = line.strip()
+            if not stripped:
                 continue
-            entry = json.loads(line)
+            entry = json.loads(stripped)
             self._entries.append(entry)
             self._seq = max(self._seq, int(entry["seq"]))
 
@@ -49,8 +49,17 @@ class Journal:
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(entry, default=str) + "\n")
 
-    def log(self, action, fact_id=None, before=None, after=None,
-            actor="system", kind="change", note=None, origin=None):
+    def log(
+        self,
+        action,
+        fact_id=None,
+        before=None,
+        after=None,
+        actor="system",
+        kind="change",
+        note=None,
+        origin=None,
+    ):
         """Append one entry and return it.
 
         ``before``/``after`` are fact-record dicts (or None). ``kind``
@@ -79,8 +88,7 @@ class Journal:
 
     def list_quarantined(self):
         """Quarantined / blocked entries awaiting user review."""
-        return [e for e in self._entries
-                if e["kind"] in ("quarantined", "blocked")]
+        return [e for e in self._entries if e["kind"] in ("quarantined", "blocked")]
 
     def undo_last(self, store):
         """Undo the most recent ``"change"`` entry via ``store``.
@@ -107,8 +115,12 @@ class Journal:
             restored = None
         else:
             restored = store.apply_snapshot(before)
-        undo_entry = self.log(
-            "undo", fact_id=target["fact_id"], before=target["after"],
-            after=restored, actor="system", kind="change",
-            note=f"undo of seq {target['seq']} ({target['action']})")
-        return undo_entry
+        return self.log(
+            "undo",
+            fact_id=target["fact_id"],
+            before=target["after"],
+            after=restored,
+            actor="system",
+            kind="change",
+            note=f"undo of seq {target['seq']} ({target['action']})",
+        )

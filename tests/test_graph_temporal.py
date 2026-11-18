@@ -6,20 +6,20 @@ autouse fixture still creates schemas and truncates tables on
 collection; that is unavoidable for any file under tests/.)
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from puspa.graphs.temporal import (
     TemporalEdge,
-    TemporalGraph,
     TemporalError,
+    TemporalGraph,
     from_knowledge_graph,
     stale_fact_rate,
 )
 from puspa.retrieval.knowledge_graph import KnowledgeGraph
 
-NOW = datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
 PAST = NOW - timedelta(days=30)
 RECENT = NOW - timedelta(days=2)
 FUTURE = NOW + timedelta(days=30)
@@ -31,28 +31,28 @@ def _price_graph():
     graph = TemporalGraph()
     # 4 expired price facts (validity window already closed).
     for i in range(4):
-        graph.add_edge(f"product-{i}", "costs", f"price-{i}",
-                       valid_from=PAST, valid_until=RECENT, as_of=NOW)
+        graph.add_edge(
+            f"product-{i}", "costs", f"price-{i}", valid_from=PAST, valid_until=RECENT, as_of=NOW
+        )
     # 2 superseded: an old price replaced by a new one.
     for i in range(4, 6):
-        graph.add_edge(f"product-{i}", "costs", f"old-price-{i}",
-                       valid_from=PAST, as_of=NOW)
-        graph.add_edge(f"product-{i}", "costs", f"new-price-{i}",
-                       valid_from=RECENT, as_of=NOW)
+        graph.add_edge(f"product-{i}", "costs", f"old-price-{i}", valid_from=PAST, as_of=NOW)
+        graph.add_edge(f"product-{i}", "costs", f"new-price-{i}", valid_from=RECENT, as_of=NOW)
     # 4 current facts: 2 open-ended, 2 inside a live window.
     graph.add_edge("product-6", "costs", "price-6", as_of=NOW)
     graph.add_edge("product-7", "costs", "price-7", as_of=NOW)
-    graph.add_edge("product-8", "costs", "price-8",
-                   valid_from=PAST, valid_until=FUTURE, as_of=NOW)
-    graph.add_edge("seller-a", "flagged_fraud", "report-1",
-                   valid_from=RECENT, valid_until=FUTURE, as_of=NOW)
+    graph.add_edge("product-8", "costs", "price-8", valid_from=PAST, valid_until=FUTURE, as_of=NOW)
+    graph.add_edge(
+        "seller-a", "flagged_fraud", "report-1", valid_from=RECENT, valid_until=FUTURE, as_of=NOW
+    )
     return graph
 
 
 def test_expired_edge_excluded_from_query():
     graph = TemporalGraph()
-    graph.add_edge("samsung galaxy s24", "costs", "15000000",
-                   valid_from=PAST, valid_until=RECENT, as_of=NOW)
+    graph.add_edge(
+        "samsung galaxy s24", "costs", "15000000", valid_from=PAST, valid_until=RECENT, as_of=NOW
+    )
     assert graph.query(as_of=NOW) == []
     assert graph.current_fact("samsung galaxy s24", "costs", as_of=NOW) is None
     stale = graph.query(as_of=NOW, include_stale=True)
@@ -63,8 +63,9 @@ def test_expired_edge_excluded_from_query():
 
 def test_validity_window_boundaries():
     graph = TemporalGraph()
-    graph.add_edge("samsung galaxy s24", "costs", "15000000",
-                   valid_from=RECENT, valid_until=FUTURE, as_of=NOW)
+    graph.add_edge(
+        "samsung galaxy s24", "costs", "15000000", valid_from=RECENT, valid_until=FUTURE, as_of=NOW
+    )
     # valid_from is inclusive, valid_until is exclusive.
     assert len(graph.query(as_of=RECENT)) == 1
     assert len(graph.query(as_of=FUTURE)) == 0
@@ -75,10 +76,8 @@ def test_validity_window_boundaries():
 
 def test_new_fact_supersedes_old_same_subject_relation():
     graph = TemporalGraph()
-    old = graph.add_edge("samsung galaxy s24", "costs", "15000000",
-                         valid_from=PAST, as_of=NOW)
-    new = graph.add_edge("samsung galaxy s24", "costs", "14200000",
-                         valid_from=RECENT, as_of=NOW)
+    old = graph.add_edge("samsung galaxy s24", "costs", "15000000", valid_from=PAST, as_of=NOW)
+    new = graph.add_edge("samsung galaxy s24", "costs", "14200000", valid_from=RECENT, as_of=NOW)
     assert new["superseded"] == [old["edge"].id]
     current = graph.query(as_of=NOW)
     assert len(current) == 1
@@ -110,10 +109,8 @@ def test_supersede_only_same_subject_relation():
 
 def test_supersede_off_keeps_multi_valued_edges():
     graph = TemporalGraph()
-    graph.add_edge("seller-a", "sells", "samsung galaxy s24",
-                   supersede=False, as_of=NOW)
-    graph.add_edge("seller-a", "sells", "xiaomi redmi note 13",
-                   supersede=False, as_of=NOW)
+    graph.add_edge("seller-a", "sells", "samsung galaxy s24", supersede=False, as_of=NOW)
+    graph.add_edge("seller-a", "sells", "xiaomi redmi note 13", supersede=False, as_of=NOW)
     assert len(graph.query(as_of=NOW)) == 2
 
 
@@ -150,21 +147,19 @@ def test_edge_without_validity_still_works():
 
 def test_neighbors_and_relations_honor_validity():
     graph = TemporalGraph()
-    graph.add_edge("seller-a", "sells", "samsung galaxy s24",
-                   valid_from=PAST, valid_until=RECENT, as_of=NOW)
+    graph.add_edge(
+        "seller-a", "sells", "samsung galaxy s24", valid_from=PAST, valid_until=RECENT, as_of=NOW
+    )
     graph.add_edge("seller-a", "sells", "xiaomi redmi note 13", as_of=NOW)
     assert graph.neighbors("seller-a", as_of=NOW) == ["xiaomi redmi note 13"]
-    assert graph.relations("seller-a", as_of=NOW) == [
-        ("seller-a", "sells", "xiaomi redmi note 13")]
+    assert graph.relations("seller-a", as_of=NOW) == [("seller-a", "sells", "xiaomi redmi note 13")]
     assert len(graph.relations("seller-a", as_of=NOW, include_stale=True)) == 2
 
 
 def test_current_fact_returns_latest_price():
     graph = TemporalGraph()
-    graph.add_edge("samsung galaxy s24", "costs", "15000000",
-                   valid_from=PAST, as_of=NOW)
-    graph.add_edge("samsung galaxy s24", "costs", "14200000",
-                   valid_from=RECENT, as_of=NOW)
+    graph.add_edge("samsung galaxy s24", "costs", "15000000", valid_from=PAST, as_of=NOW)
+    graph.add_edge("samsung galaxy s24", "costs", "14200000", valid_from=RECENT, as_of=NOW)
     fact = graph.current_fact("samsung galaxy s24", "costs", as_of=NOW)
     assert fact["object"] == "14200000"
     assert fact["valid_from"] == RECENT
@@ -172,11 +167,13 @@ def test_current_fact_returns_latest_price():
 
 def test_fraud_report_expires():
     graph = TemporalGraph()
-    graph.add_edge("seller-a", "flagged_fraud", "report-1",
-                   valid_from=PAST, valid_until=RECENT, as_of=NOW)
-    assert graph.current_fact(
-        "seller-a", "flagged_fraud",
-        as_of=RECENT - timedelta(seconds=1)) is not None
+    graph.add_edge(
+        "seller-a", "flagged_fraud", "report-1", valid_from=PAST, valid_until=RECENT, as_of=NOW
+    )
+    assert (
+        graph.current_fact("seller-a", "flagged_fraud", as_of=RECENT - timedelta(seconds=1))
+        is not None
+    )
     assert graph.current_fact("seller-a", "flagged_fraud", as_of=NOW) is None
     assert graph.neighbors("seller-a", "flagged_fraud", as_of=NOW) == []
 
@@ -202,7 +199,10 @@ def test_from_knowledge_graph_adapter():
     current = temporal.query(as_of=NOW)
     assert len(current) == 1
     assert (current[0]["subject"], current[0]["relation"], current[0]["object"]) == (
-        "citra", "reports", "budi")
+        "citra",
+        "reports",
+        "budi",
+    )
     stale = temporal.query(as_of=NOW, include_stale=True)
     assert stale_fact_rate(stale) == 0.5
     # An edge with no validity entry keeps working like before.
@@ -213,7 +213,8 @@ def test_from_knowledge_graph_callable_validity():
     kg = KnowledgeGraph()
     kg.add_document("doc-1", "Andi reports Budi.")
     temporal = from_knowledge_graph(
-        kg, lambda triple: (PAST, RECENT) if triple.object == "budi" else None)
+        kg, lambda triple: (PAST, RECENT) if triple.object == "budi" else None
+    )
     assert temporal.query(as_of=NOW) == []
 
 
@@ -237,8 +238,9 @@ def test_invalid_windows_rejected():
 
 
 def test_edge_is_current_standalone():
-    edge = TemporalEdge(subject="a", relation="costs", object="1",
-                        valid_from=PAST, valid_until=FUTURE)
+    edge = TemporalEdge(
+        subject="a", relation="costs", object="1", valid_from=PAST, valid_until=FUTURE
+    )
     assert edge.is_current(as_of=NOW) is True
     assert edge.is_current(as_of=FUTURE) is False
     assert edge.stale_reason(as_of=NOW) is None

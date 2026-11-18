@@ -23,9 +23,11 @@ def _task_result(task, success, duration_days=None, deadline_days=None, day=15):
 
 def test_schedule_belief_forms_from_task_results():
     model = WorldModel()
-    assert model.predict(
-        {"type": "estimate_task", "task_kind": "pay_bill"}
-    ).outcome == {"task_kind": "pay_bill", "expected_days": None, "known": False}
+    assert model.predict({"type": "estimate_task", "task_kind": "pay_bill"}).outcome == {
+        "task_kind": "pay_bill",
+        "expected_days": None,
+        "known": False,
+    }
     model.ingest_task_result(_task_result("pay_bill", True, 2, 3, day=15))
     model.ingest_task_result(_task_result("pay_bill", True, 2, 3, day=16))
     prediction = model.predict({"type": "estimate_task", "task_kind": "pay_bill"})
@@ -58,9 +60,11 @@ def test_schedule_belief_deadline_reliability_tracks_misses():
 
 def test_capability_belief_forms_from_success_and_failure():
     model = WorldModel()
-    assert model.predict(
-        {"type": "attempt_task", "task_kind": "pay_bill"}
-    ).outcome == {"task_kind": "pay_bill", "success": None, "known": False}
+    assert model.predict({"type": "attempt_task", "task_kind": "pay_bill"}).outcome == {
+        "task_kind": "pay_bill",
+        "success": None,
+        "known": False,
+    }
     model.ingest_task_result(_task_result("pay_bill", True, day=15))
     model.ingest_task_result(_task_result("pay_bill", True, day=16))
     model.ingest_task_result(_task_result("pay_bill", False, day=17))
@@ -76,22 +80,41 @@ def test_capability_belief_forms_from_success_and_failure():
 
 def test_failed_task_teaches_capability_but_not_price():
     model = WorldModel()
-    model.ingest_task_result({"task": "buy_from_store", "success": False,
-                              "result": {"product_id": "phone-x1", "store": "Shopee",
-                                         "price": 5100000, "day": 15}})
+    model.ingest_task_result(
+        {
+            "task": "buy_from_store",
+            "success": False,
+            "result": {"product_id": "phone-x1", "store": "Shopee", "price": 5100000, "day": 15},
+        }
+    )
     belief = model._capability_beliefs["buy_from_store"]
     assert belief.failures == 1
     assert belief.successes == 0
     # The failed result must not seed a price belief.
-    assert model.predict({"type": "check_price", "product_id": "phone-x1",
-                          "store": "Shopee"}).outcome["known"] is False
+    assert (
+        model.predict({"type": "check_price", "product_id": "phone-x1", "store": "Shopee"}).outcome[
+            "known"
+        ]
+        is False
+    )
 
 
 def test_capability_belief_changes_pay_forecast():
     model = WorldModel()
-    model.ingest_graph([{"id": "bill-pln-001", "kind": "bill",
-                         "attributes": {"amount": 150000, "due_day": 20,
-                                        "status": "not_due", "amount_due": 150000}}])
+    model.ingest_graph(
+        [
+            {
+                "id": "bill-pln-001",
+                "kind": "bill",
+                "attributes": {
+                    "amount": 150000,
+                    "due_day": 20,
+                    "status": "not_due",
+                    "amount_due": 150000,
+                },
+            }
+        ]
+    )
     # One success, three failures: the agent mostly cannot pay.
     model.ingest_task_result(_task_result("pay_bill", True, day=15))
     model.ingest_task_result(_task_result("pay_bill", False, day=16))
@@ -203,17 +226,30 @@ def test_state_restore_round_trip_keeps_new_beliefs():
     restored = WorldModel()
     restored._restore_state(model.state)
     assert restored.state == model.state
-    assert restored.predict(
-        {"type": "estimate_task", "task_kind": "pay_bill"}).outcome["expected_days"] == 2.0
-    assert restored.predict(
-        {"type": "attempt_task", "task_kind": "pay_bill"}).outcome["success_rate"] == 1.0
+    assert (
+        restored.predict({"type": "estimate_task", "task_kind": "pay_bill"}).outcome[
+            "expected_days"
+        ]
+        == 2.0
+    )
+    assert (
+        restored.predict({"type": "attempt_task", "task_kind": "pay_bill"}).outcome["success_rate"]
+        == 1.0
+    )
     # The planner copies state too: planning must not touch the beliefs.
     before = model.state
     from puspa.world import plan
-    plan(model, {"goal": "sequence", "steps": [
-        {"type": "estimate_task", "task_kind": "pay_bill"},
-        {"type": "attempt_task", "task_kind": "pay_bill"},
-    ]})
+
+    plan(
+        model,
+        {
+            "goal": "sequence",
+            "steps": [
+                {"type": "estimate_task", "task_kind": "pay_bill"},
+                {"type": "attempt_task", "task_kind": "pay_bill"},
+            ],
+        },
+    )
     assert model.state == before
 
 
@@ -224,20 +260,35 @@ def test_estimate_and_attempt_scored_by_update():
     model.ingest_task_result(_task_result("pay_bill", True, 2, 3, day=17))
     prediction = model.predict({"type": "estimate_task", "task_kind": "pay_bill"})
     assert prediction.outcome["expected_days"] == 2.0
-    result = model.update({"action": {"type": "estimate_task", "task_kind": "pay_bill"},
-                           "observed": {"duration_days": 2, "deadline_days": 3},
-                           "task": "pay_bill", "day": 18})
+    result = model.update(
+        {
+            "action": {"type": "estimate_task", "task_kind": "pay_bill"},
+            "observed": {"duration_days": 2, "deadline_days": 3},
+            "task": "pay_bill",
+            "day": 18,
+        }
+    )
     assert result["correct"] is True
     assert result["error"] == 0.0
     model.predict({"type": "attempt_task", "task_kind": "pay_bill"})
-    result = model.update({"action": {"type": "attempt_task", "task_kind": "pay_bill"},
-                           "observed": {"success": True},
-                           "task": "pay_bill", "day": 18})
+    result = model.update(
+        {
+            "action": {"type": "attempt_task", "task_kind": "pay_bill"},
+            "observed": {"success": True},
+            "task": "pay_bill",
+            "day": 18,
+        }
+    )
     assert result["correct"] is True
     # A duration far outside the tolerance is a miss.
     model.predict({"type": "estimate_task", "task_kind": "pay_bill"})
-    result = model.update({"action": {"type": "estimate_task", "task_kind": "pay_bill"},
-                           "observed": {"duration_days": 9, "deadline_days": 3},
-                           "task": "pay_bill", "day": 19})
+    result = model.update(
+        {
+            "action": {"type": "estimate_task", "task_kind": "pay_bill"},
+            "observed": {"duration_days": 9, "deadline_days": 3},
+            "task": "pay_bill",
+            "day": 19,
+        }
+    )
     assert result["correct"] is False
     assert result["error"] == 7.0

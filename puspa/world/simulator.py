@@ -67,14 +67,22 @@ class SimulatedWorld:
         return "not_due"
 
     def observe_price(self, product_id: str, store: str) -> dict:
-        return {"price": self.price(product_id, store), "store": store,
-                "product_id": product_id, "day": self.day}
+        return {
+            "price": self.price(product_id, store),
+            "store": store,
+            "product_id": product_id,
+            "day": self.day,
+        }
 
     def observe_bill(self, bill_id: str = BILL_ID) -> dict:
-        return {"status": self.bill_status(),
-                "amount_due": 0 if self.bill_paid else BILL_AMOUNT,
-                "amount": BILL_AMOUNT, "due_day": BILL_DUE_DAY,
-                "bill_id": bill_id, "day": self.day}
+        return {
+            "status": self.bill_status(),
+            "amount_due": 0 if self.bill_paid else BILL_AMOUNT,
+            "amount": BILL_AMOUNT,
+            "due_day": BILL_DUE_DAY,
+            "bill_id": bill_id,
+            "day": self.day,
+        }
 
     def act(self, action: dict) -> dict:
         """Execute one action in the simulated world, return the observed outcome."""
@@ -85,18 +93,31 @@ class SimulatedWorld:
             return self.observe_bill(action["bill_id"])
         if action_type == "pay_bill":
             if self.bill_paid:
-                return {"success": False, "reason": "already_paid",
-                        "bill_id": action["bill_id"], "day": self.day}
+                return {
+                    "success": False,
+                    "reason": "already_paid",
+                    "bill_id": action["bill_id"],
+                    "day": self.day,
+                }
             self.bill_paid = True
-            return {"success": True, "status": "paid", "amount_due": 0,
-                    "bill_id": action["bill_id"], "day": self.day}
+            return {
+                "success": True,
+                "status": "paid",
+                "amount_due": 0,
+                "bill_id": action["bill_id"],
+                "day": self.day,
+            }
         if action_type == "wait_day":
             self.day += 1
             return {"day": self.day}
         if action_type == "buy_from_store":
-            return {"success": True, "store": action["store"],
-                    "price": self.price(action["product_id"], action["store"]),
-                    "product_id": action["product_id"], "day": self.day}
+            return {
+                "success": True,
+                "store": action["store"],
+                "price": self.price(action["product_id"], action["store"]),
+                "product_id": action["product_id"],
+                "day": self.day,
+            }
         raise ValueError(f"unknown action type: {action_type!r}")
 
 
@@ -115,25 +136,33 @@ def run_episode(model: WorldModel, days: int = 5) -> dict:
     def predict_act_update(action: dict) -> None:
         model.predict(action)
         observed = world.act(action)
-        model.update({"action": action, "observed": observed,
-                      "task": task, "day": world.day})
+        model.update({"action": action, "observed": observed, "task": task, "day": world.day})
 
     # Day 15: grounding observations only, no prediction is scored.
     for store in STORES:
-        model.update({"action": {"type": "check_price", "product_id": PRODUCT_ID, "store": store},
-                      "observed": world.observe_price(PRODUCT_ID, store),
-                      "task": task, "day": world.day})
-    model.update({"action": {"type": "check_bill", "bill_id": BILL_ID},
-                  "observed": world.observe_bill(),
-                  "task": task, "day": world.day})
+        model.update(
+            {
+                "action": {"type": "check_price", "product_id": PRODUCT_ID, "store": store},
+                "observed": world.observe_price(PRODUCT_ID, store),
+                "task": task,
+                "day": world.day,
+            }
+        )
+    model.update(
+        {
+            "action": {"type": "check_bill", "bill_id": BILL_ID},
+            "observed": world.observe_bill(),
+            "task": task,
+            "day": world.day,
+        }
+    )
 
     # Days 16..: predict first, then act, then learn.
     for _ in range(days - 1):
         world.day += 1
         model.day = world.day
         for store in STORES:
-            predict_act_update(
-                {"type": "check_price", "product_id": PRODUCT_ID, "store": store})
+            predict_act_update({"type": "check_price", "product_id": PRODUCT_ID, "store": store})
         predict_act_update({"type": "check_bill", "bill_id": BILL_ID})
 
     # Last day: predict and pay the bill before it falls due.

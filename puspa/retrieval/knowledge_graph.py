@@ -32,6 +32,7 @@ passages and any node or edge left with no source.
 
 from __future__ import annotations
 
+import itertools
 import json
 import re
 from dataclasses import dataclass, field
@@ -55,32 +56,80 @@ _KIND_RE = re.compile(
 #: question words). The deterministic extractor is a stand-in, not
 #: a named-entity recognizer.
 _CAPITAL_STOPWORDS = frozenset(
-    "The This That These Those What Which Who When Where Why How "
-    "Never Always Buyer Seller Also Then There Here".split()
+    [
+        "The",
+        "This",
+        "That",
+        "These",
+        "Those",
+        "What",
+        "Which",
+        "Who",
+        "When",
+        "Where",
+        "Why",
+        "How",
+        "Never",
+        "Always",
+        "Buyer",
+        "Seller",
+        "Also",
+        "Then",
+        "There",
+        "Here",
+    ]
 )
 
 #: Entity kinds the deterministic extractor recognises from
 #: "X is a <kind>" sentences.
 _KNOWN_KINDS = frozenset(
-    "phone laptop tablet smartwatch tv camera product seller store "
-    "shop promo promotion report fraud price".split()
+    [
+        "phone",
+        "laptop",
+        "tablet",
+        "smartwatch",
+        "tv",
+        "camera",
+        "product",
+        "seller",
+        "store",
+        "shop",
+        "promo",
+        "promotion",
+        "report",
+        "fraud",
+        "price",
+    ]
 )
 
 #: Verb (and inflected form) to canonical relation, used to read
 #: triples out of a sentence.
 _VERBS = {
-    "sells": "sells", "sell": "sells",
-    "offers": "offers", "offer": "offers",
-    "lists": "lists", "list": "lists",
-    "has": "has", "have": "has",
-    "runs": "runs", "run": "runs",
-    "owns": "owns", "own": "owns",
-    "reports": "reports", "report": "reports", "reported": "reports",
-    "warns": "warns", "warn": "warns",
-    "costs": "costs", "cost": "costs",
-    "ships": "ships", "ship": "ships",
-    "flags": "flags", "flag": "flags",
-    "is": "is_a", "are": "is_a",
+    "sells": "sells",
+    "sell": "sells",
+    "offers": "offers",
+    "offer": "offers",
+    "lists": "lists",
+    "list": "lists",
+    "has": "has",
+    "have": "has",
+    "runs": "runs",
+    "run": "runs",
+    "owns": "owns",
+    "own": "owns",
+    "reports": "reports",
+    "report": "reports",
+    "reported": "reports",
+    "warns": "warns",
+    "warn": "warns",
+    "costs": "costs",
+    "cost": "costs",
+    "ships": "ships",
+    "ship": "ships",
+    "flags": "flags",
+    "flag": "flags",
+    "is": "is_a",
+    "are": "is_a",
 }
 
 
@@ -168,7 +217,7 @@ def _sentence_entities(sentence: str) -> list:
             continue
         spans.append((match.start(), match.end(), word))
     spans.sort(key=lambda s: (s[0], -(s[1] - s[0])))
-    kept = []
+    kept: list[tuple[int, int, str]] = []
     for start, end, name in spans:
         if any(start < k_end and end > k_start for k_start, k_end, _ in kept):
             continue
@@ -203,20 +252,18 @@ class DeterministicExtractor(EntityExtractor):
         entities: dict[str, Entity] = {}
         triples: list[Triple] = []
         for sentence in _SENTENCE_RE.split(text):
-            sentence = sentence.strip()
-            if not sentence:
+            cleaned = sentence.strip()
+            if not cleaned:
                 continue
-            kinds = _sentence_kinds(sentence)
-            spans = _sentence_entities(sentence)
+            kinds = _sentence_kinds(cleaned)
+            spans = _sentence_entities(cleaned)
             for name, _, _ in spans:
-                entity = entities.setdefault(
-                    name, Entity(name=name, source_ids={source_id}))
+                entity = entities.setdefault(name, Entity(name=name, source_ids={source_id}))
                 entity.source_ids.add(source_id)
                 if name in kinds:
                     entity.kind = kinds[name]
-            for (left, l_start, l_end), (right, r_start, _) in zip(
-                    spans, spans[1:]):
-                between = sentence[l_end:r_start].lower()
+            for (left, _l_start, l_end), (right, r_start, _) in itertools.pairwise(spans):
+                between = cleaned[l_end:r_start].lower()
                 words = re.findall(r"[a-z]+", between)
                 relation = None
                 for word in words:
@@ -225,9 +272,9 @@ class DeterministicExtractor(EntityExtractor):
                         break
                 if relation is None:
                     relation = "mentioned_with"
-                triples.append(Triple(
-                    subject=left, relation=relation, object=right,
-                    source_ids={source_id}))
+                triples.append(
+                    Triple(subject=left, relation=relation, object=right, source_ids={source_id})
+                )
         return Extraction(entities=list(entities.values()), triples=triples)
 
 
@@ -252,37 +299,41 @@ class JsonTripleExtractor(EntityExtractor):
             raise ValueError("text must be a non-empty string")
         prompt = (
             "Extract entities and triples from the text below. "
-            "Reply with JSON only: {\"entities\": [{\"name\": str, "
-            "\"kind\": str}], \"triples\": [{\"subject\": str, "
-            "\"relation\": str, \"object\": str}]}.\n\n" + text
+            'Reply with JSON only: {"entities": [{"name": str, '
+            '"kind": str}], "triples": [{"subject": str, '
+            '"relation": str, "object": str}]}.\n\n' + text
         )
         try:
             parsed = json.loads(self.complete(prompt))
         except (ValueError, TypeError) as exc:
-            raise ValueError(
-                "extractor reply is not valid JSON triples") from exc
+            raise ValueError("extractor reply is not valid JSON triples") from exc
         if not isinstance(parsed, dict):
             raise ValueError("extractor reply must be a JSON object")
         entities = []
         for raw in parsed.get("entities") or []:
             if not isinstance(raw, dict) or not raw.get("name"):
                 continue
-            entities.append(Entity(
-                name=normalize_entity_name(raw["name"]),
-                kind=raw.get("kind") or None,
-                source_ids={source_id}))
+            entities.append(
+                Entity(
+                    name=normalize_entity_name(raw["name"]),
+                    kind=raw.get("kind") or None,
+                    source_ids={source_id},
+                )
+            )
         triples = []
         for raw in parsed.get("triples") or []:
             if not isinstance(raw, dict):
                 continue
-            if not (raw.get("subject") and raw.get("relation")
-                    and raw.get("object")):
+            if not (raw.get("subject") and raw.get("relation") and raw.get("object")):
                 continue
-            triples.append(Triple(
-                subject=normalize_entity_name(raw["subject"]),
-                relation=str(raw["relation"]).lower(),
-                object=normalize_entity_name(raw["object"]),
-                source_ids={source_id}))
+            triples.append(
+                Triple(
+                    subject=normalize_entity_name(raw["subject"]),
+                    relation=str(raw["relation"]).lower(),
+                    object=normalize_entity_name(raw["object"]),
+                    source_ids={source_id},
+                )
+            )
         return Extraction(entities=entities, triples=triples)
 
 
@@ -308,8 +359,9 @@ class KnowledgeGraph:
         self.passage_entities: dict[str, set] = {}
         self.doc_passages: dict[str, list] = {}
 
-    def add_document(self, doc_id: str, text: str,
-                     extractor: EntityExtractor | None = None) -> dict:
+    def add_document(
+        self, doc_id: str, text: str, extractor: EntityExtractor | None = None
+    ) -> dict:
         """Index one document. Incremental: only this document is
         processed; existing nodes merge by normalized name and gain
         the new source id. Returns counts of what was added.
@@ -333,8 +385,8 @@ class KnowledgeGraph:
                 seen_here.add(entity.name)
                 if entity.name not in self.nodes:
                     self.nodes[entity.name] = Entity(
-                        name=entity.name, kind=entity.kind,
-                        source_ids=set(entity.source_ids))
+                        name=entity.name, kind=entity.kind, source_ids=set(entity.source_ids)
+                    )
                     new_nodes += 1
                 else:
                     node = self.nodes[entity.name]
@@ -345,24 +397,30 @@ class KnowledgeGraph:
             for triple in extraction.triples:
                 for name in (triple.subject, triple.object):
                     if name not in self.nodes:
-                        self.nodes[name] = Entity(
-                            name=name, source_ids=set(triple.source_ids))
+                        self.nodes[name] = Entity(name=name, source_ids=set(triple.source_ids))
                         new_nodes += 1
                     else:
                         self.nodes[name].source_ids |= triple.source_ids
                 key = (triple.subject, triple.relation, triple.object)
                 if key not in self.edges:
                     self.edges[key] = Triple(
-                        subject=triple.subject, relation=triple.relation,
+                        subject=triple.subject,
+                        relation=triple.relation,
                         object=triple.object,
-                        source_ids=set(triple.source_ids))
+                        source_ids=set(triple.source_ids),
+                    )
                     new_edges += 1
                 else:
                     self.edges[key].source_ids |= triple.source_ids
         self.doc_passages[doc_id] = passage_ids
-        return {"doc_id": doc_id, "passages": len(passage_ids),
-                "new_nodes": new_nodes, "new_edges": new_edges,
-                "nodes": len(self.nodes), "edges": len(self.edges)}
+        return {
+            "doc_id": doc_id,
+            "passages": len(passage_ids),
+            "new_nodes": new_nodes,
+            "new_edges": new_edges,
+            "nodes": len(self.nodes),
+            "edges": len(self.edges),
+        }
 
     def remove_document(self, doc_id: str) -> dict:
         """Remove one document and anything left with no source.
@@ -380,32 +438,30 @@ class KnowledgeGraph:
         removed_edges = 0
         for key in list(self.edges):
             triple = self.edges[key]
-            triple.source_ids = {
-                s for s in triple.source_ids
-                if not s.startswith(doc_id + "#")
-            }
+            triple.source_ids = {s for s in triple.source_ids if not s.startswith(doc_id + "#")}
             if not triple.source_ids:
                 del self.edges[key]
                 removed_edges += 1
         removed_nodes = 0
         for name in list(self.nodes):
             node = self.nodes[name]
-            node.source_ids = {
-                s for s in node.source_ids
-                if not s.startswith(doc_id + "#")
-            }
+            node.source_ids = {s for s in node.source_ids if not s.startswith(doc_id + "#")}
             if not node.source_ids:
                 del self.nodes[name]
                 removed_nodes += 1
-        return {"doc_id": doc_id, "removed_passages": removed_passages,
-                "removed_edges": removed_edges,
-                "removed_nodes": removed_nodes,
-                "nodes": len(self.nodes), "edges": len(self.edges)}
+        return {
+            "doc_id": doc_id,
+            "removed_passages": removed_passages,
+            "removed_edges": removed_edges,
+            "removed_nodes": removed_nodes,
+            "nodes": len(self.nodes),
+            "edges": len(self.edges),
+        }
 
     def adjacency(self) -> dict:
         """Undirected adjacency: node name to neighbor names."""
         adj: dict[str, set] = {name: set() for name in self.nodes}
-        for (subject, _, obj) in self.edges:
+        for subject, _, obj in self.edges:
             if subject in adj and obj in adj:
                 adj[subject].add(obj)
                 adj[obj].add(subject)
@@ -415,7 +471,7 @@ class KnowledgeGraph:
         """Neighbor names of a node, optionally on one relation."""
         name = normalize_entity_name(name)
         out = set()
-        for (subject, rel, obj) in self.edges:
+        for subject, rel, obj in self.edges:
             if relation is not None and rel != relation:
                 continue
             if subject == name:
@@ -430,16 +486,13 @@ class KnowledgeGraph:
         return sorted(
             (t.subject, t.relation, t.object)
             for t in self.edges.values()
-            if t.subject == name or t.object == name
+            if name in (t.subject, t.object)
         )
 
     def passages_for_nodes(self, names) -> list:
         """Passage ids mentioning any of the given nodes."""
         wanted = {normalize_entity_name(n) for n in names}
-        return sorted(
-            pid for pid, entities in self.passage_entities.items()
-            if entities & wanted
-        )
+        return sorted(pid for pid, entities in self.passage_entities.items() if entities & wanted)
 
     @property
     def node_count(self) -> int:

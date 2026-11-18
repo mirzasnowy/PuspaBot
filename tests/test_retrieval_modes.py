@@ -9,9 +9,8 @@ collection; that is unavoidable for any file under tests/.)
 import pytest
 
 from puspa.memory.embeddings import HashEmbedding
-from puspa.retrieval.knowledge_graph import KnowledgeGraph
 from puspa.retrieval.modes import QUERY_MODES, query
-from tests.test_retrieval_hipporag import PRICE_DOCS, build_price_graph
+from tests.test_retrieval_hipporag import build_price_graph
 
 EMBEDDER = HashEmbedding()
 QUESTION = "Is the cheap Galaxy S24 deal trustworthy?"
@@ -60,12 +59,9 @@ def test_naive_ignores_the_graph():
 
 def test_modes_differ_on_the_same_query():
     graph = build_price_graph()
-    local = _ids(query(graph, QUESTION, mode="local",
-                       embedder=EMBEDDER, top_k=5))
-    glob = _ids(query(graph, QUESTION, mode="global",
-                      embedder=EMBEDDER, top_k=5))
-    naive = _ids(query(graph, QUESTION, mode="naive",
-                       embedder=EMBEDDER, top_k=5))
+    local = _ids(query(graph, QUESTION, mode="local", embedder=EMBEDDER, top_k=5))
+    glob = _ids(query(graph, QUESTION, mode="global", embedder=EMBEDDER, top_k=5))
+    naive = _ids(query(graph, QUESTION, mode="naive", embedder=EMBEDDER, top_k=5))
     assert local != glob
     assert local != naive
     assert glob != naive
@@ -73,8 +69,7 @@ def test_modes_differ_on_the_same_query():
 
 def test_hybrid_and_mix_merge_modes():
     graph = build_price_graph()
-    hybrid = query(graph, QUESTION, mode="hybrid",
-                   embedder=EMBEDDER, top_k=10)
+    hybrid = query(graph, QUESTION, mode="hybrid", embedder=EMBEDDER, top_k=10)
     mix = query(graph, QUESTION, mode="mix", embedder=EMBEDDER, top_k=10)
     # Hybrid recalls the two-hop fraud report (from global) and
     # the seed passages (from local).

@@ -53,7 +53,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import psycopg
 from psycopg.rows import dict_row
@@ -129,14 +129,16 @@ def compute_run_update(proc, success, agent_id=None):
     ):
         status = "verified"
     updated = dict(proc)
-    updated.update({
-        "successful_runs": successful,
-        "failed_runs": failed,
-        "consecutive_failed_runs": consecutive_failures,
-        "agent_ids": agent_ids,
-        "status": status,
-        "demoted": False,
-    })
+    updated.update(
+        {
+            "successful_runs": successful,
+            "failed_runs": failed,
+            "consecutive_failed_runs": consecutive_failures,
+            "agent_ids": agent_ids,
+            "status": status,
+            "demoted": False,
+        }
+    )
     return updated
 
 
@@ -147,9 +149,9 @@ def is_stale(proc, now=None, older_than_days=STALE_AFTER_DAYS):
     updated_at = proc.get("updated_at")
     if updated_at is None:
         return False
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     if updated_at.tzinfo is None:
-        updated_at = updated_at.replace(tzinfo=timezone.utc)
+        updated_at = updated_at.replace(tzinfo=UTC)
     return (now - updated_at) >= timedelta(days=older_than_days)
 
 
@@ -197,9 +199,16 @@ def detect_contradiction(existing_procedures, service, step_new):
     return None
 
 
-def record_successful_task(user_id, service, step, agent_id=None,
-                           output_schema=None, required_checks=None,
-                           source_event_id=None, dsn=None):
+def record_successful_task(
+    user_id,
+    service,
+    step,
+    agent_id=None,
+    output_schema=None,
+    required_checks=None,
+    source_event_id=None,
+    dsn=None,
+):
     """Write a procedure from a successful task (automatic, no editor).
 
     If a procedure with the same service + steps already exists,
@@ -227,10 +236,15 @@ def record_successful_task(user_id, service, step, agent_id=None,
                     "output_schema, required_checks, status, successful_runs, "
                     "agent_ids, source_event_id) VALUES (%s, %s, %s, %s, %s, "
                     "'trial', 1, %s, %s) RETURNING *",
-                    (user_id, service, Jsonb(step),
-                     Jsonb(output_schema or {}),
-                     Jsonb(required_checks or []),
-                     Jsonb(agent_ids), source_event_id),
+                    (
+                        user_id,
+                        service,
+                        Jsonb(step),
+                        Jsonb(output_schema or {}),
+                        Jsonb(required_checks or []),
+                        Jsonb(agent_ids),
+                        source_event_id,
+                    ),
                 )
                 row = cur.fetchone()
             else:
@@ -245,9 +259,14 @@ def _mark_run_in_cursor(cur, row, success, agent_id):
         "UPDATE procedures SET successful_runs = %s, failed_runs = %s, "
         "consecutive_failed_runs = %s, agent_ids = %s, status = %s, updated_at = now() "
         "WHERE id = %s RETURNING *",
-        (updated["successful_runs"], updated["failed_runs"],
-         updated["consecutive_failed_runs"], Jsonb(updated["agent_ids"]),
-         updated["status"], row["id"]),
+        (
+            updated["successful_runs"],
+            updated["failed_runs"],
+            updated["consecutive_failed_runs"],
+            Jsonb(updated["agent_ids"]),
+            updated["status"],
+            row["id"],
+        ),
     )
     return cur.fetchone()
 
@@ -268,51 +287,47 @@ def mark_run(procedure_id, user_id, success, agent_id=None, dsn=None):
                 raise KeyError(f"procedure not found: {procedure_id}")
             row = _mark_run_in_cursor(cur, row, success=success, agent_id=agent_id)
         conn.commit()
-    result = _row_to_procedure(row)
-    return result
+    return _row_to_procedure(row)
 
 
 def get_procedure(procedure_id, user_id, dsn=None):
     """Fetch one procedure owned by the user; KeyError if missing."""
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM procedures WHERE id = %s AND user_id = %s",
-                (procedure_id, user_id),
-            )
-            row = cur.fetchone()
-            if row is None:
-                raise KeyError(f"procedure not found: {procedure_id}")
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT * FROM procedures WHERE id = %s AND user_id = %s",
+            (procedure_id, user_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise KeyError(f"procedure not found: {procedure_id}")
     return _row_to_procedure(row)
 
 
 def list_procedures(user_id, status=None, dsn=None):
     """List the user's procedures, newest first."""
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            if status is None:
-                cur.execute(
-                    "SELECT * FROM procedures WHERE user_id = %s ORDER BY created_at DESC",
-                    (user_id,),
-                )
-            else:
-                cur.execute(
-                    "SELECT * FROM procedures WHERE user_id = %s AND status = %s "
-                    "ORDER BY created_at DESC",
-                    (user_id, status),
-                )
-            return [_row_to_procedure(r) for r in cur.fetchall()]
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        if status is None:
+            cur.execute(
+                "SELECT * FROM procedures WHERE user_id = %s ORDER BY created_at DESC",
+                (user_id,),
+            )
+        else:
+            cur.execute(
+                "SELECT * FROM procedures WHERE user_id = %s AND status = %s "
+                "ORDER BY created_at DESC",
+                (user_id, status),
+            )
+        return [_row_to_procedure(r) for r in cur.fetchall()]
 
 
-def decay_stale_procedures(user_id, older_than_days=STALE_AFTER_DAYS,
-                           dsn=None, now=None):
+def decay_stale_procedures(user_id, older_than_days=STALE_AFTER_DAYS, dsn=None, now=None):
     """Demote verified procedures untouched for `older_than_days`.
 
     Stale procedures decay to trial with zero successful runs, so
     they must earn verification again. Returns the list of
     decayed procedures. Broken and trial procedures are untouched.
     """
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     cutoff = now - timedelta(days=older_than_days)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
@@ -334,9 +349,16 @@ def decay_stale_procedures(user_id, older_than_days=STALE_AFTER_DAYS,
     return decayed
 
 
-def propose_conflicting_procedure(user_id, service, step_new, agent_id=None,
-                                 output_schema=None, required_checks=None,
-                                 source_event_id=None, dsn=None):
+def propose_conflicting_procedure(
+    user_id,
+    service,
+    step_new,
+    agent_id=None,
+    output_schema=None,
+    required_checks=None,
+    source_event_id=None,
+    dsn=None,
+):
     """Store a conflicting step as a separate trial candidate.
 
     A new fact that contradicts a stored procedure never
@@ -351,9 +373,14 @@ def propose_conflicting_procedure(user_id, service, step_new, agent_id=None,
     existing = list_procedures(user_id, dsn=dsn)
     conflict = detect_contradiction(existing, service, step_new)
     proc = record_successful_task(
-        user_id, service, step_new, agent_id=agent_id,
-        output_schema=output_schema, required_checks=required_checks,
-        source_event_id=source_event_id, dsn=dsn,
+        user_id,
+        service,
+        step_new,
+        agent_id=agent_id,
+        output_schema=output_schema,
+        required_checks=required_checks,
+        source_event_id=source_event_id,
+        dsn=dsn,
     )
     return {
         "procedure": proc,
@@ -399,7 +426,7 @@ def activate_draft_procedure(procedure_id, user_id, dsn=None):
     proc = get_procedure(procedure_id, user_id, dsn=dsn)
     if not proc["service"].startswith(LEARNED_DRAFT_PREFIX):
         raise ValueError(f"procedure is not a learned draft: {procedure_id}")
-    new_service = LEARNED_PREFIX + proc["service"][len(LEARNED_DRAFT_PREFIX):]
+    new_service = LEARNED_PREFIX + proc["service"][len(LEARNED_DRAFT_PREFIX) :]
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(

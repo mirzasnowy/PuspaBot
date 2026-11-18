@@ -25,9 +25,7 @@ from puspa.world.store import (
     serialize_state,
 )
 
-DSN = os.environ.get(
-    "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql"
-)
+DSN = os.environ.get("PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
 
 
 def _dsn_available():
@@ -94,18 +92,19 @@ def test_serialize_round_trip_is_exact_without_db():
     restored._restore_state(deserialize_state(json.loads(payload)))
     assert restored.state == model.state
     assert (
-        restored.predict({"type": "estimate_task", "task_kind": "pay_bill"})
-        .outcome["expected_days"]
+        restored.predict({"type": "estimate_task", "task_kind": "pay_bill"}).outcome[
+            "expected_days"
+        ]
         == 2.0
     )
     assert (
-        restored.predict({"type": "attempt_task", "task_kind": "pay_bill"})
-        .outcome["success_rate"]
+        restored.predict({"type": "attempt_task", "task_kind": "pay_bill"}).outcome["success_rate"]
         == 1.0
     )
     assert (
-        restored.predict({"type": "check_price", "product_id": "P1", "store": "S1"})
-        .outcome["price"]
+        restored.predict({"type": "check_price", "product_id": "P1", "store": "S1"}).outcome[
+            "price"
+        ]
         == 12000
     )
 
@@ -140,20 +139,21 @@ def test_save_load_round_trip_keeps_beliefs():
         assert restored is not None
         assert restored.state == model.state
         assert (
-            restored.predict(
-                {"type": "estimate_task", "task_kind": "pay_bill"}
-            ).outcome["expected_days"]
+            restored.predict({"type": "estimate_task", "task_kind": "pay_bill"}).outcome[
+                "expected_days"
+            ]
             == 2.0
         )
         assert (
-            restored.predict({"type": "attempt_task", "task_kind": "pay_bill"})
-            .outcome["success_rate"]
+            restored.predict({"type": "attempt_task", "task_kind": "pay_bill"}).outcome[
+                "success_rate"
+            ]
             == 1.0
         )
         assert (
-            restored.predict(
-                {"type": "check_price", "product_id": "P1", "store": "S1"}
-            ).outcome["price"]
+            restored.predict({"type": "check_price", "product_id": "P1", "store": "S1"}).outcome[
+                "price"
+            ]
             == 12000
         )
         # A later save overwrites the row (upsert, one row per agent).
@@ -163,8 +163,7 @@ def test_save_load_round_trip_keeps_beliefs():
         assert again.state == model.state
         with psycopg.connect(DSN) as conn:
             count = conn.execute(
-                "SELECT COUNT(*) FROM world_beliefs"
-                " WHERE user_id = %s AND agent_id = %s",
+                "SELECT COUNT(*) FROM world_beliefs WHERE user_id = %s AND agent_id = %s",
                 (str(user_id), agent_id),
             ).fetchone()[0]
         assert count == 1

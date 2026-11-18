@@ -19,10 +19,14 @@ def test_first_failure_requeues_and_does_not_notify():
     notified = []
     events = []
     record = handle_failure(
-        job_id="cron-1", run_id="run-1", error="boom", attempts=0,
+        job_id="cron-1",
+        run_id="run-1",
+        error="boom",
+        attempts=0,
         sink=lambda t, c: events.append((t, c)),
-        notify_owner=lambda r: notified.append(r),
-        requeue=lambda j, r: requeued.append((j, r)))
+        notify_owner=notified.append,
+        requeue=lambda j, r: requeued.append((j, r)),
+    )
     assert record.requeued is True
     assert record.owner_notified is False
     assert requeued == [("cron-1", "run-1")]
@@ -35,10 +39,14 @@ def test_second_failure_is_terminal_records_fact_and_notifies():
     events = []
     requeued = []
     record = handle_failure(
-        job_id="cron-1", run_id="run-1", error="boom again", attempts=1,
+        job_id="cron-1",
+        run_id="run-1",
+        error="boom again",
+        attempts=1,
         sink=lambda t, c: events.append((t, c)),
-        notify_owner=lambda r: notified.append(r),
-        requeue=lambda j, r: requeued.append((j, r)))
+        notify_owner=notified.append,
+        requeue=lambda j, r: requeued.append((j, r)),
+    )
     assert record.requeued is False
     assert record.owner_notified is True
     assert requeued == []
@@ -50,10 +58,8 @@ def test_second_failure_is_terminal_records_fact_and_notifies():
 
 
 def test_recovery_works_without_optional_callables():
-    record = handle_failure(job_id="cron-1", run_id="run-1",
-                            error="boom", attempts=0)
+    record = handle_failure(job_id="cron-1", run_id="run-1", error="boom", attempts=0)
     assert record.requeued is True
-    record = handle_failure(job_id="cron-1", run_id="run-1",
-                            error="boom", attempts=1)
+    record = handle_failure(job_id="cron-1", run_id="run-1", error="boom", attempts=1)
     assert record.requeued is False
     assert record.owner_notified is False

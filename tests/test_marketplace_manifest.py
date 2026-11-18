@@ -64,9 +64,7 @@ def test_version_must_be_semver():
     for bad in ("1.0", "v1.2.3", "1.2.3.4", "latest"):
         _, problems, _ = validate_manifest(_valid_manifest(version=bad))
         assert problems, bad
-    manifest, problems, _ = validate_manifest(
-        _valid_manifest(version="2.0.0-beta.1+build.5")
-    )
+    manifest, problems, _ = validate_manifest(_valid_manifest(version="2.0.0-beta.1+build.5"))
     assert problems == []
     assert manifest.version == "2.0.0-beta.1+build.5"
 
@@ -83,9 +81,7 @@ def test_empty_name_description_and_triggers_rejected():
 
 
 def test_capabilities_and_tools_must_be_string_lists():
-    _, problems, _ = validate_manifest(
-        _valid_manifest(requiredCapabilities=["search", 7])
-    )
+    _, problems, _ = validate_manifest(_valid_manifest(requiredCapabilities=["search", 7]))
     assert any("requiredCapabilities" in p for p in problems)
     _, problems, _ = validate_manifest(_valid_manifest(tools="search_listings"))
     assert any("'tools'" in p for p in problems)
@@ -97,9 +93,7 @@ def test_negative_price_rejected():
 
 
 def test_unknown_licence_is_warning_not_error():
-    _, problems, warnings = validate_manifest(
-        _valid_manifest(license="WeirdLicense-1.0")
-    )
+    _, problems, warnings = validate_manifest(_valid_manifest(license="WeirdLicense-1.0"))
     assert problems == []
     assert any("unknown licence" in w for w in warnings)
 
@@ -164,18 +158,14 @@ def test_skill_folder_id_must_match_folder(tmp_path):
 
 
 def test_missing_referenced_file_is_a_problem(tmp_path):
-    folder = make_skill_dir(
-        tmp_path, frontmatter_extra={"references": ["scripts/run.py"]}
-    )
+    folder = make_skill_dir(tmp_path, frontmatter_extra={"references": ["scripts/run.py"]})
     manifest, problems, _, _ = validate_skill_folder(folder)
     assert manifest is None
     assert any("missing" in p for p in problems)
 
 
 def test_referenced_file_is_hashed(tmp_path):
-    folder = make_skill_dir(
-        tmp_path, frontmatter_extra={"references": ["scripts/run.py"]}
-    )
+    folder = make_skill_dir(tmp_path, frontmatter_extra={"references": ["scripts/run.py"]})
     script = folder / "scripts" / "run.py"
     script.parent.mkdir()
     script.write_text("print('hi')\n", encoding="utf-8")

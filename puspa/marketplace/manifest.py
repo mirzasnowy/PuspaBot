@@ -33,7 +33,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -41,12 +41,12 @@ import yaml
 from .errors import ManifestError
 
 __all__ = [
+    "KNOWN_LICENSES",
     "MAX_INDEX_BYTES",
     "MAX_SKILLS",
     "MAX_STAGED",
-    "SKILL_ID_PATTERN",
     "SEMVER_PATTERN",
-    "KNOWN_LICENSES",
+    "SKILL_ID_PATTERN",
     "SkillManifest",
     "parse_frontmatter",
     "sha256_bytes",
@@ -73,16 +73,18 @@ SEMVER_PATTERN = re.compile(
 #: Licences the marketplace recognises. Anything else is stored
 #: verbatim but scores zero on the licence trust signal and is
 #: reported as a warning, never silently accepted as known.
-KNOWN_LICENSES = frozenset({
-    "MIT",
-    "Apache-2.0",
-    "BSD-2-Clause",
-    "BSD-3-Clause",
-    "ISC",
-    "MPL-2.0",
-    "CC0-1.0",
-    "PolyForm-Noncommercial-1.0.0",
-})
+KNOWN_LICENSES = frozenset(
+    {
+        "MIT",
+        "Apache-2.0",
+        "BSD-2-Clause",
+        "BSD-3-Clause",
+        "ISC",
+        "MPL-2.0",
+        "CC0-1.0",
+        "PolyForm-Noncommercial-1.0.0",
+    }
+)
 
 #: Skill origins. Builtin skills ship with Puspa, user skills are
 #: authored by the user, library skills come from the marketplace.
@@ -129,7 +131,7 @@ def parse_frontmatter(text: str):
         raise ManifestError(f"SKILL.md frontmatter is not valid YAML: {exc}") from exc
     if not isinstance(data, dict):
         raise ManifestError("SKILL.md frontmatter must be a mapping")
-    body = "\n".join(lines[end + 1:])
+    body = "\n".join(lines[end + 1 :])
     return data, body
 
 
@@ -144,14 +146,9 @@ def _problems_for(data: dict, *, folder_name: str | None) -> list[str]:
         return ["manifest must be a JSON object"]
     skill_id = data.get("id")
     if not isinstance(skill_id, str) or not SKILL_ID_PATTERN.match(skill_id):
-        problems.append(
-            "manifest 'id' must match ^[a-z0-9]+(-[a-z0-9]+)*$"
-        )
+        problems.append("manifest 'id' must match ^[a-z0-9]+(-[a-z0-9]+)*$")
     elif folder_name is not None and skill_id != folder_name:
-        problems.append(
-            f"manifest 'id' {skill_id!r} does not match folder name "
-            f"{folder_name!r}"
-        )
+        problems.append(f"manifest 'id' {skill_id!r} does not match folder name {folder_name!r}")
     version = data.get("version")
     if not isinstance(version, str) or not SEMVER_PATTERN.match(version):
         problems.append("manifest 'version' must be semver (e.g. '1.2.3')")
@@ -161,14 +158,10 @@ def _problems_for(data: dict, *, folder_name: str | None) -> list[str]:
         problems.append("manifest 'description' must be a non-empty string")
     triggers = data.get("triggerTerms")
     if not _is_str_list(triggers) or not triggers:
-        problems.append(
-            "manifest 'triggerTerms' must be a non-empty list of strings"
-        )
+        problems.append("manifest 'triggerTerms' must be a non-empty list of strings")
     caps = data.get("requiredCapabilities")
     if caps is not None and not _is_str_list(caps):
-        problems.append(
-            "manifest 'requiredCapabilities' must be a list of strings"
-        )
+        problems.append("manifest 'requiredCapabilities' must be a list of strings")
     tools = data.get("tools")
     if tools is not None and not _is_str_list(tools):
         problems.append("manifest 'tools' must be a list of strings")
@@ -181,9 +174,7 @@ def _problems_for(data: dict, *, folder_name: str | None) -> list[str]:
         problems.append("manifest 'priceCredits' must be an integer >= 0")
     origin = data.get("origin", "library")
     if origin not in ORIGINS:
-        problems.append(
-            f"manifest 'origin' must be one of {sorted(ORIGINS)}"
-        )
+        problems.append(f"manifest 'origin' must be one of {sorted(ORIGINS)}")
     compat = data.get("compatibility")
     if compat is not None and not isinstance(compat, dict):
         problems.append("manifest 'compatibility' must be an object")
@@ -191,13 +182,11 @@ def _problems_for(data: dict, *, folder_name: str | None) -> list[str]:
         if data.get(key) is not None and not _is_str_list(data[key]):
             problems.append(f"manifest '{key}' must be a list of strings")
     refs = data.get("referencesSha256")
-    if refs is not None:
-        if not isinstance(refs, dict) or not all(
-            isinstance(k, str) and isinstance(v, str) for k, v in refs.items()
-        ):
-            problems.append(
-                "manifest 'referencesSha256' must be an object of string to string"
-            )
+    if refs is not None and (
+        not isinstance(refs, dict)
+        or not all(isinstance(k, str) and isinstance(v, str) for k, v in refs.items())
+    ):
+        problems.append("manifest 'referencesSha256' must be an object of string to string")
     config = data.get("config")
     if config is not None:
         if not isinstance(config, list):
@@ -205,9 +194,7 @@ def _problems_for(data: dict, *, folder_name: str | None) -> list[str]:
         else:
             for entry in config:
                 if not isinstance(entry, dict) or not entry.get("name"):
-                    problems.append(
-                        "manifest 'config' entries must be objects with 'name'"
-                    )
+                    problems.append("manifest 'config' entries must be objects with 'name'")
                     break
                 extra = set(entry) - CONFIG_ENTRY_KEYS
                 if extra:
@@ -338,7 +325,7 @@ def validate_skill_folder(path, *, origin: str | None = None):
     # Audit fields: sha256 of SKILL.md, import stamp, reference hashes.
     data = dict(data)
     data["sha256"] = sha256_bytes(raw.encode("utf-8"))
-    data["importedAt"] = datetime.now(timezone.utc).isoformat()
+    data["importedAt"] = datetime.now(UTC).isoformat()
     if origin is not None:
         data["origin"] = origin
     refs = {}
@@ -355,5 +342,5 @@ def validate_skill_folder(path, *, origin: str | None = None):
     if ref_problems:
         return None, ref_problems, frontmatter, body
     data["referencesSha256"] = refs
-    manifest, _, warnings = validate_manifest(data, folder_name=folder_name)
+    manifest, _, _warnings = validate_manifest(data, folder_name=folder_name)
     return manifest, [], frontmatter, body

@@ -51,16 +51,16 @@ import hashlib
 import threading
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .extraction import extract_facts, is_memorable
 
 __all__ = [
-    "TurnSnapshot",
-    "ReviewResult",
-    "ReviewHandle",
-    "FactsModuleUnavailable",
     "TURN_TIMEOUT_SECONDS",
+    "FactsModuleUnavailable",
+    "ReviewHandle",
+    "ReviewResult",
+    "TurnSnapshot",
     "review_turn",
 ]
 
@@ -169,8 +169,7 @@ def _default_record_fact(user_id, record):
         from .facts import record_fact
     except ImportError as exc:  # G7 module not built yet
         raise FactsModuleUnavailable(
-            "puspa.memory.facts is not available yet; "
-            "background review skipped"
+            "puspa.memory.facts is not available yet; background review skipped"
         ) from exc
     return record_fact(
         user_id,
@@ -263,10 +262,7 @@ def _review(snapshot, *, record_fact, recall_facts, now):
             stored = record_fact(snapshot.user_id, record)
             if isinstance(stored, dict) and stored.get("stored") is False:
                 # Trust gate refusal (G7): not stored, not recorded.
-                errors.append(
-                    f"fact not stored for {candidate!r}: "
-                    f"{stored.get('verdict')}"
-                )
+                errors.append(f"fact not stored for {candidate!r}: {stored.get('verdict')}")
                 continue
             stored_id = stored.get("id") if isinstance(stored, dict) else None
             recorded.append(str(stored_id or record["id"]))
@@ -287,7 +283,7 @@ def _review(snapshot, *, record_fact, recall_facts, now):
 
 def _run_guarded(snapshot, *, record_fact, recall_facts, box):
     """Thread entry: run the review, never let an exception escape."""
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     try:
         result = _review(
             snapshot,
@@ -296,21 +292,21 @@ def _run_guarded(snapshot, *, record_fact, recall_facts, box):
             now=started,
         )
     except FactsModuleUnavailable as exc:
-        result = ReviewResult(
-            status="skipped", errors=[str(exc)], turn_id=snapshot.turn_id
-        )
+        result = ReviewResult(status="skipped", errors=[str(exc)], turn_id=snapshot.turn_id)
     except Exception as exc:  # the fork must never crash the caller
-        result = ReviewResult(
-            status="failed", errors=[str(exc)], turn_id=snapshot.turn_id
-        )
-    result.duration_seconds = (
-        datetime.now(timezone.utc) - started
-    ).total_seconds()
+        result = ReviewResult(status="failed", errors=[str(exc)], turn_id=snapshot.turn_id)
+    result.duration_seconds = (datetime.now(UTC) - started).total_seconds()
     box["result"] = result
 
 
-def review_turn(snapshot, *, record_fact=None, recall_facts=None,
-                sync=False, timeout_seconds=TURN_TIMEOUT_SECONDS):
+def review_turn(
+    snapshot,
+    *,
+    record_fact=None,
+    recall_facts=None,
+    sync=False,
+    timeout_seconds=TURN_TIMEOUT_SECONDS,
+):
     """Review one finished turn in the background.
 
     ``snapshot`` is deep-copied, so the fork never sees later
@@ -330,8 +326,10 @@ def review_turn(snapshot, *, record_fact=None, recall_facts=None,
     if sync:
         box = {}
         _run_guarded(
-            frozen, record_fact=record_fact,
-            recall_facts=recall_facts, box=box,
+            frozen,
+            record_fact=record_fact,
+            recall_facts=recall_facts,
+            box=box,
         )
         return box["result"]
     box = {}

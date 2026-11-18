@@ -61,8 +61,7 @@ ENV_BY_KIND = {
 def _check_kind(kind):
     if kind not in SINGLE_SELECT_KINDS:
         raise UnknownSingleSelectKindError(
-            f"unknown single-select kind {kind!r} "
-            f"(allowed: {', '.join(SINGLE_SELECT_KINDS)})"
+            f"unknown single-select kind {kind!r} (allowed: {', '.join(SINGLE_SELECT_KINDS)})"
         )
 
 
@@ -72,18 +71,12 @@ class SingleSelectRegistry:
     def __init__(self):
         # kind -> {name: factory}; factory takes config=None and
         # returns an instance (provider class or engine factory).
-        self._entries: dict[str, dict[str, object]] = {
-            kind: {} for kind in SINGLE_SELECT_KINDS
-        }
+        self._entries: dict[str, dict[str, object]] = {kind: {} for kind in SINGLE_SELECT_KINDS}
         # kind -> default name (first registration wins when none
         # is flagged default).
-        self._defaults: dict[str, str | None] = {
-            kind: None for kind in SINGLE_SELECT_KINDS
-        }
+        self._defaults: dict[str, str | None] = {kind: None for kind in SINGLE_SELECT_KINDS}
         # kind -> currently selected name (None until select() runs).
-        self._active: dict[str, str | None] = {
-            kind: None for kind in SINGLE_SELECT_KINDS
-        }
+        self._active: dict[str, str | None] = {kind: None for kind in SINGLE_SELECT_KINDS}
 
     def register(self, kind, name, factory, *, default=False):
         """Register one implementation under (kind, name).
@@ -94,17 +87,12 @@ class SingleSelectRegistry:
         """
         _check_kind(kind)
         if not isinstance(name, str) or not name:
-            raise PluginConfigError(
-                f"single-select {kind}: name must be a non-empty string"
-            )
+            raise PluginConfigError(f"single-select {kind}: name must be a non-empty string")
         if not callable(factory):
-            raise PluginConfigError(
-                f"single-select {kind} {name!r}: factory is not callable"
-            )
+            raise PluginConfigError(f"single-select {kind} {name!r}: factory is not callable")
         if name in self._entries[kind]:
             raise PluginShadowError(
-                f"single-select {kind} {name!r} is already registered; "
-                "shadowing is rejected"
+                f"single-select {kind} {name!r} is already registered; shadowing is rejected"
             )
         self._entries[kind][name] = factory
         if default or self._defaults[kind] is None:
@@ -142,15 +130,10 @@ class SingleSelectRegistry:
         constructor for classes, here for plain factories).
         """
         _check_kind(kind)
-        wanted = (
-            name
-            or os.environ.get(ENV_BY_KIND[kind])
-            or self._defaults[kind]
-        )
+        wanted = name or os.environ.get(ENV_BY_KIND[kind]) or self._defaults[kind]
         if wanted is None or wanted not in self._entries[kind]:
             raise UnknownPluginError(
-                f"unknown {kind} {wanted!r}; registered: "
-                f"{', '.join(self.names(kind)) or '(none)'}"
+                f"unknown {kind} {wanted!r}; registered: {', '.join(self.names(kind)) or '(none)'}"
             )
         factory = self._entries[kind][wanted]
         try:
@@ -206,13 +189,8 @@ def install_into_provider_registry(plugin_registry, name, provider_registry):
             f"{', '.join(plugin_registry.names('memory_provider')) or '(none)'}"
         )
     provider_cls = plugin_registry.get("memory_provider", name)
-    if not (
-        isinstance(provider_cls, type)
-        and issubclass(provider_cls, MemoryProvider)
-    ):
-        raise PluginConfigError(
-            f"memory provider plugin {name!r} is not a MemoryProvider subclass"
-        )
+    if not (isinstance(provider_cls, type) and issubclass(provider_cls, MemoryProvider)):
+        raise PluginConfigError(f"memory provider plugin {name!r} is not a MemoryProvider subclass")
     provider_registry.register(provider_cls)
     return provider_cls
 

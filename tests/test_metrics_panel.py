@@ -2,8 +2,8 @@
 
 from puspa.workflow.composer import card_step
 from puspa.workflow.metrics import workflow_metrics
-from puspa.workflow.panel import result_run_html, card_step_html, panel_workflow_html
-from puspa.workflow.runner import activate_workflow, create_workflow, run_workflow, dry_run
+from puspa.workflow.panel import card_step_html, panel_workflow_html, result_run_html
+from puspa.workflow.runner import activate_workflow, dry_run, run_workflow
 from puspa.workflow.templates import create_from_template
 
 
@@ -16,15 +16,20 @@ def test_metric_workflow_start_pending():
     assert m["percent_runs_without_intervention"] is None
 
 
-def test_workflow_metric_counts_runs_without_mixing(make_user, test_dsn,
-                                                  permission_user_penuh):
+def test_workflow_metric_counts_runs_without_mixing(make_user, test_dsn, permission_user_penuh):
     u = make_user()
     user_id, agent_id = u["user_id"], u["agent_id"]
-    workflow = create_from_template("rekap_bill_weekly", user_id=user_id,
-                             agent_id=agent_id, dsn=test_dsn)
+    workflow = create_from_template(
+        "rekap_bill_weekly", user_id=user_id, agent_id=agent_id, dsn=test_dsn
+    )
     dry = dry_run(workflow["id"], user_id=user_id, dsn=test_dsn)
-    activate_workflow(workflow["id"], user_id=user_id, permission_user=permission_user_penuh,
-                  dry_run_result=dry, dsn=test_dsn)
+    activate_workflow(
+        workflow["id"],
+        user_id=user_id,
+        permission_user=permission_user_penuh,
+        dry_run_result=dry,
+        dsn=test_dsn,
+    )
     run_workflow(workflow["id"], user_id=user_id, dsn=test_dsn)
     m = workflow_metrics(dsn=test_dsn)
     assert m["users_with_active_workflow"] == 1
@@ -36,9 +41,13 @@ def test_workflow_metric_counts_runs_without_mixing(make_user, test_dsn,
 
 
 def test_panel_card_step_escape_html():
-    card = card_step({"block": "send_notification",
-                           "inputs": {"message": "<b>hai</b>"},
-                           "title": "Ingatkan <aku>"})
+    card = card_step(
+        {
+            "block": "send_notification",
+            "inputs": {"message": "<b>hai</b>"},
+            "title": "Ingatkan <aku>",
+        }
+    )
     html = card_step_html(card)
     assert "<b>hai</b>" not in html
     assert "&lt;b&gt;hai&lt;/b&gt;" not in html  # pesan tidak dirender di kartu
@@ -48,19 +57,32 @@ def test_panel_card_step_escape_html():
 
 def test_workflow_panel_and_run_results():
     html = panel_workflow_html(
-        name="Tagihan bulanan", trigger={"type": "schedule"},
-        card=[card_step({"block": "check_bill",
-                              "inputs": {"provider": "PLN",
-                                          "customer_number": ""},
-                              "title": "Cek PLN"})],
-        manifest_text="Konektor: tidak ada", message="Siap diaktifkan.")
+        name="Tagihan bulanan",
+        trigger={"type": "schedule"},
+        card=[
+            card_step(
+                {
+                    "block": "check_bill",
+                    "inputs": {"provider": "PLN", "customer_number": ""},
+                    "title": "Cek PLN",
+                }
+            )
+        ],
+        manifest_text="Konektor: tidak ada",
+        message="Siap diaktifkan.",
+    )
     assert "Tagihan bulanan" in html and "check_bill" in html
     assert "Siap diaktifkan." in html
-    result = result_run_html({
-        "status": "completed",
-        "step_results": [{"block": "check_bill", "success": True},
-                          {"block": "prepare_payment", "success": True,
-                           "simulated": True}],
-        "cost_rp": 0, "reason": ""})
+    result = result_run_html(
+        {
+            "status": "completed",
+            "step_results": [
+                {"block": "check_bill", "success": True},
+                {"block": "prepare_payment", "success": True, "simulated": True},
+            ],
+            "cost_rp": 0,
+            "reason": "",
+        }
+    )
     assert "simulasi (uji kering)" in result
     assert "Rp0" in result

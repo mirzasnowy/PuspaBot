@@ -23,13 +23,12 @@ import time
 from pathlib import Path
 
 import pytest
-
 from nanobot.agent.hook import AgentHookContext, AgentRunHookContext
 from nanobot.agent.tools.base import Tool, ToolResult, tool_parameters
 from nanobot.agent.tools.execution import execute_tool_calls
 from nanobot.providers.base import ToolCallRequest
 
-from puspa.accounts import create_session, create_user
+from puspa.accounts import SessionError, create_session, create_user
 from puspa.chassis import (
     PuspaChassis,
     PuspaHook,
@@ -38,7 +37,6 @@ from puspa.chassis import (
     PuspaTool,
     SandboxTool,
     assemble,
-    bind_token,
     bind_turn,
     build_hook_factory,
     build_registry,
@@ -49,7 +47,7 @@ from puspa.chassis import (
 )
 from puspa.chassis.tools import kind_for_tool
 from puspa.ledger import Ledger
-from puspa.policy import Gate, SkillRejected, issue_token, verify_token
+from puspa.policy import Gate, issue_token, verify_token
 from puspa.policy.skill_signing import sign_skill
 from puspa.policy.tokens import _issued, _revoked
 from puspa.sandbox.runner import SandboxUnavailable
@@ -66,6 +64,7 @@ def _reset_revocation():
 
 
 # --- Tool palsu (Tool nanobot asli) ---------------------------------------
+
 
 @tool_parameters(
     {
@@ -152,6 +151,7 @@ class FakeSandbox:
 
 # --- Helper ----------------------------------------------------------------
 
+
 def _payload(**overrides):
     now = int(time.time())
     payload = {
@@ -193,6 +193,7 @@ def _ledger_events(events, event_type):
 
 
 # --- Registry + wrapper -----------------------------------------------------
+
 
 def test_registry_wraps_tool_when_registering(ephemeral_keys, stub_log):
     registry = PuspaRegistry(log=stub_log)
@@ -355,10 +356,8 @@ def test_prepare_call_backstop_closes_unwrapped_tool(ephemeral_keys, stub_log):
     assert "di luar token" in str(error)
 
 
-def test_wrapper_action_logout_needs_approval_not_executed(
-    ephemeral_keys, stub_log
-):
-    sk, pk = ephemeral_keys
+def test_wrapper_action_logout_needs_approval_not_executed(ephemeral_keys, stub_log):
+    _sk, pk = ephemeral_keys
     payload = _verified_payload(ephemeral_keys)
     gate = Gate(log=stub_log, spending=None, public_key=pk)
     registry = PuspaRegistry(log=stub_log, gate=gate, public_key=pk)
@@ -380,8 +379,8 @@ def test_wrapper_action_logout_needs_approval_not_executed(
     # Alur persetujuan (simulasi PWA fase 2): setujui lalu eksekusi tepat sekali.
     gate.approve(request_id, "user-1")
     dijalankan = []
-    hasil1 = gate.execute(request_id, executor=lambda content: dijalankan.append(content))
-    hasil2 = gate.execute(request_id, executor=lambda content: dijalankan.append(content))
+    hasil1 = gate.execute(request_id, executor=dijalankan.append)
+    hasil2 = gate.execute(request_id, executor=dijalankan.append)
     assert len(dijalankan) == 1
     assert dijalankan[0]["recipient"] == "a@contoh.id"
     assert hasil1 == hasil2
@@ -447,6 +446,7 @@ def test_kind_for_tool():
 
 
 # --- Jalur eksekusi runner asli --------------------------------------------
+
 
 def test_execute_tool_calls_real_runner_path(ephemeral_keys, stub_log):
     """Tool call melewati execute_tool_calls nanobot (prepare_call ->
@@ -516,6 +516,7 @@ def test_execute_tool_calls_rejected_without_token(stub_log):
 
 # --- Hook + Buku Kerja nyata -------------------------------------------------
 
+
 def test_hook_writes_cycle_task_to_ledger(test_dsn, stub_log):
     import uuid
 
@@ -526,15 +527,13 @@ def test_hook_writes_cycle_task_to_ledger(test_dsn, stub_log):
     hook = PuspaHook(task_id=tid, agent_id="agen-puspa", log=sink)
     asyncio.run(hook.before_run(AgentRunHookContext(messages=[])))
     asyncio.run(
-        hook.after_run(
-            AgentRunHookContext(messages=[], final_content="Jawaban akhir agen.")
-        )
+        hook.after_run(AgentRunHookContext(messages=[], final_content="Jawaban akhir agen."))
     )
     event = ledger.events(tid)
     event_type = [e["type"] for e in event]
     assert event_type == ["task_created", "task_completed", "agent_message"]
     assert ledger.verify_chain(tid) == (True, [])
-    message = [e for e in event if e["type"] == "agent_message"][0]
+    message = next(e for e in event if e["type"] == "agent_message")
     assert "Jawaban akhir agen." in message["content"]["content"]
 
 
@@ -546,9 +545,7 @@ def test_hook_on_error_writes_task_failed(test_dsn):
     ledger.create_schema()
     sink = make_ledger_sink(ledger, task_id=tid, agent_id="agen-puspa")
     hook = PuspaHook(task_id=tid, agent_id="agen-puspa", log=sink)
-    asyncio.run(
-        hook.on_error(AgentRunHookContext(messages=[], error="model timeout"))
-    )
+    asyncio.run(hook.on_error(AgentRunHookContext(messages=[], error="model timeout")))
     event = ledger.events(tid)
     assert [e["type"] for e in event] == ["task_failed"]
     assert "timeout" in event[0]["content"]["reason"]
@@ -565,6 +562,7 @@ def test_hook_factory_builds_hook_per_turn(stub_log):
 
 # --- Skills loader -----------------------------------------------------------
 
+
 def _tulis_skill_ws(workspace: Path, name: str, *, tools=("read_price",)):
     skill_dir = workspace / "skills" / name
     skill_dir.mkdir(parents=True)
@@ -580,9 +578,7 @@ def _tulis_skill_ws(workspace: Path, name: str, *, tools=("read_price",)):
         "connectors": {},
         "author": "puspa",
     }
-    (skill_dir / "manifest.json").write_text(
-        json.dumps(manifest, indent=2), encoding="utf-8"
-    )
+    (skill_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return skill_dir
 
 
@@ -594,9 +590,7 @@ def test_skills_loader_reject_skill_workspace_unsigned(tmp_path, ephemeral_keys)
     assert loader.load_skill("price") is None
 
 
-def test_skills_loader_accepts_signed_workspace_skill(
-    tmp_path, ephemeral_keys
-):
+def test_skills_loader_accepts_signed_workspace_skill(tmp_path, ephemeral_keys):
     sk, pk = ephemeral_keys
     workspace = tmp_path / "ws"
     skill_dir = _tulis_skill_ws(workspace, "price")
@@ -606,18 +600,14 @@ def test_skills_loader_accepts_signed_workspace_skill(
     assert content is not None and "Isi skill price" in content
 
 
-def test_skills_loader_rejects_skill_changed_after_signing(
-    tmp_path, ephemeral_keys
-):
+def test_skills_loader_rejects_skill_changed_after_signing(tmp_path, ephemeral_keys):
     sk, pk = ephemeral_keys
     workspace = tmp_path / "ws"
     skill_dir = _tulis_skill_ws(workspace, "price")
     sign_skill(skill_dir, sk)
     manifest = json.loads((skill_dir / "manifest.json").read_text(encoding="utf-8"))
     manifest["tools"].append("send_uang")
-    (skill_dir / "manifest.json").write_text(
-        json.dumps(manifest, indent=2), encoding="utf-8"
-    )
+    (skill_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     loader = PuspaSkillsLoader(workspace, public_key=pk)
     assert loader.load_skill("price") is None
 
@@ -632,9 +622,7 @@ def test_skills_loader_builtin_still_readable_without_puspa_key(tmp_path):
     assert content is not None and "weather" in content.lower()
 
 
-def test_skills_loader_without_public_key_rejects_all_workspace_skills(
-    tmp_path, ephemeral_keys
-):
+def test_skills_loader_without_public_key_rejects_all_workspace_skills(tmp_path, ephemeral_keys):
     sk, _pk = ephemeral_keys
     workspace = tmp_path / "ws"
     skill_dir = _tulis_skill_ws(workspace, "price")
@@ -644,6 +632,7 @@ def test_skills_loader_without_public_key_rejects_all_workspace_skills(
 
 
 # --- Session binding ----------------------------------------------------------
+
 
 def test_bind_turn_publishes_token_agent(test_dsn, ephemeral_keys):
     sk, pk = ephemeral_keys
@@ -672,7 +661,7 @@ def test_bind_turn_publishes_token_agent(test_dsn, ephemeral_keys):
 
 def test_bind_turn_rejects_invalid_session(test_dsn, ephemeral_keys):
     sk, pk = ephemeral_keys
-    with pytest.raises(Exception):
+    with pytest.raises(SessionError):
         bind_turn(
             session_token="token-palsu",
             signing_key=sk,
@@ -684,6 +673,7 @@ def test_bind_turn_rejects_invalid_session(test_dsn, ephemeral_keys):
 
 
 # --- Token ContextVar mengalir ke task (mekanisme sub-agen) -------------------
+
 
 def test_token_context_visible_inside_async_task(ephemeral_keys):
     """``asyncio.create_task`` menyalin ContextVar — mekanisme yang dipakai
@@ -702,6 +692,7 @@ def test_token_context_visible_inside_async_task(ephemeral_keys):
 
 
 # --- SandboxTool ---------------------------------------------------------------
+
 
 def test_sandbox_tool_returns_stdout(ephemeral_keys):
     tool = SandboxTool(FakeSandbox(ok=True, stdout="42\n"))
@@ -733,6 +724,7 @@ def test_sandbox_tool_in_registry_and_wrapped(ephemeral_keys, stub_log):
 
 
 # --- Factory / assemble ---------------------------------------------------------
+
 
 def test_assemble_forwards_wiring_puspa_to_agent_loop(monkeypatch):
     captured = {}

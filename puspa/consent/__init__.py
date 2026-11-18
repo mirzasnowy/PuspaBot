@@ -2,16 +2,16 @@
 
 from .account import delete_account, export_account
 from .consent import (
-    TEXT_APPROVAL,
     TEKS_VERSI,
+    TEXT_APPROVAL,
     has_consented,
     list_consents,
     record_consent,
 )
 
 __all__ = [
-    "TEXT_APPROVAL",
     "TEKS_VERSI",
+    "TEXT_APPROVAL",
     "delete_account",
     "export_account",
     "has_consented",

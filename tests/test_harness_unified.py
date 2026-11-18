@@ -29,7 +29,6 @@ from puspa.harness.diff import (
 )
 from puspa.harness.executor import LocalTestExecutor, SandboxExecutor
 from puspa.harness.loop import (
-    STATUS_ATTEMPT_LIMIT,
     STATUS_PASSED,
     STATUS_REPRODUCTION_MISSING,
     CodingHarness,
@@ -284,9 +283,7 @@ def test_reproduce_first_reproduction_must_fail_and_fix_must_pass(tmp_path):
 def test_reproduce_first_wrong_symptom_is_not_a_reproduction(tmp_path):
     executor = LocalTestExecutor(tmp_path / "work")
     tracker = ReproduceFirst(
-        build_reproduction(
-            "task-add", "add sums", TEST_CODE, expected_failure="ZeroDivisionError"
-        )
+        build_reproduction("task-add", "add sums", TEST_CODE, expected_failure="ZeroDivisionError")
     )
     report = tracker.record_reproduction(executor.run, BUGGY_IMPL)
     # The test fails, but with AssertionError, not the expected
@@ -339,9 +336,9 @@ def test_check_tool_denies_write_under_read_only_through_gate():
     gate = Gate()
     token = _payload()
     assert check_tool(PROFILE_WORKSPACE_WRITE, gate, token, "write_code") == "allow"
-    with pytest.raises(GateDenied, match="read_only.*denies tool 'write_code'"):
+    with pytest.raises(GateDenied, match=r"read_only.*denies tool 'write_code'"):
         check_tool(PROFILE_READ_ONLY, gate, token, "write_code")
-    with pytest.raises(GateDenied, match="read_only.*denies tool 'run_tests'"):
+    with pytest.raises(GateDenied, match=r"read_only.*denies tool 'run_tests'"):
         check_tool(PROFILE_READ_ONLY, gate, token, "run_tests")
     # Token deny still propagates under workspace_write.
     denied = _payload(tool_permissions={"write_code": "deny"})
@@ -355,14 +352,17 @@ def test_check_tool_denies_write_under_read_only_through_gate():
 def test_check_write_path_refuses_escape_and_protected_paths(tmp_path):
     root = tmp_path / "work"
     root.mkdir()
-    assert check_write_path(PROFILE_WORKSPACE_WRITE, "src/add.py", workspace_root=root) == (root / "src/add.py").resolve()
-    with pytest.raises(ProfileDenied, match="read_only.*denies writes"):
+    assert (
+        check_write_path(PROFILE_WORKSPACE_WRITE, "src/add.py", workspace_root=root)
+        == (root / "src/add.py").resolve()
+    )
+    with pytest.raises(ProfileDenied, match=r"read_only.*denies writes"):
         check_write_path(PROFILE_READ_ONLY, "src/add.py", workspace_root=root)
     with pytest.raises(ProfileDenied, match="outside the workspace"):
         check_write_path(PROFILE_WORKSPACE_WRITE, "../escape.py", workspace_root=root)
     with pytest.raises(ProfileDenied, match="outside the workspace"):
         check_write_path(PROFILE_FULL, "/etc/passwd", workspace_root=root)
-    with pytest.raises(ProfileDenied, match="protected directory '.git'"):
+    with pytest.raises(ProfileDenied, match=r"protected directory '.git'"):
         check_write_path(PROFILE_FULL, ".git/config", workspace_root=root)
 
 
@@ -378,8 +378,10 @@ def test_requires_approval_matrix(tmp_path):
     # A workspace_write write outside the workspace needs approval.
     assert (
         requires_approval(
-            PROFILE_WORKSPACE_WRITE, "write_code",
-            path="../outside.py", workspace_root=root,
+            PROFILE_WORKSPACE_WRITE,
+            "write_code",
+            path="../outside.py",
+            workspace_root=root,
         )
         is True
     )
@@ -392,11 +394,11 @@ def test_executor_write_file_enforces_profile(tmp_path):
     executor = LocalTestExecutor(tmp_path / "work")
     written = executor.write_file("src/add.py", FIXED_IMPL, profile=PROFILE_WORKSPACE_WRITE)
     assert written.read_text(encoding="utf-8") == FIXED_IMPL
-    with pytest.raises(ProfileDenied, match="read_only.*denies writes"):
+    with pytest.raises(ProfileDenied, match=r"read_only.*denies writes"):
         executor.write_file("src/add.py", FIXED_IMPL, profile=PROFILE_READ_ONLY)
     with pytest.raises(ProfileDenied, match="outside the workspace"):
         executor.write_file("../escape.py", "x", profile=PROFILE_WORKSPACE_WRITE)
-    with pytest.raises(ProfileDenied, match="protected directory '.git'"):
+    with pytest.raises(ProfileDenied, match=r"protected directory '.git'"):
         executor.write_file(".git/config", "x", profile=PROFILE_FULL)
 
 
@@ -546,7 +548,7 @@ def test_diff_that_does_not_apply_fails_the_attempt_not_the_run(tmp_path):
 def test_read_only_profile_refuses_write_before_anything_runs(tmp_path):
     """Under read_only the harness refuses before the generator or
     the executor is touched, even when the token allows everything."""
-    from puspa.harness.executor import Executor, ExecutionResult
+    from puspa.harness.executor import ExecutionResult, Executor
 
     class _CountingExecutor(Executor):
         def __init__(self):
@@ -570,7 +572,7 @@ def test_read_only_profile_refuses_write_before_anything_runs(tmp_path):
         token_payload=_payload(),
         profile=PROFILE_READ_ONLY,
     )
-    with pytest.raises(GateDenied, match="read_only.*denies tool 'write_code'"):
+    with pytest.raises(GateDenied, match=r"read_only.*denies tool 'write_code'"):
         harness.run(_task())
     assert calls["n"] == 0
     assert executor.calls == 0

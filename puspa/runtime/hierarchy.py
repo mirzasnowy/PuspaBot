@@ -58,24 +58,26 @@ concurrency is a follow-up, not a silent claim.
 
 from __future__ import annotations
 
+import contextlib
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from puspa.runtime.handoff import (
     Handoff,
     HandoffContract,
-    HandoffError,
     check_handoff_limit_between_agents,
     reject_cycle,
 )
 from puspa.runtime.tasks import Step, Task
 
 __all__ = [
+    "COMPOSITIONS",
+    "TOOL_KINDS",
     "AgentNode",
     "CallbackRegistry",
-    "COMPOSITIONS",
     "HierarchicalPlan",
     "HierarchicalRunner",
     "HierarchyError",
@@ -86,7 +88,6 @@ __all__ = [
     "SessionStore",
     "ToolConfirmation",
     "ToolConfirmationError",
-    "TOOL_KINDS",
 ]
 
 #: Deterministic composition shapes (ADK workflow agents).
@@ -116,12 +117,22 @@ TOOL_KINDS = {
 #: Tools that change the world and therefore always need
 #: confirmation, even when no Gate is wired in. Read-only tools
 #: (search, read, verify) are never in this set.
-DEFAULT_IMPACTFUL_TOOLS = frozenset({
-    "prepare_payment", "pay", "payment",
-    "gmail_send", "gmail.kirim", "gmail.send", "send",
-    "calendar_create_event", "calendar.create_event", "create_event",
-    "delete", "deploy",
-})
+DEFAULT_IMPACTFUL_TOOLS = frozenset(
+    {
+        "prepare_payment",
+        "pay",
+        "payment",
+        "gmail_send",
+        "gmail.kirim",
+        "gmail.send",
+        "send",
+        "calendar_create_event",
+        "calendar.create_event",
+        "create_event",
+        "delete",
+        "deploy",
+    }
+)
 
 
 class HierarchyError(Exception):
@@ -154,8 +165,8 @@ class AgentNode:
     instruction: str = ""
     tools: tuple[str, ...] = ()
     output_key: str = ""
-    parent: "AgentNode | None" = field(default=None, repr=False)
-    children: list["AgentNode"] = field(default_factory=list, repr=False)
+    parent: AgentNode | None = field(default=None, repr=False)
+    children: list[AgentNode] = field(default_factory=list, repr=False)
 
     def __post_init__(self) -> None:
         if not self.name or not str(self.name).strip():
@@ -163,13 +174,11 @@ class AgentNode:
         if not self.role or not str(self.role).strip():
             raise HierarchyError("node role must not be empty")
         if self.permission_class not in PERMISSION_CLASSES:
-            raise HierarchyError(
-                f"permission_class must be one of {PERMISSION_CLASSES}"
-            )
+            raise HierarchyError(f"permission_class must be one of {PERMISSION_CLASSES}")
         if not self.output_key:
             self.output_key = self.name
 
-    def add_child(self, child: "AgentNode") -> "AgentNode":
+    def add_child(self, child: AgentNode) -> AgentNode:
         """Attach a child. Enforces the single-parent rule and no cycles."""
         if child is self:
             raise HierarchyError("an agent cannot be its own child")
@@ -179,14 +188,12 @@ class AgentNode:
                 f"({child.parent.name!r}); one parent only"
             )
         if self.is_descendant_of(child):
-            raise HierarchyError(
-                f"adding {child.name!r} under {self.name!r} would create a cycle"
-            )
+            raise HierarchyError(f"adding {child.name!r} under {self.name!r} would create a cycle")
         child.parent = self
         self.children.append(child)
         return child
 
-    def is_descendant_of(self, node: "AgentNode") -> bool:
+    def is_descendant_of(self, node: AgentNode) -> bool:
         """True when this node sits below ``node`` in the tree."""
         current = self.parent
         while current is not None:
@@ -208,7 +215,7 @@ class AgentNode:
             current = current.parent
         return list(reversed(names))
 
-    def find_role(self, role: str) -> "AgentNode | None":
+    def find_role(self, role: str) -> AgentNode | None:
         """First node in this subtree (self first) with this role."""
         if self.role == role:
             return self
@@ -218,7 +225,7 @@ class AgentNode:
                 return found
         return None
 
-    def leaves(self) -> list["AgentNode"]:
+    def leaves(self) -> list[AgentNode]:
         """Leaf nodes of this subtree, in tree order."""
         if not self.children:
             return [self]
@@ -333,12 +340,16 @@ class SessionState:
         self.store.save(self.session_id, self.snapshot())
 
     @classmethod
-    def load(cls, session_id: str, *, user_id: str = "",
-             app_name: str = "puspa",
-             store: SessionStore | None = None) -> "SessionState":
+    def load(
+        cls,
+        session_id: str,
+        *,
+        user_id: str = "",
+        app_name: str = "puspa",
+        store: SessionStore | None = None,
+    ) -> SessionState:
         """Load saved state for a session, or start empty."""
-        state = cls(session_id=session_id, user_id=user_id,
-                    app_name=app_name, store=store)
+        state = cls(session_id=session_id, user_id=user_id, app_name=app_name, store=store)
         if store is not None:
             snapshot = store.load(session_id)
             if snapshot:
@@ -368,8 +379,7 @@ class MemoryAccess:
     module stays importable without Postgres.
     """
 
-    def __init__(self, user_id: str, agent_id: str, *,
-                 grant: Callable | None = None) -> None:
+    def __init__(self, user_id: str, agent_id: str, *, grant: Callable | None = None) -> None:
         self.user_id = user_id
         self.agent_id = agent_id
         self._grant = grant
@@ -381,9 +391,14 @@ class MemoryAccess:
 
         return grant_slice
 
-    def read(self, node: AgentNode, query: str,
-             columns: tuple[str, ...] = ("profile", "episodic"),
-             *, token_ref: str) -> dict:
+    def read(
+        self,
+        node: AgentNode,
+        query: str,
+        columns: tuple[str, ...] = ("profile", "episodic"),
+        *,
+        token_ref: str,
+    ) -> dict:
         """Memory slice for one node, for one bounded query.
 
         ``token_ref`` is the node's permission-token reference
@@ -392,8 +407,7 @@ class MemoryAccess:
         if not token_ref or not isinstance(token_ref, str):
             raise HierarchyError("token_ref is required for a memory slice")
         grant = self._resolve_grant()
-        return grant(self.user_id, self.agent_id, node.name, query,
-                     columns, token_ref)
+        return grant(self.user_id, self.agent_id, node.name, query, columns, token_ref)
 
 
 # ----------------------------------------------------------------------
@@ -427,19 +441,19 @@ class ToolConfirmation:
     def is_impactful(self, tool: str) -> bool:
         return tool in self.impactful_tools
 
-    def request(self, tool: str, args: dict | None = None,
-                *, kind: str | None = None) -> str:
+    def request(self, tool: str, args: dict | None = None, *, kind: str | None = None) -> str:
         """Ask for confirmation. Returns the confirmation id."""
         args = dict(args or {})
         if self.gate is not None:
             gate_kind = kind or TOOL_KINDS.get(tool)
             if gate_kind is None:
-                raise ToolConfirmationError(
-                    f"no Gate kind for impactful tool {tool!r}; refusing"
-                )
+                raise ToolConfirmationError(f"no Gate kind for impactful tool {tool!r}; refusing")
             request = self.gate.request_approval(
-                user_id=self.user_id, agent_id=self.agent_id,
-                token=self.token, kind=gate_kind, content=args,
+                user_id=self.user_id,
+                agent_id=self.agent_id,
+                token=self.token,
+                kind=gate_kind,
+                content=args,
             )
             return request.request_id
         confirmation_id = f"confirm-{uuid.uuid4().hex[:12]}"
@@ -457,17 +471,21 @@ class ToolConfirmation:
             self._confirmed.add(confirmation_id)
             return
         if confirmation_id not in self._pending:
-            raise ToolConfirmationError(
-                f"unknown confirmation {confirmation_id!r}"
-            )
+            raise ToolConfirmationError(f"unknown confirmation {confirmation_id!r}")
         self._pending.pop(confirmation_id)
         self._confirmed.add(confirmation_id)
 
     def is_confirmed(self, confirmation_id: str) -> bool:
         return confirmation_id in self._confirmed
 
-    def run(self, tool: str, args: dict | None, executor: Callable,
-            *, confirmation_id: str | None = None) -> Any:
+    def run(
+        self,
+        tool: str,
+        args: dict | None,
+        executor: Callable,
+        *,
+        confirmation_id: str | None = None,
+    ) -> Any:
         """Run a tool, blocking impactful calls without confirmation.
 
         ``executor`` is called as ``executor(tool, args)`` for the
@@ -479,12 +497,11 @@ class ToolConfirmation:
         if not self.is_impactful(tool):
             return executor(tool, args)
         if confirmation_id is None or not self.is_confirmed(confirmation_id):
-            raise ToolConfirmationError(
-                f"tool {tool!r} needs confirmation before it runs"
-            )
+            raise ToolConfirmationError(f"tool {tool!r} needs confirmation before it runs")
         if self.gate is not None:
             return self.gate.execute(
-                confirmation_id, executor=lambda content: executor(tool, content))
+                confirmation_id, executor=lambda content: executor(tool, content)
+            )
         self._confirmed.discard(confirmation_id)
         return executor(tool, args)
 
@@ -511,8 +528,7 @@ class CallbackRegistry:
     before_tool: list[Callable] = field(default_factory=list)
     after_tool: list[Callable] = field(default_factory=list)
 
-    def run_before_tool(self, node_name: str, tool: str,
-                        args: dict) -> bool:
+    def run_before_tool(self, node_name: str, tool: str, args: dict) -> bool:
         """True when the tool may run (no callback blocked it)."""
         for callback in self.before_tool:
             try:
@@ -522,8 +538,7 @@ class CallbackRegistry:
                 continue
         return True
 
-    def run_after_tool(self, node_name: str, tool: str, args: dict,
-                       result: Any) -> Any:
+    def run_after_tool(self, node_name: str, tool: str, args: dict, result: Any) -> Any:
         for callback in self.after_tool:
             try:
                 replacement = callback(node_name, tool, args, result)
@@ -573,9 +588,7 @@ class HierarchicalPlan:
 
     def __post_init__(self) -> None:
         if self.composition not in COMPOSITIONS:
-            raise HierarchyError(
-                f"composition must be one of {COMPOSITIONS}"
-            )
+            raise HierarchyError(f"composition must be one of {COMPOSITIONS}")
         if self.max_iterations < 1:
             raise HierarchyError("max_iterations must be 1 or more")
 
@@ -607,23 +620,33 @@ class HierarchicalRunner:
     default resolver returns the step name itself.
     """
 
-    def __init__(self, root: AgentNode, *,
-                 executor: Callable | None = None,
-                 sink: Callable | None = None,
-                 pool: Any = None,
-                 memory: MemoryAccess | None = None,
-                 confirmation: ToolConfirmation | None = None,
-                 callbacks: CallbackRegistry | None = None,
-                 tool_resolver: Callable[[str], str] | None = None) -> None:
+    def __init__(
+        self,
+        root: AgentNode,
+        *,
+        executor: Callable | None = None,
+        sink: Callable | None = None,
+        pool: Any = None,
+        memory: MemoryAccess | None = None,
+        confirmation: ToolConfirmation | None = None,
+        callbacks: CallbackRegistry | None = None,
+        tool_resolver: Callable[[str], str] | None = None,
+    ) -> None:
         if not root.is_root:
             raise HierarchyError("the runner root must have no parent")
         self.root = root
         self.executor = executor or (
             lambda node_name, step_name, inputs, state: {
-                "type": inputs.get("type", "result"), "value": None})
+                "type": inputs.get("type", "result"),
+                "value": None,
+            }
+        )
         self._events: list[dict] = []
-        self.sink = sink or (lambda event_type, content: self._events.append(
-            {"type": event_type, "content": content}))
+        self.sink = sink or (
+            lambda event_type, content: self._events.append(
+                {"type": event_type, "content": content}
+            )
+        )
         self.pool = pool
         self.memory = memory
         self.confirmation = confirmation
@@ -637,28 +660,36 @@ class HierarchicalRunner:
         return list(self._events)
 
     def _record(self, event_type: str, content: dict) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.sink(event_type, content)
-        except Exception:
-            pass
 
-    def _delegate(self, node: AgentNode, step: Step,
-                  state: SessionState, task_id: str) -> tuple[dict, Handoff]:
+    def _delegate(
+        self, node: AgentNode, step: Step, state: SessionState, task_id: str
+    ) -> tuple[dict, Handoff]:
         """Run one step on a child node through a handoff contract."""
         check_handoff_limit_between_agents(self._handoffs_between_agents)
         reject_cycle(self._handoff_path, self.root.name, node.name)
         contract = HandoffContract(
-            from_id=self.root.name, to_id=node.name,
-            purpose=step.name, inputs=step.inputs,
+            from_id=self.root.name,
+            to_id=node.name,
+            purpose=step.name,
+            inputs=step.inputs,
             expected_output=step.expected_output,
-            budget=step.budget, permission_class=step.permission_class,
+            budget=step.budget,
+            permission_class=step.permission_class,
             completion_definition=step.completion_condition or step.name,
         )
         handoff = Handoff(contract)
-        self._record("handoff_proposed", {
-            "task_id": task_id, "handoff_id": handoff.id,
-            "purpose": step.name, "from": self.root.name, "to": node.name,
-        })
+        self._record(
+            "handoff_proposed",
+            {
+                "task_id": task_id,
+                "handoff_id": handoff.id,
+                "purpose": step.name,
+                "from": self.root.name,
+                "to": node.name,
+            },
+        )
         handoff.accept()
         handoff.start()
         self._handoffs_between_agents += 1
@@ -669,35 +700,36 @@ class HierarchicalRunner:
             self._handoff_path.pop()
         status = handoff.hand_over(result)
         if status == "rejected":
-            self._record("handoff_rejected", {
-                "task_id": task_id, "handoff_id": handoff.id})
-            raise HierarchyError(
-                f"step {step.name!r} rejected: output failed its schema")
+            self._record("handoff_rejected", {"task_id": task_id, "handoff_id": handoff.id})
+            raise HierarchyError(f"step {step.name!r} rejected: output failed its schema")
         handoff.mark_passed()
-        self._record("handoff_handed_over", {
-            "task_id": task_id, "handoff_id": handoff.id})
+        self._record("handoff_handed_over", {"task_id": task_id, "handoff_id": handoff.id})
         return result, handoff
 
-    def _execute_on(self, node: AgentNode, step: Step,
-                    state: SessionState) -> dict:
+    def _execute_on(self, node: AgentNode, step: Step, state: SessionState) -> dict:
         """Run one step on one node, with callbacks and confirmation."""
         tool = self.tool_resolver(step.name)
         if not self.callbacks.run_before_tool(node.name, tool, step.inputs):
-            return {"type": step.expected_output.get("type", "result"),
-                    "blocked": True, "reason": "blocked by before_tool callback"}
+            return {
+                "type": step.expected_output.get("type", "result"),
+                "blocked": True,
+                "reason": "blocked by before_tool callback",
+            }
         if self.confirmation is not None and self.confirmation.is_impactful(tool):
             raise ToolConfirmationError(
                 f"tool {tool!r} for step {step.name!r} needs confirmation "
-                "before it runs; request it through ToolConfirmation first")
+                "before it runs; request it through ToolConfirmation first"
+            )
         result = self.executor(node.name, step.name, step.inputs, state)
         if not isinstance(result, dict) or "type" not in result:
             raise HierarchyError(
-                f"step {step.name!r} on {node.name!r} returned a "
-                "result without a schema type")
+                f"step {step.name!r} on {node.name!r} returned a result without a schema type"
+            )
         return self.callbacks.run_after_tool(node.name, tool, step.inputs, result)
 
-    def _run_steps(self, plan: HierarchicalPlan, state: SessionState,
-                   task_id: str) -> tuple[dict[str, dict], list[Handoff], list[str]]:
+    def _run_steps(
+        self, plan: HierarchicalPlan, state: SessionState, task_id: str
+    ) -> tuple[dict[str, dict], list[Handoff], list[str]]:
         results: dict[str, dict] = {}
         handoffs: list[Handoff] = []
         blocked: list[str] = []
@@ -715,18 +747,23 @@ class HierarchicalRunner:
                 if self.pool is not None:
                     now = int(time.time())
                     agent_token = {
-                        "user_id": state.user_id, "agent_id": self.root.name,
-                        "subagent_id": None, "tools": list(self.root.tools),
-                        "domains": [], "connectors": {},
-                        "budget": {"step_max": 25, "token_max": 100000,
-                                   "rupiah_max": 0},
-                        "exp": now + 3600, "iat": now, "parent": None,
+                        "user_id": state.user_id,
+                        "agent_id": self.root.name,
+                        "subagent_id": None,
+                        "tools": list(self.root.tools),
+                        "domains": [],
+                        "connectors": {},
+                        "budget": {"step_max": 25, "token_max": 100000, "rupiah_max": 0},
+                        "exp": now + 3600,
+                        "iat": now,
+                        "parent": None,
                     }
                     subagent_token = dict(
-                        agent_token, subagent_id=node.name,
-                        tools=list(node.tools))
+                        agent_token, subagent_id=node.name, tools=list(node.tools)
+                    )
                     self.pool.spawn(
-                        agent_id=self.root.name, task_id=task_id,
+                        agent_id=self.root.name,
+                        task_id=task_id,
                         permission_class=step.permission_class,
                         agent_token=agent_token,
                         subagent_token=subagent_token,
@@ -742,9 +779,9 @@ class HierarchicalRunner:
             state.set(step.name, result)
         return results, handoffs, blocked
 
-    def run(self, plan: HierarchicalPlan, *,
-            state: SessionState | None = None,
-            task_id: str = "") -> RunResult:
+    def run(
+        self, plan: HierarchicalPlan, *, state: SessionState | None = None, task_id: str = ""
+    ) -> RunResult:
         """Run a hierarchical plan. Returns the merged results."""
         state = state or SessionState(session_id=task_id or f"session-{uuid.uuid4().hex[:12]}")
         task_id = task_id or state.session_id
@@ -755,12 +792,11 @@ class HierarchicalRunner:
         results, handoffs, blocked = self._run_steps(plan, state, task_id)
         state.save()
         state.clear_temp()
-        return RunResult(results=results, state=state,
-                         handoffs=handoffs,
-                         iterations=1, blocked=blocked)
+        return RunResult(
+            results=results, state=state, handoffs=handoffs, iterations=1, blocked=blocked
+        )
 
-    def _run_loop(self, plan: HierarchicalPlan, state: SessionState,
-                  task_id: str) -> RunResult:
+    def _run_loop(self, plan: HierarchicalPlan, state: SessionState, task_id: str) -> RunResult:
         """Repeat the steps until the exit condition holds or the cap hits."""
         merged: dict[str, dict] = {}
         blocked: list[str] = []
@@ -768,8 +804,7 @@ class HierarchicalRunner:
         iterations = 0
         for iteration in range(1, plan.max_iterations + 1):
             iterations = iteration
-            results, iteration_handoffs, iteration_blocked = self._run_steps(
-                plan, state, task_id)
+            results, iteration_handoffs, iteration_blocked = self._run_steps(plan, state, task_id)
             merged.update(results)
             all_handoffs.extend(iteration_handoffs)
             blocked.extend(iteration_blocked)
@@ -779,12 +814,17 @@ class HierarchicalRunner:
                 break
         state.save()
         state.clear_temp()
-        return RunResult(results=merged, state=state,
-                         handoffs=all_handoffs,
-                         iterations=iterations, blocked=blocked)
+        return RunResult(
+            results=merged,
+            state=state,
+            handoffs=all_handoffs,
+            iterations=iterations,
+            blocked=blocked,
+        )
 
-    def run_task(self, task: Task, plan: HierarchicalPlan, *,
-                 state: SessionState | None = None) -> tuple[Task, RunResult]:
+    def run_task(
+        self, task: Task, plan: HierarchicalPlan, *, state: SessionState | None = None
+    ) -> tuple[Task, RunResult]:
         """Run a plan for a ``Task`` and fold the outcome into it."""
         result = self.run(plan, state=state, task_id=task.task_id)
         task.result.update(result.results)

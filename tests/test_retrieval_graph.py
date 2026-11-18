@@ -17,8 +17,7 @@ from puspa.retrieval.knowledge_graph import (
 
 def test_deterministic_extractor_reads_triples():
     extractor = DeterministicExtractor()
-    found = extractor.extract(
-        "Toko Gadget Murah sells Samsung Galaxy S24.", "doc#p0")
+    found = extractor.extract("Toko Gadget Murah sells Samsung Galaxy S24.", "doc#p0")
     names = {entity.name for entity in found.entities}
     assert "toko gadget murah" in names
     assert "samsung galaxy s24" in names
@@ -30,8 +29,8 @@ def test_deterministic_extractor_reads_triples():
 def test_deterministic_extractor_reads_kind_and_code_phrase():
     extractor = DeterministicExtractor()
     found = extractor.extract(
-        "Xiaomi Redmi Note 13 is a phone. "
-        "Samsung Galaxy S24 SM-S921B is a phone.", "doc#p0")
+        "Xiaomi Redmi Note 13 is a phone. Samsung Galaxy S24 SM-S921B is a phone.", "doc#p0"
+    )
     by_name = {entity.name: entity for entity in found.entities}
     assert "xiaomi redmi note 13" in by_name
     assert by_name["xiaomi redmi note 13"].kind == "phone"
@@ -57,12 +56,15 @@ def test_json_extractor_uses_a_stub_completion():
         )
 
     found = JsonTripleExtractor(fake_complete).extract(
-        "Toko Gadget Murah sells Samsung Galaxy S24.", "doc#p0")
+        "Toko Gadget Murah sells Samsung Galaxy S24.", "doc#p0"
+    )
     assert found.entities[0].name == "toko gadget murah"
     assert found.entities[0].kind == "seller"
-    assert (found.triples[0].subject, found.triples[0].relation,
-            found.triples[0].object) == (
-        "toko gadget murah", "sells", "samsung galaxy s24")
+    assert (found.triples[0].subject, found.triples[0].relation, found.triples[0].object) == (
+        "toko gadget murah",
+        "sells",
+        "samsung galaxy s24",
+    )
 
 
 def test_json_extractor_rejects_bad_json():
@@ -75,10 +77,8 @@ def test_json_extractor_rejects_bad_json():
 
 def test_add_document_merges_shared_entities():
     graph = KnowledgeGraph()
-    first = graph.add_document(
-        "d1", "Samsung Galaxy S24 SM-S921B is a phone.")
-    second = graph.add_document(
-        "d2", "Toko Gadget Murah sells Samsung Galaxy S24.")
+    first = graph.add_document("d1", "Samsung Galaxy S24 SM-S921B is a phone.")
+    second = graph.add_document("d2", "Toko Gadget Murah sells Samsung Galaxy S24.")
     assert first["new_nodes"] == 2  # samsung galaxy s24, sm-s921b
     assert second["new_nodes"] == 1  # toko gadget murah (product shared)
     # The shared product node is one node, not two, and it gains
@@ -107,10 +107,8 @@ def test_add_document_is_incremental():
 
 def test_remove_document_drops_orphans_only():
     graph = KnowledgeGraph()
-    graph.add_document(
-        "d1", "Toko Gadget Murah sells Samsung Galaxy S24.")
-    graph.add_document(
-        "d2", "Fraud report FR-88: Toko Gadget Murah ran a fake promo.")
+    graph.add_document("d1", "Toko Gadget Murah sells Samsung Galaxy S24.")
+    graph.add_document("d2", "Fraud report FR-88: Toko Gadget Murah ran a fake promo.")
     assert "fr-88" in graph.nodes
     removed = graph.remove_document("d2")
     assert "fr-88" not in graph.nodes
@@ -125,13 +123,12 @@ def test_remove_document_drops_orphans_only():
 def test_neighbors_and_relations():
     graph = KnowledgeGraph()
     graph.add_document(
-        "d1", "Toko Gadget Murah sells Samsung Galaxy S24. "
-        "Toko Gadget Murah offers a promo.")
+        "d1", "Toko Gadget Murah sells Samsung Galaxy S24. Toko Gadget Murah offers a promo."
+    )
     assert "samsung galaxy s24" in graph.neighbors("toko gadget murah")
-    assert "samsung galaxy s24" in graph.neighbors(
-        "toko gadget murah", relation="sells")
-    assert "samsung galaxy s24" not in graph.neighbors(
-        "toko gadget murah", relation="offers")
+    assert "samsung galaxy s24" in graph.neighbors("toko gadget murah", relation="sells")
+    assert "samsung galaxy s24" not in graph.neighbors("toko gadget murah", relation="offers")
     assert ("toko gadget murah", "sells", "samsung galaxy s24") in (
-        graph.relations("toko gadget murah"))
+        graph.relations("toko gadget murah")
+    )
     assert graph.passages_for_nodes(["samsung galaxy s24"]) == ["d1#p0"]

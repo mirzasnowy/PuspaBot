@@ -28,8 +28,7 @@ def test_prompt_contains_job_prompt_skills_and_target():
 
 
 def test_prompt_without_skills_or_target_still_complete():
-    prompt = compose_execution_prompt(
-        {"id": "cron-x", "prompt": "Say hello."}, run_id="run-2")
+    prompt = compose_execution_prompt({"id": "cron-x", "prompt": "Say hello."}, run_id="run-2")
     assert "Say hello." in prompt
     assert "No delivery target is set" in prompt
 
@@ -41,8 +40,7 @@ def test_prompt_marks_late_state():
 
 def test_empty_prompt_is_refused():
     with pytest.raises(ValueError):
-        compose_execution_prompt({"id": "cron-x", "prompt": "  "},
-                                 run_id="run-4")
+        compose_execution_prompt({"id": "cron-x", "prompt": "  "}, run_id="run-4")
 
 
 def test_build_execution_returns_request():

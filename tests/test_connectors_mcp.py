@@ -4,7 +4,7 @@ In-memory only: no database, no network. Uses the G27 MCP
 definition format from puspa.plugins.mcp; no second format.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -81,7 +81,7 @@ def test_oauth_flow_one_pending_constant_time_state_and_listener_once():
     pending = flow.start_sign_in(
         "notes-mcp",
         "https://example.id/oauth/authorize?client_id=x",
-        listener=lambda server_id: calls.append(server_id),
+        listener=calls.append,
     )
     assert pending.server_id == "notes-mcp"
     assert pending.state
@@ -95,9 +95,7 @@ def test_oauth_flow_one_pending_constant_time_state_and_listener_once():
         flow.complete_sign_in("notes-mcp", "wrong-state", token_ref="vault:t")
     assert registry.status("notes-mcp") == "registered"
     # Correct state completes: listener runs exactly once, then is gone.
-    result = flow.complete_sign_in(
-        "notes-mcp", pending.state, token_ref="vault:token:notes"
-    )
+    result = flow.complete_sign_in("notes-mcp", pending.state, token_ref="vault:token:notes")
     assert result == {"server_id": "notes-mcp", "status": "connected"}
     assert registry.status("notes-mcp") == "connected"
     assert registry.token_ref("notes-mcp") == "vault:token:notes"
@@ -113,7 +111,7 @@ def test_oauth_pending_expires_and_can_be_cancelled():
     registry.register(_definition())
     flow = OAuthFlow(registry)
     pending = flow.start_sign_in("notes-mcp", "https://example.id/oauth/authorize")
-    future = datetime.now(timezone.utc) + timedelta(seconds=3600)
+    future = datetime.now(UTC) + timedelta(seconds=3600)
     assert pending.is_expired(now=future) is True
     assert flow.pending("notes-mcp") is not None  # not expired yet (real clock)
     assert flow.cancel_sign_in("notes-mcp") is True

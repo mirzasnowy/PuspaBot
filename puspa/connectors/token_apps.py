@@ -25,24 +25,24 @@ A user pastes an API token for some app. The flow is:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
 __all__ = [
     "CHECK_INTERVAL_SECONDS",
     "REFRESH_BEFORE_SECONDS",
-    "TokenApp",
-    "TokenValidationError",
-    "TokenAppError",
     "InMemorySealStore",
+    "TokenApp",
+    "TokenAppError",
+    "TokenValidationError",
     "VaultSealStore",
-    "validate_token_live",
     "attach_token_app",
-    "needs_refresh",
     "due_for_check",
+    "needs_refresh",
     "refresh_token_app",
     "token_app_to_mcp_definition",
+    "validate_token_live",
 ]
 
 #: How often token expiry is checked, in seconds (5 minutes).
@@ -72,13 +72,13 @@ class TokenApp:
     validate_url: str
     token_ref: str
     expires_at: datetime | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def is_expired(self, now=None) -> bool:
         """True when the token has passed its expiry."""
         if self.expires_at is None:
             return False
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         return now >= self.expires_at
 
 
@@ -157,13 +157,9 @@ def validate_token_live(validate_url: str, token: str, *, http_client=None) -> d
         raise TokenValidationError("token must be a non-empty string")
     client = http_client or httpx.Client(timeout=VALIDATION_TIMEOUT_SECONDS)
     try:
-        response = client.get(
-            validate_url, headers={"Authorization": f"Bearer {token}"}
-        )
+        response = client.get(validate_url, headers={"Authorization": f"Bearer {token}"})
     except httpx.HTTPError as exc:
-        raise TokenValidationError(
-            f"live token check failed without an answer: {exc}"
-        ) from exc
+        raise TokenValidationError(f"live token check failed without an answer: {exc}") from exc
     if 200 <= response.status_code < 300:
         return {"valid": True, "status": response.status_code}
     if response.status_code in (401, 403):
@@ -173,8 +169,9 @@ def validate_token_live(validate_url: str, token: str, *, http_client=None) -> d
     )
 
 
-def attach_token_app(app_id, display_name, validate_url, token, *,
-                     seal_store, expires_at=None, http_client=None) -> TokenApp:
+def attach_token_app(
+    app_id, display_name, validate_url, token, *, seal_store, expires_at=None, http_client=None
+) -> TokenApp:
     """Attach a token app: live-check first, seal second.
 
     The token is validated live (one call) and only then sealed
@@ -188,8 +185,7 @@ def attach_token_app(app_id, display_name, validate_url, token, *,
     result = validate_token_live(validate_url, token, http_client=http_client)
     if not result["valid"]:
         raise TokenValidationError(
-            f"token for {app_id!r} was rejected live "
-            f"(HTTP {result['status']}); nothing was stored"
+            f"token for {app_id!r} was rejected live (HTTP {result['status']}); nothing was stored"
         )
     token_ref = f"token_app:{app_id}"
     seal_store.put(token_ref, token)
@@ -211,7 +207,7 @@ def needs_refresh(app: TokenApp, now=None) -> bool:
     """
     if app.expires_at is None:
         return False
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     return (app.expires_at - now) <= timedelta(seconds=REFRESH_BEFORE_SECONDS)
 
 
@@ -221,13 +217,11 @@ def due_for_check(apps, last_checked: dict, now=None) -> list[TokenApp]:
     ``last_checked`` maps app ids to the datetime of their last
     check. An app never checked before is due immediately.
     """
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     due = []
     for app in apps:
         checked_at = last_checked.get(app.app_id)
-        if checked_at is None:
-            due.append(app)
-        elif (now - checked_at) >= timedelta(seconds=CHECK_INTERVAL_SECONDS):
+        if checked_at is None or (now - checked_at) >= timedelta(seconds=CHECK_INTERVAL_SECONDS):
             due.append(app)
     return due
 
@@ -277,9 +271,6 @@ def token_app_to_mcp_definition(app: TokenApp, tools: list[dict]) -> dict:
             "env": {},
             "transport": "stdio",
         },
-        "tools": [
-            {"name": tool["name"], "description": tool["description"]}
-            for tool in tools
-        ],
+        "tools": [{"name": tool["name"], "description": tool["description"]} for tool in tools],
         "dependencies": [],
     }

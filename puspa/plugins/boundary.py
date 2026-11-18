@@ -81,7 +81,7 @@ def _resolve_relative(module_name: str, level: int, imported: str | None) -> str
     # (level 1 = current package, so drop the module itself).
     base = parts[: len(parts) - level] if level <= len(parts) else []
     if imported:
-        return ".".join(base + [imported])
+        return ".".join([*base, imported])
     return ".".join(base)
 
 
@@ -120,7 +120,7 @@ def collect_imports(path: Path, root: Path) -> list[tuple[str, int]]:
 
 
 def _is_allowed_plugin_import(imported: str, spec: dict, *, is_adapter: bool) -> bool:
-    top = imported.split(".")[0]
+    top = imported.split(".", maxsplit=1)[0]
     if top in sys.stdlib_module_names:
         return True
     if imported == "puspa.plugins" or imported.startswith("puspa.plugins."):
@@ -130,14 +130,9 @@ def _is_allowed_plugin_import(imported: str, spec: dict, *, is_adapter: bool) ->
         return True
     if is_adapter:
         adapter_allowed = spec.get("adapter_allowed_imports", [])
-        if any(
-            imported == entry or imported.startswith(entry + ".")
-            for entry in adapter_allowed
-        ):
+        if any(imported == entry or imported.startswith(entry + ".") for entry in adapter_allowed):
             return True
-    if top in SYSTEM_THIRD_PARTY_IMPORTS:
-        return True
-    return False
+    return top in SYSTEM_THIRD_PARTY_IMPORTS
 
 
 def lint_tree(root: Path) -> list[Violation]:
@@ -148,9 +143,7 @@ def lint_tree(root: Path) -> list[Violation]:
     violations: list[Violation] = []
     puspa_dir = root / "puspa"
     if not puspa_dir.is_dir():
-        return [
-            Violation(str(root), 0, "B0", f"no puspa/ package under {root}")
-        ]
+        return [Violation(str(root), 0, "B0", f"no puspa/ package under {root}")]
     for path in sorted(puspa_dir.rglob("*.py")):
         if "__pycache__" in path.parts:
             continue
@@ -160,52 +153,59 @@ def lint_tree(root: Path) -> list[Violation]:
         is_adapter = module_name == "puspa.plugins.adapters"
         is_builtin = module_name.startswith("puspa.plugins.builtin.")
         for imported, line in collect_imports(path, root):
+            # B3: a builtin plugin importing another builtin plugin.
+            # (A builtin file importing its own module is not a
+            # crossing; it never happens in practice.)
+            if (
+                is_plugin_file
+                and is_builtin
+                and imported.startswith("puspa.plugins.builtin.")
+                and imported != module_name
+            ):
+                violations.append(
+                    Violation(
+                        relative,
+                        line,
+                        "B3",
+                        f"builtin plugin imports another builtin plugin: {imported}",
+                    )
+                )
+                continue
+            # B2: a plugin file importing outside the published API.
+            # (Builtin-plugin imports are allowed here: they start
+            # with puspa.plugins., so _is_allowed_plugin_import
+            # passes them; only a *different* builtin module is
+            # B3, handled above.)
             if is_plugin_file:
-                if is_builtin and imported.startswith("puspa.plugins.builtin."):
-                    # A builtin plugin importing another builtin
-                    # plugin (B3); importing its own module is fine
-                    # but never happens in practice.
-                    if imported != module_name:
-                        violations.append(
-                            Violation(
-                                relative,
-                                line,
-                                "B3",
-                                f"builtin plugin imports another builtin "
-                                f"plugin: {imported}",
-                            )
-                        )
-                        continue
-                if not _is_allowed_plugin_import(
-                    imported, spec, is_adapter=is_adapter
-                ):
+                if not _is_allowed_plugin_import(imported, spec, is_adapter=is_adapter):
                     violations.append(
                         Violation(
                             relative,
                             line,
                             "B2",
-                            f"plugin file imports outside the published "
-                            f"API: {imported}",
+                            f"plugin file imports outside the published API: {imported}",
                         )
                     )
-            else:
-                if imported == "puspa.plugins" or imported.startswith(
-                    "puspa.plugins."
-                ):
-                    if imported not in core_allowed and not any(
-                        imported.startswith(entry + ".")
-                        for entry in core_allowed
-                        if entry != "puspa.plugins"
-                    ):
-                        violations.append(
-                            Violation(
-                                relative,
-                                line,
-                                "B1",
-                                f"core imports a plugin module outside "
-                                f"the allowed list: {imported}",
-                            )
-                        )
+                continue
+            # B1: a core file importing a plugin module outside the
+            # allowed list.
+            if (
+                (imported == "puspa.plugins" or imported.startswith("puspa.plugins."))
+                and imported not in core_allowed
+                and not any(
+                    imported.startswith(entry + ".")
+                    for entry in core_allowed
+                    if entry != "puspa.plugins"
+                )
+            ):
+                violations.append(
+                    Violation(
+                        relative,
+                        line,
+                        "B1",
+                        f"core imports a plugin module outside the allowed list: {imported}",
+                    )
+                )
     return violations
 
 
@@ -213,9 +213,7 @@ def main(argv=None) -> int:
     """CLI entry point: ``python -m puspa.plugins.boundary``."""
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Puspa plugin boundary lint (G27)."
-    )
+    parser = argparse.ArgumentParser(description="Puspa plugin boundary lint (G27).")
     parser.add_argument(
         "--root",
         default=str(Path(__file__).resolve().parent.parent.parent),

@@ -34,8 +34,16 @@ import psycopg
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 TABLES = (
-    "agent_meta", "tasks", "handoffs", "evidence", "triggers", "trigger_runs",
-    "agent_connectors", "cassettes", "push_subscriptions", "system_heartbeats",
+    "agent_meta",
+    "tasks",
+    "handoffs",
+    "evidence",
+    "triggers",
+    "trigger_runs",
+    "agent_connectors",
+    "cassettes",
+    "push_subscriptions",
+    "system_heartbeats",
 )
 
 
@@ -48,7 +56,9 @@ def create_schema(dsn: str | None = None) -> None:
     password default yang ditulis ke mana pun).
     """
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    sql = (Path(__file__).resolve().parent.parent.parent / "infra" / "schema_runtime.sql").read_text(encoding="utf-8")
+    sql = (
+        Path(__file__).resolve().parent.parent.parent / "infra" / "schema_runtime.sql"
+    ).read_text(encoding="utf-8")
     with psycopg.connect(dsn, autocommit=True) as conn:
         conn.execute(sql)
         password = os.environ.get("PUSPA_APP_PASSWORD")

@@ -6,8 +6,9 @@ cek tagihan 4 provider -> prosedur terverifikasi -> canary mendeteksi
 2 dari 2 suntikan -> metrik moat terukur.
 """
 
-import httpx
 import re
+
+import httpx
 
 from puspa.billing import billing
 from puspa.billing.fixture import DATA_TEST, SiteFixture
@@ -31,10 +32,19 @@ class PembacaPalsu:
         self.price = price
 
     def read(self, url):
-        marketplace = "Tokopedia" if "tokopedia" in url else "Shopee" if "shopee" in url else "Blibli"
-        return ResultRead(success=True, marketplace=marketplace, listing_url=url,
-                         price=self.price[marketplace], shipping=15000, store_rating=4.9,
-                         name="Samsung Galaxy S24", text_excerpt="[DATA: Galaxy S24]")
+        marketplace = (
+            "Tokopedia" if "tokopedia" in url else "Shopee" if "shopee" in url else "Blibli"
+        )
+        return ResultRead(
+            success=True,
+            marketplace=marketplace,
+            listing_url=url,
+            price=self.price[marketplace],
+            shipping=15000,
+            store_rating=4.9,
+            name="Samsung Galaxy S24",
+            text_excerpt="[DATA: Galaxy S24]",
+        )
 
 
 def _read_ulang(url):
@@ -53,15 +63,24 @@ def test_phase3_gate_end_to_end(make_user, agent_kedua, test_dsn):
 
     # 2. Wedge bandingkan harga (fixture) -> graf terisi.
     result = compare_price(
-        user_id=user["user_id"], agent_id=user["agent_id"], model_number="SM-S921B",
-        brand="Samsung", category="phone", listing_urls=URLS,
+        user_id=user["user_id"],
+        agent_id=user["agent_id"],
+        model_number="SM-S921B",
+        brand="Samsung",
+        category="phone",
+        listing_urls=URLS,
         reader={p: PembacaPalsu(HARGA) for p in URLS},
-        reread=_read_ulang, token=1200, mode="fixture", dsn=test_dsn)
+        reread=_read_ulang,
+        token=1200,
+        mode="fixture",
+        dsn=test_dsn,
+    )
     assert result["success"] is True and result["cheapest"] == "Shopee"
     assert len(current_prices(result["product"]["id"], dsn=test_dsn)) == 3
 
     # 3. Wedge tagihan 4 provider (fixture) -> prosedur lahir.
     with SiteFixture() as situs:
+
         def read_situs(url):
             provider = url.split("fixture://")[1].split("/")[0]
             return httpx.get(situs.url(provider), timeout=5).text
@@ -72,26 +91,43 @@ def test_phase3_gate_end_to_end(make_user, agent_kedua, test_dsn):
             amount = float(re.search(r"Rp\s*([\d.]+)", text).group(1).replace(".", ""))
             return {"value": amount, "name": f"tagihan {provider}"}
 
-        for provider, number in (("PLN", "123456789012"), ("PDAM", "987654321"),
-                                ("airtime", "081234567890"), ("paket data", "081234567890")):
+        for provider, number in (
+            ("PLN", "123456789012"),
+            ("PDAM", "987654321"),
+            ("airtime", "081234567890"),
+            ("paket data", "081234567890"),
+        ):
             check = billing.check_bill(
-                user_id=user["user_id"], agent_id=user["agent_id"], provider=provider,
-                customer_number=number, read_site=read_situs,
-                reread=read_ulang_bill, task_id=f"tugas-{provider}",
-                mode="fixture", dsn=test_dsn)
+                user_id=user["user_id"],
+                agent_id=user["agent_id"],
+                provider=provider,
+                customer_number=number,
+                read_site=read_situs,
+                reread=read_ulang_bill,
+                task_id=f"tugas-{provider}",
+                mode="fixture",
+                dsn=test_dsn,
+            )
             assert check["success"] is True, provider
             assert check["amount"] == DATA_TEST[provider.lower()]["amount"]
 
     # 4. Tiga jalan sukses oleh 2 agen -> keempat prosedur terverifikasi
     #    + dipakai ulang agen lain.
     for provider in metrics.PROVIDER_MVP:
-        procedure = next(p for p in graf.list_procedures(user["user_id"], dsn=test_dsn)
-                        if p["service"] == provider)
+        procedure = next(
+            p
+            for p in graf.list_procedures(user["user_id"], dsn=test_dsn)
+            if p["service"] == provider
+        )
         for agent in (user["agent_id"], agen2["agent_id"], user["agent_id"]):
             graf.record_run(procedure["id"], user["user_id"], True, agent_id=agent, dsn=test_dsn)
-        graf.record_reuse(procedure_id=procedure["id"], user_id=user["user_id"],
-                               agent_id=agen2["agent_id"], task_id="tugas-reuse",
-                               dsn=test_dsn)
+        graf.record_reuse(
+            procedure_id=procedure["id"],
+            user_id=user["user_id"],
+            agent_id=agen2["agent_id"],
+            task_id="tugas-reuse",
+            dsn=test_dsn,
+        )
     prosedur_result = metrics.verified_procedures_reused(user["user_id"], dsn=test_dsn)
     assert prosedur_result["status"] == "passed"
 
@@ -105,8 +141,9 @@ def test_phase3_gate_end_to_end(make_user, agent_kedua, test_dsn):
     assert all_procedures["workflow_active_user_test"]["status"] == "pending"
 
     # 6. Canary mendeteksi 2 dari 2 suntikan di situs uji.
-    prosedur_pln = next(p for p in graf.list_procedures(user["user_id"], dsn=test_dsn)
-                        if p["service"] == "PLN")
+    prosedur_pln = next(
+        p for p in graf.list_procedures(user["user_id"], dsn=test_dsn) if p["service"] == "PLN"
+    )
 
     def canary_check(_prosedur):
         with SiteFixture() as situs:
@@ -119,8 +156,12 @@ def test_phase3_gate_end_to_end(make_user, agent_kedua, test_dsn):
         SiteFixture.change("pln", amount=999999)
         for _ in range(2):
             result_canary = graf.run_canary(
-                procedure_id=prosedur_pln["id"], user_id=user["user_id"],
-                agent_id=user["agent_id"], run=canary_check, dsn=test_dsn)
+                procedure_id=prosedur_pln["id"],
+                user_id=user["user_id"],
+                agent_id=user["agent_id"],
+                run=canary_check,
+                dsn=test_dsn,
+            )
             if not result_canary["success"]:
                 terdeteksi += 1
     finally:
@@ -128,4 +169,6 @@ def test_phase3_gate_end_to_end(make_user, agent_kedua, test_dsn):
     assert terdeteksi == 2
     # Canary yang gagal 2x membuat prosedur PLN menjadi rusak — perilaku
     # yang benar (§3.3): prosedur rusak tidak dijalankan lagi.
-    assert graf.get_procedure(prosedur_pln["id"], user["user_id"], dsn=test_dsn)["status"] == "broken"
+    assert (
+        graf.get_procedure(prosedur_pln["id"], user["user_id"], dsn=test_dsn)["status"] == "broken"
+    )

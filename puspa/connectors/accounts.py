@@ -20,13 +20,13 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 __all__ = [
+    "AccountError",
     "ConnectorAccount",
     "ConnectorAccountStore",
     "ModuleAccountSelection",
-    "AccountError",
 ]
 
 
@@ -43,7 +43,7 @@ class ConnectorAccount:
     connector_id: str
     label: str
     credentials_ref: str | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 class ConnectorAccountStore:
@@ -138,9 +138,7 @@ class ModuleAccountSelection:
 
     def drop_account(self, account_id):
         """Drop every choice pointing at an unlinked account."""
-        doomed = [
-            key for key, value in self._choices.items() if value == account_id
-        ]
+        doomed = [key for key, value in self._choices.items() if value == account_id]
         for key in doomed:
             del self._choices[key]
 
@@ -162,9 +160,7 @@ class ModuleAccountSelection:
             try:
                 account = store.get(default_account_id)
             except KeyError:
-                raise AccountError(
-                    f"unknown default account {default_account_id!r}"
-                ) from None
+                raise AccountError(f"unknown default account {default_account_id!r}") from None
             if account.user_id != str(user_id):
                 raise AccountError("default account belongs to another user")
             if account.connector_id != connector_id:

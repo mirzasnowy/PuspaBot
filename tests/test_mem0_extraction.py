@@ -217,9 +217,7 @@ def test_rank_memories_is_pure_and_validates_input():
             "created_at": None,
         },
     ]
-    ranked = extraction.rank_memories(
-        memories, "kopi tubruk", embedder=HashEmbedding(), limit=2
-    )
+    ranked = extraction.rank_memories(memories, "kopi tubruk", embedder=HashEmbedding(), limit=2)
     # m2 shares no signal with the query, so its zero base score
     # drops it instead of filling the ranking by tie-break.
     assert [r["id"] for r in ranked] == ["m1"]

@@ -17,8 +17,7 @@ import psycopg
 import pytest
 from cryptography.fernet import Fernet, InvalidToken
 
-from puspa.accounts import create_user
-from puspa.accounts import vault
+from puspa.accounts import create_user, vault
 from puspa.accounts.vault import derive_user_key
 
 
@@ -27,6 +26,7 @@ def _fernet_for(master_key: bytes, user_id):
 
 
 # --- Turunan kunci ----------------------------------------------------------
+
 
 def test_derive_user_key_deterministic():
     master = os.urandom(32)
@@ -37,16 +37,12 @@ def test_derive_user_key_deterministic():
 
 def test_derive_user_key_differs_per_user():
     master = os.urandom(32)
-    assert derive_user_key(master, uuid.uuid4()) != derive_user_key(
-        master, uuid.uuid4()
-    )
+    assert derive_user_key(master, uuid.uuid4()) != derive_user_key(master, uuid.uuid4())
 
 
 def test_derive_user_key_differs_per_master_key():
     uid = uuid.uuid4()
-    assert derive_user_key(os.urandom(32), uid) != derive_user_key(
-        os.urandom(32), uid
-    )
+    assert derive_user_key(os.urandom(32), uid) != derive_user_key(os.urandom(32), uid)
 
 
 def test_derive_user_key_accepts_string_user_id():
@@ -59,9 +55,8 @@ def test_derive_user_key_accepts_string_user_id():
 
 # --- Ciphertext lintas pengguna ---------------------------------------------
 
-def test_ciphertext_user_a_not_decryptable_with_user_b_key(
-    test_dsn, vault_master_key
-):
+
+def test_ciphertext_user_a_not_decryptable_with_user_b_key(test_dsn, vault_master_key):
     a = create_user("vault-a@example.com", "pw", dsn=test_dsn)
     b = create_user("vault-b@example.com", "pw", dsn=test_dsn)
     vault.put(a, "gmail_token", "token-milik-A", dsn=test_dsn)
@@ -93,6 +88,7 @@ def test_vault_put_uses_derive_user_key(test_dsn, vault_master_key):
 
 
 # --- Kunci master tidak pernah di database ----------------------------------
+
 
 def test_master_key_never_in_database(test_dsn, vault_master_key):
     a = create_user("vault-d@example.com", "pw", dsn=test_dsn)

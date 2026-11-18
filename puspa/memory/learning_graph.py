@@ -38,16 +38,16 @@ from pathlib import Path
 from .extraction import extract_concepts
 
 __all__ = [
-    "LearningGraph",
-    "GraphNode",
-    "GraphEdge",
-    "declarations_from_skill_dir",
-    "NODE_KIND_SKILL",
-    "NODE_KIND_MEMORY",
+    "DEFAULT_LEXICAL_THRESHOLD",
     "EDGE_DECLARED",
     "EDGE_LEXICAL",
     "EDGE_RELATED",
-    "DEFAULT_LEXICAL_THRESHOLD",
+    "NODE_KIND_MEMORY",
+    "NODE_KIND_SKILL",
+    "GraphEdge",
+    "GraphNode",
+    "LearningGraph",
+    "declarations_from_skill_dir",
 ]
 
 #: Node kinds.
@@ -86,6 +86,7 @@ def _stem(token):
 def _stems(tokens):
     return {_stem(token) for token in tokens if token}
 
+
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 
@@ -109,10 +110,7 @@ def _frontmatter_list(text, key):
         rest = match.group(1).strip()
         if rest.startswith("[") and rest.endswith("]"):
             inner = rest[1:-1]
-            values.extend(
-                item.strip().strip("\"'") for item in inner.split(",")
-                if item.strip()
-            )
+            values.extend(item.strip().strip("\"'") for item in inner.split(",") if item.strip())
             return values
         if rest:
             values.append(rest.strip("\"'"))
@@ -258,10 +256,7 @@ class LearningGraph:
     def add_skill(self, name, *, declares=None, path=None, metadata=None):
         """Add (or merge into) a skill node; return it."""
         node_id = _skill_id(name)
-        declares = sorted(
-            {" ".join(str(d).lower().split()) for d in (declares or [])}
-            - {""}
-        )
+        declares = sorted({" ".join(str(d).lower().split()) for d in (declares or [])} - {""})
         existing = self.nodes.get(node_id)
         if existing is not None:
             merged = sorted(set(existing.declares) | set(declares))
@@ -316,18 +311,12 @@ class LearningGraph:
     def add_link(self, source_id, target_id, kind, weight=1.0):
         """Add an edge; same (source, target, kind) keeps max weight."""
         if source_id not in self.nodes or target_id not in self.nodes:
-            raise KeyError(
-                f"unknown node in edge: {source_id!r} -> {target_id!r}"
-            )
+            raise KeyError(f"unknown node in edge: {source_id!r} -> {target_id!r}")
         if kind not in (EDGE_DECLARED, EDGE_LEXICAL, EDGE_RELATED):
             raise ValueError(f"unknown edge kind: {kind!r}")
         weight = float(weight)
         for edge in self.edges:
-            if (
-                edge.source == source_id
-                and edge.target == target_id
-                and edge.kind == kind
-            ):
+            if edge.source == source_id and edge.target == target_id and edge.kind == kind:
                 edge.weight = max(edge.weight, weight)
                 return edge
         edge = GraphEdge(source_id, target_id, kind, weight)
@@ -336,9 +325,7 @@ class LearningGraph:
 
     def link_declared(self, skill_name, chunk_id):
         """Explicit declaration link: this skill claims this chunk."""
-        return self.add_link(
-            _skill_id(skill_name), _memory_id(chunk_id), EDGE_DECLARED, 1.0
-        )
+        return self.add_link(_skill_id(skill_name), _memory_id(chunk_id), EDGE_DECLARED, 1.0)
 
     def link_lexical_overlap(self, *, threshold=DEFAULT_LEXICAL_THRESHOLD):
         """Auto-link skills to chunks by lexical overlap.
@@ -363,11 +350,7 @@ class LearningGraph:
                 concepts = _stems(extract_concepts(chunk.content))
                 overlap = len(declared & concepts) / len(declared)
                 if overlap >= threshold:
-                    created.append(
-                        self.add_link(
-                            skill.id, chunk.id, EDGE_LEXICAL, overlap
-                        )
-                    )
+                    created.append(self.add_link(skill.id, chunk.id, EDGE_LEXICAL, overlap))
         return created
 
     # -- queries -------------------------------------------------------
@@ -441,8 +424,7 @@ class LearningGraph:
         """Write the graph as JSON; return the path."""
         path = Path(path)
         path.write_text(
-            json.dumps(self.to_dict(), indent=2, sort_keys=True)
-            + "\n",
+            json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
         return path

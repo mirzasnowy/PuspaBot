@@ -28,8 +28,7 @@ from puspa.workflow.triggers import validate_trigger
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
-ALLOWED_COMPONENTS = ("card", "table", "items", "form", "number",
-                      "line_chart", "action_button")
+ALLOWED_COMPONENTS = ("card", "table", "items", "form", "number", "line_chart", "action_button")
 COLUMN_TYPES = ("text", "number", "Rupiah", "date", "choice")
 MAX_VIEWS = 3
 MAX_TABLES = 5
@@ -40,9 +39,19 @@ MAX_ACTIVE_MODULES = 3
 # Pola yang menandakan kode (bukan data) di dalam manifes. Manifes yang
 # memuatnya DITOLAK di gerbang 2 — bukan dibersihkan diam-diam.
 FORBIDDEN_CODE_PATTERNS = (
-    "<script", "</script", "<iframe", "javascript:", "onerror=",
-    "onclick=", "SELECT ", "INSERT ", "UPDATE ", "DELETE ", "DROP ",
-    "--", "/*",
+    "<script",
+    "</script",
+    "<iframe",
+    "javascript:",
+    "onerror=",
+    "onclick=",
+    "SELECT ",
+    "INSERT ",
+    "UPDATE ",
+    "DELETE ",
+    "DROP ",
+    "--",
+    "/*",
 )
 
 
@@ -52,7 +61,8 @@ class ModuleError(Exception):
 
 def _connect(dsn=None):
     return psycopg.connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
+        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
+    )
 
 
 def _row(row: dict) -> dict:
@@ -64,6 +74,7 @@ def _row(row: dict) -> dict:
 
 
 # ---------------------------------------------------------------- gerbang
+
 
 def schema_gate(manifest: dict) -> list[str]:
     """Gerbang 1: validasi skema."""
@@ -120,17 +131,20 @@ def scanner_gate(manifest: dict) -> list[str]:
         if t.get("type") not in ALLOWED_COMPONENTS:
             problems.append(
                 f"tampilan: komponen {t.get('type')!r} tidak diizinkan "
-                f"(yang boleh: {', '.join(ALLOWED_COMPONENTS)})")
+                f"(yang boleh: {', '.join(ALLOWED_COMPONENTS)})"
+            )
     for t in manifest.get("table", []) or []:
-        for k in (t.get("columns") or []):
+        for k in t.get("columns") or []:
             if k.get("type") not in COLUMN_TYPES:
                 problems.append(
                     f"tabel {t.get('name')!r}: tipe kolom {k.get('type')!r} "
-                    f"tidak diizinkan (yang boleh: {', '.join(COLUMN_TYPES)})")
+                    f"tidak diizinkan (yang boleh: {', '.join(COLUMN_TYPES)})"
+                )
             if k.get("type") == "choice" and not isinstance(k.get("choice"), list):
                 problems.append(
                     f"tabel {t.get('name')!r} kolom {k.get('name')!r}: "
-                    "tipe 'pilihan' wajib punya daftar 'pilihan'")
+                    "tipe 'pilihan' wajib punya daftar 'pilihan'"
+                )
     # Pindai seluruh manifes (sebagai JSON) untuk pola kode.
     text = json.dumps(manifest, ensure_ascii=False)
     for pattern in FORBIDDEN_CODE_PATTERNS:
@@ -145,8 +159,7 @@ def permission_gate(manifest: dict) -> dict:
     modul. Modul tanpa alur -> izin kosong."""
     workflow = manifest.get("workflows")
     if not workflow:
-        return {"connectors": [], "scope": [], "domain": [],
-                "spending_limit": 0, "block": []}
+        return {"connectors": [], "scope": [], "domain": [], "spending_limit": 0, "block": []}
     return compute_manifest(workflow.get("step", []))
 
 
@@ -164,10 +177,9 @@ def dry_run_gate(manifest: dict, dsn=None) -> list[str]:
         # aktifkan_modul (setelah modul dibuat). Di sini: periksa
         # langkah sudah lolos gerbang 1; jalan kering penuh dicatat
         # di sana. Jadi gerbang 4 di level manifes = render tampilan.
-        pass
     try:
         render_module(manifest)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         problems.append(f"pratinjau gagal dirender dengan data contoh: {exc}")
     return problems
 
@@ -182,8 +194,8 @@ def size_gate(manifest: dict) -> list[str]:
     for t in manifest.get("table", []) or []:
         if len(t.get("columns", []) or []) > MAX_COLUMNS_PER_TABLE:
             problems.append(
-                f"tabel {t.get('name')!r}: {len(t['columns'])} kolom — "
-                f"maks {MAX_COLUMNS_PER_TABLE}")
+                f"tabel {t.get('name')!r}: {len(t['columns'])} kolom — maks {MAX_COLUMNS_PER_TABLE}"
+            )
     size = len(json.dumps(manifest, ensure_ascii=False).encode("utf-8"))
     if size > MAX_MANIFEST_BYTES:
         problems.append(f"manifes {size} byte — maks {MAX_MANIFEST_BYTES}")
@@ -201,15 +213,20 @@ def run_gates(manifest: dict, dsn=None) -> dict:
     problems += dry_run_gate(manifest, dsn=dsn)
     try:
         permission_manifest = permission_gate(manifest)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         problems.append(f"manifes izin turunan gagal dihitung: {exc}")
-        permission_manifest = {"connectors": [], "scope": [], "domain": [],
-                        "spending_limit": 0, "block": []}
-    return {"passed": not problems, "masalah": problems,
-            "permission_manifest": permission_manifest}
+        permission_manifest = {
+            "connectors": [],
+            "scope": [],
+            "domain": [],
+            "spending_limit": 0,
+            "block": [],
+        }
+    return {"passed": not problems, "masalah": problems, "permission_manifest": permission_manifest}
 
 
 # ---------------------------------------------------------------- CRUD
+
 
 def create_module(*, user_id: str, manifest: dict, dsn=None) -> dict:
     """Buat modul draf (versi 1). Gerbang 1-2-5 harus lolos saat dibuat;
@@ -222,45 +239,49 @@ def create_module(*, user_id: str, manifest: dict, dsn=None) -> dict:
             cur.execute(
                 "INSERT INTO modules (user_id, name, manifest, status)"
                 " VALUES (%s, %s, %s, 'draft') RETURNING *",
-                (user_id, manifest["name"], json.dumps(manifest)))
+                (user_id, manifest["name"], json.dumps(manifest)),
+            )
             row = dict(cur.fetchone())
             cur.execute(
-                "INSERT INTO module_versions (module_id, versi, manifest)"
-                " VALUES (%s, 1, %s)", (row["id"], json.dumps(manifest)))
+                "INSERT INTO module_versions (module_id, versi, manifest) VALUES (%s, 1, %s)",
+                (row["id"], json.dumps(manifest)),
+            )
             # Buat tabel milik modul dari manifes.
             from puspa.modules.tables import create_table
 
             for t in manifest.get("table", []) or []:
-                create_table(module_id=str(row["id"]), user_id=user_id,
-                           name=t["name"], columns=t["columns"], dsn=dsn,
-                           _conn=conn)
+                create_table(
+                    module_id=str(row["id"]),
+                    user_id=user_id,
+                    name=t["name"],
+                    columns=t["columns"],
+                    dsn=dsn,
+                    _conn=conn,
+                )
         conn.commit()
     return _row(row)
 
 
 def get_module(module_id: str, *, user_id: str, dsn=None) -> dict | None:
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM modules WHERE id = %s AND user_id = %s",
-                        (module_id, user_id))
-            row = cur.fetchone()
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute("SELECT * FROM modules WHERE id = %s AND user_id = %s", (module_id, user_id))
+        row = cur.fetchone()
     return _row(row) if row else None
 
 
 def list_modules(user_id: str, *, status: str | None = None, dsn=None) -> list[dict]:
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            if status:
-                cur.execute("SELECT * FROM modules WHERE user_id = %s AND status = %s"
-                            " ORDER BY created_at", (user_id, status))
-            else:
-                cur.execute("SELECT * FROM modules WHERE user_id = %s ORDER BY created_at",
-                            (user_id,))
-            return [_row(r) for r in cur.fetchall()]
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        if status:
+            cur.execute(
+                "SELECT * FROM modules WHERE user_id = %s AND status = %s ORDER BY created_at",
+                (user_id, status),
+            )
+        else:
+            cur.execute("SELECT * FROM modules WHERE user_id = %s ORDER BY created_at", (user_id,))
+        return [_row(r) for r in cur.fetchall()]
 
 
-def activate_module(module_id: str, *, user_id: str, permission_user: dict,
-                   dsn=None) -> dict:
+def activate_module(module_id: str, *, user_id: str, permission_user: dict, dsn=None) -> dict:
     """Aktifkan modul: kelima gerbang + izin turunan himpunan bagian
     dari izin user + maks 3 modul aktif + uji kering alur modul
     (bila ada) dengan data contoh."""
@@ -275,20 +296,24 @@ def activate_module(module_id: str, *, user_id: str, permission_user: dict,
     passed, less = subset_permission(result["permission_manifest"], permission_user)
     if not passed:
         raise ModuleError("manifes izin di luar izin user: " + "; ".join(less))
-    active = [m for m in list_modules(user_id, status="active", dsn=dsn)
-             if str(m["id"]) != str(module_id)]
+    active = [
+        m for m in list_modules(user_id, status="active", dsn=dsn) if str(m["id"]) != str(module_id)
+    ]
     if len(active) >= MAX_ACTIVE_MODULES:
         raise ModuleError(f"sudah ada {MAX_ACTIVE_MODULES} modul aktif — maks di MVP")
     # Gerbang 4 (jalan): uji kering alur modul bila ada.
     workflow = module["manifest"].get("workflows")
     if workflow:
-        from puspa.workflow.runner import create_workflow, run_workflow, dry_run
+        from puspa.workflow.runner import create_workflow, dry_run
 
         temp_workflow = create_workflow(
-            user_id=user_id, agent_id="puspa",
+            user_id=user_id,
+            agent_id="puspa",
             name=f"uji kering modul {module['name']}",
             trigger=workflow.get("triggers", {"type": "manual"}),
-            step=workflow.get("step", []), dsn=dsn)
+            step=workflow.get("step", []),
+            dsn=dsn,
+        )
         try:
             dry_run_result = dry_run(str(temp_workflow["id"]), user_id=user_id, dsn=dsn)
         finally:
@@ -297,12 +322,15 @@ def activate_module(module_id: str, *, user_id: str, permission_user: dict,
             delete_workflow(str(temp_workflow["id"]), user_id=user_id, dsn=dsn)
         if not dry_run_result.get("success"):
             raise ModuleError(
-                "uji kering alur modul gagal: " + (dry_run_result.get("reason") or ""))
+                "uji kering alur modul gagal: " + (dry_run_result.get("reason") or "")
+            )
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE modules SET status = 'active', updated_at = now()"
-                " WHERE id = %s RETURNING *", (module_id,))
+                " WHERE id = %s RETURNING *",
+                (module_id,),
+            )
             row = dict(cur.fetchone())
         conn.commit()
     return _row(row)
@@ -325,12 +353,13 @@ def change_module(module_id: str, *, user_id: str, manifest: dict, dsn=None) -> 
             cur.execute(
                 "UPDATE modules SET manifest = %s, active_version = %s, status = 'draft',"
                 " updated_at = now() WHERE id = %s RETURNING *",
-                (json.dumps(manifest), new_version, module_id))
+                (json.dumps(manifest), new_version, module_id),
+            )
             row = dict(cur.fetchone())
             cur.execute(
-                "INSERT INTO module_versions (module_id, versi, manifest)"
-                " VALUES (%s, %s, %s)",
-                (module_id, new_version, json.dumps(manifest)))
+                "INSERT INTO module_versions (module_id, versi, manifest) VALUES (%s, %s, %s)",
+                (module_id, new_version, json.dumps(manifest)),
+            )
         conn.commit()
     return _row(row)
 
@@ -340,14 +369,14 @@ def rollback_module(module_id: str, *, user_id: str, version: int, dsn=None) -> 
     module = get_module(module_id, user_id=user_id, dsn=dsn)
     if module is None:
         raise ModuleError("modul tidak ditemukan")
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT manifest FROM module_versions WHERE module_id = %s AND versi = %s",
-                (module_id, version))
-            old = cur.fetchone()
-            if old is None:
-                raise ModuleError(f"versi {version} tidak ada")
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT manifest FROM module_versions WHERE module_id = %s AND versi = %s",
+            (module_id, version),
+        )
+        old = cur.fetchone()
+        if old is None:
+            raise ModuleError(f"versi {version} tidak ada")
     return change_module(module_id, user_id=user_id, manifest=old["manifest"], dsn=dsn)
 
 
@@ -361,8 +390,7 @@ def export_data_module(module_id: str, *, user_id: str, dsn=None) -> dict:
         raise ModuleError("modul tidak ditemukan")
     export = {"modules": module["name"], "table": {}}
     for t in list_tables(module_id, user_id=user_id, dsn=dsn):
-        export["table"][t["name"]] = read_table(
-            t["id"], user_id=user_id, dsn=dsn)
+        export["table"][t["name"]] = read_table(t["id"], user_id=user_id, dsn=dsn)
     return export
 
 
@@ -376,7 +404,8 @@ def delete_module(module_id: str, *, user_id: str, dsn=None) -> dict:
             cur.execute(
                 "UPDATE modules SET status = 'deleted', updated_at = now()"
                 " WHERE id = %s AND user_id = %s RETURNING *",
-                (module_id, user_id))
+                (module_id, user_id),
+            )
             row = cur.fetchone()
             cur.execute("DELETE FROM module_rows WHERE module_id = %s", (module_id,))
             cur.execute("DELETE FROM module_tables WHERE module_id = %s", (module_id,))

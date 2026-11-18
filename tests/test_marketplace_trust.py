@@ -11,7 +11,6 @@ signal, which is what ``verify_skill`` checks by default).
 import pytest
 
 from puspa.marketplace import (
-    MarketplaceRegistry,
     score_module,
     score_skill_dir,
 )
@@ -47,9 +46,7 @@ def test_minimum_is_60():
 
 
 def test_perfect_signals_score_100():
-    score = score_module(
-        manifest=_manifest(), signature_ok=True, clean_installs=2
-    )
+    score = score_module(manifest=_manifest(), signature_ok=True, clean_installs=2)
     assert score.total == 100
     assert score.passed is True
     assert score.signals == {
@@ -70,8 +67,7 @@ def test_unsigned_unknown_source_scores_below_floor():
 
 
 def test_failed_signature_scores_zero_on_that_signal():
-    score = score_module(manifest=_manifest(), signature_ok=False,
-                         clean_installs=1)
+    score = score_module(manifest=_manifest(), signature_ok=False, clean_installs=1)
     assert score.signals["signature"] == 0
     assert "FAILED" in " ".join(score.reasons)
 
@@ -79,7 +75,8 @@ def test_failed_signature_scores_zero_on_that_signal():
 def test_unknown_licence_scores_zero_on_that_signal():
     score = score_module(
         manifest=_manifest(license="WeirdLicense-1.0"),
-        signature_ok=True, clean_installs=1,
+        signature_ok=True,
+        clean_installs=1,
     )
     assert score.signals["license"] == 0
     assert score.total == 30 + 10 + 0 + 20 + 15  # manifest half: warning
@@ -88,7 +85,8 @@ def test_unknown_licence_scores_zero_on_that_signal():
 def test_denied_source_scores_zero_and_is_flagged():
     score = score_module(
         manifest=_manifest(source="clawhub-unverified"),
-        signature_ok=True, clean_installs=1,
+        signature_ok=True,
+        clean_installs=1,
     )
     assert score.signals["source"] == 0
     assert any("denied list" in r for r in score.reasons)
@@ -96,8 +94,10 @@ def test_denied_source_scores_zero_and_is_flagged():
 
 def test_incidents_wipe_the_history_signal():
     score = score_module(
-        manifest=_manifest(), signature_ok=True,
-        clean_installs=5, incidents=1,
+        manifest=_manifest(),
+        signature_ok=True,
+        clean_installs=5,
+        incidents=1,
     )
     assert score.signals["history"] == 0
 
@@ -125,8 +125,7 @@ def test_registry_refuses_untrusted_install_without_approval(tmp_path):
 
 def test_registry_installs_untrusted_skill_with_explicit_approval(tmp_path):
     registry, _ = registry_with_skill(tmp_path, source="random-site")
-    installed = registry.install("price-compare", user_id="user-1",
-                                 explicit_approval=True)
+    installed = registry.install("price-compare", user_id="user-1", explicit_approval=True)
     assert installed["status"] == "enabled"
 
 

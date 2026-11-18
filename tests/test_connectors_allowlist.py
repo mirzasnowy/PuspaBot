@@ -45,15 +45,11 @@ def test_allowlist_axes_are_independent():
 
 
 def test_allowlist_never_leaks_outside_tools():
-    allowlist = ToolAllowlist(
-        allowed_tools={"check_price"}, allowed_services={"tokopedia"}
-    )
+    allowlist = ToolAllowlist(allowed_tools={"check_price"}, allowed_services={"tokopedia"})
     advertised = allowlist.advertise(TOOLS)
     allowlist.assert_no_leak(TOOLS, advertised)
     # A hand-built list that smuggles a disallowed tool is caught.
-    smuggled = advertised + [
-        {"name": "pay_bill", "description": "Pay.", "service": "pln"}
-    ]
+    smuggled = [*advertised, {"name": "pay_bill", "description": "Pay.", "service": "pln"}]
     with pytest.raises(AllowlistError, match="leaked"):
         allowlist.assert_no_leak(TOOLS, smuggled)
     # The full wedge directory filtered by a narrow allowlist leaks nothing.
@@ -61,7 +57,11 @@ def test_allowlist_never_leaks_outside_tools():
     narrow = ToolAllowlist(allowed_tools={"check_price"}, allowed_services={"blibli"})
     advertised_wedge = narrow.advertise(wedge_tools)
     assert advertised_wedge == [
-        {"name": "check_price", "description": "Check the price of a new product by search query.", "service": "blibli"}
+        {
+            "name": "check_price",
+            "description": "Check the price of a new product by search query.",
+            "service": "blibli",
+        }
     ]
     narrow.assert_no_leak(wedge_tools, advertised_wedge)
 
@@ -82,9 +82,7 @@ def test_env_parsing_and_byte_cap():
     with pytest.raises(AllowlistError, match="over the"):
         parse_env_list("x" * (MAX_ENV_BYTES + 1), "CONNECTOR_ALLOWED_TOOLS")
     # Exactly at the cap is accepted.
-    assert parse_env_list("x" * MAX_ENV_BYTES, "CONNECTOR_ALLOWED_TOOLS") == {
-        "x" * MAX_ENV_BYTES
-    }
+    assert parse_env_list("x" * MAX_ENV_BYTES, "CONNECTOR_ALLOWED_TOOLS") == {"x" * MAX_ENV_BYTES}
     # A multi-byte value is measured in bytes, not characters.
     with pytest.raises(AllowlistError, match="over the"):
         parse_env_list("é" * (MAX_ENV_BYTES // 2 + 1), "CONNECTOR_ALLOWED_TOOLS")

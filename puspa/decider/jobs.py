@@ -76,42 +76,65 @@ def _module_routing_question(payload: dict) -> ChoiceQuestion:
     options = []
     for module in modules:
         if not isinstance(module, dict) or not module.get("id"):
-            raise SeamError(
-                "invalid_payload", "each module needs an id")
-        options.append(ChoiceOption(
-            id=str(module["id"]),
-            label=str(module.get("description") or module["id"]),
-            keywords=tuple(module.get("keywords") or ())))
+            raise SeamError("invalid_payload", "each module needs an id")
+        options.append(
+            ChoiceOption(
+                id=str(module["id"]),
+                label=str(module.get("description") or module["id"]),
+                keywords=tuple(module.get("keywords") or ()),
+            )
+        )
     return ChoiceQuestion(
-        text=message, options=tuple(options),
+        text=message,
+        options=tuple(options),
         id=_stable_id("module-routing", message),
-        context={"job": "moduleRouting"})
+        context={"job": "moduleRouting"},
+    )
 
 
 def _module_routing_interpret(answer, payload: dict) -> dict:
     if not isinstance(answer, ChoiceAnswer):
-        raise BackendError(
-            "answer_type_mismatch",
-            "moduleRouting expects a choice answer")
+        raise BackendError("answer_type_mismatch", "moduleRouting expects a choice answer")
     return {"module_id": answer.choice, "confidence": answer.confidence}
 
 
 #: Keywords that push a message toward acting now.
 TRIAGE_ACT_NOW_KEYWORDS = (
-    "urgent", "asap", "deadline", "today", "broken", "down",
-    "payment due", "overdue", "failed", "error", "help",
+    "urgent",
+    "asap",
+    "deadline",
+    "today",
+    "broken",
+    "down",
+    "payment due",
+    "overdue",
+    "failed",
+    "error",
+    "help",
 )
 
 #: Keywords that push a message toward acting later.
 TRIAGE_ACT_LATER_KEYWORDS = (
-    "next week", "when you have time", "fyi", "update", "reminder",
-    "sometime", "eventually", "for later",
+    "next week",
+    "when you have time",
+    "fyi",
+    "update",
+    "reminder",
+    "sometime",
+    "eventually",
+    "for later",
 )
 
 #: Keywords that push a message toward ignoring it.
 TRIAGE_IGNORE_KEYWORDS = (
-    "newsletter", "promo", "unsubscribe", "advertisement",
-    "sale", "discount", "offer ends", "click here",
+    "newsletter",
+    "promo",
+    "unsubscribe",
+    "advertisement",
+    "sale",
+    "discount",
+    "offer ends",
+    "click here",
 )
 
 
@@ -121,31 +144,26 @@ def _inbox_triage_question(payload: dict) -> ChoiceQuestion:
     subject = payload.get("subject") or ""
     body = payload.get("body") or ""
     if not isinstance(subject, str) or not isinstance(body, str):
-        raise SeamError(
-            "invalid_payload", "inboxTriage subject/body must be strings")
+        raise SeamError("invalid_payload", "inboxTriage subject/body must be strings")
     text = (subject + "\n" + body).strip()
     if not text:
         raise SeamError("invalid_payload", "inboxTriage needs a message")
     options = (
-        ChoiceOption(id="act_now", label="Act now",
-                     keywords=TRIAGE_ACT_NOW_KEYWORDS),
-        ChoiceOption(id="act_later", label="Act later",
-                     keywords=TRIAGE_ACT_LATER_KEYWORDS),
-        ChoiceOption(id="ignore", label="Ignore",
-                     keywords=TRIAGE_IGNORE_KEYWORDS),
+        ChoiceOption(id="act_now", label="Act now", keywords=TRIAGE_ACT_NOW_KEYWORDS),
+        ChoiceOption(id="act_later", label="Act later", keywords=TRIAGE_ACT_LATER_KEYWORDS),
+        ChoiceOption(id="ignore", label="Ignore", keywords=TRIAGE_IGNORE_KEYWORDS),
     )
     return ChoiceQuestion(
-        text=text, options=options,
+        text=text,
+        options=options,
         id=_stable_id("inbox-triage", text),
-        context={"job": "inboxTriage",
-                 "sender": str(payload.get("sender") or "")})
+        context={"job": "inboxTriage", "sender": str(payload.get("sender") or "")},
+    )
 
 
 def _inbox_triage_interpret(answer, payload: dict) -> dict:
     if not isinstance(answer, ChoiceAnswer):
-        raise BackendError(
-            "answer_type_mismatch",
-            "inboxTriage expects a choice answer")
+        raise BackendError("answer_type_mismatch", "inboxTriage expects a choice answer")
     sender = str(payload.get("sender") or "")
     known = payload.get("known_senders") or []
     known_sender = sender in known
@@ -155,15 +173,12 @@ def _inbox_triage_interpret(answer, payload: dict) -> dict:
         priority = "high" if known_sender else "medium"
     else:  # act_later
         priority = "medium" if known_sender else "low"
-    return {"action": answer.choice, "priority": priority,
-            "confidence": answer.confidence}
+    return {"action": answer.choice, "priority": priority, "confidence": answer.confidence}
 
 
 JOB_SEAMS = {
-    "moduleRouting": _JobSeam(_module_routing_question,
-                              _module_routing_interpret),
-    "inboxTriage": _JobSeam(_inbox_triage_question,
-                            _inbox_triage_interpret),
+    "moduleRouting": _JobSeam(_module_routing_question, _module_routing_interpret),
+    "inboxTriage": _JobSeam(_inbox_triage_question, _inbox_triage_interpret),
 }
 
 
@@ -172,6 +187,6 @@ def get_seam(job: str) -> _JobSeam:
     seam = JOB_SEAMS.get(job)
     if seam is None:
         raise SeamError(
-            "unknown_job",
-            f"unknown decider job: {job!r} (known: {', '.join(DECIDER_JOBS)})")
+            "unknown_job", f"unknown decider job: {job!r} (known: {', '.join(DECIDER_JOBS)})"
+        )
     return seam

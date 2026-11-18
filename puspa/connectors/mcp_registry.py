@@ -26,19 +26,19 @@ import hashlib
 import hmac
 import secrets
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from puspa.plugins.mcp import validate_mcp_definition
 
 __all__ = [
+    "PENDING_TTL_SECONDS",
     "McpRegistry",
     "McpRegistryError",
-    "PendingSignIn",
-    "OAuthFlow",
     "OAuthError",
-    "engine_view",
+    "OAuthFlow",
+    "PendingSignIn",
     "authorization_header",
-    "PENDING_TTL_SECONDS",
+    "engine_view",
 ]
 
 #: How long a pending OAuth sign-in stays valid (10 minutes).
@@ -80,8 +80,7 @@ class McpRegistry:
         server_id = definition["id"]
         if server_id in self._servers:
             raise McpRegistryError(
-                f"MCP server {server_id!r} is already registered; "
-                "shadowing is rejected"
+                f"MCP server {server_id!r} is already registered; shadowing is rejected"
             )
         self._servers[server_id] = _ServerRecord(definition=dict(definition))
         return dict(definition)
@@ -145,15 +144,14 @@ class PendingSignIn:
     server_id: str
     state: str
     auth_url: str
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     expires_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
-        + timedelta(seconds=PENDING_TTL_SECONDS)
+        default_factory=lambda: datetime.now(UTC) + timedelta(seconds=PENDING_TTL_SECONDS)
     )
 
     def is_expired(self, now=None) -> bool:
         """True when the pending sign-in has passed its TTL."""
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         return now >= self.expires_at
 
 
@@ -186,8 +184,7 @@ class OAuthFlow:
         existing = self._pending.get(server_id)
         if existing is not None and not existing.is_expired():
             raise OAuthError(
-                f"server {server_id!r} already has a pending sign-in; "
-                "complete or cancel it first"
+                f"server {server_id!r} already has a pending sign-in; complete or cancel it first"
             )
         pending = PendingSignIn(
             server_id=server_id,
@@ -227,9 +224,7 @@ class OAuthFlow:
             self._pending.pop(server_id, None)
             self._listeners.pop(server_id, None)
             raise OAuthError("no active pending sign-in for this server")
-        if not isinstance(state, str) or not hmac.compare_digest(
-            state, record.state
-        ):
+        if not isinstance(state, str) or not hmac.compare_digest(state, record.state):
             raise OAuthError("OAuth state mismatch; sign-in refused")
         self._pending.pop(server_id, None)
         listeners = self._listeners.pop(server_id, [])

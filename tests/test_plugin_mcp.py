@@ -22,12 +22,7 @@ from puspa.plugins.mcp import (
     validate_mcp_definition,
 )
 
-MCP_DIR = (
-    Path(__file__).resolve().parent.parent
-    / "puspa"
-    / "plugins"
-    / "mcp_definitions"
-)
+MCP_DIR = Path(__file__).resolve().parent.parent / "puspa" / "plugins" / "mcp_definitions"
 
 VALID_DEFINITION = {
     "id": "local-files-mcp",

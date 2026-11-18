@@ -1,12 +1,9 @@
 """Tests for the append-only journal + undo (G7). No database."""
 
 import uuid
-from datetime import datetime, timezone
 
 from puspa.memory import facts
 from puspa.memory.journal import Journal
-
-UTC = timezone.utc
 
 
 def _user():
@@ -27,8 +24,9 @@ def test_undo_expire_restores_before_snapshot():
     store = facts.MemoryFactStore()
     journal = Journal()
     user = _user()
-    fact = facts.record_fact(user, "city", "Jakarta", store=store,
-                             trust_check=False, journal=journal)
+    fact = facts.record_fact(
+        user, "city", "Jakarta", store=store, trust_check=False, journal=journal
+    )
     facts.expire_fact(user, fact["id"], store=store, journal=journal)
     assert store.get(fact["id"], user)["status"] == "expired"
     undo = journal.undo_last(store)
@@ -43,8 +41,9 @@ def test_undo_record_expires_the_created_fact():
     store = facts.MemoryFactStore()
     journal = Journal()
     user = _user()
-    fact = facts.record_fact(user, "city", "Jakarta", store=store,
-                             trust_check=False, journal=journal)
+    fact = facts.record_fact(
+        user, "city", "Jakarta", store=store, trust_check=False, journal=journal
+    )
     journal.undo_last(store)
     # History is never deleted: the created fact is expired, not removed.
     assert store.get(fact["id"], user)["status"] == "expired"
@@ -57,10 +56,12 @@ def test_undo_empty_journal_returns_none():
 def test_quarantine_queue_lists_blocked_lines():
     journal = Journal()
     journal.log("record", fact_id="f1", kind="change")
-    journal.log("blocked", kind="blocked",
-                note="[blocked: instruction pattern] ignore me")
-    journal.log("quarantine", kind="quarantined",
-                note="[quarantined: external origin: web] shop opens at nine")
+    journal.log("blocked", kind="blocked", note="[blocked: instruction pattern] ignore me")
+    journal.log(
+        "quarantine",
+        kind="quarantined",
+        note="[quarantined: external origin: web] shop opens at nine",
+    )
     queued = journal.list_quarantined()
     assert len(queued) == 2
     assert all(e["kind"] in ("blocked", "quarantined") for e in queued)

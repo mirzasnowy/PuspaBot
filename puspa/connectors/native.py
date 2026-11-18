@@ -15,15 +15,16 @@ definition can never reach the product surface.
 
 from __future__ import annotations
 
+import builtins
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 __all__ = [
     "AUTH_KINDS",
     "ConnectorDefinition",
-    "Operation",
     "CuratedDirectory",
     "DirectoryError",
+    "Operation",
 ]
 
 #: Auth kinds a connector definition may declare.
@@ -87,15 +88,12 @@ class ConnectorDefinition:
 def _validate_definition(definition: ConnectorDefinition) -> list[str]:
     problems = []
     if not _ID_RE.match(definition.connector_id or ""):
-        problems.append(
-            f"connector_id {definition.connector_id!r} must be a lowercase slug"
-        )
+        problems.append(f"connector_id {definition.connector_id!r} must be a lowercase slug")
     if not isinstance(definition.display_name, str) or not definition.display_name.strip():
         problems.append("display_name must be a non-empty string")
     if definition.auth_kind not in AUTH_KINDS:
         problems.append(
-            f"auth_kind {definition.auth_kind!r} must be one of "
-            f"{', '.join(AUTH_KINDS)}"
+            f"auth_kind {definition.auth_kind!r} must be one of {', '.join(AUTH_KINDS)}"
         )
     if not isinstance(definition.scopes, (list, tuple)) or not all(
         isinstance(scope, str) and scope for scope in definition.scopes
@@ -162,11 +160,11 @@ class CuratedDirectory:
             definitions = [d for d in definitions if d.layer == layer]
         return definitions
 
-    def list_ids(self, *, layer: str | None = None) -> list[str]:
+    def list_ids(self, *, layer: str | None = None) -> builtins.list[str]:
         """Connector ids in registration order, optionally by layer."""
         return [d.connector_id for d in self.list(layer=layer)]
 
-    def tools(self, connector_id: str) -> list[dict]:
+    def tools(self, connector_id: str) -> builtins.list[dict]:
         """Engine-facing tool descriptors for one connector.
 
         Each tool is ``{"name", "description", "service"}`` where
@@ -184,7 +182,7 @@ class CuratedDirectory:
             for op in definition.operations
         ]
 
-    def all_tools(self) -> list[dict]:
+    def all_tools(self) -> builtins.list[dict]:
         """Engine-facing tool descriptors for every connector."""
         tools: list[dict] = []
         for definition in self.list():

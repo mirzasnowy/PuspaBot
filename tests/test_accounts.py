@@ -23,11 +23,11 @@ from puspa.accounts import (
     revoke_all_sessions,
     revoke_session,
     validate_session,
+    vault,
 )
-from puspa.accounts import vault
-
 
 # --- Pengguna ---------------------------------------------------------------
+
 
 def test_create_and_authenticate_ok(test_dsn):
     uid = create_user("  Alice@Example.COM ", "kata-sandi-rahasia", dsn=test_dsn)
@@ -67,6 +67,7 @@ def test_password_never_stored_plaintext(test_dsn):
 
 
 # --- Sesi -------------------------------------------------------------------
+
 
 def test_session_create_validate_revoke(test_dsn):
     uid = create_user("erin@example.com", "pw", dsn=test_dsn)
@@ -117,6 +118,7 @@ def test_list_sessions(test_dsn):
 
 # --- Vault ------------------------------------------------------------------
 
+
 def test_vault_put_get_delete(test_dsn, vault_master_key):
     uid = create_user("ivan@example.com", "pw", dsn=test_dsn)
     vault.put(uid, "gmail_token", "token-rahasia-123", dsn=test_dsn)
@@ -159,6 +161,7 @@ def test_vault_without_master_key_raises(test_dsn, monkeypatch):
 
 # --- Hapus akun --------------------------------------------------------------
 
+
 def test_delete_user_removes_sessions_and_vault(test_dsn, vault_master_key):
     uid = create_user("peggy@example.com", "pw", dsn=test_dsn)
     token = create_session(uid, "laptop", dsn=test_dsn)
@@ -169,12 +172,11 @@ def test_delete_user_removes_sessions_and_vault(test_dsn, vault_master_key):
     with pytest.raises(SessionError):
         validate_session(token, dsn=test_dsn)
     with psycopg.connect(test_dsn) as conn:
-        assert conn.execute(
-            "SELECT COUNT(*) FROM sessions WHERE user_id = %s", (uid,)
-        ).fetchone()[0] == 0
-        assert conn.execute(
-            "SELECT COUNT(*) FROM vault WHERE user_id = %s", (uid,)
-        ).fetchone()[0] == 0
-        assert conn.execute(
-            "SELECT COUNT(*) FROM users WHERE id = %s", (uid,)
-        ).fetchone()[0] == 0
+        assert (
+            conn.execute("SELECT COUNT(*) FROM sessions WHERE user_id = %s", (uid,)).fetchone()[0]
+            == 0
+        )
+        assert (
+            conn.execute("SELECT COUNT(*) FROM vault WHERE user_id = %s", (uid,)).fetchone()[0] == 0
+        )
+        assert conn.execute("SELECT COUNT(*) FROM users WHERE id = %s", (uid,)).fetchone()[0] == 0

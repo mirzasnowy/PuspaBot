@@ -124,9 +124,7 @@ def test_register_agent_id_empty_rejected(test_dsn):
 def test_read_vault_entry_as_owner_passed(test_dsn, vault_master_key):
     uid_a, _uid_b = _dua_user(test_dsn)
     vault_mod.put(uid_a, "gmail_token", "token-rahasia-A", dsn=test_dsn)
-    assert read_vault_entry(uid_a, uid_a, "gmail_token", dsn=test_dsn) == (
-        "token-rahasia-A"
-    )
+    assert read_vault_entry(uid_a, uid_a, "gmail_token", dsn=test_dsn) == ("token-rahasia-A")
 
 
 def test_read_vault_entry_other_user_rejected(test_dsn, vault_master_key):
@@ -135,17 +133,13 @@ def test_read_vault_entry_other_user_rejected(test_dsn, vault_master_key):
     uid_a, uid_b = _dua_user(test_dsn)
     vault_mod.put(uid_b, "gmail_token", "token-rahasia-B", dsn=test_dsn)
     # Bukti data B ada: B sendiri bisa membacanya.
-    assert read_vault_entry(uid_b, uid_b, "gmail_token", dsn=test_dsn) == (
-        "token-rahasia-B"
-    )
+    assert read_vault_entry(uid_b, uid_b, "gmail_token", dsn=test_dsn) == ("token-rahasia-B")
     # A ditolak dengan error kepemilikan, bukan "tidak ada".
     with pytest.raises(AccessDeniedError):
         read_vault_entry(uid_a, uid_b, "gmail_token", dsn=test_dsn)
 
 
-def test_read_vault_entry_not_exists_not_access_denied(
-    test_dsn, vault_master_key
-):
+def test_read_vault_entry_not_exists_not_access_denied(test_dsn, vault_master_key):
     """Pemilik membaca nama yang memang tidak ada -> KeyError, supaya
     'tidak ada' bisa dibedakan dari 'ditolak karena kepemilikan'."""
     uid_a, _uid_b = _dua_user(test_dsn)
@@ -153,9 +147,7 @@ def test_read_vault_entry_not_exists_not_access_denied(
         read_vault_entry(uid_a, uid_a, "nama-tidak-ada", dsn=test_dsn)
 
 
-def test_read_vault_entry_cross_user_without_decryption(
-    test_dsn, vault_master_key, monkeypatch
-):
+def test_read_vault_entry_cross_user_without_decryption(test_dsn, vault_master_key, monkeypatch):
     """Tes negatif penting: A membaca vault B -> ditolak SEBELUM dekripsi
     apa pun. Buktinya: _fernet (satu-satunya jalan ke dekripsi) tidak
     pernah dipanggil selama penolakan, padahal vault B berisi ciphertext
@@ -178,9 +170,7 @@ def test_read_vault_entry_cross_user_without_decryption(
     assert panggilan == [], "dekripsi (via _fernet) terjadi sebelum penolakan!"
 
     # Kontrol positif: B membaca miliknya sendiri tetap mendekripsi.
-    assert read_vault_entry(uid_b, uid_b, "gmail_token", dsn=test_dsn) == (
-        "token-rahasia-B"
-    )
+    assert read_vault_entry(uid_b, uid_b, "gmail_token", dsn=test_dsn) == ("token-rahasia-B")
     assert panggilan == [uid_b]
 
 
@@ -251,7 +241,9 @@ def _task_dengan_agent(test_dsn, agent_id, task_id):
     ledger = Ledger(test_dsn)
     ledger.create_schema()
     ev = ledger.append_event(
-        task_id=task_id, agent_id=agent_id, event_type="user_message",
+        task_id=task_id,
+        agent_id=agent_id,
+        event_type="user_message",
         content={"text": f"rahasia {agent_id}"},
     )
     return ledger, ev
@@ -306,11 +298,15 @@ def test_read_ledger_events_for_task_own_own_passed(test_dsn):
     ledger = Ledger(test_dsn)
     ledger.create_schema()
     ledger.append_event(
-        task_id=task_id, agent_id="agen-A", event_type="user_message",
+        task_id=task_id,
+        agent_id="agen-A",
+        event_type="user_message",
         content={"text": "satu"},
     )
     ledger.append_event(
-        task_id=task_id, agent_id="agen-A", event_type="agent_message",
+        task_id=task_id,
+        agent_id="agen-A",
+        event_type="agent_message",
         content={"text": "dua"},
     )
     result = read_ledger_events_for_task(uid_a, task_id, dsn=test_dsn)
@@ -329,11 +325,15 @@ def test_read_ledger_events_for_task_mixed_rejected_total(test_dsn):
     ledger = Ledger(test_dsn)
     ledger.create_schema()
     ledger.append_event(
-        task_id=task_id, agent_id="agen-A", event_type="user_message",
+        task_id=task_id,
+        agent_id="agen-A",
+        event_type="user_message",
         content={"text": "milik A"},
     )
     ledger.append_event(
-        task_id=task_id, agent_id="agen-B", event_type="user_message",
+        task_id=task_id,
+        agent_id="agen-B",
+        event_type="user_message",
         content={"text": "milik B"},
     )
     with pytest.raises(AccessDeniedError):
@@ -341,6 +341,7 @@ def test_read_ledger_events_for_task_mixed_rejected_total(test_dsn):
     with pytest.raises(AccessDeniedError):
         read_ledger_events_for_task(uid_b, task_id, dsn=test_dsn)
     # Tugas kosong (tidak ada kejadian): tidak ada yang bocor, lolos kosong.
-    assert read_ledger_events_for_task(
-        uid_a, f"tugas-tidak-ada-{uuid.uuid4().hex}", dsn=test_dsn
-    ) == []
+    assert (
+        read_ledger_events_for_task(uid_a, f"tugas-tidak-ada-{uuid.uuid4().hex}", dsn=test_dsn)
+        == []
+    )

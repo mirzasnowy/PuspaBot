@@ -39,14 +39,11 @@ def _event_types_from_contracts() -> tuple[set[str], int]:
     lines = CONTRACTS_MD.read_text(encoding="utf-8").splitlines()
     matches = [line for line in lines if "Closed type set" in line]
     assert len(matches) == 1, (
-        f"expected exactly one 'Closed type set' line in {CONTRACTS_MD}, "
-        f"found {len(matches)}"
+        f"expected exactly one 'Closed type set' line in {CONTRACTS_MD}, found {len(matches)}"
     )
     line = matches[0]
     count_match = re.search(r"\((\d+),", line)
-    assert count_match is not None, (
-        f"could not parse the count from the contracts line: {line!r}"
-    )
+    assert count_match is not None, f"could not parse the count from the contracts line: {line!r}"
     claimed_count = int(count_match.group(1))
     # The list follows the closing paren of "(31, revision 7: 22 old +
     # 9 new):" — the first colon on the line sits inside those parens,

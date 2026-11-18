@@ -47,21 +47,26 @@ def fake_key_resolver(provider):
     return FAKE_KEY
 
 
-def mock_reply(text="hello from the model", *, input_tokens=10,
-               output_tokens=4, model=CHEAPEST_READER):
+def mock_reply(
+    text="hello from the model", *, input_tokens=10, output_tokens=4, model=CHEAPEST_READER
+):
     """A minimal OpenRouter-style chat-completions reply body."""
     return {
         "id": "chatcmpl-test",
         "object": "chat.completion",
-        "choices": [{
-            "index": 0,
-            "message": {"role": "assistant", "content": text},
-            "finish_reason": "stop",
-        }],
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": text},
+                "finish_reason": "stop",
+            }
+        ],
         "model": model,
-        "usage": {"prompt_tokens": input_tokens,
-                  "completion_tokens": output_tokens,
-                  "total_tokens": input_tokens + output_tokens},
+        "usage": {
+            "prompt_tokens": input_tokens,
+            "completion_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+        },
     }
 
 
@@ -82,12 +87,10 @@ def transport_for(reply_body=None, *, status=200, raw=None):
     if raw is not None:
         content = raw
     else:
-        content = json.dumps(reply_body if reply_body is not None
-                             else mock_reply()).encode()
+        content = json.dumps(reply_body if reply_body is not None else mock_reply()).encode()
 
     def handler(request):
-        return httpx.Response(status, content=content,
-                              headers={"Content-Type": "application/json"})
+        return httpx.Response(status, content=content, headers={"Content-Type": "application/json"})
 
     return CapturingTransport(handler)
 
@@ -95,6 +98,7 @@ def transport_for(reply_body=None, *, status=200, raw=None):
 # ---------------------------------------------------------------------------
 # Role resolution
 # ---------------------------------------------------------------------------
+
 
 def test_role_aliases_map_to_catalog_roles():
     assert resolve_role("reader") == "pembaca"
@@ -119,10 +123,12 @@ def test_unknown_role_is_rejected():
 # Cheapest-model selection, prompt sent, text returned
 # ---------------------------------------------------------------------------
 
+
 def test_reader_role_calls_the_cheapest_reader_model():
     transport = transport_for()
-    text = complete("What is 2 + 2?", role="reader",
-                    transport=transport, key_resolver=fake_key_resolver)
+    text = complete(
+        "What is 2 + 2?", role="reader", transport=transport, key_resolver=fake_key_resolver
+    )
     assert text == "hello from the model"
     assert len(transport.requests) == 1
     request = transport.requests[0]
@@ -137,11 +143,10 @@ def test_reader_role_calls_the_cheapest_reader_model():
 
 
 def test_planner_role_calls_the_cheapest_benchmark_passing_model():
-    transport = transport_for(
-        mock_reply(model=CHEAPEST_PLANNER))
-    result = complete_detailed("Plan this.", role="planner",
-                               transport=transport,
-                               key_resolver=fake_key_resolver)
+    transport = transport_for(mock_reply(model=CHEAPEST_PLANNER))
+    result = complete_detailed(
+        "Plan this.", role="planner", transport=transport, key_resolver=fake_key_resolver
+    )
     assert result.model == CHEAPEST_PLANNER
     assert result.provider == "openrouter"
     body = json.loads(transport.requests[0].content)
@@ -149,12 +154,14 @@ def test_planner_role_calls_the_cheapest_benchmark_passing_model():
 
 
 def test_explicit_model_overrides_the_role_choice():
-    transport = transport_for(
-        mock_reply(model="openai/gpt-4o-mini"))
-    result = complete_detailed("Hi.", role="reader",
-                               model="openai/gpt-4o-mini",
-                               transport=transport,
-                               key_resolver=fake_key_resolver)
+    transport = transport_for(mock_reply(model="openai/gpt-4o-mini"))
+    result = complete_detailed(
+        "Hi.",
+        role="reader",
+        model="openai/gpt-4o-mini",
+        transport=transport,
+        key_resolver=fake_key_resolver,
+    )
     assert result.model == "openai/gpt-4o-mini"
     body = json.loads(transport.requests[0].content)
     assert body["model"] == "openai/gpt-4o-mini"
@@ -163,10 +170,8 @@ def test_explicit_model_overrides_the_role_choice():
 def test_detailed_result_carries_usage_and_rupiah_cost():
     # llama-3.1-8b: Rp1 per 1k input, Rp2 per 1k output.
     # (1000 * 1 + 500 * 2) // 1000 = 2.
-    transport = transport_for(
-        mock_reply(input_tokens=1000, output_tokens=500))
-    result = complete_detailed("Hi.", transport=transport,
-                               key_resolver=fake_key_resolver)
+    transport = transport_for(mock_reply(input_tokens=1000, output_tokens=500))
+    result = complete_detailed("Hi.", transport=transport, key_resolver=fake_key_resolver)
     assert isinstance(result, CompletionResult)
     assert result.text == "hello from the model"
     assert result.input_tokens == 1000
@@ -175,41 +180,38 @@ def test_detailed_result_carries_usage_and_rupiah_cost():
 
 
 def test_uncatalogued_model_has_unknown_cost_not_a_guessed_one():
-    transport = transport_for(
-        mock_reply(model="someone/unknown-model"))
-    result = complete_detailed("Hi.", model="someone/unknown-model",
-                               transport=transport,
-                               key_resolver=fake_key_resolver)
+    transport = transport_for(mock_reply(model="someone/unknown-model"))
+    result = complete_detailed(
+        "Hi.", model="someone/unknown-model", transport=transport, key_resolver=fake_key_resolver
+    )
     assert result.model == "someone/unknown-model"
     assert result.cost_rp is None
 
 
 def test_explicit_api_key_is_used_and_prompt_must_not_be_empty():
     transport = transport_for()
-    assert complete("Hi.", api_key="explicit-fake-key",
-                    transport=transport) == "hello from the model"
-    assert (transport.requests[0].headers["Authorization"]
-            == "Bearer explicit-fake-key")
+    assert (
+        complete("Hi.", api_key="explicit-fake-key", transport=transport) == "hello from the model"
+    )
+    assert transport.requests[0].headers["Authorization"] == "Bearer explicit-fake-key"
     with pytest.raises(ValueError):
-        complete("", transport=transport,
-                 key_resolver=fake_key_resolver)
+        complete("", transport=transport, key_resolver=fake_key_resolver)
     with pytest.raises(ValueError):
-        complete("Hi.", max_tokens=0, transport=transport,
-                 key_resolver=fake_key_resolver)
+        complete("Hi.", max_tokens=0, transport=transport, key_resolver=fake_key_resolver)
 
 
 # ---------------------------------------------------------------------------
 # Error propagation: never a fake answer
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("status", [400, 401, 402, 404, 429, 500, 503])
 def test_http_error_statuses_raise_completion_error(status):
     transport = transport_for(
-        {"error": {"message": "provider says no", "code": status}},
-        status=status)
+        {"error": {"message": "provider says no", "code": status}}, status=status
+    )
     with pytest.raises(CompletionError) as exc_info:
-        complete("Hi.", transport=transport,
-                 key_resolver=fake_key_resolver)
+        complete("Hi.", transport=transport, key_resolver=fake_key_resolver)
     assert exc_info.value.status == status
     assert "provider says no" in str(exc_info.value)
 
@@ -220,8 +222,7 @@ def test_transport_failure_raises_completion_error():
 
     transport = httpx.MockTransport(handler)
     with pytest.raises(CompletionError, match="ConnectError"):
-        complete("Hi.", transport=transport,
-                 key_resolver=fake_key_resolver)
+        complete("Hi.", transport=transport, key_resolver=fake_key_resolver)
 
 
 def test_timeout_raises_completion_error():
@@ -230,55 +231,55 @@ def test_timeout_raises_completion_error():
 
     transport = httpx.MockTransport(handler)
     with pytest.raises(CompletionError, match="timed out"):
-        complete("Hi.", transport=transport,
-                 key_resolver=fake_key_resolver)
+        complete("Hi.", transport=transport, key_resolver=fake_key_resolver)
 
 
-@pytest.mark.parametrize("raw", [
-    b"not json at all",
-    json.dumps({"choices": []}).encode(),
-    json.dumps({"choices": [{"message": {}}]}).encode(),
-    json.dumps({"choices": [{"message": {"content": ""}}]}).encode(),
-    json.dumps({"choices": [{"message": {"content": "   "}}]}).encode(),
-    json.dumps({"choices": [{"message": {"content": 42}}]}).encode(),
-    json.dumps({"no_choices_here": True}).encode(),
-])
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"not json at all",
+        json.dumps({"choices": []}).encode(),
+        json.dumps({"choices": [{"message": {}}]}).encode(),
+        json.dumps({"choices": [{"message": {"content": ""}}]}).encode(),
+        json.dumps({"choices": [{"message": {"content": "   "}}]}).encode(),
+        json.dumps({"choices": [{"message": {"content": 42}}]}).encode(),
+        json.dumps({"no_choices_here": True}).encode(),
+    ],
+)
 def test_malformed_or_empty_replies_raise_completion_error(raw):
     transport = transport_for(raw=raw)
     with pytest.raises(CompletionError):
-        complete("Hi.", transport=transport,
-                 key_resolver=fake_key_resolver)
+        complete("Hi.", transport=transport, key_resolver=fake_key_resolver)
 
 
 # ---------------------------------------------------------------------------
 # No key: a clear error, not a fake answer
 # ---------------------------------------------------------------------------
 
+
 def test_missing_key_raises_key_error_not_a_fake_answer():
     def no_key(provider):
-        raise KeyError(
-            f"no API key for provider {provider!r}: none stored")
+        raise KeyError(f"no API key for provider {provider!r}: none stored")
 
     with pytest.raises(KeyError, match="no API key"):
-        complete("Hi.", transport=transport_for(),
-                 key_resolver=no_key)
+        complete("Hi.", transport=transport_for(), key_resolver=no_key)
 
 
 def test_empty_key_from_resolver_is_rejected():
     with pytest.raises(KeyError, match="no API key"):
-        complete("Hi.", transport=transport_for(),
-                 key_resolver=lambda provider: "")
+        complete("Hi.", transport=transport_for(), key_resolver=lambda provider: "")
 
 
 # ---------------------------------------------------------------------------
 # The factory, the seam resolver, and the fallback adapter
 # ---------------------------------------------------------------------------
 
+
 def test_default_llm_complete_builds_a_prompt_callable():
     transport = transport_for()
     llm_complete = default_llm_complete(
-        role="reader", transport=transport,
-        key_resolver=fake_key_resolver)
+        role="reader", transport=transport, key_resolver=fake_key_resolver
+    )
     assert callable(llm_complete)
     assert llm_complete("Say hi.") == "hello from the model"
     body = json.loads(transport.requests[0].content)
@@ -288,8 +289,7 @@ def test_default_llm_complete_builds_a_prompt_callable():
 
 def test_default_llm_complete_makes_no_call_until_used():
     transport = transport_for()
-    default_llm_complete(transport=transport,
-                         key_resolver=fake_key_resolver)
+    default_llm_complete(transport=transport, key_resolver=fake_key_resolver)
     assert transport.requests == []
 
 
@@ -307,8 +307,7 @@ def test_resolve_llm_complete_passthrough_and_default():
 
 def test_make_call_fn_adapts_complete_to_the_fallback_contract():
     transport = transport_for()
-    call_fn = make_call_fn("Say hi.", transport=transport,
-                           key_resolver=fake_key_resolver)
+    call_fn = make_call_fn("Say hi.", transport=transport, key_resolver=fake_key_resolver)
     chain = build_chain("pembaca")
     result = call_with_fallback(chain, call_fn)
     assert result.value == "hello from the model"
@@ -328,14 +327,12 @@ def test_make_call_fn_falls_through_on_a_retryable_failure():
         seen.append(json.loads(request.content)["model"])
         if len(seen) == 1:
             return httpx.Response(
-                503, content=json.dumps(
-                    {"error": {"message": "overloaded"}}).encode())
-        return httpx.Response(
-            200, content=json.dumps(mock_reply()).encode())
+                503, content=json.dumps({"error": {"message": "overloaded"}}).encode()
+            )
+        return httpx.Response(200, content=json.dumps(mock_reply()).encode())
 
     transport = CapturingTransport(handler)
-    call_fn = make_call_fn("Say hi.", transport=transport,
-                           key_resolver=fake_key_resolver)
+    call_fn = make_call_fn("Say hi.", transport=transport, key_resolver=fake_key_resolver)
     chain = build_chain("pembaca")
     result = call_with_fallback(chain, call_fn)
     assert result.value == "hello from the model"
@@ -347,16 +344,20 @@ def test_make_call_fn_falls_through_on_a_retryable_failure():
 # Wiring: the "default" opt-in reaches the judge and the decomposer
 # ---------------------------------------------------------------------------
 
+
 def _small_graph():
     graph = KnowledgeGraph()
     for name in ("samsung galaxy s24", "toko gadget murah", "promo"):
         graph.nodes[name] = Entity(name=name, source_ids={"hand"})
     graph.edges[("samsung galaxy s24", "sells", "toko gadget murah")] = Triple(
-        subject="samsung galaxy s24", relation="sells",
-        object="toko gadget murah", source_ids={"hand"})
+        subject="samsung galaxy s24",
+        relation="sells",
+        object="toko gadget murah",
+        source_ids={"hand"},
+    )
     graph.edges[("toko gadget murah", "offers", "promo")] = Triple(
-        subject="toko gadget murah", relation="offers",
-        object="promo", source_ids={"hand"})
+        subject="toko gadget murah", relation="offers", object="promo", source_ids={"hand"}
+    )
     graph.passages = {
         "p1": "Samsung Galaxy S24 costs Rp12.999.000.",
         "p2": "Toko Gadget Murah sells Samsung Galaxy S24.",
@@ -381,27 +382,26 @@ def test_hipporag_default_opt_in_uses_the_live_complete(monkeypatch):
 
     def stub_complete(prompt):
         calls.append(prompt)
-        return json.dumps({"decisions": [
-            {"index": 0, "keep": True, "reason": "the seller"},
-            {"index": 1, "keep": True, "reason": "the deal"},
-        ]})
+        return json.dumps(
+            {
+                "decisions": [
+                    {"index": 0, "keep": True, "reason": "the seller"},
+                    {"index": 1, "keep": True, "reason": "the deal"},
+                ]
+            }
+        )
 
-    monkeypatch.setattr(
-        complete_mod, "default_llm_complete",
-        lambda **kwargs: stub_complete)
-    retriever = HippoRAGRetriever(
-        _small_graph(), llm_complete="default")
+    monkeypatch.setattr(complete_mod, "default_llm_complete", lambda **kwargs: stub_complete)
+    retriever = HippoRAGRetriever(_small_graph(), llm_complete="default")
     retriever.retrieve("Is the Galaxy S24 deal trustworthy?", top_k=5)
     assert len(calls) == 1
-    assert all(d.source == "llm"
-               for d in retriever.last_filter_decisions)
+    assert all(d.source == "llm" for d in retriever.last_filter_decisions)
 
 
 def test_hipporag_without_opt_in_stays_deterministic():
     retriever = HippoRAGRetriever(_small_graph())
     retriever.retrieve("Is the Galaxy S24 deal trustworthy?", top_k=5)
-    assert all(d.source == "deterministic"
-               for d in retriever.last_filter_decisions)
+    assert all(d.source == "deterministic" for d in retriever.last_filter_decisions)
 
 
 def test_decomposition_default_opt_in_uses_the_live_complete(monkeypatch):
@@ -409,14 +409,16 @@ def test_decomposition_default_opt_in_uses_the_live_complete(monkeypatch):
 
     def stub_complete(prompt):
         calls.append(prompt)
-        return json.dumps({"subquestions": [
-            "Is the cheap Galaxy S24 deal trustworthy?",
-            "What is the Galaxy S24 official store price?",
-        ]})
+        return json.dumps(
+            {
+                "subquestions": [
+                    "Is the cheap Galaxy S24 deal trustworthy?",
+                    "What is the Galaxy S24 official store price?",
+                ]
+            }
+        )
 
-    monkeypatch.setattr(
-        complete_mod, "default_llm_complete",
-        lambda **kwargs: stub_complete)
+    monkeypatch.setattr(complete_mod, "default_llm_complete", lambda **kwargs: stub_complete)
     seen = []
 
     def fake_retrieve(sub_query, top_k):
@@ -425,9 +427,10 @@ def test_decomposition_default_opt_in_uses_the_live_complete(monkeypatch):
 
     merged = retrieve_with_decomposition(
         fake_retrieve,
-        "cheap Galaxy S24 deal trustworthy and compare with official "
-        "store price",
-        top_k=2, llm_complete="default")
+        "cheap Galaxy S24 deal trustworthy and compare with official store price",
+        top_k=2,
+        llm_complete="default",
+    )
     assert len(calls) == 1
     assert seen == [
         "Is the cheap Galaxy S24 deal trustworthy?",
@@ -445,9 +448,9 @@ def test_decomposition_without_opt_in_stays_regex():
 
     merged = retrieve_with_decomposition(
         fake_retrieve,
-        "cheap Galaxy S24 deal trustworthy and compare with official "
-        "store price",
-        top_k=2)
+        "cheap Galaxy S24 deal trustworthy and compare with official store price",
+        top_k=2,
+    )
     assert all(r["decomposition_source"] == "regex" for r in merged)
 
 

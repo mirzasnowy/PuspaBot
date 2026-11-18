@@ -28,20 +28,18 @@ from puspa.policy.signing import (
 )
 from puspa.policy.skill_signing import (
     load_skill,
-    sign_skill as sign_manifest,
-)
-from puspa.policy.skill_signing import (
     sign_skill_provenance,
     verify_skill,
+)
+from puspa.policy.skill_signing import (
+    sign_skill as sign_manifest,
 )
 
 IDENTITY = "user-123@example.id"
 
 
 def _skill_bytes(name="example"):
-    return json.dumps(
-        {"name": name, "tools": ["read_price"]}, sort_keys=True
-    ).encode("utf-8")
+    return json.dumps({"name": name, "tools": ["read_price"]}, sort_keys=True).encode("utf-8")
 
 
 def _b64(data: bytes) -> str:
@@ -61,6 +59,7 @@ def _tamper_payload(envelope, **changes):
 
 # --- DSSE pre-authentication encoding --------------------------------------
 
+
 def test_pae_matches_spec_test_vector():
     assert pae("http://example.com/HelloWorld", b"hello world") == (
         b"DSSEv1 29 http://example.com/HelloWorld 11 hello world"
@@ -68,6 +67,7 @@ def test_pae_matches_spec_test_vector():
 
 
 # --- Round trip sign / verify ----------------------------------------------
+
 
 def test_sign_verify_round_trip():
     log = TransparencyLog()
@@ -100,6 +100,7 @@ def test_decode_envelope_payload_rejects_wrong_type():
 
 # --- Rejections -------------------------------------------------------------
 
+
 def test_tampered_payload_rejected():
     log = TransparencyLog()
     envelope = sign_skill(_skill_bytes(), IDENTITY)
@@ -116,7 +117,9 @@ def test_tampered_signature_rejected():
     log.append(envelope)
     tampered = json.loads(json.dumps(envelope))
     sig = tampered["signatures"][0]["sig"]
-    tampered["signatures"][0]["sig"] = _b64(b"\x00" * 64) if sig != _b64(b"\x00" * 64) else _b64(b"\x01" * 64)
+    tampered["signatures"][0]["sig"] = (
+        _b64(b"\x00" * 64) if sig != _b64(b"\x00" * 64) else _b64(b"\x01" * 64)
+    )
     ok, reason = verify_skill_envelope(tampered, IDENTITY, log)
     assert ok is False
     assert "signature invalid" in reason
@@ -148,13 +151,20 @@ def test_verify_without_log_rejected():
 
 def test_malformed_envelope_never_raises():
     log = TransparencyLog()
-    for bad in (None, {}, {"payloadType": PAYLOAD_TYPE}, "junk", {"payloadType": PAYLOAD_TYPE, "payload": "!!!", "signatures": []}):
+    for bad in (
+        None,
+        {},
+        {"payloadType": PAYLOAD_TYPE},
+        "junk",
+        {"payloadType": PAYLOAD_TYPE, "payload": "!!!", "signatures": []},
+    ):
         ok, reason = verify_skill_envelope(bad, IDENTITY, log)
         assert ok is False
         assert reason
 
 
 # --- Merkle inclusion proofs -----------------------------------------------
+
 
 @pytest.mark.parametrize("size", [1, 2, 3, 5, 8])
 def test_inclusion_proof_verifies_for_many_sizes(size):
@@ -180,10 +190,7 @@ def test_inclusion_proof_tampered_sibling_fails():
         log.append(envelope)
     proof = log.inclusion_proof(1)
     proof["path"][0]["hash"] = hashlib.sha256(b"forged").hexdigest()
-    assert (
-        verify_inclusion_proof(envelope_leaf_hash(envelopes[1]), proof, log.root())
-        is False
-    )
+    assert verify_inclusion_proof(envelope_leaf_hash(envelopes[1]), proof, log.root()) is False
 
 
 def test_inclusion_proof_wrong_root_fails():
@@ -205,6 +212,7 @@ def test_inclusion_proof_empty_log_raises():
 
 
 # --- Append-only guarantees ------------------------------------------------
+
 
 def test_log_has_no_delete_or_update_api():
     log = TransparencyLog()
@@ -250,6 +258,7 @@ def test_roots_differ_after_append():
 
 # --- Restart round trip (file-backed persistence) --------------------------
 
+
 def test_restart_round_trip(tmp_path):
     path = tmp_path / "transparency.jsonl"
     log = TransparencyLog(path)
@@ -286,6 +295,7 @@ def test_in_memory_log_does_not_persist(tmp_path):
 
 
 # --- verify_skill provenance wiring ----------------------------------------
+
 
 def test_verify_skill_backward_compatible_without_log(ephemeral_keys, tmp_skill_dir):
     sk, pk = ephemeral_keys
@@ -357,7 +367,5 @@ def test_verify_skill_envelope_replay_to_other_skill_rejected(
     sign_manifest(other_dir, sk)
     # Replay skill A's envelope into skill B's directory: the envelope
     # is recorded in the log, but it binds A's manifest bytes, not B's.
-    (other_dir / "envelope.json").write_text(
-        json.dumps(envelope, indent=2), encoding="utf-8"
-    )
+    (other_dir / "envelope.json").write_text(json.dumps(envelope, indent=2), encoding="utf-8")
     assert verify_skill(other_dir, pk, log, IDENTITY) is False

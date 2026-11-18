@@ -30,7 +30,7 @@ from pathlib import Path
 import psycopg
 from psycopg.rows import dict_row
 
-from .user_sessions import owner_of_token, validate_session
+from .user_sessions import owner_of_token
 from .users import resolve_dsn
 from .vault import get as vault_get
 
@@ -53,18 +53,11 @@ def require_owner(requesting_user_id, owner_user_id):
     TIDAK membaca data apa pun: panggil sebelum query/dekripsi.
     """
     if not isinstance(requesting_user_id, str) or not requesting_user_id.strip():
-        raise AccessDeniedError(
-            "identitas pembaca tidak valid (None/kosong) — ditolak fail-closed"
-        )
+        raise AccessDeniedError("identitas pembaca tidak valid (None/kosong) — ditolak fail-closed")
     if not isinstance(owner_user_id, str) or not owner_user_id.strip():
-        raise AccessDeniedError(
-            "identitas pemilik tidak valid (None/kosong) — ditolak fail-closed"
-        )
+        raise AccessDeniedError("identitas pemilik tidak valid (None/kosong) — ditolak fail-closed")
     if requesting_user_id.strip() != owner_user_id.strip():
-        raise AccessDeniedError(
-            "pembaca bukan pemilik data (jalur serangan ke-8 ditolak)"
-        )
-    return None
+        raise AccessDeniedError("pembaca bukan pemilik data (jalur serangan ke-8 ditolak)")
 
 
 # ======================================================================
@@ -105,9 +98,7 @@ def register_agent(agent_id, user_id, dsn=None):
             row = cur.fetchone()
             if row is not None:
                 if str(row[0]) != user_id:
-                    raise AccessDeniedError(
-                        f"agen {agent_id!r} sudah terdaftar ke pengguna lain"
-                    )
+                    raise AccessDeniedError(f"agen {agent_id!r} sudah terdaftar ke pengguna lain")
                 return  # sudah terdaftar ke pemilik yang sama: no-op
             cur.execute(
                 "INSERT INTO agents (agent_id, user_id) VALUES (%s, %s)",
@@ -122,10 +113,9 @@ def owner_of(agent_id, dsn=None):
     oleh pembaca bermilik (bukan dianggap milik siapa pun)."""
     if not isinstance(agent_id, str) or not agent_id.strip():
         return None
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT user_id FROM agents WHERE agent_id = %s", (agent_id.strip(),))
-            row = cur.fetchone()
+    with psycopg.connect(resolve_dsn(dsn)) as conn, conn.cursor() as cur:
+        cur.execute("SELECT user_id FROM agents WHERE agent_id = %s", (agent_id.strip(),))
+        row = cur.fetchone()
     return str(row[0]) if row is not None else None
 
 
@@ -188,22 +178,21 @@ def read_ledger_event(requesting_user_id, event_id, dsn=None):
     if not isinstance(event_id, str) or not event_id.strip():
         raise ValueError("event_id harus string tak kosong")
     event_id = event_id.strip()
-    with psycopg.connect(resolve_dsn(dsn), row_factory=dict_row) as conn:
-        with conn.cursor() as cur:
-            # Langkah 1: keberadaan saja, tanpa isi.
-            cur.execute("SELECT agent_id FROM events WHERE id = %s", (event_id,))
-            row = cur.fetchone()
-            if row is None:
-                raise KeyError(event_id)
-            agent_id = row["agent_id"]
-            # Langkah 2-3: pemilik dari registry, lalu cek kepemilikan.
-            # (owner_of membuka koneksi sendiri; registry dibaca sebelum
-            # isi kejadian disentuh.)
-            owner_user_id = owner_of(agent_id, dsn=dsn)
-            require_owner(requesting_user_id, owner_user_id)
-            # Langkah 4: baru sekarang isi boleh dibaca.
-            cur.execute("SELECT * FROM events WHERE id = %s", (event_id,))
-            full = cur.fetchone()
+    with psycopg.connect(resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+        # Langkah 1: keberadaan saja, tanpa isi.
+        cur.execute("SELECT agent_id FROM events WHERE id = %s", (event_id,))
+        row = cur.fetchone()
+        if row is None:
+            raise KeyError(event_id)
+        agent_id = row["agent_id"]
+        # Langkah 2-3: pemilik dari registry, lalu cek kepemilikan.
+        # (owner_of membuka koneksi sendiri; registry dibaca sebelum
+        # isi kejadian disentuh.)
+        owner_user_id = owner_of(agent_id, dsn=dsn)
+        require_owner(requesting_user_id, owner_user_id)
+        # Langkah 4: baru sekarang isi boleh dibaca.
+        cur.execute("SELECT * FROM events WHERE id = %s", (event_id,))
+        full = cur.fetchone()
     if full is None:  # tidak mungkin terjadi; pertahanan terakhir
         raise KeyError(event_id)
     return {
@@ -232,13 +221,12 @@ def read_ledger_events_for_task(requesting_user_id, task_id, dsn=None):
     if not isinstance(task_id, str) or not task_id.strip():
         raise ValueError("task_id harus string tak kosong")
     task_id = task_id.strip()
-    with psycopg.connect(resolve_dsn(dsn), row_factory=dict_row) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT DISTINCT agent_id FROM events WHERE task_id = %s",
-                (task_id,),
-            )
-            agent_ids = [r["agent_id"] for r in cur.fetchall()]
+    with psycopg.connect(resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT DISTINCT agent_id FROM events WHERE task_id = %s",
+            (task_id,),
+        )
+        agent_ids = [r["agent_id"] for r in cur.fetchall()]
     # Cek kepemilikan dulu — sebelum isi kejadian mana pun dibaca.
     for agent_id in agent_ids:
         require_owner(requesting_user_id, owner_of(agent_id, dsn=dsn))

@@ -1,9 +1,9 @@
 """Onboarding Puspa — Fase 1 (definisi 2.16)."""
 
 from .onboarding import (
+    BUILTIN_WORKFLOW_TEMPLATES,
     FIRST_TASK_TYPES,
     TARGET_MINUTES,
-    BUILTIN_WORKFLOW_TEMPLATES,
     StubNotifier,
     complete_step1,
     complete_step2,
@@ -16,9 +16,9 @@ from .onboarding import (
 )
 
 __all__ = [
+    "BUILTIN_WORKFLOW_TEMPLATES",
     "FIRST_TASK_TYPES",
-    "TARGET_MINUTE",
-    "TEMPLATE_WORKFLOW_BAWAAN",
+    "TARGET_MINUTES",
     "StubNotifier",
     "complete_step1",
     "complete_step2",

@@ -11,8 +11,16 @@ from pathlib import Path
 import psycopg
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
-TABLES = ("workflows", "workflow_versions", "workflow_runs", "workflow_approvals",
-         "modules", "module_versions", "module_tables", "module_rows")
+TABLES = (
+    "workflows",
+    "workflow_versions",
+    "workflow_runs",
+    "workflow_approvals",
+    "modules",
+    "module_versions",
+    "module_tables",
+    "module_rows",
+)
 
 
 def _connect(dsn=None):
@@ -20,7 +28,9 @@ def _connect(dsn=None):
 
 
 def create_schema(dsn=None) -> None:
-    sql = (Path(__file__).resolve().parent.parent.parent / "infra" / "schema_workflow.sql").read_text()
+    sql = (
+        Path(__file__).resolve().parent.parent.parent / "infra" / "schema_workflow.sql"
+    ).read_text()
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(sql)

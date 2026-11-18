@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import itertools
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import ClassVar
 
 from puspa.memory.provider import (
     RECORD_STATUSES,
@@ -29,7 +30,7 @@ PLUGIN_VERSION = "1.0.0"
 
 
 def _now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class InMemoryProvider(MemoryProvider):
@@ -37,7 +38,7 @@ class InMemoryProvider(MemoryProvider):
 
     name = "inmemory"
 
-    config_schema = {
+    config_schema: ClassVar[dict] = {
         "max_records": {"type": "integer", "required": False, "default": 1000},
     }
 
@@ -56,8 +57,7 @@ class InMemoryProvider(MemoryProvider):
         status = record.get("status", "active")
         if status not in RECORD_STATUSES:
             raise ValueError(
-                f"record status must be one of "
-                f"{', '.join(RECORD_STATUSES)}, got {status!r}"
+                f"record status must be one of {', '.join(RECORD_STATUSES)}, got {status!r}"
             )
         if len(self._records) >= (self.config.get("max_records") or 1000):
             raise ValueError("in-memory provider is full")
@@ -89,8 +89,7 @@ class InMemoryProvider(MemoryProvider):
         matches = [
             record
             for record in self._records.values()
-            if record["user_id"] == user_id
-            and needle in record["content"].lower()
+            if record["user_id"] == user_id and needle in record["content"].lower()
         ]
         matches.sort(key=lambda record: -record["seq"])
         return [dict(record) for record in matches[:limit]]

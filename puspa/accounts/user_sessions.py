@@ -30,8 +30,7 @@ def create_session(user_id, device_label, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO sessions (user_id, token_hash, device_label) "
-                "VALUES (%s, %s, %s)",
+                "INSERT INTO sessions (user_id, token_hash, device_label) VALUES (%s, %s, %s)",
                 (user_id, _token_hash(token), device_label),
             )
         conn.commit()
@@ -72,13 +71,12 @@ def owner_of_token(token, dsn=None):
     tidak dikenal atau sudah dicabut.
     """
     token_h = _token_hash(token)
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT user_id FROM sessions WHERE token_hash = %s AND NOT revoked",
-                (token_h,),
-            )
-            row = cur.fetchone()
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT user_id FROM sessions WHERE token_hash = %s AND NOT revoked",
+            (token_h,),
+        )
+        row = cur.fetchone()
     if row is None:
         raise SessionError("sesi tidak valid atau sudah dicabut")
     return str(row[0])
@@ -109,14 +107,13 @@ def revoke_all_sessions(user_id, dsn=None):
 def list_sessions(user_id, dsn=None):
     """Daftar semua sesi milik pengguna (termasuk yang sudah dicabut,
     dengan flag `dicabut`), terbaru dulu."""
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, device_label, created_at, last_seen_at, revoked "
-                "FROM sessions WHERE user_id = %s ORDER BY created_at DESC",
-                (user_id,),
-            )
-            rows = cur.fetchall()
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, device_label, created_at, last_seen_at, revoked "
+            "FROM sessions WHERE user_id = %s ORDER BY created_at DESC",
+            (user_id,),
+        )
+        rows = cur.fetchall()
     return [
         {
             "id": str(r[0]),

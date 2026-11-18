@@ -14,6 +14,7 @@ is the active engine only when explicitly selected.
 from __future__ import annotations
 
 import re
+from typing import ClassVar
 
 from puspa.plugins.context_engine import ContextEngine
 
@@ -21,11 +22,37 @@ PLUGIN_ID = "simple_context"
 PLUGIN_VERSION = "1.0.0"
 
 #: Words too common to count as a keyword match.
-STOPWORDS = frozenset({
-    "the", "a", "an", "and", "or", "is", "are", "was", "were", "be",
-    "to", "of", "in", "on", "for", "with", "where", "what", "how",
-    "when", "why", "who", "which", "that", "this", "it", "its",
-})
+STOPWORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "to",
+        "of",
+        "in",
+        "on",
+        "for",
+        "with",
+        "where",
+        "what",
+        "how",
+        "when",
+        "why",
+        "who",
+        "which",
+        "that",
+        "this",
+        "it",
+        "its",
+    }
+)
 
 
 def _keywords(text):
@@ -42,7 +69,7 @@ class SimpleContextEngine(ContextEngine):
 
     name = "simple"
 
-    config_schema = {
+    config_schema: ClassVar[dict] = {
         "max_notes": {"type": "integer", "required": False, "default": 5},
     }
 

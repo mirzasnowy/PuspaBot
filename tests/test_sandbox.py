@@ -11,9 +11,7 @@ from puspa.sandbox import Allowlist, Sandbox, SandboxUnavailable, is_allowed
 from puspa.sandbox.allowlist import DEFAULT_ALLOWLIST
 
 PROBE_HOST = "/tmp/puspa-host-exec-probe.txt"
-KODE_TULIS_HOST = (
-    f"open({PROBE_HOST!r}, 'w').write('host-executed')\nprint('tulis-host')"
-)
+KODE_TULIS_HOST = f"open({PROBE_HOST!r}, 'w').write('host-executed')\nprint('tulis-host')"
 
 
 # --- allowlist ---------------------------------------------------------------

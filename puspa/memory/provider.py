@@ -34,23 +34,24 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import ClassVar
 
 __all__ = [
-    "MemoryProvider",
+    "DEFAULT_PROVIDER_NAME",
+    "ENV_PROVIDER_NAME",
+    "SHARED_RECORD_KEYS",
     "DefaultPgVectorProvider",
-    "ProviderRegistry",
+    "MemoryProvider",
+    "ProviderConfigError",
     "ProviderError",
+    "ProviderRegistry",
     "ProviderShadowError",
     "UnknownProviderError",
-    "ProviderConfigError",
     "default_registry",
     "get_memory_provider",
     "select_provider",
     "validate_config",
-    "DEFAULT_PROVIDER_NAME",
-    "ENV_PROVIDER_NAME",
-    "SHARED_RECORD_KEYS",
 ]
 
 #: Name of the bundled provider.
@@ -60,17 +61,19 @@ DEFAULT_PROVIDER_NAME = "pgvector"
 ENV_PROVIDER_NAME = "PUSPA_MEMORY_PROVIDER"
 
 #: Keys of the shared record shape (see the module docstring).
-SHARED_RECORD_KEYS = frozenset({
-    "id",
-    "content",
-    "status",
-    "valid_from",
-    "valid_until",
-    "superseded_by",
-    "source",
-    "created_at",
-    "updated_at",
-})
+SHARED_RECORD_KEYS = frozenset(
+    {
+        "id",
+        "content",
+        "status",
+        "valid_from",
+        "valid_until",
+        "superseded_by",
+        "source",
+        "created_at",
+        "updated_at",
+    }
+)
 
 #: Record statuses in the shared shape.
 RECORD_STATUSES = ("active", "superseded", "expired")
@@ -116,9 +119,7 @@ def validate_config(schema, config):
     config = dict(config or {})
     unknown = sorted(set(config) - set(schema))
     if unknown:
-        raise ProviderConfigError(
-            f"unknown config keys: {', '.join(unknown)}"
-        )
+        raise ProviderConfigError(f"unknown config keys: {', '.join(unknown)}")
     out = {}
     for key, spec in schema.items():
         if key in config:
@@ -130,14 +131,9 @@ def validate_config(schema, config):
         else:
             continue
         expected = spec.get("type", "any")
-        if (
-            value is not None
-            and expected != "any"
-            and not _matches_type(value, expected)
-        ):
+        if value is not None and expected != "any" and not _matches_type(value, expected):
             raise ProviderConfigError(
-                f"config key {key!r} must be {expected}, "
-                f"got {type(value).__name__}"
+                f"config key {key!r} must be {expected}, got {type(value).__name__}"
             )
         out[key] = value
     return out
@@ -169,7 +165,7 @@ class MemoryProvider(ABC):
     name = "base"
 
     #: Config schema for this provider (see ``validate_config``).
-    config_schema = {}
+    config_schema: ClassVar[dict] = {}
 
     def __init__(self, config=None):
         self.config = validate_config(self.config_schema, config)
@@ -184,6 +180,7 @@ class MemoryProvider(ABC):
 
     def close(self):
         """Release provider resources (no-op by default)."""
+        return
 
 
 class ProviderRegistry:
@@ -205,20 +202,14 @@ class ProviderRegistry:
         registered, and ``ProviderError`` when the class is not a
         ``MemoryProvider`` subclass or has no usable name.
         """
-        if not (
-            isinstance(provider_cls, type)
-            and issubclass(provider_cls, MemoryProvider)
-        ):
-            raise ProviderError(
-                "provider must be a MemoryProvider subclass"
-            )
+        if not (isinstance(provider_cls, type) and issubclass(provider_cls, MemoryProvider)):
+            raise ProviderError("provider must be a MemoryProvider subclass")
         name = getattr(provider_cls, "name", None)
         if not isinstance(name, str) or not name:
             raise ProviderError("provider must define a non-empty name")
         if name in self._providers:
             raise ProviderShadowError(
-                f"provider {name!r} is already registered; "
-                "shadowing is rejected"
+                f"provider {name!r} is already registered; shadowing is rejected"
             )
         self._providers[name] = provider_cls
         return provider_cls
@@ -289,13 +280,22 @@ def get_memory_provider(name=None, config=None):
 
 
 def _now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
-def _shared_record(*, record_id, content, status="active",
-                   valid_from=None, valid_until=None, superseded_by=None,
-                   source="episodic", created_at=None, updated_at=None,
-                   **extra):
+def _shared_record(
+    *,
+    record_id,
+    content,
+    status="active",
+    valid_from=None,
+    valid_until=None,
+    superseded_by=None,
+    source="episodic",
+    created_at=None,
+    updated_at=None,
+    **extra,
+):
     """Build a shared-shape record dict (extra keys kept as-is)."""
     now = _now()
     record = {
@@ -353,10 +353,12 @@ class DefaultPgVectorProvider(MemoryProvider):
 
     name = "pgvector"
 
-    config_schema = {
+    config_schema: ClassVar[dict] = {
         "dsn": {"type": "string", "required": False, "default": None},
         "default_layer": {
-            "type": "string", "required": False, "default": "episodic",
+            "type": "string",
+            "required": False,
+            "default": "episodic",
         },
     }
 
@@ -365,8 +367,7 @@ class DefaultPgVectorProvider(MemoryProvider):
         layer = self.config.get("default_layer") or "episodic"
         if layer not in LAYERS:
             raise ProviderConfigError(
-                f"default_layer must be one of {', '.join(LAYERS)}, "
-                f"got {layer!r}"
+                f"default_layer must be one of {', '.join(LAYERS)}, got {layer!r}"
             )
         self._default_layer = layer
         self._dsn = self.config.get("dsn")
@@ -385,14 +386,11 @@ class DefaultPgVectorProvider(MemoryProvider):
         status = record.get("status", "active")
         if status not in RECORD_STATUSES:
             raise ValueError(
-                f"record status must be one of "
-                f"{', '.join(RECORD_STATUSES)}, got {status!r}"
+                f"record status must be one of {', '.join(RECORD_STATUSES)}, got {status!r}"
             )
         layer = record.get("layer") or self._default_layer
         if layer not in LAYERS:
-            raise ValueError(
-                f"layer must be one of {', '.join(LAYERS)}, got {layer!r}"
-            )
+            raise ValueError(f"layer must be one of {', '.join(LAYERS)}, got {layer!r}")
         if layer == "profile":
             return self._store_profile(user_id, record, profile)
         if layer == "procedural":
@@ -426,8 +424,7 @@ class DefaultPgVectorProvider(MemoryProvider):
         status = record.get("status", "active")
         if status in ("superseded", "expired"):
             raise ValueError(
-                f"profile layer stores live facts only; "
-                f"cannot store status {status!r}"
+                f"profile layer stores live facts only; cannot store status {status!r}"
             )
         key = record.get("key")
         if not isinstance(key, str) or not key:
@@ -436,7 +433,10 @@ class DefaultPgVectorProvider(MemoryProvider):
         if source not in ("user_stated", "user_confirmed", "inferred"):
             source = "inferred"
         fact = profile.add_fact(
-            user_id, key, record["content"], source,
+            user_id,
+            key,
+            record["content"],
+            source,
             agent_id=record.get("agent_id"),
             event_id=_as_uuid(record.get("id")),
             dsn=self._dsn,
@@ -468,7 +468,9 @@ class DefaultPgVectorProvider(MemoryProvider):
         if not isinstance(step, list) or not step:
             raise ValueError("procedural records need a non-empty 'step' list")
         proc = procedural.record_successful_task(
-            user_id, service, step,
+            user_id,
+            service,
+            step,
             agent_id=record.get("agent_id"),
             source_event_id=_as_uuid(record.get("id")),
             dsn=self._dsn,
@@ -506,16 +508,17 @@ class DefaultPgVectorProvider(MemoryProvider):
         if limit < 1:
             raise ValueError("limit must be at least 1")
         if layer is not None and layer not in LAYERS:
-            raise ValueError(
-                f"layer must be one of {', '.join(LAYERS)}, got {layer!r}"
-            )
+            raise ValueError(f"layer must be one of {', '.join(LAYERS)}, got {layer!r}")
         results = []
         if layer in (None, "episodic"):
             results.extend(
                 self._episode_to_record(ep)
                 for ep in episodic.search_episodes(
-                    user_id, query_text, limit=limit,
-                    embedder=None, dsn=self._dsn,
+                    user_id,
+                    query_text,
+                    limit=limit,
+                    embedder=None,
+                    dsn=self._dsn,
                 )
             )
         if layer in (None, "profile"):
@@ -551,9 +554,7 @@ class DefaultPgVectorProvider(MemoryProvider):
     @staticmethod
     def _fact_to_record(fact):
         status = fact["status"]
-        shared_status = (
-            "superseded" if status in ("replaced", "rejected") else "active"
-        )
+        shared_status = "superseded" if status in ("replaced", "rejected") else "active"
         return _shared_record(
             record_id=fact["id"],
             content=fact["value"],

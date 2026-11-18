@@ -5,7 +5,7 @@ and cleans up its own rows."""
 
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -21,20 +21,28 @@ from puspa.billing.ledger import (
     upsell_due,
 )
 
-UTC = timezone.utc
 NOW = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
-DSN = os.environ.get(
-    "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
+DSN = os.environ.get("PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
 
 
 def _row(**overrides):
     values = {
-        "user_id": "user-1", "bot_id": "bot-a", "task_id": "task-1",
-        "driver": "openrouter", "model": "cheap-model",
-        "input_tokens": 1000, "output_tokens": 200, "cached_tokens": 100,
-        "cost_idr": 500, "trigger": "morning-briefing", "outcome": "done",
-        "steps": 3, "tools": ["read", "write"], "tool_errors": 0,
-        "provider": "openrouter", "module_id": "briefing",
+        "user_id": "user-1",
+        "bot_id": "bot-a",
+        "task_id": "task-1",
+        "driver": "openrouter",
+        "model": "cheap-model",
+        "input_tokens": 1000,
+        "output_tokens": 200,
+        "cached_tokens": 100,
+        "cost_idr": 500,
+        "trigger": "morning-briefing",
+        "outcome": "done",
+        "steps": 3,
+        "tools": ["read", "write"],
+        "tool_errors": 0,
+        "provider": "openrouter",
+        "module_id": "briefing",
         "recorded_at": NOW,
     }
     values.update(overrides)
@@ -80,8 +88,7 @@ def test_task_budget_remaining_uses_recorded_usage():
     assert task_budget_remaining("user-1", "task-1", store=store) == 0
     # Another task is unaffected; a custom cap is honoured.
     assert task_budget_remaining("user-1", "task-2", store=store) == 2000
-    assert task_budget_remaining("user-1", "task-1", cap_rp=5000,
-                                 store=store) == 2400
+    assert task_budget_remaining("user-1", "task-1", cap_rp=5000, store=store) == 2400
 
 
 def test_task_budget_remaining_shared_default_store():
@@ -100,16 +107,19 @@ def test_battery_view_7d_totals_shares_and_cap():
         _row(bot_id="bot-a", trigger="morning-briefing", cost_idr=500),
         _row(bot_id="bot-b", trigger="evening-summary", cost_idr=500),
         # 8 days old: outside the 7-day window.
-        _row(bot_id="bot-b", trigger="evening-summary", cost_idr=9999,
-             recorded_at=NOW - timedelta(days=8)),
+        _row(
+            bot_id="bot-b",
+            trigger="evening-summary",
+            cost_idr=9999,
+            recorded_at=NOW - timedelta(days=8),
+        ),
     ]
     view = battery_view(rows, now=NOW, cap_idr=1500)
     assert view["window_days"] == 7
     assert view["total_idr"] == 2000
     assert view["turns"] == 3
     assert view["over_cap"] is True
-    assert view["per_bot"][0] == {
-        "key": "bot-a", "total_idr": 1500, "share": 0.75}
+    assert view["per_bot"][0] == {"key": "bot-a", "total_idr": 1500, "share": 0.75}
     assert view["per_bot"][1]["key"] == "bot-b"
     assert view["per_routine"][0]["key"] == "morning-briefing"
 
@@ -143,13 +153,13 @@ def test_upsell_due_thresholds_and_snooze():
     assert upsell_due(bots=0, messages=50, routines=0)["due"] is True
     assert upsell_due(bots=0, messages=0, routines=3)["due"] is True
     snoozed = upsell_due(
-        bots=3, messages=0, routines=0,
-        snoozed_until=NOW + timedelta(days=5), now=NOW)
+        bots=3, messages=0, routines=0, snoozed_until=NOW + timedelta(days=5), now=NOW
+    )
     assert snoozed["due"] is False
     assert snoozed["snoozed"] is True
     expired_snooze = upsell_due(
-        bots=3, messages=0, routines=0,
-        snoozed_until=NOW - timedelta(days=1), now=NOW)
+        bots=3, messages=0, routines=0, snoozed_until=NOW - timedelta(days=1), now=NOW
+    )
     assert expired_snooze["due"] is True
     due = upsell_due(bots=3, messages=0, routines=0, now=NOW)
     assert due["snooze_until"] == (NOW + timedelta(days=10)).isoformat()
@@ -164,8 +174,7 @@ def test_postgres_store_round_trip():
     store = PostgresUsageStore(DSN)
     try:
         store.append(_row(user_id=user_id, task_id=task_id, cost_idr=400))
-        store.append(_row(user_id=user_id, task_id=task_id, cost_idr=600,
-                          bot_id="bot-b"))
+        store.append(_row(user_id=user_id, task_id=task_id, cost_idr=600, bot_id="bot-b"))
         rows = store.rows_for_task(user_id, task_id)
         assert len(rows) == 2
         assert sum(r.cost_idr for r in rows) == 1000
@@ -174,6 +183,4 @@ def test_postgres_store_round_trip():
         assert task_budget_remaining(user_id, task_id, dsn=DSN) == 1000
     finally:
         with psycopg.connect(DSN, autocommit=True) as conn:
-            conn.execute(
-                "DELETE FROM billing_usage_rows WHERE user_id = %s",
-                (user_id,))
+            conn.execute("DELETE FROM billing_usage_rows WHERE user_id = %s", (user_id,))

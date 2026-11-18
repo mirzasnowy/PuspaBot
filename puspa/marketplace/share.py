@@ -52,10 +52,15 @@ class ShareDecision:
         }
 
 
-def share_skill(skill_id: str, *, mode: str = DEFAULT_SHARE_MODE,
-                peers: list | None = None, learned_from_peers: int = 0,
-                conversation_index: dict | None = None,
-                ask_user=None) -> ShareDecision:
+def share_skill(
+    skill_id: str,
+    *,
+    mode: str = DEFAULT_SHARE_MODE,
+    peers: list | None = None,
+    learned_from_peers: int = 0,
+    conversation_index: dict | None = None,
+    ask_user=None,
+) -> ShareDecision:
     """Decide whether ``skill_id`` may be shared with ``peers``.
 
     ``peers`` is the requested peer list (user ids). ``ask_user``
@@ -70,23 +75,21 @@ def share_skill(skill_id: str, *, mode: str = DEFAULT_SHARE_MODE,
         raise ShareError(f"unknown share mode {mode!r}")
     peers = list(peers or [])
     if mode == "off":
-        return ShareDecision(shared=False, mode=mode,
-                             reason="sharing is off")
+        return ShareDecision(shared=False, mode=mode, reason="sharing is off")
     if learned_from_peers <= 0:
         return ShareDecision(
-            shared=False, mode=mode,
+            shared=False,
+            mode=mode,
             reason="skill was learned alone; it reaches no peers",
         )
     if mode == "ask":
         approved = ask_user(skill_id, peers) if ask_user is not None else False
         if not approved:
-            return ShareDecision(shared=False, mode=mode,
-                                 reason="user declined the share")
+            return ShareDecision(shared=False, mode=mode, reason="user declined the share")
     # Cap: no more peers than the skill was learned from.
     granted = peers[:learned_from_peers]
     if not granted:
-        return ShareDecision(shared=False, mode=mode,
-                             reason="no peers requested")
+        return ShareDecision(shared=False, mode=mode, reason="no peers requested")
     if len(peers) > len(granted):
         reason = (
             f"shared with {len(granted)} of {len(peers)} requested peers: "
@@ -97,5 +100,4 @@ def share_skill(skill_id: str, *, mode: str = DEFAULT_SHARE_MODE,
     # Invariant 1: the conversation index is never touched here.
     # (The caller keeps it; this function returns grants only.)
     _ = conversation_index
-    return ShareDecision(shared=True, granted_peers=granted,
-                         reason=reason, mode=mode)
+    return ShareDecision(shared=True, granted_peers=granted, reason=reason, mode=mode)

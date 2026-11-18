@@ -11,6 +11,7 @@ without importing any other Puspa core module.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import ClassVar
 
 from puspa.memory.provider import validate_config
 
@@ -32,7 +33,7 @@ class ContextEngine(ABC):
     #: Config schema for this engine (same shape as the G24
     #: provider config schema: ``{"type": ..., "required": bool,
     #: "default": ...}``).
-    config_schema = {}
+    config_schema: ClassVar[dict] = {}
 
     def __init__(self, config=None):
         self.config = validate_config(self.config_schema, config)
@@ -43,3 +44,4 @@ class ContextEngine(ABC):
 
     def close(self):
         """Release engine resources (no-op by default)."""
+        return

@@ -27,9 +27,7 @@ from puspa.memory.loop_store import (
     save_loop_state,
 )
 
-DSN = os.environ.get(
-    "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql"
-)
+DSN = os.environ.get("PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
 
 
 def _dsn_available():
@@ -99,23 +97,17 @@ def test_save_load_round_trip_keeps_corrections_and_behaviour():
         assert restored.predict("watch_price") == 11500
         assert restored.predict("pay_bill") == "paid 75000"
         assert restored.predict("unknown_task") is None
-        assert restored.correction_for("watch_price") == loop.correction_for(
-            "watch_price"
-        )
-        assert restored.correction_for("pay_bill") == loop.correction_for(
-            "pay_bill"
-        )
+        assert restored.correction_for("watch_price") == loop.correction_for("watch_price")
+        assert restored.correction_for("pay_bill") == loop.correction_for("pay_bill")
         assert restored.propose_next_task() == loop.propose_next_task()
         # One row per correction, plus one row per carrying experience.
         with psycopg.connect(DSN) as conn:
             corrections = conn.execute(
-                "SELECT COUNT(*) FROM loop_corrections"
-                " WHERE user_id = %s AND agent_id = %s",
+                "SELECT COUNT(*) FROM loop_corrections WHERE user_id = %s AND agent_id = %s",
                 (str(user_id), agent_id),
             ).fetchone()[0]
             experiences = conn.execute(
-                "SELECT COUNT(*) FROM loop_experiences"
-                " WHERE user_id = %s AND agent_id = %s",
+                "SELECT COUNT(*) FROM loop_experiences WHERE user_id = %s AND agent_id = %s",
                 (str(user_id), agent_id),
             ).fetchone()[0]
         assert corrections == 2
@@ -136,8 +128,7 @@ def test_save_load_round_trip_keeps_corrections_and_behaviour():
         assert again.correction_for("watch_price")["count"] == 3
         with psycopg.connect(DSN) as conn:
             corrections = conn.execute(
-                "SELECT COUNT(*) FROM loop_corrections"
-                " WHERE user_id = %s AND agent_id = %s",
+                "SELECT COUNT(*) FROM loop_corrections WHERE user_id = %s AND agent_id = %s",
                 (str(user_id), agent_id),
             ).fetchone()[0]
         assert corrections == 2
@@ -177,9 +168,7 @@ def test_session_brain_loads_saved_corrections(monkeypatch):
     try:
         save_loop_state(user_id, agent_id, _grounded_loop(), dsn=DSN)
         agent_session.reset_session_brains()
-        monkeypatch.setattr(
-            agent_session, "validate_session", lambda token, dsn=None: user_id
-        )
+        monkeypatch.setattr(agent_session, "validate_session", lambda token, dsn=None: user_id)
         from cryptography.hazmat.primitives.asymmetric.ed25519 import (
             Ed25519PrivateKey,
         )
@@ -206,9 +195,7 @@ def test_session_brain_loads_saved_corrections(monkeypatch):
             tools=["read"],
             dsn=DSN,
         )
-        assert (
-            agent_session.get_session_brain(user_id, agent_id) is brain
-        )
+        assert agent_session.get_session_brain(user_id, agent_id) is brain
         agent_session.reset_session_brains()
     finally:
         delete_loop_state(user_id, agent_id, dsn=DSN)

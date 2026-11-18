@@ -116,14 +116,10 @@ class BillingConfig:
     upgrade_consistency_poll_s: float = 30.0
     portal_base_url: str = "https://portal.puspa.example"
     tiers: tuple[Tier, ...] = field(default_factory=lambda: DEFAULT_TIERS)
-    credit_packs: tuple[CreditPack, ...] = field(
-        default_factory=lambda: DEFAULT_CREDIT_PACKS
-    )
+    credit_packs: tuple[CreditPack, ...] = field(default_factory=lambda: DEFAULT_CREDIT_PACKS)
     dedicated: DedicatedPricing = field(default_factory=DedicatedPricing)
     # Credit cost of metered actions (credits, not Rupiah).
-    credit_costs: dict[str, int] = field(
-        default_factory=lambda: dict(DEFAULT_CREDIT_COSTS)
-    )
+    credit_costs: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_CREDIT_COSTS))
 
     def __post_init__(self) -> None:
         if self.billing_model not in BILLING_MODELS:
@@ -226,9 +222,7 @@ def default_config() -> BillingConfig:
     ``PUSPA_BILLING_PORTAL_URL`` overrides the portal base URL.
     """
     model = os.environ.get("PUSPA_BILLING_MODEL", "subscription")
-    portal = os.environ.get(
-        "PUSPA_BILLING_PORTAL_URL", "https://portal.puspa.example"
-    )
+    portal = os.environ.get("PUSPA_BILLING_PORTAL_URL", "https://portal.puspa.example")
     return BillingConfig(billing_model=model, portal_base_url=portal)
 
 

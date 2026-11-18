@@ -1,10 +1,8 @@
 """Tes Persetujuan data + ekspor/hapus akun (C127, C129)."""
 
-import pytest
-
 from puspa.consent import (
-    TEXT_APPROVAL,
     TEKS_VERSI,
+    TEXT_APPROVAL,
     delete_account,
     export_account,
     has_consented,
@@ -31,8 +29,11 @@ def test_approval_recorded_in_table_and_ledger(make_user, test_dsn, ledger):
     assert has_consented(u["user_id"], dsn=test_dsn) is False
     task_id = "22222222-2222-2222-2222-222222222222"
     result = record_consent(
-        u["user_id"], dsn=test_dsn, ledger=ledger,
-        agent_id=u["agent_id"], task_id=task_id,
+        u["user_id"],
+        dsn=test_dsn,
+        ledger=ledger,
+        agent_id=u["agent_id"],
+        task_id=task_id,
     )
     assert result["text_version"] == TEKS_VERSI
     assert result["event_id"] is not None

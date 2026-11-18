@@ -1,0 +1,11 @@
+# Development-only tools (lint + typecheck). Never imported by Puspa code.
+#
+# Installed in CI by the lint, format, and typecheck lanes. The lint and
+# format lanes install only this file (fast: no torch); the typecheck lane
+# installs this file AND requirements.txt (mypy needs the runtime deps to
+# resolve imports). Pinned 18 Nov 2026 (CI lint/typecheck lanes).
+ruff==0.17.5
+mypy==2.4.1
+# Type stubs for PyYAML (mypy needs them for `import yaml`; PyYAML itself
+# ships no py.typed marker). Dev-only: only mypy reads these.
+types-PyYAML==6.0.12.20261113

@@ -27,7 +27,7 @@ _DYNAMIC_CREDENTIALS_DIR = "/opt/muse/skills/custom-connector-setup/bin"
 def _ensure_nanobot_on_path() -> None:
     """Pastikan paket ``nanobot`` (clone lokal di ``fase-0/nanobot``) bisa diimpor."""
     try:
-        import nanobot  # noqa: F401
+        import nanobot
     except ImportError:
         candidate = Path(__file__).resolve().parent.parent / "nanobot"
         if (candidate / "nanobot" / "__init__.py").exists():

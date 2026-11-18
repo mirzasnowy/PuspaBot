@@ -3,4 +3,4 @@
 from .injection import Finding, mark, scan
 from .reader import MAX_CHARS, QuarantinedReader
 
-__all__ = ["Finding", "QuarantinedReader", "mark", "scan", "MAX_CHARS"]
+__all__ = ["MAX_CHARS", "Finding", "QuarantinedReader", "mark", "scan"]

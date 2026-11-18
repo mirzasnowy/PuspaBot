@@ -7,7 +7,7 @@ collection; that is unavoidable for any file under tests/, and
 is noted in the Brain-phase report.)
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -24,10 +24,13 @@ from puspa.memory.skill_repair import (
 def _broken_skill(loop, task="double"):
     """A draft skill whose code is wrong: adds 1, tests expect x2."""
     skill = loop.draft_skill(task, code=lambda x: x + 1)
-    loop.verify_skill(skill["id"], [
-        {"args": [2], "expected": 4},
-        {"args": [3], "expected": 6},
-    ])
+    loop.verify_skill(
+        skill["id"],
+        [
+            {"args": [2], "expected": 4},
+            {"args": [3], "expected": 6},
+        ],
+    )
     return skill
 
 
@@ -37,6 +40,7 @@ def _cases():
 
 # --- diagnosis ------------------------------------------------------------
 
+
 def test_diagnose_classifies_failing_cases():
     loop = LearningLoop()
     skill = _broken_skill(loop)
@@ -45,8 +49,7 @@ def test_diagnose_classifies_failing_cases():
     assert diagnosis["total"] == 2
     assert diagnosis["passed"] == 0
     assert diagnosis["failed"] == 2
-    assert [f["kind"] for f in diagnosis["failures"]] == [
-        "wrong_output", "wrong_output"]
+    assert [f["kind"] for f in diagnosis["failures"]] == ["wrong_output", "wrong_output"]
     assert diagnosis["failures"][0]["expected"] == 4
     assert diagnosis["failures"][0]["observed"] == 3
     assert diagnosis["suggested_fix"] == "adjust_output"
@@ -74,11 +77,15 @@ def test_diagnose_unknown_skill_raises():
 
 def test_diagnose_carries_loop_correction_as_context():
     loop = LearningLoop()
-    loop.record_misprediction({
-        "task": "check_pln", "predicted": "bill 50000",
-        "observed": "bill 75000", "error": "bill differs",
-        "context": {"source": "pln_reader"},
-    })
+    loop.record_misprediction(
+        {
+            "task": "check_pln",
+            "predicted": "bill 50000",
+            "observed": "bill 75000",
+            "error": "bill differs",
+            "context": {"source": "pln_reader"},
+        }
+    )
     skill = loop.draft_skill("check_pln", code=lambda x: x)
     loop.verify_skill(skill["id"], [{"args": [1], "expected": 2}])
     diagnosis = diagnose_skill_failure(loop, skill["id"])
@@ -87,6 +94,7 @@ def test_diagnose_carries_loop_correction_as_context():
 
 
 # --- repair: diagnose -> rewrite -> re-verify ------------------------------
+
 
 def test_repair_with_builtin_lookup_rewriter_passes():
     """A failing draft is diagnosed, rewritten, and re-verified:
@@ -214,6 +222,7 @@ def test_lookup_rewriter_needs_callable_code():
 
 # --- repair never overwrites a manual edit --------------------------------
 
+
 def test_repair_never_touches_manual_edit():
     loop = LearningLoop()
     loop.note_manual_edit("double", ["open calc", "multiply by hand"])
@@ -232,13 +241,18 @@ def test_repair_never_touches_manual_edit():
 
 # --- repair never touches price/bill beliefs ------------------------------
 
+
 def test_repair_does_not_touch_price_beliefs():
     loop = LearningLoop()
-    loop.record_misprediction({
-        "task": "check_pln", "predicted": "bill 50000",
-        "observed": "bill 75000", "error": "bill differs",
-        "context": {"source": "pln_reader"},
-    })
+    loop.record_misprediction(
+        {
+            "task": "check_pln",
+            "predicted": "bill 50000",
+            "observed": "bill 75000",
+            "error": "bill differs",
+            "context": {"source": "pln_reader"},
+        }
+    )
     before_correction = loop.correction_for("check_pln")
     before_predict = loop.predict("check_pln")
     skill = _broken_skill(loop, task="double")
@@ -251,6 +265,7 @@ def test_repair_does_not_touch_price_beliefs():
 
 # --- repair through the live loop: suspect skills --------------------------
 
+
 def test_repair_suspect_skills_after_misprediction():
     """The live-loop path: an active skill passes its stored
     tests but fails in real use on a new input, the loop marks
@@ -259,20 +274,25 @@ def test_repair_suspect_skills_after_misprediction():
     loop = LearningLoop()
     # Correct for small inputs, wrong for large ones: the stored
     # tests pass, so the skill activates, then live use fails.
-    skill = loop.draft_skill(
-        "double", code=lambda x: x * 2 if x < 10 else x)
+    skill = loop.draft_skill("double", code=lambda x: x * 2 if x < 10 else x)
     loop.verify_skill(skill["id"], _cases())
     loop.activate_skill(skill["id"], approved_by="user-1")
     assert loop.get_skill(skill["id"])["status"] == "active"
-    loop.record_misprediction({
-        "task": "double", "predicted": 12, "observed": 24,
-        "error": "wrong double for large input",
-        "context": {"source": "live_use"},
-    })
+    loop.record_misprediction(
+        {
+            "task": "double",
+            "predicted": 12,
+            "observed": 24,
+            "error": "wrong double for large input",
+            "context": {"source": "live_use"},
+        }
+    )
     assert loop.get_skill(skill["id"])["status"] == "suspect"
-    results = SkillRepairer(loop).repair_suspect_skills({
-        "double": [{"args": [12], "expected": 24}],
-    })
+    results = SkillRepairer(loop).repair_suspect_skills(
+        {
+            "double": [{"args": [12], "expected": 24}],
+        }
+    )
     assert len(results) == 1
     assert results[0]["status"] == "repaired"
     assert results[0]["repaired_from"] == skill["id"]
@@ -288,6 +308,7 @@ def test_repair_suspect_skills_empty_when_none_suspect():
 
 # --- procedure change: repeated outcomes -----------------------------------
 
+
 def _step(method):
     return [{"step": "check bill", "method": method}]
 
@@ -296,20 +317,16 @@ def test_repeated_outcome_creates_new_version():
     """The same new step succeeding 3 times changes the procedure:
     a new version is born, the old version is untouched."""
     updater = ProcedureUpdater(repeat_threshold=3)
-    first = updater.record_outcome(
-        "check_pln", "pln_bill", _step("open site"), success=True)
+    first = updater.record_outcome("check_pln", "pln_bill", _step("open site"), success=True)
     assert first["status"] == "recorded"
     assert first["procedure"]["version"] == 1
     assert first["procedure"]["status"] == "trial"
-    counted = updater.record_outcome(
-        "check_pln", "pln_bill", _step("use api"), success=True)
+    counted = updater.record_outcome("check_pln", "pln_bill", _step("use api"), success=True)
     assert counted["status"] == "counted"
     assert counted["repeat_count"] == 1
     assert updater.current_procedure("pln_bill")["version"] == 1
-    updater.record_outcome(
-        "check_pln", "pln_bill", _step("use api"), success=True)
-    changed = updater.record_outcome(
-        "check_pln", "pln_bill", _step("use api"), success=True)
+    updater.record_outcome("check_pln", "pln_bill", _step("use api"), success=True)
+    changed = updater.record_outcome("check_pln", "pln_bill", _step("use api"), success=True)
     assert changed["status"] == "changed"
     assert changed["procedure"]["version"] == 2
     assert changed["procedure"]["status"] == "trial"
@@ -325,14 +342,13 @@ def test_matching_step_records_a_run_and_promotes():
     """Success with the stored step is a run, not a new version:
     3 runs by 2 agents verify the procedure (revision 7 3.3)."""
     updater = ProcedureUpdater()
+    updater.record_outcome("check_pln", "pln_bill", _step("open site"), success=True)
     updater.record_outcome(
-        "check_pln", "pln_bill", _step("open site"), success=True)
-    updater.record_outcome(
-        "check_pln", "pln_bill", _step("open site"), success=True,
-        agent_id="agent-a")
+        "check_pln", "pln_bill", _step("open site"), success=True, agent_id="agent-a"
+    )
     result = updater.record_outcome(
-        "check_pln", "pln_bill", _step("open site"), success=True,
-        agent_id="agent-b")
+        "check_pln", "pln_bill", _step("open site"), success=True, agent_id="agent-b"
+    )
     assert result["status"] == "recorded"
     assert result["procedure"]["status"] == "verified"
     assert result["procedure"]["successful_runs"] == 3
@@ -352,10 +368,8 @@ def test_conflicting_step_is_proposed_not_overwritten():
         {"step": "read bill", "method": "site"},
         {"step": "pay", "method": "auto"},
     ]
-    first = updater.record_outcome(
-        "check_pln", "pln_bill", old_step, success=True)
-    changed = updater.record_outcome(
-        "check_pln", "pln_bill", new_step, success=True)
+    first = updater.record_outcome("check_pln", "pln_bill", old_step, success=True)
+    changed = updater.record_outcome("check_pln", "pln_bill", new_step, success=True)
     assert changed["status"] == "proposed"
     assert changed["conflicts_with"] == first["procedure"]["id"]
     assert changed["procedure"]["version"] == 2
@@ -370,23 +384,20 @@ def test_two_consecutive_failures_break_a_procedure():
     updater = ProcedureUpdater()
     for agent in ("agent-a", "agent-b", "agent-a"):
         updater.record_outcome(
-            "check_pln", "pln_bill", _step("open site"), success=True,
-            agent_id=agent)
+            "check_pln", "pln_bill", _step("open site"), success=True, agent_id=agent
+        )
     assert updater.current_procedure("pln_bill")["status"] == "verified"
-    one = updater.record_outcome(
-        "check_pln", "pln_bill", _step("open site"), success=False)
+    one = updater.record_outcome("check_pln", "pln_bill", _step("open site"), success=False)
     assert one["procedure"]["status"] == "verified"
     assert one["procedure"]["consecutive_failed_runs"] == 1
-    two = updater.record_outcome(
-        "check_pln", "pln_bill", _step("open site"), success=False)
+    two = updater.record_outcome("check_pln", "pln_bill", _step("open site"), success=False)
     assert two["procedure"]["status"] == "broken"
     assert updater.current_procedure("pln_bill") is None
 
 
 def test_failure_with_unstored_step_creates_nothing():
     updater = ProcedureUpdater()
-    result = updater.record_outcome(
-        "check_pln", "pln_bill", _step("use api"), success=False)
+    result = updater.record_outcome("check_pln", "pln_bill", _step("use api"), success=False)
     assert result["status"] == "ignored"
     assert updater.list_versions("pln_bill") == []
 
@@ -395,13 +406,10 @@ def test_repeated_old_step_is_readopted_not_duplicated():
     """After v2 replaces v1, succeeding with the v1 step again
     re-adopts v1 (a run on it) instead of minting a v3."""
     updater = ProcedureUpdater(repeat_threshold=1)
-    updater.record_outcome(
-        "check_pln", "pln_bill", _step("open site"), success=True)
-    updater.record_outcome(
-        "check_pln", "pln_bill", _step("use api"), success=True)
+    updater.record_outcome("check_pln", "pln_bill", _step("open site"), success=True)
+    updater.record_outcome("check_pln", "pln_bill", _step("use api"), success=True)
     assert len(updater.list_versions("pln_bill")) == 2
-    result = updater.record_outcome(
-        "check_pln", "pln_bill", _step("open site"), success=True)
+    result = updater.record_outcome("check_pln", "pln_bill", _step("open site"), success=True)
     assert result["status"] == "recorded"
     assert result["procedure"]["version"] == 1
     assert result["procedure"]["successful_runs"] == 2
@@ -410,19 +418,18 @@ def test_repeated_old_step_is_readopted_not_duplicated():
 
 # --- decay ------------------------------------------------------------------
 
+
 def test_stale_verified_procedure_decays_and_must_reearn():
     """A verified procedure untouched for 90 days decays to trial
     with zero runs; a fresh one is untouched."""
     store = InMemoryProcedureStore()
-    old = store.record_successful_task(
-        "user-1", "pln_bill", _step("open site"), agent_id="agent-a")
+    old = store.record_successful_task("user-1", "pln_bill", _step("open site"), agent_id="agent-a")
     store.mark_run(old["id"], "user-1", True, agent_id="agent-b")
     store.mark_run(old["id"], "user-1", True, agent_id="agent-a")
     assert store.get_procedure(old["id"], "user-1")["status"] == "verified"
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     store._procedures[old["id"]]["updated_at"] = now - timedelta(days=100)
-    fresh = store.record_successful_task(
-        "user-1", "other", _step("open site"), agent_id="agent-a")
+    fresh = store.record_successful_task("user-1", "other", _step("open site"), agent_id="agent-a")
     store._procedures[fresh["id"]]["updated_at"] = now - timedelta(days=1)
     decayed = store.apply_decay_all(now=now, older_than_days=90)
     assert [d["id"] for d in decayed] == [old["id"]]
@@ -437,10 +444,11 @@ def test_updater_decay_stale_delegates_to_store():
     updater = ProcedureUpdater()
     store = updater.store
     proc = store.record_successful_task(
-        "user-1", "pln_bill", _step("open site"), agent_id="agent-a")
+        "user-1", "pln_bill", _step("open site"), agent_id="agent-a"
+    )
     store.mark_run(proc["id"], "user-1", True, agent_id="agent-b")
     store.mark_run(proc["id"], "user-1", True, agent_id="agent-a")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     store._procedures[proc["id"]]["updated_at"] = now - timedelta(days=91)
     decayed = updater.decay_stale(now=now, older_than_days=90)
     assert len(decayed) == 1
@@ -449,40 +457,42 @@ def test_updater_decay_stale_delegates_to_store():
 
 # --- one loop: repair + procedure change share the same loop -----------------
 
+
 def test_repair_and_procedure_change_share_the_loop():
     """End to end on one loop: a misprediction marks the skill
     suspect and corrects the prediction, the repairer rebuilds
     the skill as a draft, and the repeated task outcome changes
     the procedure - all from the same experience."""
     loop = LearningLoop()
-    skill = loop.draft_skill(
-        "double", code=lambda x: x * 2 if x < 10 else x)
+    skill = loop.draft_skill("double", code=lambda x: x * 2 if x < 10 else x)
     loop.verify_skill(skill["id"], _cases())
     loop.activate_skill(skill["id"], approved_by="user-1")
-    loop.record_misprediction({
-        "task": "double", "predicted": 12, "observed": 24,
-        "error": "wrong double for large input",
-        "context": {"source": "live_use"},
-    })
+    loop.record_misprediction(
+        {
+            "task": "double",
+            "predicted": 12,
+            "observed": 24,
+            "error": "wrong double for large input",
+            "context": {"source": "live_use"},
+        }
+    )
     assert loop.get_skill(skill["id"])["status"] == "suspect"
     repairer = SkillRepairer(loop)
-    results = repairer.repair_suspect_skills({
-        "double": [{"args": [12], "expected": 24}],
-    })
+    results = repairer.repair_suspect_skills(
+        {
+            "double": [{"args": [12], "expected": 24}],
+        }
+    )
     assert len(results) == 1
     assert results[0]["status"] == "repaired"
     assert loop.predict("double") == 24
 
     updater = ProcedureUpdater(repeat_threshold=2)
-    updater.record_outcome(
-        "double", "calc", _step("mental math"), success=True)
-    updater.record_outcome(
-        "double", "calc", _step("mental math"), success=True)
-    counted = updater.record_outcome(
-        "double", "calc", _step("use skill"), success=True)
+    updater.record_outcome("double", "calc", _step("mental math"), success=True)
+    updater.record_outcome("double", "calc", _step("mental math"), success=True)
+    counted = updater.record_outcome("double", "calc", _step("use skill"), success=True)
     assert counted["status"] == "counted"
-    changed = updater.record_outcome(
-        "double", "calc", _step("use skill"), success=True)
+    changed = updater.record_outcome("double", "calc", _step("use skill"), success=True)
     assert changed["status"] == "changed"
     assert changed["procedure"]["version"] == 2
     assert loop.correction_for("double")["observed"] == 24

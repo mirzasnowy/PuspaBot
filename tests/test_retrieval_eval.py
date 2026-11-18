@@ -23,7 +23,7 @@ from puspa.memory.embeddings import HashEmbedding
 from puspa.memory.episodic import dual_level_search
 from puspa.retrieval.hipporag import HippoRAGRetriever
 from puspa.retrieval.reranker import DeterministicReranker
-from tests.test_retrieval_hipporag import PRICE_DOCS, build_price_graph
+from tests.test_retrieval_hipporag import build_price_graph
 
 EMBEDDER = HashEmbedding()
 
@@ -32,8 +32,7 @@ EMBEDDER = HashEmbedding()
 QUERIES = [
     ("Is the cheap Galaxy S24 deal trustworthy?", {"d4#p0"}),
     ("Who should I avoid when buying Asus Vivobook 14?", {"d9#p0"}),
-    ("What happened to buyers of the half-price Galaxy S24?",
-     {"d3#p1", "d4#p0"}),
+    ("What happened to buyers of the half-price Galaxy S24?", {"d3#p1", "d4#p0"}),
     ("What went wrong with the Galaxy S24 discount?", {"d4#p0"}),
     ("Is the S24 seller safe?", {"d3#p1", "d4#p0"}),
     ("Which sellers have a bad track record?", {"d4#p0", "d9#p0"}),
@@ -45,8 +44,7 @@ QUERIES = [
 def _recall_at_k(rank_fn, k):
     hits = 0
     for question, targets in QUERIES:
-        ids = {r.get("passage_id") or r.get("id")
-               for r in rank_fn(question)[:k]}
+        ids = {r.get("passage_id") or r.get("id") for r in rank_fn(question)[:k]}
         if ids & targets:
             hits += 1
     return hits / len(QUERIES)
@@ -54,8 +52,7 @@ def _recall_at_k(rank_fn, k):
 
 def _baseline(question):
     graph = build_price_graph()
-    episodes = [{"id": pid, "content": text}
-                for pid, text in sorted(graph.passages.items())]
+    episodes = [{"id": pid, "content": text} for pid, text in sorted(graph.passages.items())]
     return dual_level_search(episodes, question, embedder=EMBEDDER, limit=10)
 
 

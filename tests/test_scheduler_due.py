@@ -1,6 +1,6 @@
 """Tests for due classification (due.py). In-memory."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from puspa.scheduler.due import (
     classify_due,
@@ -10,7 +10,7 @@ from puspa.scheduler.due import (
     sort_due_first,
 )
 
-NOW = datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
 
 
 def test_not_yet_before_due_time():

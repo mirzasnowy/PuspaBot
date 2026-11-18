@@ -151,8 +151,9 @@ def validate_additive(quote_dict: dict, *, version: int = CONTRACT_VERSION) -> N
             )
 
 
-def dedicated_price_idr(*, vcpu: int, ram_gb: int, disk_gb: int,
-                        config: BillingConfig | None = None) -> int:
+def dedicated_price_idr(
+    *, vcpu: int, ram_gb: int, disk_gb: int, config: BillingConfig | None = None
+) -> int:
     """Price a dedicated machine from its spec.
 
     base + per vCPU + per GB RAM + per started 20 GB chunk of disk.
@@ -187,51 +188,71 @@ def quote(cart: Cart, *, config: BillingConfig | None = None) -> Quote:
         if item.kind == "tier":
             tier = cfg.tier(item.ref)
             monthly = tier.price_idr_per_month * item.quantity
-            lines.append(QuoteLine(
-                label=f"Tier {tier.tier_id} ({tier.description})",
-                kind="tier", ref=item.ref, quantity=item.quantity,
-                unit_price_idr=tier.price_idr_per_month,
-                line_total_idr=monthly,
-                detail={"vcpu": tier.vcpu, "ram_gb": tier.ram_gb,
-                        "disk_gb": tier.disk_gb, "seats": tier.seats},
-            ))
-            monthly_subtotal += monthly
-            credits_granted += (
-                cfg.monthly_credit_allowance(item.ref) * item.quantity
+            lines.append(
+                QuoteLine(
+                    label=f"Tier {tier.tier_id} ({tier.description})",
+                    kind="tier",
+                    ref=item.ref,
+                    quantity=item.quantity,
+                    unit_price_idr=tier.price_idr_per_month,
+                    line_total_idr=monthly,
+                    detail={
+                        "vcpu": tier.vcpu,
+                        "ram_gb": tier.ram_gb,
+                        "disk_gb": tier.disk_gb,
+                        "seats": tier.seats,
+                    },
+                )
             )
+            monthly_subtotal += monthly
+            credits_granted += cfg.monthly_credit_allowance(item.ref) * item.quantity
         elif item.kind == "credit_pack":
             pack = cfg.credit_pack(item.ref)
             total = pack.price_idr * item.quantity
-            lines.append(QuoteLine(
-                label=f"Credit pack {pack.pack_id} ({pack.credits} credits)",
-                kind="credit_pack", ref=item.ref, quantity=item.quantity,
-                unit_price_idr=pack.price_idr, line_total_idr=total,
-                detail={"credits": pack.credits},
-            ))
+            lines.append(
+                QuoteLine(
+                    label=f"Credit pack {pack.pack_id} ({pack.credits} credits)",
+                    kind="credit_pack",
+                    ref=item.ref,
+                    quantity=item.quantity,
+                    unit_price_idr=pack.price_idr,
+                    line_total_idr=total,
+                    detail={"credits": pack.credits},
+                )
+            )
             one_off_subtotal += total
             credits_granted += pack.credits * item.quantity
         elif item.kind == "dedicated":
             unit = dedicated_price_idr(
-                vcpu=item.vcpu, ram_gb=item.ram_gb, disk_gb=item.disk_gb,
-                config=cfg)
+                vcpu=item.vcpu, ram_gb=item.ram_gb, disk_gb=item.disk_gb, config=cfg
+            )
             total = unit * item.quantity
-            lines.append(QuoteLine(
-                label="Dedicated machine",
-                kind="dedicated", ref="dedicated", quantity=item.quantity,
-                unit_price_idr=unit, line_total_idr=total,
-                detail={"vcpu": item.vcpu, "ram_gb": item.ram_gb,
-                        "disk_gb": item.disk_gb},
-            ))
+            lines.append(
+                QuoteLine(
+                    label="Dedicated machine",
+                    kind="dedicated",
+                    ref="dedicated",
+                    quantity=item.quantity,
+                    unit_price_idr=unit,
+                    line_total_idr=total,
+                    detail={"vcpu": item.vcpu, "ram_gb": item.ram_gb, "disk_gb": item.disk_gb},
+                )
+            )
             monthly_subtotal += total
         elif item.kind == "extra_seat":
             unit = TEAM_EXTRA_SEAT_IDR_PER_MONTH
             total = unit * item.quantity
-            lines.append(QuoteLine(
-                label="Extra Team seat",
-                kind="extra_seat", ref="extra_seat",
-                quantity=item.quantity, unit_price_idr=unit,
-                line_total_idr=total, detail={},
-            ))
+            lines.append(
+                QuoteLine(
+                    label="Extra Team seat",
+                    kind="extra_seat",
+                    ref="extra_seat",
+                    quantity=item.quantity,
+                    unit_price_idr=unit,
+                    line_total_idr=total,
+                    detail={},
+                )
+            )
             monthly_subtotal += total
 
     if cart.interval == "annual":

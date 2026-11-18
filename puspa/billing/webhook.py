@@ -24,18 +24,20 @@ from .providers import verify_hmac_signature
 
 #: Event types this handler knows how to process. Anything else is
 #: recorded as unknown and ignored.
-KNOWN_EVENTS = frozenset({
-    "checkout.completed",
-    "checkout.failed",
-    "invoice.paid",
-    "invoice.failed",
-    "subscription.created",
-    "subscription.updated",
-    "subscription.cancelled",
-    "credits.granted",
-    "credits.revoked",
-    "refund.issued",
-})
+KNOWN_EVENTS = frozenset(
+    {
+        "checkout.completed",
+        "checkout.failed",
+        "invoice.paid",
+        "invoice.failed",
+        "subscription.created",
+        "subscription.updated",
+        "subscription.cancelled",
+        "credits.granted",
+        "credits.revoked",
+        "refund.issued",
+    }
+)
 
 
 @dataclass
@@ -92,9 +94,14 @@ def _event_idempotency_key(event: dict) -> str:
     return "evt:hash:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def handle_webhook(payload: bytes, *, signature: str, secret: str,
-                   store: MemoryIdempotencyStore | None = None,
-                   on_event=None) -> WebhookResult:
+def handle_webhook(
+    payload: bytes,
+    *,
+    signature: str,
+    secret: str,
+    store: MemoryIdempotencyStore | None = None,
+    on_event=None,
+) -> WebhookResult:
     """Handle one webhook delivery.
 
     ``on_event`` is an optional callback ``(event_type, event) -> action``
@@ -104,8 +111,7 @@ def handle_webhook(payload: bytes, *, signature: str, secret: str,
     are acknowledged without side effects.
     """
     store = store or MemoryIdempotencyStore()
-    if not verify_hmac_signature(payload=payload, signature=signature,
-                                 secret=secret):
+    if not verify_hmac_signature(payload=payload, signature=signature, secret=secret):
         return WebhookResult(status="rejected", reason="bad_signature")
     try:
         event = json.loads(payload.decode("utf-8"))
@@ -119,16 +125,20 @@ def handle_webhook(payload: bytes, *, signature: str, secret: str,
     previous = store.already_processed(key)
     if previous is not None:
         return WebhookResult(
-            status="duplicate", event_type=previous.event_type,
-            event_id=previous.event_id, action=previous.action,
+            status="duplicate",
+            event_type=previous.event_type,
+            event_id=previous.event_id,
+            action=previous.action,
             reason="already_processed",
         )
     if event_type not in KNOWN_EVENTS:
-        store.unknown_events.append(
-            {"event_type": event_type, "event_id": event.get("event_id")})
+        store.unknown_events.append({"event_type": event_type, "event_id": event.get("event_id")})
         result = WebhookResult(
-            status="ignored", event_type=event_type,
-            event_id=event.get("event_id"), reason="unknown_event")
+            status="ignored",
+            event_type=event_type,
+            event_id=event.get("event_id"),
+            reason="unknown_event",
+        )
         store.record(key, result)
         return result
 
@@ -136,7 +146,7 @@ def handle_webhook(payload: bytes, *, signature: str, secret: str,
     if on_event is not None:
         action = on_event(event_type, event)
     result = WebhookResult(
-        status="processed", event_type=event_type,
-        event_id=event.get("event_id"), action=action)
+        status="processed", event_type=event_type, event_id=event.get("event_id"), action=action
+    )
     store.record(key, result)
     return result

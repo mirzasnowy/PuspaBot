@@ -46,7 +46,8 @@ Design rules:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from puspa.evidence.renderer import MARKER_RE, find_orphan_numbers
 from puspa.quarantine import scan
@@ -97,11 +98,11 @@ class RailVerdict:
     action: str = "allow"  # "allow" or "block"
 
     @classmethod
-    def allow(cls, rail: str, kind: str) -> "RailVerdict":
+    def allow(cls, rail: str, kind: str) -> RailVerdict:
         return cls(allowed=True, rail=rail, kind=kind, action="allow")
 
     @classmethod
-    def block(cls, rail: str, kind: str, reason: str) -> "RailVerdict":
+    def block(cls, rail: str, kind: str, reason: str) -> RailVerdict:
         return cls(allowed=False, rail=rail, kind=kind, reason=reason, action="block")
 
 
@@ -117,7 +118,7 @@ class Rail:
 
     name: str
     kind: str  # "input", "output", or "action"
-    check: object = None
+    check: Callable[[dict], RailVerdict | None] | None = None
     description: str = ""
 
     def __post_init__(self) -> None:
@@ -127,12 +128,14 @@ class Rail:
             raise ValueError(f"rail {self.name!r} needs a callable check")
 
     def evaluate(self, context: dict) -> RailVerdict | None:
+        check = self.check
+        if check is None:
+            # Tidak terjangkau: __post_init__ menolak check None.
+            return None
         try:
-            return self.check(context)
+            return check(context)
         except Exception as exc:  # fail-closed: a broken rail blocks
-            return RailVerdict.block(
-                self.name, self.kind, f"rail error: {exc}"
-            )
+            return RailVerdict.block(self.name, self.kind, f"rail error: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -180,12 +183,14 @@ class RailSet:
         return ""
 
     def _record(self, verdict: RailVerdict, context: dict) -> None:
-        self._violations.append({
-            "rail": verdict.rail,
-            "kind": verdict.kind,
-            "reason": verdict.reason,
-            "excerpt": self._excerpt(context),
-        })
+        self._violations.append(
+            {
+                "rail": verdict.rail,
+                "kind": verdict.kind,
+                "reason": verdict.reason,
+                "excerpt": self._excerpt(context),
+            }
+        )
 
     def _run(self, kind: str, context: dict) -> RailVerdict:
         for rail in self._rails:
@@ -237,25 +242,39 @@ class RailSet:
 
 #: Denied topics and their keywords (Indonesian and English).
 DENIED_TOPICS: dict[str, tuple[str, ...]] = {
-    "politics": ("politik", "pilpres", "pemilu", "partai politik", "capres",
-                 "cawapres", "politics", "election", "president"),
-    "gambling": ("judi", "judol", "slot online", "casino", "taruhan",
-                 "gambling", "betting"),
+    "politics": (
+        "politik",
+        "pilpres",
+        "pemilu",
+        "partai politik",
+        "capres",
+        "cawapres",
+        "politics",
+        "election",
+        "president",
+    ),
+    "gambling": ("judi", "judol", "slot online", "casino", "taruhan", "gambling", "betting"),
     "adult": ("porno", "porn", "xxx"),
 }
 
 #: Known on-topic areas for Puspa: prices, bills, shopping.
 KNOWN_TOPICS: dict[str, tuple[str, ...]] = {
-    "price": ("harga", "price", "promo", "diskon", "murah", "mahal",
-              "bandingkan harga", "compare price"),
-    "bill": ("tagihan", "pln", "pdam", "pulsa", "listrik", "bill",
-             "bayar tagihan"),
-    "shopping": ("beli", "toko", "belanja", "shop", "store", "produk",
-                 "product"),
+    "price": (
+        "harga",
+        "price",
+        "promo",
+        "diskon",
+        "murah",
+        "mahal",
+        "bandingkan harga",
+        "compare price",
+    ),
+    "bill": ("tagihan", "pln", "pdam", "pulsa", "listrik", "bill", "bayar tagihan"),
+    "shopping": ("beli", "toko", "belanja", "shop", "store", "produk", "product"),
 }
 
 
-def _keyword_regex(keyword: str) -> "re.Pattern[str]":
+def _keyword_regex(keyword: str) -> re.Pattern[str]:
     return re.compile(r"\b" + re.escape(keyword) + r"\b", re.IGNORECASE)
 
 
@@ -267,8 +286,9 @@ def _matched_topic(text: str, topics: dict[str, tuple[str, ...]]) -> str | None:
     return None
 
 
-def topic_rail(*, kind: str, allowed_topics=None, denied_topics=None,
-               known_topics=None, name: str = "topic") -> Rail:
+def topic_rail(
+    *, kind: str, allowed_topics=None, denied_topics=None, known_topics=None, name: str = "topic"
+) -> Rail:
     """Topic control rail (NeMo topical rails).
 
     A denied topic always blocks. When ``allowed_topics`` is given,
@@ -286,16 +306,19 @@ def topic_rail(*, kind: str, allowed_topics=None, denied_topics=None,
         text = context.get("text", "")
         denied_hit = _matched_topic(text, denied)
         if denied_hit is not None:
-            return RailVerdict.block(
-                name, kind, f"denied topic: {denied_hit}")
+            return RailVerdict.block(name, kind, f"denied topic: {denied_hit}")
         if allowed is not None:
             hit = _matched_topic(text, all_known)
             if hit is not None and hit not in allowed:
                 return RailVerdict.block(name, kind, f"off-topic: {hit}")
         return None
 
-    return Rail(name=name, kind=kind, check=_check,
-                description="Topic control: denied topics block, known off-topic blocks when an allowlist is set.")
+    return Rail(
+        name=name,
+        kind=kind,
+        check=_check,
+        description="Topic control: denied topics block, known off-topic blocks when an allowlist is set.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -350,8 +373,11 @@ def _injection_signals(text: str) -> dict:
     urgency = bool(_URGENCY_RE.search(text))
     data_abuse = False
     for span in _DATA_SPAN_RE.findall(text):
-        if (_IMPERATIVE_RE.search(span) or _TARGET_RE.search(span)
-                or scan(span) and any(f.level == "high" for f in scan(span))):
+        if (
+            _IMPERATIVE_RE.search(span)
+            or _TARGET_RE.search(span)
+            or (scan(span) and any(f.level == "high" for f in scan(span)))
+        ):
             data_abuse = True
             break
     return {
@@ -368,11 +394,10 @@ def _injection_verdict(text: str, source: str, rail_name: str, kind: str) -> Rai
     signals = _injection_signals(text)
     if signals["high_patterns"]:
         return RailVerdict.block(
-            rail_name, kind,
-            "injection pattern: " + ", ".join(signals["high_patterns"]))
+            rail_name, kind, "injection pattern: " + ", ".join(signals["high_patterns"])
+        )
     if signals["data_abuse"]:
-        return RailVerdict.block(
-            rail_name, kind, "instruction hidden inside marked data")
+        return RailVerdict.block(rail_name, kind, "instruction hidden inside marked data")
     if source == "user":
         # The user is a principal: their own imperative is an
         # instruction, not an injection. Only high-severity
@@ -380,18 +405,20 @@ def _injection_verdict(text: str, source: str, rail_name: str, kind: str) -> Rai
         return None
     if signals["imperative"] and signals["target"]:
         return RailVerdict.block(
-            rail_name, kind,
-            "imperative with money or secret target in untrusted text")
+            rail_name, kind, "imperative with money or secret target in untrusted text"
+        )
     if signals["secrecy"] and (signals["imperative"] or signals["target"]):
-        return RailVerdict.block(
-            rail_name, kind, "secrecy instruction in untrusted text")
-    strong = sum([
-        signals["imperative"], signals["target"],
-        signals["secrecy"], signals["urgency"],
-    ])
+        return RailVerdict.block(rail_name, kind, "secrecy instruction in untrusted text")
+    strong = sum(
+        [
+            signals["imperative"],
+            signals["target"],
+            signals["secrecy"],
+            signals["urgency"],
+        ]
+    )
     if strong >= 3:
-        return RailVerdict.block(
-            rail_name, kind, "multiple injection signals in untrusted text")
+        return RailVerdict.block(rail_name, kind, "multiple injection signals in untrusted text")
     return None
 
 
@@ -400,10 +427,15 @@ def injection_rail(name: str = "injection") -> Rail:
 
     def _check(context: dict) -> RailVerdict | None:
         return _injection_verdict(
-            context.get("text", ""), context.get("source", "user"), name, "input")
+            context.get("text", ""), context.get("source", "user"), name, "input"
+        )
 
-    return Rail(name=name, kind="input", check=_check,
-                description="Injection detection: quarantine scan plus structural signals, stricter for untrusted sources.")
+    return Rail(
+        name=name,
+        kind="input",
+        check=_check,
+        description="Injection detection: quarantine scan plus structural signals, stricter for untrusted sources.",
+    )
 
 
 def action_content_rail(name: str = "action_content") -> Rail:
@@ -423,8 +455,12 @@ def action_content_rail(name: str = "action_content") -> Rail:
             return None
         return _injection_verdict(content, "tool", name, "action")
 
-    return Rail(name=name, kind="action", check=_check,
-                description="Send actions carrying injected text block before the gate.")
+    return Rail(
+        name=name,
+        kind="action",
+        check=_check,
+        description="Send actions carrying injected text block before the gate.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -446,8 +482,8 @@ def evidence_number_rail(name: str = "evidence_numbers") -> Rail:
         orphans = find_orphan_numbers(text)
         if orphans:
             return RailVerdict.block(
-                name, "output",
-                "number without evidence: " + ", ".join(orphans))
+                name, "output", "number without evidence: " + ", ".join(orphans)
+            )
         evidence_ids = context.get("evidence_ids")
         if evidence_ids is not None:
             unknown = [
@@ -456,13 +492,15 @@ def evidence_number_rail(name: str = "evidence_numbers") -> Rail:
                 if m.group("evidence_id") not in evidence_ids
             ]
             if unknown:
-                return RailVerdict.block(
-                    name, "output",
-                    "unknown evidence: " + ", ".join(unknown))
+                return RailVerdict.block(name, "output", "unknown evidence: " + ", ".join(unknown))
         return None
 
-    return Rail(name=name, kind="output", check=_check,
-                description="Orphan numbers block; markers must cite known evidence.")
+    return Rail(
+        name=name,
+        kind="output",
+        check=_check,
+        description="Orphan numbers block; markers must cite known evidence.",
+    )
 
 
 def secret_output_rail(name: str = "secret_output") -> Rail:
@@ -476,19 +514,25 @@ def secret_output_rail(name: str = "secret_output") -> Rail:
     def _check(context: dict) -> RailVerdict | None:
         text = context.get("text", "")
         findings = scan(text)
-        leaking = [f.pattern for f in findings
-                   if f.level == "high" and f.pattern in (
-                       "minta kredensial", "send/transfer secret",
-                       "perintah kirim/bayar rahasia")]
+        leaking = [
+            f.pattern
+            for f in findings
+            if f.level == "high"
+            and f.pattern
+            in ("minta kredensial", "send/transfer secret", "perintah kirim/bayar rahasia")
+        ]
         if leaking:
-            return RailVerdict.block(
-                name, "output", "secret leak pattern: " + ", ".join(leaking))
+            return RailVerdict.block(name, "output", "secret leak pattern: " + ", ".join(leaking))
         if _SECRET_VALUE_RE.search(text):
             return RailVerdict.block(name, "output", "secret value in output")
         return None
 
-    return Rail(name=name, kind="output", check=_check,
-                description="Credential or secret values in a draft response block.")
+    return Rail(
+        name=name,
+        kind="output",
+        check=_check,
+        description="Credential or secret values in a draft response block.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -510,19 +554,21 @@ def spending_rail(max_rupiah: int | None, name: str = "spending") -> Rail:
             return None
         nominal = action.get("nominal")
         if nominal is None:
-            return RailVerdict.block(
-                name, "action", "payment without a nominal amount")
+            return RailVerdict.block(name, "action", "payment without a nominal amount")
         if max_rupiah is None:
-            return RailVerdict.block(
-                name, "action", "no spending limit configured")
+            return RailVerdict.block(name, "action", "no spending limit configured")
         if nominal > max_rupiah:
             return RailVerdict.block(
-                name, "action",
-                f"nominal Rp{nominal} exceeds limit Rp{max_rupiah}")
+                name, "action", f"nominal Rp{nominal} exceeds limit Rp{max_rupiah}"
+            )
         return None
 
-    return Rail(name=name, kind="action", check=_check,
-                description="Payment actions must carry a nominal within the limit.")
+    return Rail(
+        name=name,
+        kind="action",
+        check=_check,
+        description="Payment actions must carry a nominal within the limit.",
+    )
 
 
 def tool_allowlist_rail(name: str = "tool_allowlist") -> Rail:
@@ -540,12 +586,15 @@ def tool_allowlist_rail(name: str = "tool_allowlist") -> Rail:
         if tool is None or allowed is None:
             return None
         if tool not in set(allowed):
-            return RailVerdict.block(
-                name, "action", f"tool not allowed: {tool}")
+            return RailVerdict.block(name, "action", f"tool not allowed: {tool}")
         return None
 
-    return Rail(name=name, kind="action", check=_check,
-                description="Tool calls outside the allowed set block.")
+    return Rail(
+        name=name,
+        kind="action",
+        check=_check,
+        description="Tool calls outside the allowed set block.",
+    )
 
 
 def ownership_rail(name: str = "ownership") -> Rail:
@@ -562,12 +611,12 @@ def ownership_rail(name: str = "ownership") -> Rail:
         if owner is None or requester is None:
             return None
         if owner != requester:
-            return RailVerdict.block(
-                name, "action", "cross-user access denied")
+            return RailVerdict.block(name, "action", "cross-user access denied")
         return None
 
-    return Rail(name=name, kind="action", check=_check,
-                description="Cross-user reads and writes block.")
+    return Rail(
+        name=name, kind="action", check=_check, description="Cross-user reads and writes block."
+    )
 
 
 def deployment_rail(name: str = "deployment") -> Rail:
@@ -578,12 +627,10 @@ def deployment_rail(name: str = "deployment") -> Rail:
         if action.get("kind") != "deploy":
             return None
         if action.get("signed") is not True:
-            return RailVerdict.block(
-                name, "action", "deploy of an unsigned artifact")
+            return RailVerdict.block(name, "action", "deploy of an unsigned artifact")
         return None
 
-    return Rail(name=name, kind="action", check=_check,
-                description="Unsigned deploys block.")
+    return Rail(name=name, kind="action", check=_check, description="Unsigned deploys block.")
 
 
 def integrity_rail(name: str = "integrity") -> Rail:
@@ -601,12 +648,12 @@ def integrity_rail(name: str = "integrity") -> Rail:
         if expected is None or actual is None:
             return None
         if actual != expected:
-            return RailVerdict.block(
-                name, "action", "action content changed after approval")
+            return RailVerdict.block(name, "action", "action content changed after approval")
         return None
 
-    return Rail(name=name, kind="action", check=_check,
-                description="Tampered action content blocks.")
+    return Rail(
+        name=name, kind="action", check=_check, description="Tampered action content blocks."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -614,8 +661,9 @@ def integrity_rail(name: str = "integrity") -> Rail:
 # ---------------------------------------------------------------------------
 
 
-def default_rail_set(*, max_rupiah: int | None = DEFAULT_MAX_RUPIAH,
-                     allowed_topics=None) -> RailSet:
+def default_rail_set(
+    *, max_rupiah: int | None = DEFAULT_MAX_RUPIAH, allowed_topics=None
+) -> RailSet:
     """The Puspa default rail set, in NeMo order.
 
     Input rails (topic control, injection), output rails (evidence
@@ -625,19 +673,21 @@ def default_rail_set(*, max_rupiah: int | None = DEFAULT_MAX_RUPIAH,
     shopping; the spending limit defaults to the per-task cap.
     """
     allowed = {"price", "bill", "shopping"} if allowed_topics is None else set(allowed_topics)
-    return RailSet([
-        topic_rail(kind="input", allowed_topics=allowed),
-        injection_rail(),
-        evidence_number_rail(),
-        topic_rail(kind="output", allowed_topics=allowed),
-        secret_output_rail(),
-        spending_rail(max_rupiah),
-        tool_allowlist_rail(),
-        ownership_rail(),
-        deployment_rail(),
-        integrity_rail(),
-        action_content_rail(),
-    ])
+    return RailSet(
+        [
+            topic_rail(kind="input", allowed_topics=allowed),
+            injection_rail(),
+            evidence_number_rail(),
+            topic_rail(kind="output", allowed_topics=allowed),
+            secret_output_rail(),
+            spending_rail(max_rupiah),
+            tool_allowlist_rail(),
+            ownership_rail(),
+            deployment_rail(),
+            integrity_rail(),
+            action_content_rail(),
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -657,7 +707,7 @@ class FlowTransition:
     from_state: str
     event: str
     to_state: str
-    guard: object = None
+    guard: Callable[[dict], tuple[bool, str]] | None = None
     description: str = ""
 
 
@@ -701,17 +751,38 @@ class FlowController:
         transition = self.flow.transition_for(self.state, event)
         if transition is None:
             reason = f"no transition: {self.state} --{event}--> ?"
-            self.history.append({"event": event, "from": self.state,
-                                 "to": self.state, "allowed": False, "reason": reason})
+            self.history.append(
+                {
+                    "event": event,
+                    "from": self.state,
+                    "to": self.state,
+                    "allowed": False,
+                    "reason": reason,
+                }
+            )
             return False, reason
         if transition.guard is not None:
             allowed, reason = transition.guard(context)
             if not allowed:
-                self.history.append({"event": event, "from": self.state,
-                                     "to": self.state, "allowed": False, "reason": reason})
+                self.history.append(
+                    {
+                        "event": event,
+                        "from": self.state,
+                        "to": self.state,
+                        "allowed": False,
+                        "reason": reason,
+                    }
+                )
                 return False, reason
-        self.history.append({"event": event, "from": self.state,
-                             "to": transition.to_state, "allowed": True, "reason": ""})
+        self.history.append(
+            {
+                "event": event,
+                "from": self.state,
+                "to": transition.to_state,
+                "allowed": True,
+                "reason": "",
+            }
+        )
         self.state = transition.to_state
         return True, ""
 
@@ -745,15 +816,27 @@ def default_dialog_flow() -> DialogFlow:
     states = frozenset({"idle", "collecting", "awaiting_approval", "presenting", "done"})
     transitions = (
         FlowTransition("idle", "start", "collecting"),
-        FlowTransition("collecting", "plan_ready", "awaiting_approval",
-                       guard=_outbound_present,
-                       description="Outbound plan waits for approval."),
-        FlowTransition("collecting", "present", "presenting",
-                       guard=_not_outbound_pending,
-                       description="No outbound step, present directly."),
-        FlowTransition("awaiting_approval", "approved", "presenting",
-                       guard=_approved,
-                       description="Approved plan may present."),
+        FlowTransition(
+            "collecting",
+            "plan_ready",
+            "awaiting_approval",
+            guard=_outbound_present,
+            description="Outbound plan waits for approval.",
+        ),
+        FlowTransition(
+            "collecting",
+            "present",
+            "presenting",
+            guard=_not_outbound_pending,
+            description="No outbound step, present directly.",
+        ),
+        FlowTransition(
+            "awaiting_approval",
+            "approved",
+            "presenting",
+            guard=_approved,
+            description="Approved plan may present.",
+        ),
         FlowTransition("awaiting_approval", "rejected", "done"),
         FlowTransition("awaiting_approval", "cancel", "done"),
         FlowTransition("collecting", "cancel", "done"),

@@ -103,16 +103,17 @@ def derive_heldout_state(cassette: dict) -> dict:
             state["rows_returned"] = len(rows)
             max_price = output.get("max_price")
             in_stock = [
-                row for row in rows
-                if row.get("stock", 0) > 0 and "price" in row
+                row
+                for row in rows
+                if row.get("stock", 0) > 0
+                and "price" in row
                 and (max_price is None or row["price"] <= max_price)
             ]
             if in_stock:
                 cheapest = min(in_stock, key=lambda row: row["price"])
                 state["cheapest_in_stock_product"] = cheapest.get("product_id")
                 state["cheapest_in_stock_price"] = cheapest.get("price")
-            revenue_rows = [row for row in rows
-                            if "revenue" in row and "category" in row]
+            revenue_rows = [row for row in rows if "revenue" in row and "category" in row]
             if revenue_rows:
                 top = max(revenue_rows, key=lambda row: row["revenue"])
                 state["top_category"] = top.get("category")
@@ -131,16 +132,13 @@ def derive_heldout_state(cassette: dict) -> dict:
                 state["largest_size_bytes"] = largest.get("size_bytes")
             stale_after = output.get("stale_after_days")
             if stale_after is not None:
-                stale = [item for item in files
-                         if item.get("age_days", 0) > stale_after]
+                stale = [item for item in files if item.get("age_days", 0) > stale_after]
                 state["stale_count"] = len(stale)
-                state["stale_total_bytes"] = sum(
-                    item.get("size_bytes", 0) for item in stale)
+                state["stale_total_bytes"] = sum(item.get("size_bytes", 0) for item in stale)
         elif tool == "webshop_search":
             products = output.get("products", [])
             min_rating = output.get("min_rating", 0)
-            eligible = [item for item in products
-                        if item.get("rating", 0) >= min_rating]
+            eligible = [item for item in products if item.get("rating", 0) >= min_rating]
             if eligible:
                 cheapest = min(eligible, key=lambda item: item["price"])
                 state["cheapest_product"] = cheapest.get("product_id")
@@ -188,8 +186,7 @@ def score_agentbench(task: EvalTask, final_state: dict) -> tuple[bool, dict]:
     return fraction == 1.0, details
 
 
-def _heldout_task(task_id: str, environment: str, prompt: str,
-                  recording: list[dict]) -> EvalTask:
+def _heldout_task(task_id: str, environment: str, prompt: str, recording: list[dict]) -> EvalTask:
     """Build one held-out task from its inline recording."""
     cassette = {"task_id": task_id, "name": task_id, "recording": recording}
     return EvalTask(
@@ -198,8 +195,10 @@ def _heldout_task(task_id: str, environment: str, prompt: str,
         prompt=prompt,
         cassette_name=task_id,
         expected_state=derive_heldout_state(cassette),
-        policy=["never execute an outbound action without approval",
-                "never present a number without an evidence record"],
+        policy=[
+            "never execute an outbound action without approval",
+            "never present a number without an evidence record",
+        ],
         environment=environment,
         cassette=cassette,
     )
@@ -212,192 +211,244 @@ def _build_tasks() -> list[EvalTask]:
         _heldout_task(
             task_id="agentbench-db-cheapest-headphones",
             environment="db",
-            prompt=("From the inventory table, find the cheapest wireless "
-                    "headphones that are in stock and cost at most "
-                    "Rp500000. Report its product id and price."),
-            recording=[{
-                "tool": "db_query",
-                "output": {
-                    "max_price": 500000,
-                    "rows": [
-                        {"product_id": "hp-aurora-01",
-                         "name": "Aurora Wireless Headphones",
-                         "price": 459000, "stock": 12},
-                        {"product_id": "hp-nimbus-02",
-                         "name": "Nimbus Wireless Headphones",
-                         "price": 389000, "stock": 0},
-                        {"product_id": "hp-volta-03",
-                         "name": "Volta Wireless Headphones",
-                         "price": 429000, "stock": 5},
-                        {"product_id": "hp-echo-04",
-                         "name": "Echo Wireless Headphones",
-                         "price": 549000, "stock": 8},
-                    ],
-                },
-            }],
+            prompt=(
+                "From the inventory table, find the cheapest wireless "
+                "headphones that are in stock and cost at most "
+                "Rp500000. Report its product id and price."
+            ),
+            recording=[
+                {
+                    "tool": "db_query",
+                    "output": {
+                        "max_price": 500000,
+                        "rows": [
+                            {
+                                "product_id": "hp-aurora-01",
+                                "name": "Aurora Wireless Headphones",
+                                "price": 459000,
+                                "stock": 12,
+                            },
+                            {
+                                "product_id": "hp-nimbus-02",
+                                "name": "Nimbus Wireless Headphones",
+                                "price": 389000,
+                                "stock": 0,
+                            },
+                            {
+                                "product_id": "hp-volta-03",
+                                "name": "Volta Wireless Headphones",
+                                "price": 429000,
+                                "stock": 5,
+                            },
+                            {
+                                "product_id": "hp-echo-04",
+                                "name": "Echo Wireless Headphones",
+                                "price": 549000,
+                                "stock": 8,
+                            },
+                        ],
+                    },
+                }
+            ],
         ),
         # -- DB: top category by total revenue --------------------------
         _heldout_task(
             task_id="agentbench-db-top-revenue-category",
             environment="db",
-            prompt=("From the sales summary table, find the product "
-                    "category with the highest total revenue in November "
-                    "2026. Report the category and its revenue."),
-            recording=[{
-                "tool": "db_query",
-                "output": {
-                    "rows": [
-                        {"category": "audio", "revenue": 48200000},
-                        {"category": "cables", "revenue": 21500000},
-                        {"category": "keyboards", "revenue": 61400000},
-                        {"category": "monitors", "revenue": 39800000},
-                    ],
-                },
-            }],
+            prompt=(
+                "From the sales summary table, find the product "
+                "category with the highest total revenue in November "
+                "2026. Report the category and its revenue."
+            ),
+            recording=[
+                {
+                    "tool": "db_query",
+                    "output": {
+                        "rows": [
+                            {"category": "audio", "revenue": 48200000},
+                            {"category": "cables", "revenue": 21500000},
+                            {"category": "keyboards", "revenue": 61400000},
+                            {"category": "monitors", "revenue": 39800000},
+                        ],
+                    },
+                }
+            ],
         ),
         # -- KG: two-hop brand, then supplier ---------------------------
         _heldout_task(
             task_id="agentbench-kg-supplier-two-hop",
             environment="kg",
-            prompt=("In the product knowledge graph, find the brand of "
-                    "the Aurora Wireless Headphones, then find that "
-                    "brand's supplier. Report the brand and the supplier."),
+            prompt=(
+                "In the product knowledge graph, find the brand of "
+                "the Aurora Wireless Headphones, then find that "
+                "brand's supplier. Report the brand and the supplier."
+            ),
             recording=[
-                {"tool": "kg_lookup",
-                 "output": {"entity": "Aurora Wireless Headphones",
-                            "relation": "brand", "value": "Aurora"}},
-                {"tool": "kg_lookup",
-                 "output": {"entity": "Aurora",
-                            "relation": "supplier",
-                            "value": "Sinar Components Ltd"}},
+                {
+                    "tool": "kg_lookup",
+                    "output": {
+                        "entity": "Aurora Wireless Headphones",
+                        "relation": "brand",
+                        "value": "Aurora",
+                    },
+                },
+                {
+                    "tool": "kg_lookup",
+                    "output": {
+                        "entity": "Aurora",
+                        "relation": "supplier",
+                        "value": "Sinar Components Ltd",
+                    },
+                },
             ],
         ),
         # -- KG: warranty provider and coverage -------------------------
         _heldout_task(
             task_id="agentbench-kg-warranty-provider",
             environment="kg",
-            prompt=("In the product knowledge graph, find the warranty "
-                    "provider of the Volta Mechanical Keyboard and how "
-                    "many months its coverage lasts. Report the provider "
-                    "and the coverage in months."),
+            prompt=(
+                "In the product knowledge graph, find the warranty "
+                "provider of the Volta Mechanical Keyboard and how "
+                "many months its coverage lasts. Report the provider "
+                "and the coverage in months."
+            ),
             recording=[
-                {"tool": "kg_lookup",
-                 "output": {"entity": "Volta Mechanical Keyboard",
-                            "relation": "warranty_provider",
-                            "value": "CoverAll Insurance"}},
-                {"tool": "kg_lookup",
-                 "output": {"entity": "Volta Mechanical Keyboard",
-                            "relation": "coverage_months", "value": 24}},
+                {
+                    "tool": "kg_lookup",
+                    "output": {
+                        "entity": "Volta Mechanical Keyboard",
+                        "relation": "warranty_provider",
+                        "value": "CoverAll Insurance",
+                    },
+                },
+                {
+                    "tool": "kg_lookup",
+                    "output": {
+                        "entity": "Volta Mechanical Keyboard",
+                        "relation": "coverage_months",
+                        "value": 24,
+                    },
+                },
             ],
         ),
         # -- OS: largest log file ---------------------------------------
         _heldout_task(
             task_id="agentbench-os-largest-log-file",
             environment="os",
-            prompt=("List the files in /var/log/app and report the "
-                    "largest log file by size, with its size in bytes."),
-            recording=[{
-                "tool": "os_list",
-                "output": {
-                    "directory": "/var/log/app",
-                    "files": [
-                        {"name": "app.log", "size_bytes": 184320,
-                         "age_days": 2},
-                        {"name": "app.log.1", "size_bytes": 5242880,
-                         "age_days": 9},
-                        {"name": "error.log", "size_bytes": 983040,
-                         "age_days": 1},
-                        {"name": "access.log", "size_bytes": 2097152,
-                         "age_days": 3},
-                    ],
-                },
-            }],
+            prompt=(
+                "List the files in /var/log/app and report the "
+                "largest log file by size, with its size in bytes."
+            ),
+            recording=[
+                {
+                    "tool": "os_list",
+                    "output": {
+                        "directory": "/var/log/app",
+                        "files": [
+                            {"name": "app.log", "size_bytes": 184320, "age_days": 2},
+                            {"name": "app.log.1", "size_bytes": 5242880, "age_days": 9},
+                            {"name": "error.log", "size_bytes": 983040, "age_days": 1},
+                            {"name": "access.log", "size_bytes": 2097152, "age_days": 3},
+                        ],
+                    },
+                }
+            ],
         ),
         # -- OS: stale cache files and their total size -----------------
         _heldout_task(
             task_id="agentbench-os-stale-cache-total",
             environment="os",
-            prompt=("List the files in /tmp/cache and report how many "
-                    "are older than 30 days and their total size in "
-                    "bytes."),
-            recording=[{
-                "tool": "os_list",
-                "output": {
-                    "directory": "/tmp/cache",
-                    "stale_after_days": 30,
-                    "files": [
-                        {"name": "thumb-01.bin", "size_bytes": 409600,
-                         "age_days": 45},
-                        {"name": "thumb-02.bin", "size_bytes": 204800,
-                         "age_days": 12},
-                        {"name": "render-77.tmp", "size_bytes": 1048576,
-                         "age_days": 61},
-                        {"name": "session-a.json", "size_bytes": 8192,
-                         "age_days": 3},
-                        {"name": "build-19.zip", "size_bytes": 3145728,
-                         "age_days": 90},
-                    ],
-                },
-            }],
+            prompt=(
+                "List the files in /tmp/cache and report how many "
+                "are older than 30 days and their total size in "
+                "bytes."
+            ),
+            recording=[
+                {
+                    "tool": "os_list",
+                    "output": {
+                        "directory": "/tmp/cache",
+                        "stale_after_days": 30,
+                        "files": [
+                            {"name": "thumb-01.bin", "size_bytes": 409600, "age_days": 45},
+                            {"name": "thumb-02.bin", "size_bytes": 204800, "age_days": 12},
+                            {"name": "render-77.tmp", "size_bytes": 1048576, "age_days": 61},
+                            {"name": "session-a.json", "size_bytes": 8192, "age_days": 3},
+                            {"name": "build-19.zip", "size_bytes": 3145728, "age_days": 90},
+                        ],
+                    },
+                }
+            ],
         ),
         # -- WebShop: cheapest rated cable, buy 2 -----------------------
         _heldout_task(
             task_id="agentbench-webshop-cheapest-rated-cable",
             environment="webshop",
-            prompt=("In the simulated web shop, find the cheapest USB-C "
-                    "cable with a rating of at least 4.5, buy 2 units, "
-                    "and report the product id, unit price, quantity, "
-                    "and total. The total must stay under Rp200000."),
+            prompt=(
+                "In the simulated web shop, find the cheapest USB-C "
+                "cable with a rating of at least 4.5, buy 2 units, "
+                "and report the product id, unit price, quantity, "
+                "and total. The total must stay under Rp200000."
+            ),
             recording=[
-                {"tool": "webshop_search",
-                 "output": {
-                     "query": "USB-C cable",
-                     "min_rating": 4.5,
-                     "products": [
-                         {"product_id": "cable-volt-2m", "price": 89000,
-                          "rating": 4.7},
-                         {"product_id": "cable-nova-1m", "price": 65000,
-                          "rating": 4.3},
-                         {"product_id": "cable-apex-2m", "price": 99000,
-                          "rating": 4.8},
-                         {"product_id": "cable-base-1m", "price": 45000,
-                          "rating": 4.6},
-                     ],
-                 }},
-                {"tool": "webshop_checkout",
-                 "output": {"order_id": "ord-1001",
-                            "product_id": "cable-base-1m",
-                            "quantity": 2, "total": 90000,
-                            "status": "confirmed"}},
+                {
+                    "tool": "webshop_search",
+                    "output": {
+                        "query": "USB-C cable",
+                        "min_rating": 4.5,
+                        "products": [
+                            {"product_id": "cable-volt-2m", "price": 89000, "rating": 4.7},
+                            {"product_id": "cable-nova-1m", "price": 65000, "rating": 4.3},
+                            {"product_id": "cable-apex-2m", "price": 99000, "rating": 4.8},
+                            {"product_id": "cable-base-1m", "price": 45000, "rating": 4.6},
+                        ],
+                    },
+                },
+                {
+                    "tool": "webshop_checkout",
+                    "output": {
+                        "order_id": "ord-1001",
+                        "product_id": "cable-base-1m",
+                        "quantity": 2,
+                        "total": 90000,
+                        "status": "confirmed",
+                    },
+                },
             ],
         ),
         # -- WebShop: cheapest rated keyboard, buy 1 --------------------
         _heldout_task(
             task_id="agentbench-webshop-keyboard-order",
             environment="webshop",
-            prompt=("In the simulated web shop, find the cheapest "
-                    "mechanical keyboard with a rating of at least 4.0, "
-                    "buy 1 unit, and report the product id, unit price, "
-                    "quantity, total, and order status."),
+            prompt=(
+                "In the simulated web shop, find the cheapest "
+                "mechanical keyboard with a rating of at least 4.0, "
+                "buy 1 unit, and report the product id, unit price, "
+                "quantity, total, and order status."
+            ),
             recording=[
-                {"tool": "webshop_search",
-                 "output": {
-                     "query": "mechanical keyboard",
-                     "min_rating": 4.0,
-                     "products": [
-                         {"product_id": "kbd-volta-87", "price": 749000,
-                          "rating": 4.6},
-                         {"product_id": "kbd-nimbus-68", "price": 599000,
-                          "rating": 4.2},
-                         {"product_id": "kbd-echo-100", "price": 899000,
-                          "rating": 4.9},
-                     ],
-                 }},
-                {"tool": "webshop_checkout",
-                 "output": {"order_id": "ord-1002",
-                            "product_id": "kbd-nimbus-68",
-                            "quantity": 1, "total": 599000,
-                            "status": "confirmed"}},
+                {
+                    "tool": "webshop_search",
+                    "output": {
+                        "query": "mechanical keyboard",
+                        "min_rating": 4.0,
+                        "products": [
+                            {"product_id": "kbd-volta-87", "price": 749000, "rating": 4.6},
+                            {"product_id": "kbd-nimbus-68", "price": 599000, "rating": 4.2},
+                            {"product_id": "kbd-echo-100", "price": 899000, "rating": 4.9},
+                        ],
+                    },
+                },
+                {
+                    "tool": "webshop_checkout",
+                    "output": {
+                        "order_id": "ord-1002",
+                        "product_id": "kbd-nimbus-68",
+                        "quantity": 1,
+                        "total": 599000,
+                        "status": "confirmed",
+                    },
+                },
             ],
         ),
     ]
@@ -457,8 +508,10 @@ def check_disjoint(cassette_dir=None) -> DisjointCheck:
         dev_tools.update(rec.get("tool", "") for rec in cassette.get("recording", []))
     heldout_tools: set[str] = set()
     for task in heldout:
-        heldout_tools.update(rec.get("tool", "")
-                             for rec in task.cassette["recording"])
+        heldout_cassette = task.cassette
+        if heldout_cassette is None:
+            continue
+        heldout_tools.update(rec.get("tool", "") for rec in heldout_cassette["recording"])
 
     dev_prompts = [(task.task_id, _words(task.prompt)) for task in dev_tasks]
     over_threshold = []
@@ -470,18 +523,19 @@ def check_disjoint(cassette_dir=None) -> DisjointCheck:
             jaccard = (len(heldout_words & dev_words) / len(union)) if union else 0.0
             max_jaccard = max(max_jaccard, jaccard)
             if jaccard >= MAX_PROMPT_JACCARD:
-                over_threshold.append({
-                    "heldout_task": task.task_id,
-                    "dev_task": dev_id,
-                    "jaccard": round(jaccard, 3),
-                })
+                over_threshold.append(
+                    {
+                        "heldout_task": task.task_id,
+                        "dev_task": dev_id,
+                        "jaccard": round(jaccard, 3),
+                    }
+                )
 
     overlap_ids = sorted(heldout_ids & dev_ids)
     overlap_cassettes = sorted(heldout_cassettes & dev_cassettes)
     overlap_tools = sorted(heldout_tools & dev_tools)
     return DisjointCheck(
-        disjoint=not (overlap_ids or overlap_cassettes or overlap_tools
-                      or over_threshold),
+        disjoint=not (overlap_ids or overlap_cassettes or overlap_tools or over_threshold),
         task_id_overlap=overlap_ids,
         cassette_overlap=overlap_cassettes,
         tool_overlap=overlap_tools,
@@ -520,10 +574,12 @@ def summarize_by_environment(report: EvalReport) -> dict:
     for entry in by_env.values():
         total = entry["total"]
         entry["score"] = (entry["passed"] / total) if total else 0.0
-    summary = {"heldout": {
-        "total": report.total,
-        "passed": report.passed,
-        "score": report.score,
-    }}
+    summary = {
+        "heldout": {
+            "total": report.total,
+            "passed": report.passed,
+            "score": report.score,
+        }
+    }
     summary.update(by_env)
     return summary

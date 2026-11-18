@@ -23,19 +23,19 @@ moment; ``merge_schedule`` folds a new schedule into an old one.
 from __future__ import annotations
 
 import re
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 __all__ = [
     "DEFAULT_TIMEZONE",
-    "ScheduleError",
     "RoutineScheduleInput",
+    "ScheduleError",
     "is_valid_timezone",
-    "validate_schedule",
-    "schedule_from_record",
-    "next_occurrence",
     "merge_schedule",
+    "next_occurrence",
     "parse_cron_expression",
+    "schedule_from_record",
+    "validate_schedule",
 ]
 
 #: Timezone assumed when a stored record has no ``timezone`` field.
@@ -104,9 +104,9 @@ def validate_schedule(schedule) -> list[str]:
             problems.append("'time' must be HH:MM (24h)")
         weekdays = schedule.get("weekdays")
         if weekdays is not None:
-            if (not isinstance(weekdays, list)
-                    or any(not isinstance(d, int) or d < 0 or d > 6
-                           for d in weekdays)):
+            if not isinstance(weekdays, list) or any(
+                not isinstance(d, int) or d < 0 or d > 6 for d in weekdays
+            ):
                 problems.append("'weekdays' must be a list of ints 0-6 (Mon=0)")
             elif len(set(weekdays)) != len(weekdays):
                 problems.append("'weekdays' must not repeat a day")
@@ -163,24 +163,21 @@ def parse_cron_expression(expression: str) -> tuple[frozenset, ...]:
     """
     fields = str(expression).split()
     if len(fields) != 5:
-        raise ScheduleError(
-            f"cron expression must have 5 fields: {expression!r}")
+        raise ScheduleError(f"cron expression must have 5 fields: {expression!r}")
     parsed: list[frozenset] = []
     for field, (low, high) in zip(fields, _CRON_RANGES):
         values: set[int] = set()
-        for part in field.split(","):
-            part = part.strip()
+        for raw_part in field.split(","):
+            part = raw_part.strip()
             step = 1
             if "/" in part:
                 base, step_text = part.split("/", 1)
                 try:
                     step = int(step_text)
                 except ValueError:
-                    raise ScheduleError(
-                        f"bad cron step in {expression!r}") from None
+                    raise ScheduleError(f"bad cron step in {expression!r}") from None
                 if step < 1:
-                    raise ScheduleError(
-                        f"cron step must be >= 1 in {expression!r}")
+                    raise ScheduleError(f"cron step must be >= 1 in {expression!r}")
                 part = base
             if part == "*":
                 start, end = low, high
@@ -188,17 +185,14 @@ def parse_cron_expression(expression: str) -> tuple[frozenset, ...]:
                 try:
                     start, end = (int(x) for x in part.split("-", 1))
                 except ValueError:
-                    raise ScheduleError(
-                        f"bad cron range in {expression!r}") from None
+                    raise ScheduleError(f"bad cron range in {expression!r}") from None
             else:
                 try:
                     start = end = int(part)
                 except ValueError:
-                    raise ScheduleError(
-                        f"bad cron value in {expression!r}") from None
+                    raise ScheduleError(f"bad cron value in {expression!r}") from None
             if start < low or end > high or start > end:
-                raise ScheduleError(
-                    f"cron value out of range in {expression!r}")
+                raise ScheduleError(f"cron value out of range in {expression!r}")
             values.update(range(start, end + 1, step))
         if not values:
             raise ScheduleError(f"empty cron field in {expression!r}")
@@ -211,13 +205,13 @@ def _next_daily(schedule: dict, after: datetime) -> datetime:
     local_after = after.astimezone(tz)
     hour, minute = (int(x) for x in schedule["time"].split(":"))
     weekdays = schedule.get("weekdays") or []
-    for day_offset in range(0, 8):
+    for day_offset in range(8):
         day = local_after.date() + timedelta(days=day_offset)
         if weekdays and day.weekday() not in weekdays:
             continue
         candidate = datetime.combine(day, time(hour, minute), tzinfo=tz)
         if candidate > local_after:
-            return candidate.astimezone(timezone.utc)
+            return candidate.astimezone(UTC)
     raise ScheduleError("no next daily occurrence within a week")
 
 
@@ -230,10 +224,14 @@ def _next_cron(schedule: dict, after: datetime) -> datetime | None:
     for _ in range(366 * 24 * 60):
         # Sunday is 0 in cron; Python Monday is 0.
         dow = (cursor.weekday() + 1) % 7
-        if (cursor.minute in minute_set and cursor.hour in hour_set
-                and cursor.day in dom_set and cursor.month in month_set
-                and dow in dow_set):
-            return cursor.astimezone(timezone.utc)
+        if (
+            cursor.minute in minute_set
+            and cursor.hour in hour_set
+            and cursor.day in dom_set
+            and cursor.month in month_set
+            and dow in dow_set
+        ):
+            return cursor.astimezone(UTC)
         cursor += timedelta(minutes=1)
     return None
 
@@ -250,12 +248,12 @@ def next_occurrence(schedule: dict, after: datetime) -> datetime | None:
     if problems:
         raise ScheduleError("; ".join(problems))
     if after.tzinfo is None:
-        after = after.replace(tzinfo=timezone.utc)
+        after = after.replace(tzinfo=UTC)
     kind = schedule["type"]
     if kind == "once":
         at = datetime.fromisoformat(schedule["at"])
         if at.tzinfo is None:
-            at = at.replace(tzinfo=timezone.utc)
+            at = at.replace(tzinfo=UTC)
         return at if at > after else None
     if kind == "daily":
         return _next_daily(schedule, after)
@@ -280,8 +278,7 @@ def merge_schedule(old: dict, new: dict) -> dict:
     if new.get("type") is not None and new.get("type") != old.get("type"):
         merged = {"type": new["type"]}
         merged.update({k: v for k, v in new.items() if k != "type"})
-        merged["timezone"] = (
-            new.get("timezone") or old.get("timezone") or DEFAULT_TIMEZONE)
+        merged["timezone"] = new.get("timezone") or old.get("timezone") or DEFAULT_TIMEZONE
     else:
         merged = dict(old)
         merged.update(new)

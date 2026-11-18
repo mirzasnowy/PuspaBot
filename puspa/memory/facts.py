@@ -40,21 +40,20 @@ and the Postgres path is covered by the DB tests.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import psycopg
 from psycopg.rows import dict_row
 
 from .schema import resolve_dsn
 
-STATUSES = ("active", "superseded", "expired",
-            "proposed", "rejected", "replaced")
+STATUSES = ("active", "superseded", "expired", "proposed", "rejected", "replaced")
 ACTIVE_STATUSES = ("active",)
 HISTORY_STATUSES = ("superseded", "expired", "replaced", "rejected")
 
 
 def _now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _new_id():
@@ -71,9 +70,7 @@ def _public(row):
         "status": row["status"],
         "valid_from": row["valid_from"],
         "valid_until": row["valid_until"],
-        "superseded_by": (
-            str(row["superseded_by"]) if row.get("superseded_by") else None
-        ),
+        "superseded_by": (str(row["superseded_by"]) if row.get("superseded_by") else None),
         "source": row["source"],
         "created_at": row["created_at"],
         "updated_at": row.get("updated_at") or row["created_at"],
@@ -98,17 +95,24 @@ class MemoryFactStore:
         return dict(row)
 
     def list_for_key(self, user_id, key, agent_id=None):
-        rows = [r for r in self._facts.values()
-                if str(r["user_id"]) == str(user_id) and r["key"] == key
-                and (agent_id is None or r.get("agent_id") == agent_id)]
+        rows = [
+            r
+            for r in self._facts.values()
+            if str(r["user_id"]) == str(user_id)
+            and r["key"] == key
+            and (agent_id is None or r.get("agent_id") == agent_id)
+        ]
         rows.sort(key=lambda r: (r["valid_from"], r["created_at"]))
         return [dict(r) for r in rows]
 
     def list_user(self, user_id, statuses=None, agent_id=None):
-        rows = [r for r in self._facts.values()
-                if str(r["user_id"]) == str(user_id)
-                and (statuses is None or r["status"] in statuses)
-                and (agent_id is None or r.get("agent_id") == agent_id)]
+        rows = [
+            r
+            for r in self._facts.values()
+            if str(r["user_id"]) == str(user_id)
+            and (statuses is None or r["status"] in statuses)
+            and (agent_id is None or r.get("agent_id") == agent_id)
+        ]
         rows.sort(key=lambda r: (r["valid_from"], r["created_at"]))
         return [dict(r) for r in rows]
 
@@ -123,17 +127,16 @@ class MemoryFactStore:
         row = self._facts.get(str(snapshot["id"]))
         if row is None:
             return None
-        for field in ("content", "status", "valid_from", "valid_until",
-                      "superseded_by", "source"):
+        for field in ("content", "status", "valid_from", "valid_until", "superseded_by", "source"):
             if field in snapshot:
                 row[field] = snapshot[field]
         row["updated_at"] = _now()
         return dict(row)
 
     def expire_snapshot(self, record):
-        return self.update(record["id"], record["user_id"],
-                           status="expired", valid_until=_now(),
-                           updated_at=_now())
+        return self.update(
+            record["id"], record["user_id"], status="expired", valid_until=_now(), updated_at=_now()
+        )
 
 
 class PostgresFactStore:
@@ -154,46 +157,53 @@ class PostgresFactStore:
                     "superseded_by, created_at, updated_at) "
                     "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                     "RETURNING *",
-                    (record["id"], record["user_id"], record.get("agent_id"),
-                     record["key"], record["content"], record["source"],
-                     record["status"], record["valid_from"],
-                     record["valid_until"], record["superseded_by"],
-                     record["created_at"], record["updated_at"]),
+                    (
+                        record["id"],
+                        record["user_id"],
+                        record.get("agent_id"),
+                        record["key"],
+                        record["content"],
+                        record["source"],
+                        record["status"],
+                        record["valid_from"],
+                        record["valid_until"],
+                        record["superseded_by"],
+                        record["created_at"],
+                        record["updated_at"],
+                    ),
                 )
                 row = cur.fetchone()
             conn.commit()
         return _public(row)
 
     def get(self, fact_id, user_id):
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT * FROM profile_facts WHERE id = %s AND user_id = %s",
-                    (fact_id, user_id),
-                )
-                row = cur.fetchone()
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM profile_facts WHERE id = %s AND user_id = %s",
+                (fact_id, user_id),
+            )
+            row = cur.fetchone()
         return _public(row) if row is not None else None
 
     def list_for_key(self, user_id, key, agent_id=None):
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                if agent_id is None:
-                    cur.execute(
-                        "SELECT * FROM profile_facts WHERE user_id = %s "
-                        "AND key = %s ORDER BY valid_from ASC, created_at ASC",
-                        (user_id, key),
-                    )
-                else:
-                    cur.execute(
-                        "SELECT * FROM profile_facts WHERE user_id = %s "
-                        "AND key = %s AND agent_id IS NOT DISTINCT FROM %s "
-                        "ORDER BY valid_from ASC, created_at ASC",
-                        (user_id, key, agent_id),
-                    )
-                return [_public(r) for r in cur.fetchall()]
+        with self._connect() as conn, conn.cursor() as cur:
+            if agent_id is None:
+                cur.execute(
+                    "SELECT * FROM profile_facts WHERE user_id = %s "
+                    "AND key = %s ORDER BY valid_from ASC, created_at ASC",
+                    (user_id, key),
+                )
+            else:
+                cur.execute(
+                    "SELECT * FROM profile_facts WHERE user_id = %s "
+                    "AND key = %s AND agent_id IS NOT DISTINCT FROM %s "
+                    "ORDER BY valid_from ASC, created_at ASC",
+                    (user_id, key, agent_id),
+                )
+            return [_public(r) for r in cur.fetchall()]
 
     def list_user(self, user_id, statuses=None, agent_id=None):
-        query = ("SELECT * FROM profile_facts WHERE user_id = %s")
+        query = "SELECT * FROM profile_facts WHERE user_id = %s"
         params = [user_id]
         if statuses is not None:
             query += " AND status = ANY(%s)"
@@ -202,10 +212,9 @@ class PostgresFactStore:
             query += " AND agent_id IS NOT DISTINCT FROM %s"
             params.append(agent_id)
         query += " ORDER BY valid_from ASC, created_at ASC"
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(query, params)
-                return [_public(r) for r in cur.fetchall()]
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(query, params)
+            return [_public(r) for r in cur.fetchall()]
 
     def update(self, fact_id, user_id, **fields):
         sets = []
@@ -230,17 +239,21 @@ class PostgresFactStore:
 
     def apply_snapshot(self, snapshot):
         return self.update(
-            snapshot["id"], snapshot["user_id"],
-            content=snapshot["content"], status=snapshot["status"],
+            snapshot["id"],
+            snapshot["user_id"],
+            content=snapshot["content"],
+            status=snapshot["status"],
             valid_from=snapshot["valid_from"],
             valid_until=snapshot["valid_until"],
             superseded_by=snapshot["superseded_by"],
-            source=snapshot["source"], updated_at=_now())
+            source=snapshot["source"],
+            updated_at=_now(),
+        )
 
     def expire_snapshot(self, record):
-        return self.update(record["id"], record["user_id"],
-                           status="expired", valid_until=_now(),
-                           updated_at=_now())
+        return self.update(
+            record["id"], record["user_id"], status="expired", valid_until=_now(), updated_at=_now()
+        )
 
 
 def default_store(dsn=None):
@@ -248,9 +261,18 @@ def default_store(dsn=None):
     return PostgresFactStore(dsn=dsn)
 
 
-def record_fact(user_id, key, content, source="user_stated", agent_id=None,
-                store=None, origin="user", trust_check=True, journal=None,
-                now=None):
+def record_fact(
+    user_id,
+    key,
+    content,
+    source="user_stated",
+    agent_id=None,
+    store=None,
+    origin="user",
+    trust_check=True,
+    journal=None,
+    now=None,
+):
     """Record a fact, superseding the active version of the same key.
 
     Runs the trust gate first (unless ``trust_check`` is False):
@@ -276,13 +298,16 @@ def record_fact(user_id, key, content, source="user_stated", agent_id=None,
         verdict = trust_module.check_text(content, origin=origin)
         if verdict["verdict"] in ("blocked", "quarantine"):
             if journal is not None:
-                kind = ("quarantined" if verdict["verdict"] == "quarantine"
-                        else "blocked")
+                kind = "quarantined" if verdict["verdict"] == "quarantine" else "blocked"
                 journal.log(
-                    "quarantine" if verdict["verdict"] == "quarantine"
-                    else "blocked",
-                    fact_id=None, before=None, after=None, kind=kind,
-                    note=verdict["marked_text"], origin=origin)
+                    "quarantine" if verdict["verdict"] == "quarantine" else "blocked",
+                    fact_id=None,
+                    before=None,
+                    after=None,
+                    kind=kind,
+                    note=verdict["marked_text"],
+                    origin=origin,
+                )
             return {
                 "stored": False,
                 "quarantined": True,
@@ -311,20 +336,30 @@ def record_fact(user_id, key, content, source="user_stated", agent_id=None,
     if status == "active":
         for old in store.list_for_key(user_id, key, agent_id=agent_id):
             if old["status"] == "active":
-                store.update(old["id"], user_id, status="superseded",
-                             valid_until=now, superseded_by=fact_id,
-                             updated_at=now)
+                store.update(
+                    old["id"],
+                    user_id,
+                    status="superseded",
+                    valid_until=now,
+                    superseded_by=fact_id,
+                    updated_at=now,
+                )
     stored = store.insert(record)
     stored["stored"] = True
     if journal is not None:
-        journal.log("record", fact_id=stored["id"], before=None,
-                    after=stored, origin=origin)
+        journal.log("record", fact_id=stored["id"], before=None, after=stored, origin=origin)
     return stored
 
 
-def supersede_fact(user_id, fact_id, replacement_content=None,
-                   source="user_confirmed", store=None, journal=None,
-                   now=None):
+def supersede_fact(
+    user_id,
+    fact_id,
+    replacement_content=None,
+    source="user_confirmed",
+    store=None,
+    journal=None,
+    now=None,
+):
     """Supersede a fact, optionally recording a replacement.
 
     With ``replacement_content`` the replacement is recorded as a
@@ -340,18 +375,21 @@ def supersede_fact(user_id, fact_id, replacement_content=None,
         raise KeyError(f"fact not found: {fact_id}")
     if replacement_content is not None:
         new = record_fact(
-            user_id, old["key"], replacement_content, source=source,
-            agent_id=old.get("agent_id"), store=store, journal=None,
-            now=now)
+            user_id,
+            old["key"],
+            replacement_content,
+            source=source,
+            agent_id=old.get("agent_id"),
+            store=store,
+            journal=None,
+            now=now,
+        )
         if journal is not None:
-            journal.log("supersede", fact_id=old["id"],
-                        before=old, after=new)
+            journal.log("supersede", fact_id=old["id"], before=old, after=new)
         return {"old": store.get(fact_id, user_id), "new": new}
-    updated = store.update(fact_id, user_id, status="superseded",
-                           valid_until=now, updated_at=now)
+    updated = store.update(fact_id, user_id, status="superseded", valid_until=now, updated_at=now)
     if journal is not None:
-        journal.log("supersede", fact_id=fact_id, before=old,
-                    after=updated)
+        journal.log("supersede", fact_id=fact_id, before=old, after=updated)
     return {"old": updated, "new": None}
 
 
@@ -365,8 +403,7 @@ def expire_fact(user_id, fact_id, store=None, journal=None, now=None):
     old = store.get(fact_id, user_id)
     if old is None:
         raise KeyError(f"fact not found: {fact_id}")
-    updated = store.update(fact_id, user_id, status="expired",
-                           valid_until=now, updated_at=now)
+    updated = store.update(fact_id, user_id, status="expired", valid_until=now, updated_at=now)
     if journal is not None:
         journal.log("expire", fact_id=fact_id, before=old, after=updated)
     return updated
@@ -388,20 +425,22 @@ def restore_fact(user_id, fact_id, store=None, journal=None, now=None):
     if old["status"] == "active":
         raise ValueError(f"fact is already active: {fact_id}")
     if old["status"] in ("proposed", "rejected"):
-        raise ValueError(
-            f"cannot restore a {old['status']} fact: {fact_id}")
-    for other in store.list_for_key(user_id, old["key"],
-                                    agent_id=old.get("agent_id")):
+        raise ValueError(f"cannot restore a {old['status']} fact: {fact_id}")
+    for other in store.list_for_key(user_id, old["key"], agent_id=old.get("agent_id")):
         if other["status"] == "active" and other["id"] != fact_id:
-            store.update(other["id"], user_id, status="superseded",
-                         valid_until=now, superseded_by=fact_id,
-                         updated_at=now)
-    restored = store.update(fact_id, user_id, status="active",
-                            valid_until=None, superseded_by=None,
-                            updated_at=now)
+            store.update(
+                other["id"],
+                user_id,
+                status="superseded",
+                valid_until=now,
+                superseded_by=fact_id,
+                updated_at=now,
+            )
+    restored = store.update(
+        fact_id, user_id, status="active", valid_until=None, superseded_by=None, updated_at=now
+    )
     if journal is not None:
-        journal.log("restore", fact_id=fact_id, before=old,
-                    after=restored)
+        journal.log("restore", fact_id=fact_id, before=old, after=restored)
     return restored
 
 
@@ -433,5 +472,4 @@ def get_fact_at(user_id, key, at, store=None, agent_id=None):
 def list_active_facts(user_id, store=None, agent_id=None):
     """Active facts of the user (the current profile layer)."""
     store = store or default_store()
-    return store.list_user(user_id, statuses=("active",),
-                           agent_id=agent_id)
+    return store.list_user(user_id, statuses=("active",), agent_id=agent_id)

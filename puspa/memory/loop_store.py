@@ -60,8 +60,7 @@ def create_schema(dsn: str | None = None) -> None:
     because both tables reference them.
     """
     sql = (
-        Path(__file__).resolve().parent.parent.parent
-        / "infra" / "schema_learning_loop.sql"
+        Path(__file__).resolve().parent.parent.parent / "infra" / "schema_learning_loop.sql"
     ).read_text(encoding="utf-8")
     with psycopg.connect(_resolve_dsn(dsn), autocommit=True) as conn:
         conn.execute(sql)
@@ -85,8 +84,7 @@ def serialize_loop(loop) -> dict:
         for experience_id in (correction.get("experience_ids") or [])
     }
     clean_corrections = {
-        str(task): json.loads(_to_json(correction))
-        for task, correction in corrections.items()
+        str(task): json.loads(_to_json(correction)) for task, correction in corrections.items()
     }
     clean_experiences = [
         json.loads(_to_json(experience))
@@ -183,25 +181,24 @@ def save_loop_state(user_id, agent_id, loop, *, dsn=None) -> dict:
 
 def load_loop_state(user_id, agent_id, *, dsn=None) -> dict | None:
     """Load a saved loop state, or None when nothing was saved."""
-    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT task, predicted, observed, error, source,"
-                " feedback_source, correction_count, experience_ids"
-                " FROM loop_corrections"
-                " WHERE user_id = %s AND agent_id = %s",
-                (str(user_id), str(agent_id)),
-            )
-            correction_rows = cur.fetchall()
-            cur.execute(
-                "SELECT id, task, kind, source, feedback_source,"
-                " verdict, predicted, observed, error, context"
-                " FROM loop_experiences"
-                " WHERE user_id = %s AND agent_id = %s"
-                " ORDER BY position",
-                (str(user_id), str(agent_id)),
-            )
-            experience_rows = cur.fetchall()
+    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT task, predicted, observed, error, source,"
+            " feedback_source, correction_count, experience_ids"
+            " FROM loop_corrections"
+            " WHERE user_id = %s AND agent_id = %s",
+            (str(user_id), str(agent_id)),
+        )
+        correction_rows = cur.fetchall()
+        cur.execute(
+            "SELECT id, task, kind, source, feedback_source,"
+            " verdict, predicted, observed, error, context"
+            " FROM loop_experiences"
+            " WHERE user_id = %s AND agent_id = %s"
+            " ORDER BY position",
+            (str(user_id), str(agent_id)),
+        )
+        experience_rows = cur.fetchall()
     if not correction_rows and not experience_rows:
         return None
     corrections = {}
@@ -253,14 +250,12 @@ def delete_loop_state(user_id, agent_id, *, dsn=None) -> bool:
     with psycopg.connect(_resolve_dsn(dsn)) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM loop_experiences"
-                " WHERE user_id = %s AND agent_id = %s",
+                "DELETE FROM loop_experiences WHERE user_id = %s AND agent_id = %s",
                 (str(user_id), str(agent_id)),
             )
             experiences_deleted = cur.rowcount
             cur.execute(
-                "DELETE FROM loop_corrections"
-                " WHERE user_id = %s AND agent_id = %s",
+                "DELETE FROM loop_corrections WHERE user_id = %s AND agent_id = %s",
                 (str(user_id), str(agent_id)),
             )
             corrections_deleted = cur.rowcount

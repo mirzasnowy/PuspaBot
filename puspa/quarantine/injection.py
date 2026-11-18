@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-__all__ = ["Finding", "scan", "mark"]
+__all__ = ["Finding", "mark", "scan"]
 
 _LEVEL_RANK = {"low": 0, "in_progress": 1, "high": 2}
 
@@ -37,10 +37,22 @@ _PATTERNS: list[tuple[str, str, str]] = [
     # --- tinggi: pengambilalihan instruksi ---
     (r"abaikan\s+(semua\s+)?instruksi", "abaikan instruksi", "high"),
     (r"lupakan\s+(semua\s+)?instruksi", "lupakan instruksi", "high"),
-    (r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?", "ignore previous instructions", "high"),
-    (r"disregard\s+(all\s+)?(previous|prior|above)\s+instructions?", "disregard instructions", "high"),
+    (
+        r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?",
+        "ignore previous instructions",
+        "high",
+    ),
+    (
+        r"disregard\s+(all\s+)?(previous|prior|above)\s+instructions?",
+        "disregard instructions",
+        "high",
+    ),
     (r"override\s+(your|the)\s+instructions?", "override instructions", "high"),
-    (r"(reveal|show|print|tampilkan|ungkapkan)\s+(your|the)\s+(system\s+)?prompt", "reveal system prompt", "high"),
+    (
+        r"(reveal|show|print|tampilkan|ungkapkan)\s+(your|the)\s+(system\s+)?prompt",
+        "reveal system prompt",
+        "high",
+    ),
     (r"system\s+prompt", "system prompt", "high"),
     (r"jailbreak", "jailbreak", "high"),
     (r"kamu\s+adalah\s+(sekarang\s+)?", "kamu adalah (peran baru)", "high"),
@@ -52,11 +64,27 @@ _PATTERNS: list[tuple[str, str, str]] = [
     (r"anda\s+harus\b", "anda harus", "high"),
     (r"kamu\s+wajib\b", "kamu wajib", "high"),
     (r"you\s+must\b", "you must", "high"),
-    (r"jangan\s+(beri\s?tahu|bilang|ceritakan|sampaikan)\b[^.]{0,40}(user|pengguna|siapa\s*pun|siapapun|orang\s*lain)", "jangan beri tahu user", "high"),
+    (
+        r"jangan\s+(beri\s?tahu|bilang|ceritakan|sampaikan)\b[^.]{0,40}(user|pengguna|siapa\s*pun|siapapun|orang\s*lain)",
+        "jangan beri tahu user",
+        "high",
+    ),
     (r"do\s+not\s+tell\s+the\s+user\b", "do not tell the user", "high"),
-     (r"(kirim|kirimkan|send|transfer|bayar|pay)\s+[^.]{0,30}(uang|dana|balance|password|kata\s+sandi|otp|token|api[_\s-]?key|key|data\s+pribadi)", "perintah kirim/bayar rahasia", "high"),
-    (r"(kirim|kirimkan|berikan|tunjukkan|ungkapkan)\s+[^.]{0,30}(password|kata\s+sandi|otp|token|api[_\s-]?key)", "minta kredensial", "high"),
-    (r"(send|transfer|pay)\s+[^.]{0,30}(money|password|otp|token|api[_\s-]?key|funds)", "send/transfer secret", "high"),
+    (
+        r"(kirim|kirimkan|send|transfer|bayar|pay)\s+[^.]{0,30}(uang|dana|balance|password|kata\s+sandi|otp|token|api[_\s-]?key|key|data\s+pribadi)",
+        "perintah kirim/bayar rahasia",
+        "high",
+    ),
+    (
+        r"(kirim|kirimkan|berikan|tunjukkan|ungkapkan)\s+[^.]{0,30}(password|kata\s+sandi|otp|token|api[_\s-]?key)",
+        "minta kredensial",
+        "high",
+    ),
+    (
+        r"(send|transfer|pay)\s+[^.]{0,30}(money|password|otp|token|api[_\s-]?key|funds)",
+        "send/transfer secret",
+        "high",
+    ),
     (r"bayar\s+sekarang\b", "bayar sekarang", "high"),
     (r"transfer\s+sekarang\b", "transfer sekarang", "high"),
     # --- sedang: imperatif umum + URL ---

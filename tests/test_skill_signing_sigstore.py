@@ -22,18 +22,17 @@ pytest does not collect that module's tests through this one.
 import base64
 import json
 
-import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-import puspa.policy.sigstore_verify as sigstore_verify
+from puspa.policy import sigstore_verify
 from puspa.policy.signing import TransparencyLog
 from puspa.policy.skill_signing import (
     load_skill,
-    sign_skill as sign_manifest,
-)
-from puspa.policy.skill_signing import (
     sign_skill_provenance,
     verify_skill,
+)
+from puspa.policy.skill_signing import (
+    sign_skill as sign_manifest,
 )
 
 IDENTITY = "william@yossarian.net"
@@ -75,15 +74,20 @@ def _make_skill(tmp_path, name=None):
         "connectors": {},
         "author": "community",
     }
-    (skill_dir / "manifest.json").write_text(
-        json.dumps(manifest, indent=2), encoding="utf-8"
-    )
+    (skill_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return skill_dir
 
 
-def _declare_sigstore(skill_dir, *, identity=IDENTITY, issuer=ISSUER,
-                      trust_root="staging", bundle="bundle.sigstore",
-                      artifact="artifact.txt", omit=()):
+def _declare_sigstore(
+    skill_dir,
+    *,
+    identity=IDENTITY,
+    issuer=ISSUER,
+    trust_root="staging",
+    bundle="bundle.sigstore",
+    artifact="artifact.txt",
+    omit=(),
+):
     """Add the ``sigstore`` declaration to the manifest (unsigned).
 
     The caller signs the manifest afterwards, so the local signature
@@ -107,12 +111,8 @@ def _declare_sigstore(skill_dir, *, identity=IDENTITY, issuer=ISSUER,
 def _write_fixture_files(skill_dir, *, bundle_bytes=None, artifact_bytes=None):
     """Write the staging fixture bundle + artifact into the skill dir."""
     artifact, bundle = _fixture_artifact_and_bundle()
-    (skill_dir / "artifact.txt").write_bytes(
-        artifact if artifact_bytes is None else artifact_bytes
-    )
-    (skill_dir / "bundle.sigstore").write_bytes(
-        bundle if bundle_bytes is None else bundle_bytes
-    )
+    (skill_dir / "artifact.txt").write_bytes(artifact if artifact_bytes is None else artifact_bytes)
+    (skill_dir / "bundle.sigstore").write_bytes(bundle if bundle_bytes is None else bundle_bytes)
 
 
 def _signed_skill_with_bundle(tmp_path, **declare_kwargs):
@@ -137,6 +137,7 @@ def _tampered_bundle_bytes():
 
 # --- Happy path ------------------------------------------------------------
 
+
 def test_valid_sigstore_bundle_verifies(tmp_path):
     skill_dir, _sk, pk = _signed_skill_with_bundle(tmp_path)
     assert verify_skill(skill_dir, pk) is True
@@ -144,13 +145,14 @@ def test_valid_sigstore_bundle_verifies(tmp_path):
 
 
 def test_valid_bundle_with_provenance_verifies(tmp_path):
-    skill_dir, sk, pk = _signed_skill_with_bundle(tmp_path)
+    skill_dir, _sk, pk = _signed_skill_with_bundle(tmp_path)
     log = TransparencyLog()
     sign_skill_provenance(skill_dir, PROVENANCE_IDENTITY, log)
     assert verify_skill(skill_dir, pk, log, PROVENANCE_IDENTITY) is True
 
 
 # --- Rejections -------------------------------------------------------------
+
 
 def test_tampered_bundle_rejected_despite_valid_local_signature(tmp_path):
     skill_dir, _sk, pk = _signed_skill_with_bundle(tmp_path)
@@ -168,16 +170,12 @@ def test_tampered_artifact_rejected(tmp_path):
 
 
 def test_wrong_identity_rejected(tmp_path):
-    skill_dir, _sk, pk = _signed_skill_with_bundle(
-        tmp_path, identity="attacker@example.com"
-    )
+    skill_dir, _sk, pk = _signed_skill_with_bundle(tmp_path, identity="attacker@example.com")
     assert verify_skill(skill_dir, pk) is False
 
 
 def test_wrong_issuer_rejected(tmp_path):
-    skill_dir, _sk, pk = _signed_skill_with_bundle(
-        tmp_path, issuer="https://example.com"
-    )
+    skill_dir, _sk, pk = _signed_skill_with_bundle(tmp_path, issuer="https://example.com")
     assert verify_skill(skill_dir, pk) is False
 
 
@@ -221,6 +219,7 @@ def test_default_artifact_is_manifest(tmp_path):
 
 # --- Malformed declarations fail closed ------------------------------------
 
+
 def test_malformed_sigstore_declaration_rejected(tmp_path):
     sk, pk = _keys()
     skill_dir = _make_skill(tmp_path)
@@ -233,9 +232,7 @@ def test_malformed_sigstore_declaration_rejected(tmp_path):
 
 
 def test_bundle_path_escaping_skill_dir_rejected(tmp_path):
-    skill_dir, _sk, pk = _signed_skill_with_bundle(
-        tmp_path, bundle="../outside.sigstore"
-    )
+    skill_dir, _sk, pk = _signed_skill_with_bundle(tmp_path, bundle="../outside.sigstore")
     assert verify_skill(skill_dir, pk) is False
 
 
@@ -250,6 +247,7 @@ def test_missing_library_fails_closed(tmp_path, monkeypatch):
 
 
 # --- No bundle declared: local mechanism unchanged --------------------------
+
 
 def test_no_sigstore_declaration_unchanged(tmp_path):
     sk, pk = _keys()
@@ -273,18 +271,12 @@ def test_stray_bundle_file_without_declaration_is_ignored(tmp_path):
 
 # --- Caller parameters override the manifest -------------------------------
 
+
 def test_parameter_identity_issuer_override(tmp_path):
     # Manifest declares the wrong issuer; the caller pins the right one.
-    skill_dir, _sk, pk = _signed_skill_with_bundle(
-        tmp_path, issuer="https://example.com"
-    )
+    skill_dir, _sk, pk = _signed_skill_with_bundle(tmp_path, issuer="https://example.com")
     assert verify_skill(skill_dir, pk) is False
-    assert (
-        verify_skill(
-            skill_dir, pk, sigstore_identity=IDENTITY, sigstore_issuer=ISSUER
-        )
-        is True
-    )
+    assert verify_skill(skill_dir, pk, sigstore_identity=IDENTITY, sigstore_issuer=ISSUER) is True
     # And a wrong override rejects a skill the manifest would pass.
     skill_dir, _sk, pk = _signed_skill_with_bundle(tmp_path)
     assert verify_skill(skill_dir, pk, sigstore_identity="attacker@example.com") is False

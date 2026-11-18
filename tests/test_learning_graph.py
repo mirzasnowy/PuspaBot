@@ -23,15 +23,9 @@ def _graph():
         declares=["bill", "payment", "pln", "electricity"],
     )
     graph.add_skill("price-compare", declares=["price", "shop", "compare"])
-    graph.add_memory_chunk(
-        "c1", "User pays the PLN electricity bill every month on the 5th."
-    )
-    graph.add_memory_chunk(
-        "c2", "User compared rice cooker prices across shops yesterday."
-    )
-    graph.add_memory_chunk(
-        "c3", "User likes hiking in the mountains on weekends."
-    )
+    graph.add_memory_chunk("c1", "User pays the PLN electricity bill every month on the 5th.")
+    graph.add_memory_chunk("c2", "User compared rice cooker prices across shops yesterday.")
+    graph.add_memory_chunk("c3", "User likes hiking in the mountains on weekends.")
     return graph
 
 
@@ -86,10 +80,7 @@ def test_lexical_overlap_links_matching_pairs_only():
     assert ("skill:price-compare", "memory:c2") in kinds
     assert not any(target == "memory:c3" for _, target in kinds)
     # c1 links to bill-payer on bill/payment/pln/electricity overlap.
-    edge = next(
-        e for e in created
-        if e.source == "skill:bill-payer" and e.target == "memory:c1"
-    )
+    edge = next(e for e in created if e.source == "skill:bill-payer" and e.target == "memory:c1")
     assert edge.kind == EDGE_LEXICAL
     assert 0.3 <= edge.weight <= 1.0
 
@@ -98,9 +89,7 @@ def test_lexical_overlap_threshold_is_honest():
     graph = _graph()
     full = graph.link_lexical_overlap(threshold=1.0)
     # Only price-compare/c2 overlaps fully (price, shop, compare).
-    assert [(e.source, e.target) for e in full] == [
-        ("skill:price-compare", "memory:c2")
-    ]
+    assert [(e.source, e.target) for e in full] == [("skill:price-compare", "memory:c2")]
     assert graph.link_lexical_overlap(threshold=0.1)
     with pytest.raises(ValueError):
         graph.link_lexical_overlap(threshold=0.0)
@@ -124,11 +113,16 @@ def test_declarations_from_manifest(tmp_path):
     skill_dir = tmp_path / "bill-payer"
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text("# Bill Payer\n", encoding="utf-8")
-    (skill_dir / "manifest.json").write_text(json.dumps({
-        "name": "bill-payer",
-        "tools": ["pay_bill", "check_balance"],
-        "domains": ["electricity"],
-    }), encoding="utf-8")
+    (skill_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "name": "bill-payer",
+                "tools": ["pay_bill", "check_balance"],
+                "domains": ["electricity"],
+            }
+        ),
+        encoding="utf-8",
+    )
     declared = declarations_from_skill_dir(skill_dir)
     assert "pay_bill" in declared
     assert "electricity" in declared
@@ -152,9 +146,16 @@ def test_add_skill_from_dir_reads_declarations(tmp_path):
     skill_dir = tmp_path / "bill-payer"
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text("# Bill Payer\n", encoding="utf-8")
-    (skill_dir / "manifest.json").write_text(json.dumps({
-        "name": "bill-payer", "tools": ["pay_bill"], "domains": ["pln"],
-    }), encoding="utf-8")
+    (skill_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "name": "bill-payer",
+                "tools": ["pay_bill"],
+                "domains": ["pln"],
+            }
+        ),
+        encoding="utf-8",
+    )
     graph = LearningGraph()
     node = graph.add_skill_from_dir(skill_dir)
     assert node.id == "skill:bill-payer"
@@ -177,6 +178,4 @@ def test_json_round_trip(tmp_path):
     assert [node.id for node in restored.related_skills("c1")] == [
         node.id for node in graph.related_skills("c1")
     ]
-    assert restored.nodes["skill:bill-payer"].declares == (
-        graph.nodes["skill:bill-payer"].declares
-    )
+    assert restored.nodes["skill:bill-payer"].declares == (graph.nodes["skill:bill-payer"].declares)

@@ -126,11 +126,9 @@ class Allowlist:
         # pdamkotamakassar.go.id) atau "pdam-<nama>.co.id". Heuristik:
         # label berawalan "pdam" + TLD Indonesia (.id) diizinkan; "pdam"
         # di TLD lain (mis. pdamphishing.com) tetap ditolak.
-        if host.endswith(".id") and any(
-            label.startswith("pdam") for label in host.split(".")
-        ):
-            return True
-        return False
+        return bool(
+            host.endswith(".id") and any(label.startswith("pdam") for label in host.split("."))
+        )
 
 
 def is_allowed(url_or_host: str, allowlist: Allowlist | None = None) -> bool:
