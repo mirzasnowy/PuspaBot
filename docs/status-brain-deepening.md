@@ -295,6 +295,51 @@ modules + tests + wiring into the existing system. The goal is
 to make it as mature as possible, as complex as they are, with
 real work.
 
+### Kosmos brain design, folded into this phase (Nero, 18 Nov 2026 11:57 WIB)
+
+Design source of truth: `docs/kosmos-design.md` (English, 134
+lines, accepted as the brain design document). Product name
+stays Puspa; Kosmos is only the internal name for the brain
+design. The K items fold into THIS maturity phase, no new phase
+is created, and they do not start before Tier 2 and the rework
+are done.
+
+- K1 Intent Engine: intent as a distribution over three levels
+  (current desire, ongoing goal, long-term values). NEW.
+- K2 Act-or-ask rule: confidence x reversibility x stakes,
+  computed, not just a taxonomy. Folds into G4/G5.
+- K3 Bitemporal state: valid time vs known time, on beliefs and
+  ledger entries. NEW.
+- K4 Causal Ledger: hypotheses "X -> Y under condition C" with
+  strength, evidence, expiry. Extends the learning loop.
+- K5 Other-agent goal models: contact beliefs extended into
+  models of what other people want and will do. NEW.
+- K6 Ignorance map: track where the model is blind. NEW.
+- K7 Three-speed simulator: structure the existing simulator
+  into fast / medium / deep. Extends the world model.
+- K8 Outcome watcher: keep monitoring after "done". Folds into
+  G12 (extends the eval harness + learning loop).
+- K9 Daily sleep consolidation + monthly ontology review.
+  Folds into G7/G24, extends `consolidate.py`.
+- K10 Interruption budget for proactivity. NEW, small.
+- K11 Autonomy dial per area, moving with prediction
+  calibration; one serious failure in an irreversible area drops
+  the dial immediately. NEW.
+- K12 Audit log outside the agent's reach + kill switch +
+  export. Hardening.
+- K13 Anti-manipulation as a design rule: optimise for the
+  user's reflective goals, surface conflicts of interest, never
+  decide silently. Applies to all K items.
+
+Explicitly NOT taken literally: Presence sensory signals
+(silence, pulse, texture, warmth) are poetry, not a buildable
+PWA spec (the buildable core is kept: minimal interface,
+universal undo, layered "why?", rarely speak, one sentence);
+no literal internal prediction market (track-record weights
+only); fractal resolution + self-growing ontology are NOT
+promised to users (research-level, built incrementally at step
+5 of the doc's build order).
+
 ## Depth bar (Nero's order, 18 Nov 2026 ~10:52 WIB) and rework queue
 
 New bar "SANGAT DALAM", applies from now to all remaining
