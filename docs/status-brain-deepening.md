@@ -167,12 +167,42 @@ only), so paraphrased injections outside the signal set will pass.
 
 ## Known gaps carried forward
 
-- Learning loop corrections are still not persisted (wiring phase
-  gap); the Tier 2 learning-loop work should fix it as part of its
-  iteration if it touches that code.
+- Learning loop corrections are persisted since Gap 1 (commit 279cb361, 18 Nov 2026); the Tier 2 learning-loop work builds on that.
 - The deterministic reranker cannot judge semantic relevance; the
   real cross-encoder backend (FlagEmbedding `BAAI/bge-reranker-v2-m3`
   or sentence-transformers) is a follow-up dependency, not added.
 - The 51 em dashes in the old section of `docs/reuse.md` are
   pre-existing debt; no new em dash was added by this phase
   (verified by grep after each append).
+
+## Queued after Tier 2: repo maturity phase (Nero's order, 18 Nov 2026 ~10:44 WIB)
+
+Not started. An analysis agent is preparing a file-by-file
+comparison list of OpenBot vs DuskBot vs Puspa; that list does
+not exist yet, so this phase cannot start. When it arrives, it
+becomes the work list for the maturity phase: take how they work
+as boilerplate (design, features, architecture) and build
+Puspa's own version.
+
+Hard rule on taking: only patterns, design, and architecture are
+taken, then rewritten as Puspa's own code. Never copy code
+verbatim. DuskBot is PolyForm Noncommercial: study only, its code
+must not be used at all. OpenBot's license is checked first by
+the analysis agent before anything is taken from it. Copying
+their code would contaminate Puspa's repo license and block
+commercial use; keeping the repo clean is the point.
+
+Order is unchanged: wiring gaps, then Tier 2, then this phase.
+The deepening work does not stop for it (confirmed by Nero
+10:41 WIB). Build standard (Nero 10:50 WIB, emphasis added):
+this phase is BUILD work, not more analysis. Do not just
+theorize. Every missing part from the deficiency list is built
+file by file, following the granularity of the comparison repos
+(OpenBot, DuskBot, hermes-agent): each area becomes its own
+package with focused modules, not one giant file. Honesty rule:
+every file must be real working code that runs and is tested
+(SOLO suite green before commit + push), NOT an empty file or an
+empty scaffold to look numerous. The complexity must be real:
+modules + tests + wiring into the existing system. The goal is
+to make it as mature as possible, as complex as they are, with
+real work.

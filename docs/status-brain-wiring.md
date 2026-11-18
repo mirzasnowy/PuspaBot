@@ -381,3 +381,80 @@ only from observation, versioned with decay and contradiction
 following `puspa/memory/procedural.py`, persisted in the world
 store. Wide-world facts stay out of scope (graph and memory
 layer, covered by the HippoRAG and LightRAG deepening).
+
+### Gap 3: contact and habit beliefs
+
+Before: the world model only believed in prices, bills,
+schedules, and capabilities. It had no beliefs about contacts
+or the user's habits.
+
+Now: two new belief kinds in `puspa/world/model.py`, both only
+from observation, never invented, versioned with decay and
+contradiction following `puspa/memory/procedural.py` (trial to
+verified after 3 observations, decay back to trial after 90
+days without an observation, contradictions held as candidates,
+old versions kept in `history`, no demotion):
+
+- Contact beliefs (`_ContactBelief`): interaction patterns per
+  contact from observed task and message results: `reply_rate`,
+  `preferred_channel`, `mean_reply_delay_hours` (only from
+  replies actually observed). They enter through
+  `ingest_task_result` when the result carries a `contact_id`
+  (plus optional `channel`, `replied`, `reply_delay_hours`),
+  or through the new `contact_reply` action. Contradiction
+  follows the capability pattern: a verified belief with reply
+  rate at or above 0.8 (or at or below 0.2) contradicted twice
+  in a row is replaced by a new version; a single contradiction
+  is held as a candidate.
+- Habit beliefs (`_HabitBelief`): recurring patterns from the
+  user's own task history per task type: `peak_hour` (0-23),
+  `peak_weekday` (0-6), `mean_interval_days`. Hour and weekday
+  are only used when the observation actually carries them;
+  nothing is guessed. A habit is verified only on real
+  repetition (same hour or day at least twice, or a stable
+  interval over at least two gaps); one task forms no habit,
+  and scattered tasks form no pattern. Contradiction follows
+  the schedule pattern: 3 consecutive observations at a
+  different hour from a verified peak hour promote a new
+  version.
+
+Both can be predicted (`predict` for the new actions
+`contact_reply` and `habit_pattern`, answering "unknown" with
+no observation), scored through `update` (a miss becomes a
+misprediction to the learning loop), and covered by the
+`decay_stale_beliefs` sweep. Persistence (`puspa/world/store.py`
++ `puspa/world/__init__.py`): `contact_beliefs` and
+`habit_beliefs` join the snapshot state and JSON round-trip.
+No SQL schema change was needed: `world_beliefs.state` is
+already one JSONB column, so the new keys are stored without a
+new column or table. Old state without the new keys still
+restores (default `{}`). Commit
+cd825812bbbd47b24d882a9f1cdc24de15878d08. Tests:
+`tests/test_world_contact_habit.py` (15 new) plus 1 assertion
+updated in `tests/test_world_beliefs.py` (decay now also covers
+habit). Full suite SOLO after the fix: 933 passed, 5 skipped,
+1 warning.
+
+Honest limits: habit hour and weekday depend on data the caller
+sends. The model uses a day counter as its internal clock;
+`hour` and `weekday` only exist when a task result carries
+them, so without that data a habit can only learn from the
+interval between tasks, not from hour or day patterns. No
+wall-clock source was wired in this iteration. Contacts only
+learn from task results that name a `contact_id`; no wiring
+from a real messaging channel (WhatsApp or Telegram) to
+`ingest_task_result` exists yet, that belongs to the runtime and
+channel layer, not to this model. Wide-world facts stay out of
+scope, as ordered. Preferred channel is raw frequency, with no
+account of context (an urgent channel vs an ordinary one); it
+mirrors the data, it does not judge it.
+
+All three wiring gaps are now closed. The remaining honest
+limits from the wiring phase are: `world_prediction` and
+`world_misprediction` events do not reach the production ledger
+(closed event-type set; the ledger copy lives in the handoff
+event content); the curriculum daily cap counts per runner
+instance; CLI tests cannot be collected with pytest on this
+host; old Indonesian docstrings and em dashes in pre-existing
+files were not touched; a real end-to-end sandbox run still
+needs a host with working Docker.
