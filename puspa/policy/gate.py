@@ -29,6 +29,8 @@ import time
 import uuid
 from dataclasses import dataclass
 
+from puspa.i18n.server_lines import render as render_server_line
+
 from .tokens import (
     TokenError,
     canonical_json,
@@ -152,7 +154,7 @@ class Gate:
         """
         level = tool_permission(token_payload, tool)
         if level == "deny":
-            raise GateDenied(f"token tidak mengizinkan tool {tool!r}")
+            raise GateDenied(render_server_line("error.token_tool_not_allowed", tool=repr(tool)))
         return level
 
     def _resolve_token(self, token, user_id, agent_id):
@@ -164,34 +166,44 @@ class Gate:
             tid = token_id(payload)
         elif isinstance(token, str):
             if self.public_key is None:
-                raise GateDenied("Gate butuh public_key untuk memverifikasi token string")
+                raise GateDenied(render_server_line("error.token_needs_public_key"))
             try:
                 payload = verify_token(token, self.public_key)
             except TokenError as exc:
-                raise GateDenied(f"token tidak valid: {exc}") from exc
+                raise GateDenied(
+                    render_server_line("error.token_invalid", detail=str(exc))
+                ) from exc
             tid = token_id(token)
         else:
-            raise GateDenied("token harus string atau payload dict")
+            raise GateDenied(render_server_line("error.token_wrong_type"))
         if payload.get("user_id") != user_id or payload.get("agent_id") != agent_id:
-            raise GateDenied("token bukan milik user/agen ini")
+            raise GateDenied(render_server_line("error.token_wrong_owner"))
         if payload.get("exp", 0) <= int(time.time()):
-            raise GateDenied("token sudah kedaluwarsa")
+            raise GateDenied(render_server_line("error.token_expired"))
         if is_revoked(tid):
-            raise GateDenied("token sudah dicabut")
+            raise GateDenied(render_server_line("error.token_revoked"))
         return payload, tid
 
     def _check_token_allows(self, payload, kind, content):
         if not _token_allows_kind(payload, kind):
-            raise GateDenied(f"token tidak mengizinkan aksi {kind!r}")
+            raise GateDenied(
+                render_server_line("error.token_action_not_allowed", action=repr(kind))
+            )
         domain = content.get("domain")
         if domain is not None and domain not in payload.get("domains", []):
-            raise GateDenied(f"token tidak mengizinkan domain {domain!r}")
+            raise GateDenied(
+                render_server_line("error.token_domain_not_allowed", domain=repr(domain))
+            )
         if kind == "prepare_payment":
             nominal = content.get("nominal")
             if nominal is not None:
                 rupiah_max = payload.get("budget", {}).get("rupiah_max")
                 if rupiah_max is not None and nominal > rupiah_max:
-                    raise GateDenied(f"nominal Rp{nominal} melebihi anggaran token Rp{rupiah_max}")
+                    raise GateDenied(
+                        render_server_line(
+                            "error.token_nominal_over_budget", nominal=nominal, budget=rupiah_max
+                        )
+                    )
 
     # -- API kontrak --------------------------------------------------
     def request_approval(self, *, user_id, agent_id, token, kind, content: dict) -> ApprovalRequest:
@@ -201,9 +213,9 @@ class Gate:
         ``persetujuan_diminta`` lewat ``log`` bila ada.
         """
         if kind not in KINDS:
-            raise GateDenied(f"kind aksi tidak dikenal: {kind!r}")
+            raise GateDenied(render_server_line("error.unknown_action_kind", kind=repr(kind)))
         if not isinstance(content, dict):
-            raise GateDenied("isi aksi harus dict")
+            raise GateDenied(render_server_line("error.action_content_must_be_dict"))
         payload, tid = self._resolve_token(token, user_id, agent_id)
         self._check_token_allows(payload, kind, content)
         request = ApprovalRequest(
@@ -233,11 +245,15 @@ class Gate:
         """Setujui permintaan. Hanya pemilik user yang boleh."""
         request = self._requests.get(request_id)
         if request is None:
-            raise GateDenied(f"permintaan tidak dikenal: {request_id!r}")
+            raise GateDenied(
+                render_server_line("error.unknown_request_id", request_id=repr(request_id))
+            )
         if request.user_id != user_id:
-            raise GateDenied("hanya pemilik user yang boleh menyetujui")
+            raise GateDenied(render_server_line("error.only_owner_may_approve"))
         if request.status != "requested":
-            raise GateDenied(f"permintaan sudah berstatus {request.status!r}")
+            raise GateDenied(
+                render_server_line("error.request_already_status", status=repr(request.status))
+            )
         request.status = "approved"
         self._log(
             "approval_granted",
@@ -257,29 +273,34 @@ class Gate:
         """
         request = self._requests.get(request_id)
         if request is None:
-            raise GateDenied(f"permintaan tidak dikenal: {request_id!r}")
+            raise GateDenied(
+                render_server_line("error.unknown_request_id", request_id=repr(request_id))
+            )
         if request.executed:
             return request.result
         if request.status != "approved":
-            self._deny(request, f"aksi belum disetujui (status: {request.status!r})")
+            self._deny(
+                request,
+                render_server_line("error.action_not_approved", status=repr(request.status)),
+            )
         if _content_hash(request.content) != request.content_hash:
             self._deny(
                 request, "action content changed after approval; approval void", invalidate=True
             )
         # Token masih valid? (cek ulang exp + pencabutan)
         if request.token_payload.get("exp", 0) <= int(time.time()):
-            self._deny(request, "token sudah kedaluwarsa", invalidate=True)
+            self._deny(request, render_server_line("error.token_expired"), invalidate=True)
         if is_revoked(request.token_id):
-            self._deny(request, "token sudah dicabut", invalidate=True)
+            self._deny(request, render_server_line("error.token_revoked"), invalidate=True)
         # Batas belanja (cek independen dari persetujuan).
         if request.kind == "prepare_payment":
             nominal = request.content.get("nominal", 0)
             if self.spending is None:
-                self._deny(request, "tidak ada penegak batas belanja belanja; pembayaran ditolak")
+                self._deny(request, render_server_line("error.no_spending_enforcer"))
             if not self._spending_ok(request.user_id, nominal):
                 self._deny(
                     request,
-                    f"batas belanja tidak mengizinkan nominal Rp{nominal}",
+                    render_server_line("error.spending_limit_denied", nominal=nominal),
                 )
         result = executor(request.content)
         request.result = result

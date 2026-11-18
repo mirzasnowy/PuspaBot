@@ -35,6 +35,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from ..billing.config import TASK_COST_CEILING_IDR
+from ..i18n.server_lines import render as render_server_line
 from ..memory.schema import resolve_dsn
 
 HINT_SCHEMA_SQL = """
@@ -59,72 +60,62 @@ class Hint:
     action_label: str
 
 
+def _format_rupiah(amount_idr: int) -> str:
+    """Format an amount as Indonesian Rupiah (``Rp2.000``)."""
+    return f"Rp{amount_idr:,}".replace(",", ".")
+
+
 #: The full hint registry, in the order hints are presented when
 #: several become due at once. Keep this small on purpose: a hint
 #: earns its place only by being tied to a real behaviour branch.
+#:
+#: Copy comes from server-lines (``puspa.i18n``), in Indonesian —
+#: the server never mixes English into the Indonesian UI (G18).
+#: Only the flag, trigger and screen are code; every sentence the
+#: user reads lives in ``puspa/i18n/locales/id.json``.
 HINTS: tuple[Hint, ...] = (
     Hint(
         flag="first_modules_visit",
         trigger="first_modules_visit",
-        title="Modules add abilities",
-        body=(
-            "This is the Modules screen. A module adds one ability to "
-            "Puspa -- for example a price check or a bill reminder. "
-            "You can turn modules on and off here; nothing runs until "
-            "you ask for it."
-        ),
+        title=render_server_line("hint.first_modules_visit.title"),
+        body=render_server_line("hint.first_modules_visit.body"),
         screen="modules",
-        action_label="Open Modules",
+        action_label=render_server_line("hint.first_modules_visit.action_label"),
     ),
     Hint(
         flag="first_approval",
         trigger="first_approval",
-        title="Puspa asks before it acts",
-        body=(
-            "This is an approval request. Puspa never spends money or "
-            "changes anything outside a chat without asking you first. "
-            "Approve only what you recognise; you can always say no."
-        ),
+        title=render_server_line("hint.first_approval.title"),
+        body=render_server_line("hint.first_approval.body"),
         screen="tasks",
-        action_label="See the request",
+        action_label=render_server_line("hint.first_approval.action_label"),
     ),
     Hint(
         flag="first_memory_use",
         trigger="first_memory_use",
-        title="Puspa remembers what you tell it",
-        body=(
-            "Puspa just used its memory for the first time. Facts you "
-            "confirm are stored on your own machine and shown on the "
-            "Memory screen, where you can correct or delete them."
-        ),
+        title=render_server_line("hint.first_memory_use.title"),
+        body=render_server_line("hint.first_memory_use.body"),
         screen="memory",
-        action_label="Open Memory",
+        action_label=render_server_line("hint.first_memory_use.action_label"),
     ),
     Hint(
         flag="first_costly_task",
         trigger="first_costly_task",
-        title="That task reached the cost ceiling",
-        body=(
-            "This task cost as much as one task is allowed to cost "
-            "(Rp2.000). The Insights screen shows where the tokens "
-            "went, per model and per tool, so you can see what was "
-            "expensive."
+        title=render_server_line("hint.first_costly_task.title"),
+        body=render_server_line(
+            "hint.first_costly_task.body",
+            ceiling=_format_rupiah(TASK_COST_CEILING_IDR),
         ),
         screen="insights",
-        action_label="Open Insights",
+        action_label=render_server_line("hint.first_costly_task.action_label"),
     ),
     Hint(
         flag="first_billing_row",
         trigger="first_billing_row",
-        title="Your first usage is recorded",
-        body=(
-            "Puspa just recorded its first usage: tokens and cost for "
-            "one turn. The Insights screen totals it per day, per "
-            "model, and per tool -- nothing is estimated or rounded "
-            "away."
-        ),
+        title=render_server_line("hint.first_billing_row.title"),
+        body=render_server_line("hint.first_billing_row.body"),
         screen="insights",
-        action_label="Open Insights",
+        action_label=render_server_line("hint.first_billing_row.action_label"),
     ),
 )
 

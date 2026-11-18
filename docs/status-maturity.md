@@ -674,3 +674,98 @@ needs a Docker host/VPS, after the MVP.
 Remaining: G18 (i18n) -> G17 (skill narrowing + search_tools) ->
 Kosmos K1, K3, K4, K5, K6, K10, K11, K12, K13. Then uji + 15 gates
 + 10 reference tasks (waiting on Nero's decisions).
+
+## Wave 19: G18 (i18n — Indonesian server-lines first, DONE 19 Nov 2026)
+
+G18 is medium and deferred: full i18n is global-expansion work.
+What was built now is the boilerplate the report ordered —
+Indonesian `server-lines` from the start, with the locale
+structure ready for more languages later (worker 49bd61c0,
+verified centrally by the coordinator). No whole-UI translation,
+no 17 locales.
+
+What was built (new package `puspa/i18n/`, all files under 1000
+lines; tests 362 lines; docs 137 lines):
+- `server_lines.py` — `render(key, locale="id", **vars)` with
+  named placeholders only. Fail-closed: unknown key raises
+  UnknownMessageKey, missing variable raises MissingVariable
+  naming the variable, unknown locale falls back to Indonesian
+  (the default) and records the fallback in fallback_records()
+  — never crashes, never silently serves English. There is no
+  English catalog at all, so there is nothing English to fall
+  back to. The default catalog loads at import, so a broken
+  `id.json` fails startup, not the first user.
+- `locales.py` — JSON locale loader + validation: every key in
+  the default locale must exist in every other locale, no
+  orphan keys; missing default locale raises. With only `id`
+  present the check passes trivially and guards future
+  additions. No source-hash check (DuskBot's 8 MB file) —
+  documented as the honest minimum for one locale.
+- `locales/id.json` — 36 keys: 21 `error.*` + 15 `hint.*`
+  (5 hints x title/body/action_label).
+- `docs/i18n.md` — locale model, server-lines rule, how to add
+  a language later (deferred, 5 steps), wired/unwired lists,
+  honest limits.
+
+What was wired (audit first, then wired; call sites import
+`render as render_server_line`):
+- PWA API — the 401 `{"error": "belum masuk"}` at 17 sites
+  (app.py x15, insights_api.py x1, onboarding_api.py x1), the
+  503 Google-login-not-configured error, and the 404
+  `{"error": "permintaan tidak dikenal"}` on
+  `POST /api/persetujuan/{request_id}`. Wire responses are
+  byte-identical to before.
+- Onboarding hints (`puspa/onboarding/hints.py`) — all 5 hints
+  now render Indonesian copy from server-lines (15 call sites);
+  this was the one place the server wrote English to users.
+  Old copy ("Modules add abilities", "Puspa asks before it
+  acts", ...) is gone from `puspa/*.py` (0 occurrences left).
+  The costly-task body takes the ceiling as a named variable
+  (`{ceiling}` -> `Rp2.000` from `TASK_COST_CEILING_IDR`).
+- Approval gate (`puspa/policy/gate.py`) — all 21 Indonesian
+  GateDenied messages now come from server-lines (21 call
+  sites), byte-identical. One real fix along the way: the old
+  string repeated a word ("tidak ada penegak batas belanja
+  **belanja**"); the catalog carries the corrected sentence,
+  covered by a negative regression test in
+  tests/test_i18n_wiring.py. No existing test asserted the old
+  typo'd string, so nothing else changed.
+
+Deliberately left unwired (documented in `docs/i18n.md`):
+internal logs and English developer messages
+(`puspa/accounts/`, `puspa/auth/`, `puspa/billing/`, ...) and
+the `str(exc)` 400 responses that surface them; `approvals.py`
+`decide()` reasons and the gate's "action content changed
+after approval" message (English developer text, asserted
+verbatim by tests/test_approvals_taxonomy.py); the trial error
+query param (an error code, not a sentence); the PWA client
+(TypeScript) and Jinja templates (server sentences only in
+this pass).
+
+Suite (coordinator, SOLO, 19 Nov 2026): 3,116 passed, 23 skipped,
+1 warning, 18m50s, EXIT 0 (log hidden_files/suite-wave19-g18.log).
+Reconciliation: 3,094 (Wave 18) + 22 (G18 module tests) = 3,116;
+skipped unchanged at 23. (A first attempt was SIGTERM'd at 61%
+by a VM replacement that also wiped Postgres; the run above is
+the clean re-run after recovery: replay reinstalled
+postgresql-16 16.15 + pgvector 0.6.0, cluster restarted, role
+root recreated, infra/schema_core.sql re-run, RLS re-verified.)
+Module tests (coordinator re-run):
+22 passed. Neighbor modules (coordinator re-run): 166 passed
+(onboarding hints, PWA insights/onboarding APIs, test_pwa,
+gate, approvals taxonomy, WebUI lite, model settings API,
+ratchet). Ruff check + format: clean. Mypy on the changed
+files: clean.
+
+Honest limits: one locale only; nothing in the request path
+selects a locale yet (every call site relies on the `"id"`
+default). No pluralisation / gender / date-number rules; no
+source-hash check (cannot catch a stale translation until a
+second locale exists). `str(exc)` 400 responses still surface
+module error text verbatim. No full i18n / no 17 locales, per
+the G18 "ditunda" scope — other locales are deferred to global
+expansion.
+
+Remaining: G17 (skill narrowing + search_tools) -> Kosmos K1,
+K3, K4, K5, K6, K10, K11, K12, K13. Then uji + 15 gates + 10
+reference tasks (waiting on Nero's decisions).
