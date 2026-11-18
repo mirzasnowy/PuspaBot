@@ -285,7 +285,7 @@ tables that store them are PLURAL (`false_reports`, `data_consents`).
 | pengaturan.html | settings.html |
 | masuk.html | login.html |
 | kantor.html | office.html |
-| panel_bukti.html | evidence_panel.html |
+| panel_bukti.html | panel_evidence.html |
 | base.html, chat.html | (unchanged) |
 
 ## File / directory renames
@@ -312,7 +312,9 @@ tables that store them are PLURAL (`false_reports`, `data_consents`).
 ## Decisions
 
 - `isi` → `content` everywhere (not `payload` for the ledger).
-- Template file uses underscore `evidence_panel.html`.
+- Template file uses underscore `panel_evidence.html` (renamed
+  from `evidence_panel.html` in G32: the route renders
+  `panel_evidence.html`, the old name never matched it).
 - `waktu` → `created_at` globally (ledger/recordings).
 - `jumlah` → `amount` (component); `anggaran_baca.jumlah` (a count) is a
   review item.
