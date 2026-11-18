@@ -954,8 +954,13 @@ is pulled (fails at first completion as `CompletionError`);
 BYOK providers outside the known-endpoint map need their
 base URL typed in; selection is per user, not per role/task;
 no live BYOK/Ollama call proven (fake transport + dummy keys
-only). Wave 16 central SOLO suite: pending (runs after the
-three pushes; number lands here once green).
+only). Wave 16 central SOLO suite: **2,980 passed, 9 skipped, 1
+warning, 18m43s, EXIT 0** (2,879 Wave 15 + 101 new Wave 16 tests,
+exact; run SOLO 19 Nov 2026 by the continuation coordinator, log
+`hidden_files/suite-wave16.log`). Postgres had been wiped by a VM
+replacement, so the run was preceded by a full restore from
+scratch (apt reinstall postgresql-16 + postgresql-16-pgvector,
+`pg_ctlcluster 16 main start`, `infra/schema_core.sql`).
 
 ## New items: G29 + G30 (approved by Nero 18 Nov 2026, queued after Wave 14)
 
