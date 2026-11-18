@@ -188,6 +188,10 @@ to be included here because no third-party code is vendored.
   session state with user/app/temp scopes, memory service, tool
   confirmation callbacks. Used as a pattern in
   `puspa/runtime/hierarchy.py`.
+- **NVIDIA/NeMo-Guardrails** (Apache License 2.0) - pattern:
+  programmable input/output rails, dialog flows as state machines,
+  fail-closed checks. Used as a pattern in
+  `puspa/guardrails/rails.py`.
 
 ## Puspa license
 

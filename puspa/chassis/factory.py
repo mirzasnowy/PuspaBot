@@ -51,6 +51,7 @@ class PuspaChassis:
     log: Any = None  # callable log(jenis, isi); kalau None dan ledger ada, dibuat dari ledger
     world_model: Any = None  # puspa.world.WorldModel atau None (tanpa otak)
     learning_loop: Any = None  # puspa.memory.learning_loop.LearningLoop atau None
+    rail_set: Any = None  # puspa.guardrails.RailSet or None (None = no rails in bare build_hook; assemble() builds the default set)
 
     def brain(self):
         """The session brain for this chassis, or None.
@@ -90,17 +91,23 @@ def build_registry(chassis: PuspaChassis) -> PuspaRegistry:
     return registry
 
 
-def build_hook_factory(chassis: PuspaChassis):
+def build_hook_factory(chassis: PuspaChassis, *, rail_set=None):
     """Factory per-turn untuk PuspaHook (siklus tugas -> Buku Kerja)."""
     return make_puspa_hook_factory(
-        chassis.task_id, chassis.agent_id, log=chassis.sink()
+        chassis.task_id,
+        chassis.agent_id,
+        log=chassis.sink(),
+        rail_set=rail_set if rail_set is not None else chassis.rail_set,
     )
 
 
-def build_hook(chassis: PuspaChassis) -> PuspaHook:
+def build_hook(chassis: PuspaChassis, *, rail_set=None) -> PuspaHook:
     """Satu instance PuspaHook (untuk ``hooks=[...]`` di AgentLoop)."""
     return PuspaHook(
-        task_id=chassis.task_id, agent_id=chassis.agent_id, log=chassis.sink()
+        task_id=chassis.task_id,
+        agent_id=chassis.agent_id,
+        log=chassis.sink(),
+        rail_set=rail_set if rail_set is not None else chassis.rail_set,
     )
 
 
@@ -112,12 +119,17 @@ def assemble(chassis: PuspaChassis, config, *, bus=None):
     """
     from nanobot.agent.loop import AgentLoop
 
+    from puspa.guardrails import default_rail_set
+
+    rail_set = (
+        chassis.rail_set if chassis.rail_set is not None else default_rail_set()
+    )
     registry = build_registry(chassis)
     loop = AgentLoop.from_config(
         config,
         bus=bus,
         tool_registry=registry,
-        hooks=[build_hook(chassis)],
-        hook_factories=[build_hook_factory(chassis)],
+        hooks=[build_hook(chassis, rail_set=rail_set)],
+        hook_factories=[build_hook_factory(chassis, rail_set=rail_set)],
     )
     return loop
