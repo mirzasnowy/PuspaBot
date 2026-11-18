@@ -372,7 +372,9 @@ its own iteration with commit + push):
    `RerankerUnavailable` because fastembed 0.9.1 has no
    reranker; only DeterministicReranker runs. Fix: a real
    cross-encoder via FlagEmbedding bge-reranker-v2-m3 or
-   sentence-transformers as a dependency.
+   sentence-transformers as a dependency. DONE 18 Nov 2026,
+   commit 94fbcf256deba5ad721f5a1a163c5f6e8c2ac5cd (see
+   Rework progress below).
 2. HippoRAG 2 triple filter: deterministic rules today, not an
    LLM judge like the original. Fix: LLM-based filter through
    the provider seam. DONE 18 Nov 2026, commit
@@ -387,6 +389,68 @@ its own iteration with commit + push):
    signing" and drop the sigstore claim.
 
 ## Rework progress
+
+### Rework 1: real cross-encoder reranker (done, 18 Nov 2026)
+
+Commit 94fbcf256deba5ad721f5a1a163c5f6e8c2ac5cd.
+
+- `puspa/retrieval/reranker.py` (336 lines, about 90 added:
+  `CrossEncoderReranker.from_sentence_transformers()` loads
+  the model once per process via `_MODEL_CACHE`, CPU, and
+  raises `RerankerUnavailable` hard when the library or the
+  model cannot load; batch path `score_many_fn`; factory
+  `make_reranker(kind="cross_encoder",
+  backend="sentence_transformers")` now works; the
+  `"fastembed"` backend still raises honestly) +
+  `tests/test_reranker_cross_encoder.py` (new, 148 lines,
+  6 tests) + `tests/test_retrieval_reranker.py` (one test
+  renamed to
+  `test_cross_encoder_fastembed_backend_is_honestly_unavailable`)
+  + `requirements.txt` (new pins:
+  `sentence-transformers==6.3.0`, `transformers==5.23.0`,
+  `torch==2.15.0`). Chosen: sentence-transformers 6.3.0 +
+  model `cross-encoder/ms-marco-MiniLM-L-6-v2`, not
+  FlagEmbedding + `BAAI/bge-reranker-v2-m3`, for size (about
+  90 MB vs about 2.3 GB; the VM has 8 GB RAM with about
+  1.3 GB free while working) and speed (about 1800 docs/sec
+  on V100; one test file finishes in 25 seconds) at
+  comparable quality (MRR@10 39.01 MS MARCO dev, NDCG@10
+  74.30 TREC DL 19). Licenses verified: sentence-transformers
+  Apache-2.0 (LICENSE file, raw fetch), the model Apache-2.0
+  (HuggingFace API tag `license:apache-2.0`, safetensors),
+  transformers Apache 2.0, sentence-transformers Apache-2.0
+  (License-Expression), torch composite Apache-2.0 /
+  BSD-2-Clause / BSD-3-Clause / BSL-1.0 / ISC / MIT / Zlib
+  (all OSI-approved), all from installed package metadata.
+  Correction to the old record: `BAAI/bge-reranker-v2-m3`
+  is Apache-2.0 per its HuggingFace API tag, not MIT.
+  What the tests prove: the true answer ranks 1 (9.33) vs
+  keyword-stuffing 5.07 vs generic 1.74; the deterministic
+  reranker puts stuffing rank 1 (0.487) and the answer rank
+  3 (0.301), the cross-encoder flips it (answer 3 to 1,
+  stuffing to 2); scores are deterministic; batch scores
+  equal per-pair scores equal direct `model.predict`
+  (tolerance 1e-6); the factory reuses the same model
+  object (`is`); a missing model raises
+  `RerankerUnavailable` and the deterministic fallback runs.
+  Honest limits: (1) the model is English MS MARCO, not
+  multilingual; swapping to bge-reranker-v2-m3 stays a
+  follow-up through the same seam. (2) This reranker does
+  NOT close the Wave 1 multi-hop recall gap, measured: for
+  "Is the cheap Galaxy S24 deal trustworthy?" the model
+  scores the fraud report -10.13 and the keyword-stuffing
+  passage 9.17 (it judges "does this passage answer the
+  question", not "is this passage evidence about trust");
+  the fraud report still does not reach the top 3. (3)
+  torch from PyPI is heavy: the CUDA bundle + nvidia libs
+  are about 2.5 GB even though inference is CPU-only.
+  (4) The model cache lives in `~/.cache/huggingface`; a
+  fresh machine needs one about 90 MB download. (5) The
+  install once failed because `/tmp` (tmpfs 512 MB) filled
+  up unpacking the torch wheel; fixed with `TMPDIR` in the
+  workspace. Full suite SOLO after this push (with rework
+  3 and 4 files also present): 1321 passed, 5 skipped,
+  1 warning.
 
 ### Rework 2: HippoRAG 2 triple filter, LLM judge (done, 18 Nov 2026)
 
