@@ -193,6 +193,50 @@ to be included here because no third-party code is vendored.
   fail-closed checks. Used as a pattern in
   `puspa/guardrails/rails.py`.
 
+# NOTICE - Puspa Brain deepening phase, Tier 2 Batch A (18 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **NousResearch/hermes-agent** (MIT License) - pattern:
+  automatic skill repair (a failing skill is diagnosed,
+  rewritten, and re-verified) as part of one learning loop.
+  Used as a pattern in `puspa/memory/skill_repair.py` (a repair
+  always creates a NEW draft and never overwrites a manual edit;
+  the production rewriter is an injected LLM callable, the
+  built-in is a deterministic lookup rewriter).
+- **letta-ai/letta-code** (Apache License 2.0) - pattern:
+  repeated task results change the agent's own procedures (a new
+  version with trial status and a supersedes link; conflicts held
+  as candidates, never overwriting). Used as a pattern in
+  `puspa/memory/skill_repair.py` (`ProcedureUpdater`).
+- **HKUDS/LightRAG** (MIT License) - pattern: incremental graph
+  update (merge new passages without a full rebuild). Used as a
+  pattern in `puspa/retrieval/incremental.py`.
+- **Kilo-Org/kilocode** (MIT License, verified via the GitHub API
+  18 Nov 2026) - pattern: sub-agent working modes (Architect /
+  Code / Debug / Ask) with behavior enforced per mode. Used as a
+  pattern in `puspa/harness/modes.py` and `puspa/harness/loop.py`.
+- **THUDM/AgentBench** (Apache License 2.0) - pattern:
+  multi-environment held-out task set (DB, KG, OS, WebShop
+  shapes) with final-state scoring, disjoint from the dev set.
+  Used as a pattern in `puspa/evidence/agentbench_tasks.py`.
+- **mem0ai/mem0** (Apache License 2.0) - pattern: memory
+  extraction (deciding what becomes a memory), dedup of the same
+  fact, conflict detection at extraction time, and ranked recall.
+  Used as a pattern in `puspa/memory/extraction.py`
+  (deterministic heuristics, not mem0's LLM extractor).
+- **getzep/graphiti** (Apache License 2.0) - pattern: temporal
+  graph, every fact with a validity period (`valid_from` /
+  `valid_until`), expired facts no longer counted as true, new
+  facts superseding old ones with history kept. Used as a pattern
+  in `puspa/graphs/temporal.py` (the library is not installed; it
+  needs Neo4j or FalkorDB, too heavy for the MVP).
+- **snyk/agent-scan** (Apache License 2.0) - pattern: scan of MCP
+  servers and skills for tool poisoning, rug-pull, prompt
+  injection, and toxic flow, as a gate before the signed-skill
+  gate. Used as a pattern in `puspa/policy/agent_scan.py`
+  (static text matching, not execution and not an LLM judge).
+
 ## Puspa license
 
 The code in this directory is Puspa's own work (Nero / Luna). The Puspa

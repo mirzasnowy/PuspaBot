@@ -722,3 +722,204 @@ optional `rail_set`, `build_hook`/`build_hook_factory` pass it
 through, and `assemble` builds the default rail set when the
 chassis carries none, so rails are live in the assembled loop
 (tests in `tests/test_factory_rails.py`).
+
+## Brain deepening phase - Tier 2 Batch A (18 Nov 2026)
+
+Seven workstreams built in parallel on disjoint files by seven
+workers; the coordinator ran the full suite SOLO centrally and
+pushed each workstream as its own commit. All seven received the
+new depth bar (18 Nov 2026 ~10:52 WIB): the core mechanism plus
+its flagship part must really exist, not a seam without a
+schedule, and every unavoidable stand-in is named in the report
+with its dependency and follow-up.
+
+### hermes-agent + letta-code: ONE learning loop
+
+Patterns: NousResearch/hermes-agent (MIT), letta-ai/letta-code
+(Apache-2.0). No code copied, no fork. `puspa/memory/skill_repair.py`
+(new, 622 lines): `diagnose_skill_failure` classifies every
+failing case of a skill (wrong output, exception, not
+executable) with expected vs observed values plus the loop's
+correction as read-only context; `SkillRepairer.repair` runs
+diagnosis, rewrite, re-verify up to `max_attempts`, every attempt
+a real new draft verified with `LearningLoop.verify_skill`
+against the same test cases, and honestly reports
+"unrepairable" when no rewrite passes; `ProcedureUpdater.record_outcome`
+creates a real new procedure version (version number,
+`supersedes` link, trial status) on repeated successful outcomes
+with a new step, follows the revision 7 rule (broken after 2
+consecutive failures), and decays through
+`procedural.apply_decay`. Both read and write the same state the
+learning loop already owns (experience log, correction table,
+procedure store), so it is ONE loop, not two. A repair never
+overwrites a manual user edit: the repair is always a NEW draft,
+the original skill and the manual edit are left byte-identical.
+Tests: `tests/test_skill_repair.py`, 26 tests. Honest limits:
+the production rewriter is an LLM call, so this module takes it
+as an injected callable and ships only the deterministic
+`lookup_rewriter` as the built-in (it memorises corrected outputs
+for failing inputs; a real repair, but a narrow one). A
+model-based rewriter is the follow-up.
+
+### LightRAG: incremental graph update
+
+Pattern: HKUDS/LightRAG (MIT). No code copied, no fork.
+`puspa/retrieval/incremental.py` (new, 528 lines):
+`IncrementalUpdater` over the existing `KnowledgeGraph`, a real
+merge, not a disguised rebuild: `add_passage` / `add_passages` /
+`add_document` / `add_documents` extract only the new passage
+(old nodes and edges keep their identity and gain the new
+passage as a source); SHA-256 content dedup on normalised text
+(same text under a different id is recognised and skipped);
+weights are passage counts (a triple repeated by a new passage
+raises the edge weight from 1 to 2 instead of making a second
+edge); `update_passage` / `update_document` detach the old
+passage first (orphans without a source are removed) then merge
+the new text; `remove_passage` / `remove_document`;
+`snapshot()` / `added_since()` prove the merge. Tests:
+`tests/test_retrieval_incremental.py`, 15 tests. Measured recall
+on the 8 Wave 1 multi-hop queries: main update keeps recall@10
+at 1.0 and recall@5 at 0.375, but recall@3 drops 0.375 to 0.25
+(a ranking effect, not data loss; the determining passage ranked
+6-9 in Wave 1); a second case (new promo on a seller with a
+fraud report) drops recall@10 from 1.0 to 0.875. Both drops are
+locked in tests. Honest limits: extraction is still the
+deterministic regex stand-in inherited from Wave 1 (follow-up
+via the `JsonTripleExtractor` seam, no schedule yet); dedup is
+exact-text only; weights are passage counts, not LLM weights; no
+community detection or summary regeneration on update; no
+re-embedding.
+
+### KiloCode: working modes
+
+Pattern: Kilo-Org/kilocode (MIT, verified via the GitHub API
+18 Nov 2026; the "Apache 2.0" claim found in secondary sources
+refers to Kilo's extension/CLI packaging, not the repo LICENSE
+as reported by the API). No code copied, no fork.
+`puspa/harness/modes.py` (new): `ModeSpec` plus four modes
+(`architect`, `code`, `debug`, `ask`), each bound to an existing
+sandbox profile (Architect and Ask use `read_only`; Code and
+Debug use `workspace_write` plus `diff_mode=True`; Debug adds
+`reproduce_first=True`); `enforce_read_only_tools` proves
+through Gate plus profile that `write_code` and `run_tests` are
+refused before a read-only mode runs. `puspa/harness/loop.py`
+(mode wiring only): a new `mode` parameter (default `None` keeps
+the old behavior exactly); Architect builds a real repo map and
+plans from it without ever calling the executor; Ask answers
+once; Code and Debug fail an attempt whose generator answer is
+not a unified diff instead of falling back to a full program.
+`puspa/harness/__init__.py` exports the mode names (added by the
+coordinator). Tests: `tests/test_harness_modes.py`, 16 tests.
+Honest limits: no hidden stand-in (the Architect repo map is
+real, enforcement is real); the generator stays caller-supplied
+as before, no LLM is wired here. Architect without a
+`workspace_root` and without an executor workdir plans without a
+repo map (`repo_map_text=None`, tested).
+
+### AgentBench: held-out eval
+
+Pattern: THUDM/AgentBench (Apache-2.0). No code copied, no fork.
+`puspa/evidence/agentbench_tasks.py` (new): 8 real held-out
+tasks, 2 per environment (DB, KG, OS, WebShop), each with a
+complete inline recording (not an empty template); expected state
+derived from the recording by `derive_heldout_state` (code, not
+hand-typed numbers); `score_agentbench` reuses the existing
+`score_state` plus partial credit (fraction of matching keys);
+`run_heldout_eval` and `summarize_by_environment` report the
+held-out score per environment and in total, never mixed with
+the dev score. `puspa/evidence/eval_harness.py` (wiring only):
+`environment` plus inline `cassette` on `EvalTask`,
+`environment` on `EvalResult`, `run_task` uses the inline
+cassette when present and takes the score from
+`details["score"]`. Tests: `tests/test_agentbench_eval.py`,
+18 tests. Disjointness proven in code (`check_disjoint`):
+task ids, cassette names, and tools do not overlap the 10 dev
+cassettes, and the maximum prompt Jaccard against dev prompts is
+0.087 (limit 0.5). Honest limits: the environments are simulated
+(inline cassette recordings following the existing replay
+mechanism), not live databases, shells, or shops; the follow-up
+is a sandbox-based solver with live environments (needs a
+sandbox host, no outside service or new dependency).
+
+### mem0: extraction quality + ranked recall
+
+Pattern: mem0ai/mem0 (Apache-2.0). No code copied, no fork.
+`puspa/memory/extraction.py` (new, ~360 lines):
+`is_memorable` / `extract_facts` decide what becomes a memory
+(greetings, thanks, pure questions, and fact-free text are
+rejected; sentences are split into fact clauses); `MemoryStore.add`
+merges duplicates into one memory (`support` rises, canonical
+text is the longest, raw observations are kept) and stores
+conflicts separately with status "conflicted" and `conflicts_with`
+pointing at the old memory (the old memory is never overwritten);
+conflicts come from opposite polarity or different numbers for
+the same subject; `rank_memories` / `recall_at_k` /
+`measure_recall_at_ks` rank over the episodic dual-level score
+plus small support and recency bonuses (at most 0.02 each, so
+relevance always dominates), and zero-score memories are dropped
+from ranking. Two real bugs were found and fixed while testing
+(conflict-before-dedup ordering, zero-score tie-break).
+`puspa/memory/episodic.py` was not changed (not needed; the new
+module reuses its extractors). Tests:
+`tests/test_mem0_extraction.py`, 16 tests. Measured recall@k on
+a 6-query / 8-memory set: @1 = 1.0, @3 = 1.0, @5 = 1.0.
+Honest limits: extraction is deterministic heuristics, not an
+LLM extractor (follow-up: a cheap/local LLM extractor once the
+brain has cheap LLM calls); `MemoryStore` is in-memory, no
+Postgres persistence yet; the recall set is small (6 queries,
+8 memories), so 1.0 proves the mechanism works, not
+generalisation to noisy real data.
+
+### graphiti: temporal edges
+
+Pattern: getzep/graphiti (Apache-2.0). No code copied, the
+library is not installed (it needs Neo4j or FalkorDB, too heavy
+for the MVP). `puspa/graphs/temporal.py` (new, ~360 lines):
+`TemporalEdge` with `valid_from` / `valid_until` (the validity
+window is the single source of truth, `valid_until` exclusive,
+`None` means open); `TemporalGraph.query` / `neighbors` /
+`relations` / `current_fact` return only edges still valid at
+`as_of` by default; `include_stale=True` returns everything
+marked `stale` with a `stale_reason` (expired / superseded /
+not_yet_valid); supersede closes the old edge at the start of
+the new fact and keeps history via `history()`; `prune_expired`
+is opt-in and explicit; `stale_fact_rate`; `from_knowledge_graph`
+adapts the retrieval `KnowledgeGraph` without changing
+`puspa/retrieval/`, and edges without a validity entry keep
+working as before. Supersede defaults to off in `add_edge`
+because the retrieval graph is multi-valued (one seller sells
+many products); the adapter filters stale facts by window, not
+by replacement. Tests: `tests/test_graph_temporal.py`, 16 tests,
+all in-memory. Measured stale-fact rate on a fixed 12-fact set:
+baseline without validity 0.5 (6 of 12 stale), with validity
+enforced 0.0. Honest limits: in-memory only, no Postgres
+persistence yet (validity columns for `price_series` /
+`listing_links` need a schema migration); validity windows must
+be supplied by the caller (no automatic TTL invented); supersede
+is deterministic on (subject, relation), not an LLM judge.
+
+### snyk/agent-scan: CI scanner
+
+Pattern: snyk/agent-scan (Apache-2.0). No code copied, no fork.
+`puspa/policy/agent_scan.py` (new): scans a community skill
+directory BEFORE the signed-skill gate; reads `SKILL.md`, the
+declared `manifest.json` (tools, domains, connectors), and every
+other text file in the directory, and flags concrete threat
+patterns drawn from the 341 malicious ClawHub skills named in
+the triage (Tier 2 item 16): exfiltration to an undeclared host,
+exfiltration of secret material, credential access, prompt
+injection (override, hidden, role reassignment, base64-hidden
+instructions), gate bypass, permission overreach, rug-pull
+(remote code fetched and executed, or live instructions fetched
+at run time), toxic flow (destructive commands). Every rule is a
+concrete pattern with a firing fixture, and every finding names
+its rule and its location (`file:line`). A network call is only
+flagged when its host is not declared in the manifest `domains`
+or `allowed_hosts`; a plain documentation link is not flagged.
+Reading an environment variable for a named provider API key is
+NOT flagged on its own. Tests: `tests/test_agent_scan.py`,
+29 tests. Honest limits: static text matching, not execution and
+not an LLM judge; the scanner cannot prove intent, only the
+pattern, and that boundary is deliberate and covered by tests.
+No CI workflow file was added (the repo has no `.github/workflows/`
+yet; CI is maturity-phase item G15).

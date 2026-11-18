@@ -177,12 +177,86 @@ only), so paraphrased injections outside the signal set will pass.
 
 ## Queued after Tier 2: repo maturity phase (Nero's order, 18 Nov 2026 ~10:44 WIB)
 
-Not started. An analysis agent is preparing a file-by-file
-comparison list of OpenBot vs DuskBot vs Puspa; that list does
-not exist yet, so this phase cannot start. When it arrives, it
-becomes the work list for the maturity phase: take how they work
-as boilerplate (design, features, architecture) and build
-Puspa's own version.
+Not started. The work list has arrived (18 Nov 2026 ~11:10 WIB):
+`~/workspace/tmp/puspa-repo-comparison/report.md` (1,376 lines,
+analysis agent c12e226e): 28 gaps G1-G28, each with how
+OpenBot, DuskBot, and hermes-agent do it. Order is unchanged:
+Tier 2 first, then the 4 rework items, then this phase from
+that list. Do not start this phase early.
+
+The 28 gaps (size in the report): G1 full PWA, the main product
+surface (BIG); G2 billing/credits + working usage ledger (BIG);
+G3 module/skill marketplace, registry, trust, install, rollback
+(BIG); G4 approvals taxonomy, OpenBot-grade human-in-the-loop
+(MEDIUM); G5 fail-closed gateway + CEL-style rules, deepening
+(MEDIUM); G6 audit trail with initiator (SMALL); G7 memory
+tightening, where DuskBot is stronger (MEDIUM); G8 mature
+scheduler/routines (MEDIUM); G9 decider, a small model for cheap
+decisions (SMALL-MEDIUM); G10 layered connectors, architecture
+not just a connector list (BIG); G11 auth/relay/pairing for
+multi-tenant hosting (MEDIUM); G12 self-observability, Sentinel
++ decision log (SMALL-MEDIUM); G13 multi-tenant/team hosting
+(BIG); G14 Telegram/WhatsApp channels + phone (MEDIUM-BIG);
+G15 CI + verification discipline + docs (SMALL-MEDIUM, high
+leverage); G16 computer use / per-bot sandbox (BIG, deferred
+after MVP); G17 skill narrowing + search_tools when tools grow
+(SMALL-MEDIUM); G18 i18n, later global expansion (MEDIUM,
+deferred); G19 context compression, two thresholds + lineage
+(BIG, HIGH importance); G20 layered prompt assembly + sacred
+prompt caching (MEDIUM-BIG); G21 interruptible turn loop +
+layered fallback + budget (MEDIUM); G22 credential pool +
+per-profile secret scope (MEDIUM); G23 tool registry + toolset
++ check_fn (MEDIUM); G24 memory: plug-in provider + background
+review + skill curator (MEDIUM); G25 public subagent lifecycle,
+capability handle + steer/cancel (MEDIUM); G26 sessions and
+persistence, single-writer + FTS5 + lineage (MEDIUM); G27 plugin
+system + catalog + boundary lint (BIG); G28 onboarding + cost
+insights (SMALL-MEDIUM).
+
+Suggested order from the report (§6): context compression (G19)
++ prompt caching (G20), then memory (G7, G24), then module
+marketplace (G3, G27), then billing + usage ledger (G2,
+including the hermes client state machine), then scheduler (G8,
+general cron), then decider (G9), then connectors (G10), then
+credential pool + secret scope (G22), then tool registry (G23),
+then subagent lifecycle (G25), then single-writer sessions +
+FTS5 (G26), then auth/relay (G11), then Sentinel (G12), then
+full PWA (G1, in parallel because it is TypeScript), then
+CI/docs (G15, cheap, can go first), then multi-tenant hosting
+(G13), then channels (G14, Telegram first then WhatsApp,
+hermes gateway pattern), then interruptible turn loop +
+fallback (G21), then approvals (G4) + gateway (G5) + audit (G6)
+as trust hardening along the way, then onboarding + insights
+(G28), then computer use (G16) explicitly after MVP, then i18n
+(G18) at global expansion.
+
+License notes from the report: DuskBot PolyForm Noncommercial
+1.0.0 (study only). OpenBot repo is MIT, but its
+memory/learning/governance lives in separately licensed
+CopilotKit Intelligence and its enforcement server is a closed
+image: patterns from its docs may be used, there is no code to
+copy. hermes-agent is MIT, the safest of the three for
+commercial boilerplate, with attribution when a substantial part
+is adapted very closely; its Nous Portal billing server is
+closed.
+
+Report caveats (honest coverage, §5): the OpenBot and DuskBot
+parts were rebuilt from the agent's conversation notes after
+`/tmp` was wiped when the VM was replaced around 04:01 WIB on
+18 Nov 2026 (the original child reports, 324 and 1,162 lines,
+were lost); the hermes-agent part was read fresh and survived
+(`hermes-agent.md`, written 04:02 WIB). OpenBot: ~45 files read
+substantially, ~120 skimmed, ~2,400 handwritten files NOT read
+in full; server/gateway/CEL/audit code is NOT in the repo, the
+mechanisms are known from docs, not verified code. DuskBot: ~45
+files read, ~120 skimmed, ~9,400 files NOT read. hermes-agent:
+~15 files read; most of its 9,448 code files unread. Treat the
+gap list as a design-level map, not a verified code inventory.
+
+Two findings to respect: Puspa has NO LICENSE file yet (only
+NOTICE.md); the license choice is Nero's decision, never pick
+it unilaterally. Puspa has NO CI at all; CI is item G15 in this
+maturity list, not a side task of the Tier 2 scanner work.
 
 Hard rule on taking: only patterns, design, and architecture are
 taken, then rewritten as Puspa's own code. Never copy code
@@ -206,3 +280,194 @@ empty scaffold to look numerous. The complexity must be real:
 modules + tests + wiring into the existing system. The goal is
 to make it as mature as possible, as complex as they are, with
 real work.
+
+## Depth bar (Nero's order, 18 Nov 2026 ~10:52 WIB) and rework queue
+
+New bar "SANGAT DALAM", applies from now to all remaining
+Tier 2 items, and to the rework below: the source's core
+mechanism is implemented AND its flagship part really exists,
+not a seam or stand-in without a schedule. An item may NOT be
+claimed done while its core part is still a seam. Every
+unavoidable stand-in (needs an LLM, a model, or an outside
+service) must be written in the iteration report with the
+dependency name and its follow-up schedule, not hidden in a
+docstring only. The bar was sent to all seven running Tier 2
+workers on 18 Nov 2026, and it will be in the brief of every
+worker spawned after that (gorilla, 9Router, rework).
+
+Audit by Luna (read the code herself, 18 Nov 2026 ~10:52 WIB):
+total 42,330 lines of puspa + tests. Genuinely deep: HippoRAG
+(Personalized PageRank power iteration + restart + dangling-node
+fix + combined graph/vector/lexical scores, 355 lines), ADK
+hierarchy (AgentNode, SessionState, MemoryAccess,
+ToolConfirmation, CallbackRegistry, 792 lines), Guardrails
+(RailSet + 10 rails + input/output/action checks, 763 lines),
+harness (CodingHarness write-test-fix + deploy gate, 510
+lines). The three NotImplementedError cases are interface
+methods, not missing features. No TODO in puspa/.
+
+Rework queue (after Tier 2, before the maturity phase; each as
+its own iteration with commit + push):
+1. Real cross-encoder reranker:
+   `CrossEncoderReranker.from_fastembed` only raises
+   `RerankerUnavailable` because fastembed 0.9.1 has no
+   reranker; only DeterministicReranker runs. Fix: a real
+   cross-encoder via FlagEmbedding bge-reranker-v2-m3 or
+   sentence-transformers as a dependency.
+2. HippoRAG 2 triple filter: deterministic rules today, not an
+   LLM judge like the original. Fix: LLM-based filter through
+   the provider seam.
+3. LlamaIndex question decomposer: regex split on "and", "vs",
+   ";" and "?" today, not an LLM decomposer. Fix: LLM-based
+   decomposer through the provider seam.
+4. Sigstore: local shape only in `puspa/policy/signing.py`, no
+   Fulcio, no Rekor, no real keyless identity. Fix: verify a
+   real sigstore bundle OR rename the scope to "local keyless
+   signing" and drop the sigstore claim.
+
+## Tier 2 Batch A (done, 18 Nov 2026)
+
+Seven workers in parallel on disjoint files, no pushes from the
+workers; the coordinator ran the full suite SOLO centrally and
+pushed each workstream as its own commit. All seven received the
+new depth bar (18 Nov 2026 ~10:52 WIB). Full suite SOLO
+centrally: 1082 passed, 5 skipped, 1 warning (first run had one
+non-reproducing ledger flake,
+`test_update_delete_rejected_for_application_role`, which passes
+alone and in its file; re-run green). Baseline before Batch A: 933 passed. New tests: 149
+collected (26 + 15 + 16 + 18 + 16 + 16 + 42).
+
+- AgentBench (held-out eval): worker reported complete.
+  `puspa/evidence/agentbench_tasks.py` (new, 8 real held-out
+  tasks, 2 per environment: DB, KG, OS, WebShop) +
+  `puspa/evidence/eval_harness.py` (wiring only) +
+  `tests/test_agentbench_eval.py` (18 tests). Disjointness
+  proven in code (Jaccard prompt max 0.087, no id/cassette/tool
+  overlap with the 10 dev cassettes). Targeted pytest: 13
+  passed, 5 errors from parallel-worker DB deadlocks (conftest
+  TRUNCATE on the shared `puspa_test` DB); direct calls without
+  conftest: 18/18 passed. Honest stand-in: environments are
+  simulated inline cassette recordings, not live; follow-up is
+  a sandbox-based solver with live environments. Commit
+  fcfa7cc10c41114c60bee18c6713cced25465fdf.
+- hermes-agent + letta-code, ONE learning loop: commit
+  2159b02baf13c37bc5a47f248dfb45ad7291547c.
+  `puspa/memory/skill_repair.py` (new, 622 lines) +
+  `tests/test_skill_repair.py` (26 tests). `diagnose_skill_failure`
+  classifies every failing case of a skill (wrong output,
+  exception, not executable) with expected vs observed values plus
+  the loop's correction as read-only context; `SkillRepairer.repair`
+  runs diagnosis, rewrite, re-verify up to `max_attempts`, every
+  attempt a real new draft verified with
+  `LearningLoop.verify_skill` against the same test cases, and
+  honestly reports "unrepairable" when no rewrite passes;
+  `ProcedureUpdater.record_outcome` creates real new procedure
+  versions (version number, `supersedes` link, trial status),
+  follows the revision 7 rule (broken after 2 consecutive
+  failures), and decays through `procedural.apply_decay`. Both
+  read and write the same state the learning loop already owns
+  (experience log, correction table, procedure store), so it is
+  ONE loop, not two. A repair never overwrites a manual user
+  edit: the repair is always a NEW draft, the original skill and
+  the manual edit are left byte-identical. Honest stand-in: the
+  production rewriter is an LLM call, so the module takes it as
+  an injected callable and ships only the deterministic
+  `lookup_rewriter` as the built-in (a real repair, but a narrow
+  one). A model-based rewriter is the follow-up.
+- LightRAG incremental graph update: worker reported complete.
+  `puspa/retrieval/incremental.py` (new, 528 lines:
+  IncrementalUpdater with add/update/remove passage and document,
+  SHA-256 content dedup, passage-count weights, merge stats) +
+  `tests/test_retrieval_incremental.py` (15 tests). Targeted
+  pytest: 4 passed, 12 errors from parallel-worker DB deadlocks;
+  clean --noconftest run: 15 passed twice. Recall on the 8 Wave 1
+  queries: @10 stays 1.0 and @5 stays 0.375 for the main update,
+  but @3 drops 0.375 to 0.25 (honestly reported and locked in
+  tests; a ranking effect, not data loss: the determining passage
+  ranked 6-9 in Wave 1 and new passages shifted tight rankings).
+  Second case (same-seller promo): @10 drops 1.0 to 0.875,
+  locked in a dilution test. Same ranking weakness Wave 1
+  recorded; the real cross-encoder rework is the fix. Honest
+  limits: extraction still deterministic regex (inherited Wave 1
+  stand-in; follow-up via the JsonTripleExtractor seam, no
+  schedule yet); dedup exact-text only; weights are passage
+  counts, not LLM weights; no community detection or summary
+  regeneration on update; no re-embedding. Commit
+  765c488e16b9f653cfc2b91a4adb27b017c12e44.
+- KiloCode modes: worker reported complete.
+  `puspa/harness/modes.py` (new: ModeSpec + 4 modes architect /
+  code / debug / ask, bound to the existing sandbox profiles,
+  read-only enforcement proven through Gate + profile) +
+  `puspa/harness/loop.py` (mode wiring only: new `mode` param,
+  default keeps old behavior; Architect plans from a real repo
+  map, Ask answers once, Code/Debug require a unified diff) +
+  `tests/test_harness_modes.py` (16 tests, 16 passed with
+  --noconftest; under normal conftest the run hit parallel-worker
+  DB deadlocks, then Postgres died entirely). No stand-in
+  hidden: Architect repo map is real, enforcement is real, the
+  generator stays caller-supplied as before. Follow-up for the
+  coordinator: export `modes` from `puspa/harness/__init__.py`
+  (worker was limited to new files + loop.py). License note:
+  worker did NOT verify KiloCode's license from the source;
+  coordinator verified MIT via the GitHub API 18 Nov 2026 (the
+  Apache 2.0 claim in secondary sources refers to Kilo's
+  extension/CLI packaging, not the repo LICENSE as reported by
+  the API); reuse.md/NOTICE.md updated. Commit
+  6bf15c259648fadc150597586f4b4a277f90aabf.
+- mem0 extraction + ranked recall: worker reported complete.
+  `puspa/memory/extraction.py` (new, ~360 lines: is_memorable /
+  extract_facts, MemoryStore with dedup merge + conflict
+  flagging, rank_memories / recall_at_k) +
+  `tests/test_mem0_extraction.py` (16 tests, 16 passed; once
+  in-repo, then verified from /tmp without conftest after
+  Postgres died). Measured recall@k on a 6-query / 8-memory set:
+  @1 = 1.0, @3 = 1.0, @5 = 1.0. Two real bugs found and fixed
+  while testing (conflict-before-dedup ordering, zero-score
+  tie-break). `puspa/memory/episodic.py` untouched (not needed;
+  the new module reuses its extractors). Honest limits:
+  extraction is deterministic heuristics, not an LLM extractor
+  (follow-up: cheap/local LLM extractor once the brain has cheap
+  LLM calls); MemoryStore in-memory, no Postgres persistence
+  yet; recall set is small (6 queries, 8 memories). Attribution
+  text received (mem0, Apache 2.0, pattern only). Commit
+  174279c876e0373e6c14ec5771ec7ef354723ab9.
+- graphiti temporal edges: worker reported complete.
+  `puspa/graphs/temporal.py` (new, ~360 lines: TemporalEdge with
+  valid_from/valid_until, TemporalGraph query/neighbors/relations/
+  current_fact/history/prune_expired, stale_fact_rate,
+  from_knowledge_graph adapter) + `tests/test_graph_temporal.py`
+  (16 tests, all in-memory, 16 passed). Stale-fact rate on a
+  fixed 12-fact set: baseline 0.5 without validity, 0.0 with
+  validity enforced. Honest limits: in-memory only (no Postgres
+  persistence yet; validity columns for price_series /
+  listing_links need a schema migration); validity windows must
+  be supplied by the caller (no automatic TTL invented);
+  supersede is deterministic on (subject, relation), not an LLM
+  judge; not yet wired into the retrieval query path. Follow-up
+  queued after Batch A: schema migration + identity.py wiring +
+  retrieval call site. Attribution text for reuse.md/NOTICE.md
+  received (Graphiti, Apache 2.0, pattern only, library not
+  installed). Commit 934267ce9acc872019ded11121193848b460322a.
+- snyk/agent-scan CI scanner: commit
+  9354772643413a39bad4aa9e5b13113b13b9af6e.
+  `puspa/policy/agent_scan.py` (new, 15 rules) +
+  `tests/test_agent_scan.py` (42 tests collected from 29
+  functions). Scans a community skill directory BEFORE the
+  signed-skill gate: reads `SKILL.md`, the declared
+  `manifest.json` (tools, domains, connectors), and every other
+  text file, flagging exfiltration to an undeclared host,
+  exfiltration of secret material, credential access, prompt
+  injection (override, hidden, role reassignment, base64-hidden
+  instructions), gate bypass, permission overreach, rug-pull, and
+  toxic flow. Every rule is a concrete pattern with a firing
+  fixture, and every finding names its rule and its location
+  (`file:line`). A network call is only flagged when its host is
+  not declared; a plain documentation link is not flagged.
+  Honest limits: static text matching, not execution and not an
+  LLM judge; the scanner cannot prove intent, only the pattern.
+  No CI workflow file was added (the repo has no
+  `.github/workflows/` yet; CI is maturity-phase item G15).
+
+After Batch A: gorilla (BFCL eval format, sequential, shares
+`puspa/evidence/` with AgentBench), then 9Router (3 mechanisms,
+sequential), then the 4 rework items, then the maturity phase.
