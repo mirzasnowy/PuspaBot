@@ -1490,8 +1490,64 @@ REUSE.md/NOTICE.md attribution lines are on disk but were NOT
 in this commit — the G12 worker edited the same files
 concurrently, so they ride with the G12 commit instead.
 
-### G12 Sentinel + decision log (in progress)
+### G12 Sentinel + decision log (commit 08e85fa5)
 
-Worker finished its code + tests; coordinator verification
-pending at docs time (report awaited). Fills in here with the
-G12 push.
+New package `puspa/sentinel/` (11 modules, 2,535 lines) + 3 test
+files (1,219 lines), 55 passed (verified by the coordinator),
+ruff check + format clean, mypy clean (11 source files).
+`detectors.py` (5 pure detectors over ledger events: tool_error
+— a tool failing 3+ times in the window; turn_stop —
+`task_stopped`, plus stalled turns with no terminal event and no
+activity for 24h; queue_wait — `trigger_fired` to `task_created`
+over 5 min; cost — one task over $5 in the window, `cost_rp`
+via `idr_per_usd` 16000; retry_loop — 3+ consecutive failed
+calls of one tool in a task; stable issue keys; deleted
+tombstones excluded); `thresholds.py` (the five DuskBot defaults
+plus `stalled_hours` 24, `tool_error_min` 3, `idr_per_usd`,
+decision retention 180 days); `state.py` (atomic JSON state,
+open/acknowledged/resolved, prune: open past the window, resolved
+past twice the window, acknowledged never pruned); `scanner.py`
+(rescan gate 30 min, auto-resolve of open issues whose condition
+cleared — acknowledged never auto-resolved, scheduler entry
+`run_sentinel_scan`, never raises); `verifier.py` (K8: separate
+module, re-reads fresh events, re-runs the single detector for
+the issue's scope; confirmed/stale/duplicate/unverifiable,
+fail-closed, never writes); `decision_log.py` (daily JSONL files,
+SHA-256 entry hash, 180-day prune); `traces.py` (span tree from
+ledger events, span ids reuse event ids); `analytics.py`
+(snake_case counters only, crash reports without the exception
+message, no network sender at all); `trajectory.py` (batch runner
+over prompt datasets, checkpoint + resume, redact-before-save via
+G7 `redact_secrets`, ShareGPT format); `insights.py` (session
+insights from `state.db` read-only: tokens via G19
+`count_tokens`, cost via router catalog or recorded `cost_rp`,
+4-decimal sub-cent labels, nothing invented when data is
+absent). Wiring: `Ledger.recent_events` (read-only window query)
++ `sentinel_scan` trigger type + `schedule_sentinel_scan` (daily
+03:00) + dispatch in the scheduler. Docs: `docs/sentinel.md`,
+`docs/trajectory-format.md`, Sentinel self-checks section in
+`docs/verification.md`. REUSE.md + NOTICE.md in this commit also
+carry the G11 attribution sections (they were on disk but not in
+the G11 commit). Coordinator fixes during verification (worker
+code, not worker report): the stall detector never recorded a
+task's first event as its last activity, so a task with a single
+event could never be flagged stalled (real bug — now max-tracking
+with explicit None init); trajectory JSONL wrote with default
+`ensure_ascii=True`, so the `«redacted»` marker landed as
+`\u00ab` escapes (now `ensure_ascii=False`, matching the rest of
+the module); the prune test's second-half expectation was wrong
+(8 days also ages the recent open issue past the 7-day window —
+test corrected, code was right per its docstring). First run: 3
+failed, 52 passed; after fixes: 55 passed. Honest limits: the
+verifier re-reads the cached read within one scan (the detection
+read IS the fresh data for that scan; a live ledger re-read
+across scans is the follow-up); the scanner's 30-minute rescan
+interval lives in state — `schedule_sentinel_scan` is a daily
+03:00 trigger, so a 30-minute cadence needs a G8 cron job
+invoking `run_sentinel_scan`, not this trigger; insights read
+`state.db` read-only but the G26 session store is not yet wired
+to any real call site (same follow-up as G26); no live sentinel
+run against the real ledger yet (first live scan is a follow-up
+once the scheduler runs on a host). Wave 10 central SOLO suite:
+pending at docs time (runs after this commit; number lands here
+once it is green).
