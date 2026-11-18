@@ -651,3 +651,75 @@ the already-pinned httpx, and all tests use
 `httpx.MockTransport` (no live calls). No vercel-labs code was
 copied, vendored, or depended on; only the documented pattern
 above was followed, rewritten as Puspa's own code.
+
+# NOTICE - Puspa maturity phase, G33 (18 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **No source repo.** G33 implements Nero's own product
+  decision, locked in `docs/modes-decision.md`: the user picks
+  the model provider in PWA Settings — a BYOK key (stored in
+  the vault) vs a local model base URL (Ollama default
+  `localhost:11434`) vs the hosted default — and the choice is
+  wired through to the router's `llm_complete` path. No pattern
+  or code was taken from any other repository for this item.
+
+## New dependency: none
+
+No new dependency was added for G33. The BYOK key reuses the
+existing per-user vault (`puspa.accounts.vault`, entry
+`byok:<provider>`); the selection persists in a new
+`model_settings` table (choice only, no key column); the router
+wiring reuses the existing `complete_messages` `base_url` /
+`api_key` / `model` seam plus a small optional `provider`
+argument for labelling unlisted models. All tests use
+`httpx.MockTransport` and a clearly fake key (no live calls).
+No code from any other repo was copied, vendored, or depended
+on.
+
+# NOTICE - Puspa maturity phase, G32 (19 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **No external source.** G32 (WebUI lite as a real mode) is
+  Nero's product decision, locked in `docs/modes-decision.md`:
+  one web codebase (PWA), two serve modes, with the Jinja
+  templates as the no-install trial surface (one chat page
+  plus an upgrade button; trial is an entitlement, not a UI).
+  It is not a pattern from another repo, so there is no
+  upstream project or license to attribute. The trial check
+  reuses Puspa's own G2 billing entitlements
+  (`puspa/billing/entitlements.py`, HMAC-signed, Pro tier,
+  `trial_days` from `BillingConfig`) and the G1 Jinja
+  fallback in `puspa/pwa/app.py`; the lite module
+  (`puspa/pwa/lite.py`), the trial routes, the template
+  fixes, and the new `templates/trial.html` are Puspa's own
+  code, written from scratch.
+
+## New dependency: none
+
+No new dependency was added for G32. The lite module uses
+only the standard library plus the already-pinned FastAPI /
+Jinja2 / billing stack, and all tests use the FastAPI
+`TestClient` with issued-then-verified entitlements (no live
+calls). No code from any other repo was copied, vendored, or
+depended on.
+
+# NOTICE - Puspa maturity phase, G31 (18 Nov 2026)
+
+## Pattern attribution (not code)
+
+None: the two PWA serve modes (local operator vs hosted end user)
+are Nero's own product decision (locked 18 Nov 2026 ~23:00 WIB,
+`docs/modes-decision.md`), not a pattern taken from another
+repository. No external repo's pattern or code was used for this
+item. The operator panels read Puspa's own live state: the pairing
+store (`puspa/hosting/pairing.py`, `PairingStore.status_snapshot`),
+the action gateway (`puspa/policy/gateway.py`,
+`Gateway.policy_summary` + the `GatewayDecisionLog` audit sink in
+`puspa/pwa/serve_modes.py`), and the app event log.
+
+## New dependency: none
+
+No new dependency was added for G31. No external code was copied,
+vendored, or depended on for this item.

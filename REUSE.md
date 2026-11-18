@@ -635,3 +635,95 @@ no live call to skills.sh or GitHub was made while building
 this (API shape from the public `find.ts` source; first live
 search still unverified); the built-in find-skills skill is not
 yet wired into the turn loop's skill activation.
+
+## Maturity phase (G33 — own-model selection in PWA Settings)
+
+No source repo: this is Nero's own product decision (locked in
+`docs/modes-decision.md` — one web codebase, two serve modes;
+the user picks the model in PWA Settings), not a pattern taken
+from another repo. No code was copied, vendored, or depended on
+from anywhere for this item.
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| Let the user pick the model provider in Settings: BYOK key (vault only) vs local model base URL (Ollama default `localhost:11434`) vs hosted default, and wire the choice through to the router's `llm_complete` path so the selected endpoint is really used | — (Nero's product decision, `docs/modes-decision.md`) | Nothing from another repo | `puspa/pwa/model_settings.py` (`ModelSelection`; `model_settings` table, one row per user, no key column; `save_selection` / `get_selection`; `validate_base_url`: http(s) only, host required, userinfo refused; `save_byok_key` / `has_byok_key` / `delete_byok_key` through the existing `puspa.accounts.vault` under `byok:<provider>`; `resolve_completion_kwargs` → router kwargs; `complete_with_selection` wrapping `complete_detailed`; `llm_complete_for_user` callable resolving the selection on every call) + the G33 API block in `puspa/pwa/app.py` (`GET`/`POST /api/model-settings`, `POST`/`DELETE /api/model-settings/byok-key`, key fields refused, key never returned) + the Settings screen Model card (`apps/pwa/src/screens/SettingsScreen.tsx`, `apps/pwa/src/state/modelSettings.ts`, client functions in `apps/pwa/src/api/client.ts`, `ModelSettings` schema in `docs/openapi-pwa.yaml`) + a small router addition (`provider` argument on `complete_messages` / `complete_detailed` / `complete`, labelling unlisted models only) + `docs/model-selection.md` |
+
+No new dependency was added for G33. Tests:
+`tests/test_pwa_model_settings.py` (30 tests: persistence
+across reloads, Ollama defaults, validation rejects non-http
+URLs and userinfo, selection refuses every key field, BYOK key
+never in the selection row or vault plaintext, router fake
+transport proves the request goes to the selected base URL with
+the selected key for local and BYOK, hosted uses the OpenRouter
+default, missing BYOK key fails loudly, `llm_complete_for_user`
+picks up a Settings change without rebuilding) +
+`tests/test_pwa_model_settings_api.py` (6 tests: endpoints,
+400s, key never returned, login required) +
+`apps/pwa/src/state/modelSettings.test.ts` (7 tests) +
+`apps/pwa/src/api/modelSettings.test.ts` (5 tests) +
+`apps/pwa/src/screens/SettingsScreen.test.tsx` (4 tests).
+Docs: `docs/model-selection.md`. Honest limits: a local model
+needs real hardware (for most users BYOK is the realistic path,
+local is for users with a GPU or patience for CPU); Puspa does
+not pre-check that the local server runs or the model is pulled
+(the first completion fails as a `CompletionError`); BYOK
+providers outside the known-endpoint map need their base URL
+typed in; the selection is per user, not per role or task; no
+live BYOK or live Ollama call is proven in the suite (fake
+transport + fake key only).
+
+## Maturity phase (G32 — WebUI lite as a real mode)
+
+No source repo for this item. G32 is Nero's product decision,
+not a pattern adapted from another repo: the locked modes
+decision (`docs/modes-decision.md`) says the PWA is ONE web
+codebase with TWO serve modes, and the Jinja templates are the
+no-install trial surface — one chat page plus an upgrade button,
+trial as an entitlement, not a UI. There is no upstream repo,
+license, or pattern to attribute, and no external code was
+copied, vendored, or depended on.
+
+What was built from scratch (Puspa's own code, reusing only
+Puspa's own G1 Jinja fallback and G2 billing entitlements):
+`puspa/pwa/lite.py` (`TrialState`, `check_trial`,
+`start_trial`, `prior_trial_entitlement`, trial-cookie
+encode/decode, `trial_secret_from_env`, `upgrade_url`) +
+the G32 wiring block in `puspa/pwa/app.py` (`GET /trial`,
+`POST /trial/start`, `POST /trial/chat`) + the fixed templates
+(`base.html` nav routes/active names, `chat.html` sender +
+form field + office poll, `connectors.html` agents +
+form fields, `panel_evidence.html` renamed from
+`evidence_panel.html` to match the route + real evidence
+keys, `memory.html` fact rendering, `office.html`
+projection keys, `tasks.html` form fields) + the new
+`templates/trial.html` + `docs/webui-lite.md`. No new pip
+dependency was added. Tests: `tests/test_webui_lite.py`
+(37 tests, run with `--noconftest`, DB-free).
+
+## Maturity phase (G31 — PWA serve modes, Nero's modes decision)
+
+No repo source for this item: the two serve modes are Nero's own
+product decision (locked 18 Nov 2026 ~23:00 WIB, `docs/modes-decision.md`),
+not a pattern taken from another repository. Nothing was adapted from
+any external repo, and no external code was copied, vendored, or depended
+on. What was built from scratch, as Puspa's own code:
+
+| What | Where |
+| --- | --- |
+| Serve-mode config: `local` vs `hosted`, env (`PUSPA_SERVE_MODE`) then JSON file (`PUSPA_SERVE_MODE_FILE`) then default `local`; explicit invalid value rejected fail-closed (`ServeModeError` at startup); unknown modes never show operator panels | `puspa/pwa/serve_modes.py` (`resolve_serve_mode`, `operator_panels_visible`, `describe_serve_mode`) |
+| Bounded gateway decision log (last 50), wired as the gateway's audit callable; operator payload composer (local: live panels; hosted: panels hidden, nulls) | `puspa/pwa/serve_modes.py` (`GatewayDecisionLog`, `gateway_status`, `pairing_status`, `operator_log_lines`, `operator_status`) |
+| Read-only live pairing snapshot (counts, sessions with device label + expiry, locks; no codes or tokens) | `PairingStore.status_snapshot()` in `puspa/hosting/pairing.py` |
+| Read-only live gateway policy summary (loaded/stale, dry-run, deny/allow rule sources) | `Gateway.policy_summary()` in `puspa/policy/gateway.py` |
+| App wiring: mode resolved once at startup, `PairingStore` + `GatewayDecisionLog` + `Gateway` (default policy, audit mirrored into the app event log) on `app.state`, `GET /api/operator/status` (login required) | `puspa/pwa/app.py` (two marked G31 blocks only; no other block touched) |
+| Operator panels on the Office screen (pairing, gateway, live log), polled every 5 s; hidden in hosted mode | `apps/pwa/src/components/OperatorPanel.tsx`, `apps/pwa/src/screens/OfficeScreen.tsx`, `apps/pwa/src/state/operator.ts`, `apps/pwa/src/api/client.ts` (`fetchOperatorStatus`) |
+| Contract + docs | `docs/openapi-pwa.yaml` (`OperatorStatus` + related schemas, `GET /api/operator/status`; types regenerated with `npm run generate`), `docs/serve-modes.md` |
+
+No new dependency was added for G31. Tests: `tests/test_pwa_serve_modes.py`
+(28 tests, `--noconftest`, no database) + `apps/pwa/src/state/operator.test.ts`
++ `apps/pwa/src/components/OperatorPanel.test.tsx`
++ `apps/pwa/src/api/client.test.ts` (`fetchOperatorStatus`)
++ `apps/pwa/src/screens/OfficeScreen.test.tsx`. Honest limits: the gateway
+panel stays at zero decisions until a real action path calls `gateway.decide()`
+(the PWA takes no computer actions itself); the pairing store is in-memory and
+process-local; the panels poll every 5 s rather than arriving over SSE; hosted
+serving end to end needs the cloud backend, which is not in this repo.

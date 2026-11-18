@@ -520,6 +520,33 @@ class Gateway:
         return cls(load_policy(policy_data), dry_run=dry_run, audit=audit)
 
     # -- policy resolution ----------------------------------------------
+    def policy_summary(self) -> dict:
+        """Read-only operator view of the active policy (G31).
+
+        Whether a policy is loaded, whether the snapshot went stale
+        (fail-closed: a stale or never-loaded snapshot refuses
+        everything), the dry-run flag, and the deny/allow rule
+        sources. A snapshot that was never loaded reports no rules:
+        the panel shows "no policy loaded" rather than inventing
+        one.
+        """
+        if self.snapshot is not None:
+            policy = self.snapshot.policy
+            return {
+                "loaded": self.snapshot.loaded,
+                "stale": self.snapshot.stale,
+                "dry_run": self.dry_run,
+                "deny_rules": [rule.source for rule in policy.deny] if policy else [],
+                "allow_rules": [rule.source for rule in policy.allow] if policy else [],
+            }
+        return {
+            "loaded": True,
+            "stale": False,
+            "dry_run": self.dry_run,
+            "deny_rules": [rule.source for rule in self._policy.deny],
+            "allow_rules": [rule.source for rule in self._policy.allow],
+        }
+
     def _current_policy(self) -> Policy | None:
         if self.snapshot is not None:
             if not self.snapshot.loaded:

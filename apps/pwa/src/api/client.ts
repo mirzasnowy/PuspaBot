@@ -20,6 +20,16 @@ export type OfficeAgent = components["schemas"]["OfficeAgent"];
 export type ProfileFact = components["schemas"]["ProfileFact"];
 export type SseEvent = components["schemas"]["SseEvent"];
 export type Bootstrap = components["schemas"]["Bootstrap"];
+export type OperatorStatus = components["schemas"]["OperatorStatus"];
+export type PairingStatus = components["schemas"]["PairingStatus"];
+export type PairingSession = components["schemas"]["PairingSession"];
+export type PairingLock = components["schemas"]["PairingLock"];
+export type GatewayStatus = components["schemas"]["GatewayStatus"];
+export type GatewayPolicy = components["schemas"]["GatewayPolicy"];
+export type GatewayDecision = components["schemas"]["GatewayDecision"];
+export type OperatorLogLine = components["schemas"]["OperatorLogLine"];
+export type ModelSettings = components["schemas"]["ModelSettings"];
+export type ModelSource = ModelSettings["source"];
 
 export type FetchFn = typeof fetch;
 
@@ -70,6 +80,23 @@ async function postJson<T>(
   });
   if (!response.ok) throw new ApiError(response.status, await readError(response));
   return (await response.json()) as T;
+}
+
+async function getJson<T>(path: string, fetchFn: FetchFn = fetch): Promise<T> {
+  const response = await fetchFn(path, { credentials: "same-origin" });
+  if (!response.ok) throw new ApiError(response.status, await readError(response));
+  return (await response.json()) as T;
+}
+
+/**
+ * Fetch the operator status for the Office screen's operator panels
+ * (G31). In local serve mode the payload carries pairing status,
+ * gateway status, and live log lines read from live server state;
+ * in hosted mode `operator_panels` is false and the panel fields
+ * are null, and the screen hides the panels.
+ */
+export function fetchOperatorStatus(fetchFn: FetchFn = fetch): Promise<OperatorStatus> {
+  return getJson<OperatorStatus>("/api/operator/status", fetchFn);
 }
 
 /** Send a chat message. Returns the stored message. */
@@ -170,6 +197,44 @@ export function saveOnboardingTime(
   fetchFn: FetchFn = fetch,
 ): Promise<{ ok: boolean }> {
   return postJson("/api/onboarding/waktu", { seconds }, fetchFn);
+}
+
+/** Read the user's own-model selection (G33). Never returns key material. */
+export function getModelSettings(fetchFn: FetchFn = fetch): Promise<ModelSettings> {
+  return getJson<ModelSettings>("/api/model-settings", fetchFn);
+}
+
+/** Save the user's own-model selection (G33). Never send a key here. */
+export function saveModelSettings(
+  settings: Omit<ModelSettings, "has_byok_key">,
+  fetchFn: FetchFn = fetch,
+): Promise<ModelSettings> {
+  return postJson("/api/model-settings", settings, fetchFn);
+}
+
+/**
+ * Save a BYOK key (G33). The server stores it in the vault only
+ * and never returns it.
+ */
+export function saveByokKey(
+  provider: string,
+  key: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ ok: boolean }> {
+  return postJson("/api/model-settings/byok-key", { provider, key }, fetchFn);
+}
+
+/** Delete a BYOK key from the vault (G33). Idempotent. */
+export async function deleteByokKey(
+  provider: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ ok: boolean }> {
+  const response = await fetchFn(
+    `/api/model-settings/byok-key?provider=${encodeURIComponent(provider)}`,
+    { method: "DELETE", credentials: "same-origin" },
+  );
+  if (!response.ok) throw new ApiError(response.status, await readError(response));
+  return (await response.json()) as { ok: boolean };
 }
 
 /**

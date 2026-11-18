@@ -4,6 +4,7 @@ import {
   createTask,
   decideApproval,
   deleteAgent,
+  fetchOperatorStatus,
   formatRupiah,
   parseSseEvent,
   sendChat,
@@ -137,5 +138,33 @@ describe("formatRupiah", () => {
     expect(formatRupiah(2000)).toBe("Rp2.000");
     expect(formatRupiah(1500000)).toBe("Rp1.500.000");
     expect(formatRupiah(0)).toBe("Rp0");
+  });
+});
+
+describe("fetchOperatorStatus", () => {
+  it("GETs /api/operator/status and returns the live payload", async () => {
+    const payload = {
+      mode: "local",
+      operator_panels: true,
+      pairing: { active_codes: 0, active_sessions: 1, sessions: [], locked_addresses: 0, locks: [] },
+      gateway: { policy: { loaded: true, stale: false, allow_rules: ["true"] }, decisions: 1 },
+      log: [],
+    };
+    const fetchMock = mockFetch(payload);
+    const result = await fetchOperatorStatus(fetchMock as unknown as typeof fetch);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/operator/status");
+    expect(init.method).toBeUndefined();
+    expect(result.mode).toBe("local");
+    expect(result.operator_panels).toBe(true);
+    expect(result.pairing?.active_sessions).toBe(1);
+  });
+
+  it("throws ApiError with the server message on 401", async () => {
+    const fetchMock = mockFetch({ error: "belum masuk" }, 401);
+    await expect(
+      fetchOperatorStatus(fetchMock as unknown as typeof fetch),
+    ).rejects.toBeInstanceOf(ApiError);
   });
 });

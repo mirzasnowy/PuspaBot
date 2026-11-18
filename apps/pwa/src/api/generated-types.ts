@@ -1169,12 +1169,294 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/operator/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Operator status (serve mode, pairing, gateway, live log)
+         * @description G31: the Office screen polls this endpoint for its operator
+         *     panels. In `local` serve mode the payload carries pairing
+         *     status, gateway status, and the live log lines, all read from
+         *     live server state. In `hosted` mode `operator_panels` is false
+         *     and the panel fields are null: the operator surface of a
+         *     hosted deployment lives in the cloud backend, not here.
+         *     Requires a logged-in session cookie. Never returns pairing
+         *     codes or session tokens.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Operator status for the current serve mode */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OperatorStatus"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/model-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the user's own-model selection
+         * @description Returns the stored selection (hosted / BYOK / local). Never
+         *     returns key material: only `has_byok_key` (boolean) says
+         *     whether a BYOK key exists in the vault.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Stored selection (hosted when never set) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ModelSettings"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Save the user's own-model selection
+         * @description Persists the choice only; a key must never be sent here —
+         *     any key field in the body is refused with 400. A BYOK key
+         *     is saved through POST /api/model-settings/byok-key, which
+         *     stores it in the vault only.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ModelSettings"];
+                };
+            };
+            responses: {
+                /** @description Saved selection */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ModelSettings"];
+                    };
+                };
+                /** @description Invalid selection (unknown source, bad base URL, key field present) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/model-settings/byok-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save a BYOK key into the vault
+         * @description The key is stored only in the existing per-user vault
+         *     (entry `byok:<provider>`, envelope-encrypted) and is
+         *     never returned by any endpoint.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @example openrouter */
+                        provider: string;
+                        /** @description The provider API key; stored in the vault only. */
+                        key: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Key stored in the vault */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok: boolean;
+                        };
+                    };
+                };
+                /** @description Empty provider or key */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /** Delete a BYOK key from the vault */
+        delete: {
+            parameters: {
+                query: {
+                    provider: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Key deleted (idempotent) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok: boolean;
+                        };
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         Error: {
             error: string;
+        };
+        /**
+         * @description The user's own-model selection (G33). Carries no key
+         *     material: `has_byok_key` only says whether a BYOK key
+         *     exists in the vault.
+         */
+        ModelSettings: {
+            /**
+             * @description hosted = Puspa default; byok = own API key from the vault; local = local OpenAI-compatible model (Ollama).
+             * @enum {string}
+             */
+            source: "hosted" | "byok" | "local";
+            /**
+             * @description Local model base URL, or a BYOK provider override. Must be a valid http(s) URL.
+             * @example http://localhost:11434/v1
+             */
+            base_url?: string | null;
+            /** @description Model id to ask for (local default `llama3.1`). */
+            model?: string | null;
+            /**
+             * @description BYOK provider name; its key lives in the vault under `byok:<provider>`.
+             * @example openrouter
+             */
+            provider?: string | null;
+            /** @description Whether a BYOK key for `provider` exists in the vault. */
+            has_byok_key: boolean;
         };
         ChatMessage: {
             /** @description Sender id ("users" for the user in the demo store) */
@@ -1287,6 +1569,74 @@ export interface components {
             profile?: components["schemas"]["ProfileFact"][];
             office?: components["schemas"]["OfficeProjection"];
             handoffs?: Record<string, never>[];
+        };
+        /**
+         * @description G31: the `GET /api/operator/status` payload. In `local` serve
+         *     mode `pairing`, `gateway`, and `log` are read from live server
+         *     state; in `hosted` mode `operator_panels` is false and the
+         *     panel fields are null. Pairing codes and session tokens are
+         *     never included.
+         */
+        OperatorStatus: {
+            /** @enum {string} */
+            mode: "local" | "hosted";
+            /** @description True only in local mode; the client shows the operator panels on this flag alone */
+            operator_panels: boolean;
+            pairing?: components["schemas"]["PairingStatus"];
+            gateway?: components["schemas"]["GatewayStatus"];
+            log?: components["schemas"]["OperatorLogLine"][];
+        };
+        /** @description Live pairing-store snapshot (G31). No codes or tokens, only counts and session metadata. */
+        PairingStatus: {
+            active_codes?: number;
+            active_sessions?: number;
+            sessions?: components["schemas"]["PairingSession"][];
+            locked_addresses?: number;
+            locks?: components["schemas"]["PairingLock"][];
+        };
+        PairingSession: {
+            user_id?: string;
+            device_label?: string;
+            expires_at?: number;
+        };
+        PairingLock: {
+            address?: string;
+            failures?: number;
+            locked_until?: number;
+        };
+        /** @description Live action-gateway state (G31). `last_decision` is null until the gateway decides its first action. */
+        GatewayStatus: {
+            policy?: components["schemas"]["GatewayPolicy"];
+            dry_run?: boolean;
+            decisions?: number;
+            last_decision?: components["schemas"]["GatewayDecision"];
+        };
+        GatewayPolicy: {
+            loaded?: boolean;
+            /** @description True when the snapshot went stale; a stale or never-loaded snapshot refuses everything (fail-closed) */
+            stale?: boolean;
+            dry_run?: boolean;
+            deny_rules?: string[];
+            allow_rules?: string[];
+        };
+        GatewayDecision: {
+            allowed?: boolean;
+            /** @enum {string} */
+            outcome?: "allow" | "deny";
+            rule?: string | null;
+            reason?: string;
+            dry_run?: boolean;
+            forwarded?: boolean;
+            tool?: string;
+            actor?: string;
+            page_host?: string;
+            recorded_at?: number;
+        };
+        /** @description One live log line from the app event log (G31). */
+        OperatorLogLine: {
+            type?: string;
+            created_at?: number;
+            summary?: string;
         };
     };
     responses: never;
