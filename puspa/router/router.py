@@ -27,6 +27,16 @@ itu, sementara `puspa/router/quota.py` melacak pemakaian dan hitung
 mundur reset per provider. Dua fungsi di bawah ini adalah satu-satunya
 wiring di modul ini: keduanya mendelegasikan ke modul tersebut dengan
 lazy import supaya tidak ada circular import.
+
+OAuth refresh dan terjemahan format (pola 9Router, ditulis ulang):
+`puspa/router/oauth.py` merefresh token akses OAuth sebelum
+kedaluwarsa untuk provider langganan yang dikenal factory BYOK
+(`xai`, `github_copilot`, `openai_codex`), dan
+`puspa/router/translate.py` menerjemahkan request/response antara
+format OpenAI chat-completions dan format Anthropic Messages —
+dua format yang ditangani jalur BYOK hari ini. Wiring di bawah
+hanya mendelegasikan ke kedua modul itu; tidak ada provider live
+yang dipanggil dari sini.
 """
 
 from __future__ import annotations
@@ -141,3 +151,95 @@ def choose_with_quota(role: str, quota_store, *,
     entry = _choose_with_quota(role, quota_store,
                                creator_family=creator_family)
     return entry.choice if entry is not None else None
+
+
+# ---------------------------------------------------------------------------
+# OAuth refresh + format translation (delegasi ke oauth.py / translate.py)
+# ---------------------------------------------------------------------------
+
+#: The one shared refresher for the router path. In-memory by design
+#: (see `puspa/router/oauth.py`): tokens do not survive a restart.
+_oauth_refresher = None
+
+
+def oauth_refresher():
+    """The router's shared `TokenRefresher` (created on first use)."""
+    global _oauth_refresher
+    if _oauth_refresher is None:
+        from .oauth import TokenRefresher
+
+        _oauth_refresher = TokenRefresher()
+    return _oauth_refresher
+
+
+def register_known_oauth_providers(refresher=None):
+    """Register the three OAuth providers the BYOK factory already knows.
+
+    All three are SIMULATED registrations: no live credential and no
+    live call is made here. xAI carries the token endpoint and public
+    client id read from nanobot's own source
+    (`nanobot/nanobot/providers/xai_oauth.py`: issuer
+    `https://auth.x.ai`, token endpoint
+    `https://auth.x.ai/oauth2/token`); GitHub Copilot carries the
+    public GitHub OAuth token endpoint but no client id; Codex
+    carries neither, because its token endpoint was not verified
+    from nanobot's source. A refresh against any of them raises a
+    clear error naming what is missing until a real registration
+    (client id, secret from env or vault, token URL) is supplied.
+    Returns the list of provider names registered.
+    """
+    refresher = refresher if refresher is not None else oauth_refresher()
+    refresher.register_simulated(
+        "xai", token_url="https://auth.x.ai/oauth2/token",
+        client_id="b1a00492-073a-47ea-816f-4c329264a828",
+        scope=("openid", "profile", "email", "offline_access"),
+        notes="public client id from nanobot source; interactive login "
+              "still via nanobot (`nanobot provider login xai`); "
+              "no client secret is used by this public client",
+    )
+    refresher.register_simulated(
+        "github_copilot",
+        token_url="https://github.com/login/oauth/access_token",
+        client_id=None,
+        notes="no client id wired yet; interactive login still via "
+              "nanobot (`nanobot provider login github-copilot`)",
+    )
+    refresher.register_simulated(
+        "openai_codex", token_url=None, client_id=None,
+        notes="token endpoint not verified from nanobot source; "
+              "interactive login still via nanobot "
+              "(`nanobot provider login openai-codex`)",
+    )
+    return ["xai", "github_copilot", "openai_codex"]
+
+
+def get_valid_oauth_token(provider: str, http_client=None) -> str:
+    """Return a usable OAuth access token for ``provider``.
+
+    Delegates to the shared `TokenRefresher`: refreshes proactively
+    when the stored token expires inside the leeway, raises
+    `TokenRefreshError` when no usable token exists. The caller
+    sends the returned value as the Bearer token.
+    """
+    return oauth_refresher().get_valid_token(provider, http_client)
+
+
+def translate_chat_request(payload: dict, *, source: str, target: str):
+    """Translate a chat request between OpenAI and Anthropic formats.
+
+    Delegates to `puspa.router.translate.translate_request`.
+    ``source`` / ``target`` are ``"openai"`` or ``"anthropic"``.
+    """
+    from .translate import translate_request
+
+    return translate_request(payload, source=source, target=target)
+
+
+def translate_chat_response(payload: dict, *, source: str, target: str):
+    """Translate a chat response between OpenAI and Anthropic formats.
+
+    Delegates to `puspa.router.translate.translate_response`.
+    """
+    from .translate import translate_response
+
+    return translate_response(payload, source=source, target=target)
