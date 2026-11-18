@@ -1257,3 +1257,173 @@ API, never direct DB access from workers) + compression lineage
 (parent/child sessions across compressions) + FTS5 beside pgvector
 + DB recovery documentation. Note the G7 finding: the FTS5 home
 is the SQLite sidecar (`state.db`), not Postgres tsvector.
+
+## Wave 9: G25+G26 (subagent lifecycle + single-writer session, done 18 Nov 2026)
+
+Two parallel workers, disjoint files. Central SOLO suite after the
+wave: **2,308 passed, 9 skipped, 1 warning, 14m09s** (baseline
+2,224 + 84 new: G25 37 + G26 47). Postgres stayed online (no VM
+replacement this wave).
+
+### G25 Subagent lifecycle (commit d162dcc7)
+
+New package `puspa/subagents/` (12 modules, 1,489 lines) + 5 test
+files (735 lines), 37 passed (verified by the coordinator, run
+with `--noconftest` like `test_toolsets.py` — the repo conftest
+needs Postgres for an autouse fixture even for in-memory tests).
+`states.py` (`SubagentState` StrEnum: PENDING, STARTING, RUNNING,
+SUCCEEDED, FAILED, INTERRUPTED, CANCEL_REQUESTED, CANCELLED,
+UNKNOWN + `TERMINAL_STATES`). `handles.py` (versioned capability
+handle: child id + process generation + random secret token,
+base64-url serialized; parse failure → `UNKNOWN_HANDLE`; the token
+never appears in `repr`, the registry stores only its SHA-256).
+`errors.py` (stable coded errors: `UNKNOWN_HANDLE`,
+`RECONNECT_UNAVAILABLE`, `TOOLSET_REJECTED`, `LIMIT_EXCEEDED`,
+`UNSUPPORTED_OPTION`, `NOT_TERMINAL`). `limits.py` (goal 8,000,
+context 32,768, metadata 32 keys / 4,096 chars canonical JSON,
+steer 4,000 chars / 16 queued). `results.py` (`SubagentResult`
+frozen: final text only — no transcript/reasoning — 32,768 cap +
+`truncated` flag, stable SHA-256 of the stored text, idempotent).
+`toolsets.py` (child toolset must be known, all tools registered,
+and a subset of the parent toolset, else `TOOLSET_REJECTED`).
+`hooks.py` (serial `subagent_stop` dispatch in registration
+order, a failing hook is isolated and logged;
+`collect_stop_hooks` for plugin contexts). `runner.py`
+(`ChildContext` with `boundary()` / `drain_steer()` /
+`record_cost()` / `should_stop()`, `ChildCancelled`,
+`Runner` protocol, `ThreadRunner` default on a daemon thread,
+injectable runner for deterministic tests). `host.py`
+(`HostSession`: the seam to the host path that already exists —
+`SubagentPool` one level only, child token a subset of the parent
+token via `is_subset`, budget narrowed to at most 15 steps /
+20,000 tokens / the parent rupiah ceiling, expiry no later than
+the parent; cost rolls up into the parent `BudgetTracker`; finish
+notifies memory through an injected callback; stop hooks fire
+serially; pool entry cleaned up at finish; events go to the same
+`sink(event_type, content)` shape the harness uses).
+`lifecycle.py` (`SubagentLifecycle`: `launch` / `status` /
+`wait` / `cancel` / `steer` / `result` / `reconnect` /
+`shutdown`). `docs/subagent-lifecycle.md` documents the handle
+contract, states, operations, fail-closed rules, host path, and
+honest limits. Honest limits: **`delegate_task` does not exist
+in this repo** (coordinator confirmed by grep) — the lifecycle
+wires into `SubagentPool` + `is_subset` + `BudgetTracker` + the
+harness-shaped sink instead, and a `delegate_task` body route is
+a follow-up if that function ever appears; no harness-based child
+yet (the child body is a plain callable; running `CodingHarness`
+as a child needs a boundary hook in `CodingHarness.run` first);
+the child token is not signed (needs the runtime signing key,
+which the lifecycle does not hold); `subagent_stop` is not a
+plugin event yet (`HOOK_EVENTS` in `puspa/plugins/context.py`
+does not list it — G27 area, not touched here); memory
+notification is an empty callback by default (child result →
+feedback verdict mapping undefined); the child budget is carried
+in the token payload but not enforced mid-run; 0 live LLM calls.
+
+### G26 Single-writer session + FTS5 + lineage (commit 3ff50906)
+
+New package `puspa/sessions/` (10 modules, 1,497 lines) + 4 test
+files (576 lines), 47 passed (verified by the coordinator).
+`errors.py` (`SessionError`, `SingleWriterError`,
+`LiveHomeError`, `CorruptDatabaseError`, `ProfileError`,
+`WriteContentionError`, `SessionNotFoundError`). `home.py`
+(authoritative resolver: explicit argument → context-local
+override → env `PUSPA_HOME` → default `~/.puspa`; named profiles
+under `<root>/profiles/<name>/`; profile-name validation;
+live-home guard requiring BOTH `allow_live_home=True` AND
+`PUSPA_ALLOW_LIVE_HOME=1`). `schema.py` (`sessions`, `messages`,
+`session_lineage`, `model_config`, `state_meta`, plus external-
+content FTS5 `messages_fts` with 3 sync triggers; `verify_schema`,
+`verify_fts`, `rebuild_fts`). `store.py` (`SessionStore`: WAL +
+`busy_timeout`, every mutation in one `BEGIN IMMEDIATE`
+transaction (atomic batch append), retry then
+`WriteContentionError`, autocommit connections +
+thread-safe RLock, BM25 `search_messages`,
+atomic `create_child_session` (session + summary + lineage
+edge), `check_integrity`, model config, state meta).
+`gateway.py` (`SessionGateway`: process-wide registry per DB
+path — a second live gateway for the same file raises
+`SingleWriterError`; readers are `mode=ro` and physically cannot
+write; a writable `SessionStore` refuses to open without a
+`_WriterToken` that only this module mints). `assembly.py`
+(`open_persistence()` / `open_persistence_reader()`; a reader
+over a missing DB raises `FileNotFoundError`, never creates one
+silently). `lineage.py` (`adopt_compression_result()` +
+`record_compression()`; adopts only when
+`stats["compressed"]` is True; the summary is the G19
+`[Context summary of earlier turns]` message). `housekeeping.py`
+(`maintenance()`: integrity + FTS verify + counts + optional
+rebuild/VACUUM, stamps `last_maintenance`;
+`recover_report()`: read-only inspection —
+missing/empty/healthy/corrupt — never modifies the file).
+`spawner.py` (`child_env()` always sets `PUSPA_HOME`
+explicitly; `require_home_in_env()` fails a spawn that drops
+it; `home_from_env()`). `docs/session-storage.md` (storage
+contract, session authority, FTS5, lineage, profile isolation,
+live guard, housekeeping, honest limits) and
+`docs/state-db-recovery.md` (fail-closed procedure: stop writer
+→ preserve evidence → `.dump`/`.recover` → restore backup →
+rebuild from ledger → verify). **FTS5 G7 reused, not duplicated:**
+MATCH queries use `puspa.memory.recall._fts5_query` and the
+`_tokens` tokenizer; FTS5 triggers run inside the writer's own
+transaction (zero extra commits, vs G7's per-row commit);
+`verify_fts` closes G7's drift-detection gap (probes the index
+per rowid with MATCH — a COUNT(*) on an external-content FTS5
+table reads the content table, not the index, found by
+experiment) + `integrity_check`, then `rebuild_fts`; the index
+lives in the same persistent `state.db`. One real bug found
+during the work: sqlite3's default `isolation_level=""` let an
+`integrity-check` INSERT open a never-committed transaction, so
+the next `BEGIN IMMEDIATE`/`VACUUM` failed — fixed with
+`isolation_level=None` (autocommit) + explicit transactions.
+The G19 seam is proven by test: the lineage test imports the
+real `SUMMARY_MARKER` from `puspa.runtime.context_compression`
+and compares it with the session marker, so a G19 marker change
+fails the test instead of drifting silently (the marker is still
+a duplicated constant in `lineage.py` — importing it directly
+is a small follow-up). Honest limits: the single-writer
+registry is process-wide, not machine-wide (two processes can
+open the same profile; SQLite locking prevents corruption but
+the second process is not refused at open — follow-up: file
+lock at open); `get_session()` has no paging yet; `model_config`
+is flat key/value without a validated schema; no backup/sync/
+export of `state.db` yet (the encrypted `puspa/backup/` covers
+only the Postgres ledger — the recovery doc records this as an
+open backup gap); not wired to any real call site yet (nothing
+calls `open_persistence()` from the turn loop) and not tested
+live with a real G19 compression (fake `CompressionResult` +
+real marker only); `.recover` salvage untested end-to-end with
+a genuinely corrupt DB (only garbage/header-only fixtures).
+
+## Next: G11+G12 (multi-tenant auth/relay + Sentinel)
+
+Two parallel workers, disjoint files. G11 (DuskBot
+`server/request-auth.ts` + `card-seal.ts` + `sessions.ts` +
+`apps/link-service/` + `apps/cloudflare/link-relay/`): loopback
+trust only when Host + Origin are loopback (a browser never gets
+it); `service` mode restricts loopback without a session to an
+explicit `SERVICE_ALLOW` list (method + path regex); pairing with
+a short-lived code (5 minutes), 30-day session, 5 wrong tries →
+10-minute address lock; per-start sealing key (HPKE) never
+written to disk, each seal signed by the server's long-term
+identity key (file `0600`, excluded from backups) pinned by the
+app at linking; link/relay with a 7-character code (no l/o/0/1),
+rate limit 30/hour per address + 2,000/hour total, AES-256-GCM
+relay frames keyed only by app + server, fallback order direct →
+Cloudflare tunnel → relay. Google login stays in front; this
+pattern is for the server-to-server path behind it. G12 (DuskBot
+`server/sentinel/` + `server/decision-log.ts` +
+`server/usage-trace/`; hermes `hermes_logging.py` +
+`hermes_startup_watchdog.py` + `agent/usage_*.py` +
+`agent/insights.py` + `batch_runner.py`): Puspa sentinel over the
+ledger + learning loop with the same 5 detectors (tool error,
+stopped turn, long queue, cost, retry loop) + default thresholds
+(queue 5 minutes, cost $5, retry min. 3, 7-day lookback, 30-minute
+rescan) + state file; decision log as daily files with 180-day
+retention; usage traces as span trees; anonymous analytics + crash
+reports switchable off; the DuskBot verification rule (isolated
+fixtures, never verify a mutation on live user data) as a written
+rule. Note the K8 fold: K8 (independent verifier) lands here —
+the sentinel's detectors are the verifier's eyes; keep the
+verifier module separate from the detectors so the two can evolve
+independently.
