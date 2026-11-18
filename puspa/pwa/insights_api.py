@@ -26,6 +26,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from ..billing.insights import insights_for_user, validate_days
+from ..i18n.server_lines import render as render_server_line
 
 __all__ = ["get_insights", "register_routes"]
 
@@ -45,7 +46,9 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
     def insights_endpoint(request: Request, days: int = 7):
         user_id = need_user(request)
         if user_id is None:
-            return JSONResponse({"error": "belum masuk"}, status_code=401)
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
         try:
             validate_days(days)
         except ValueError as exc:

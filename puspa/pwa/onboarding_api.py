@@ -57,6 +57,7 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from ..i18n.server_lines import render as render_server_line
 from ..onboarding import hints as hints_engine
 from ..onboarding import onboarding as onboarding_core
 
@@ -159,7 +160,9 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
     def _require_user(request: Request):
         user_id = need_user(request)
         if user_id is None:
-            return None, JSONResponse({"error": "belum masuk"}, status_code=401)
+            return None, JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
         return user_id, None
 
     def _bad_request(exc: Exception):
