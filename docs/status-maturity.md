@@ -1659,5 +1659,5 @@ types for access decisions (core ledger stays at 31 types); the
 gateway/teams HTTP wiring is a follow-up; two containers sharing
 one home volume are not refused at open (G26 single-writer is
 process-wide — the file-lock follow-up). Wave 12 central SOLO
-suite: pending at docs time (runs after this commit; number lands
-here once it is green).
+suite: **2,575 passed, 9 skipped, 1 warning, 16m51s, EXIT 0** —
+Wave 12 green (+112 from G13).
