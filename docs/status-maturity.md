@@ -815,8 +815,8 @@ main/master); built-in find-skills skill not wired into
 turn-loop skill activation yet; `InstallApproval` is
 evidence, not a capability — build fresh per install,
 never cache across installs. Wave 15 central SOLO suite:
-pending (runs after this commit; number lands here once
-green).
+**2,879 passed, 9 skipped, 1 warning, 19m51s, EXIT 0**
+(2,825 Wave 15 G29 + 54 new G30 tests, exact).
 
 ## New items: G29 + G30 (approved by Nero 18 Nov 2026, queued after Wave 14)
 
