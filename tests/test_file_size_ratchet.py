@@ -84,8 +84,8 @@ BASELINE_LINES = {
     # Wave 9 status entries (18 Nov 2026), the Wave 10 G11 status
     # entry (18 Nov 2026), and the Wave 10 G12 status entry
     # (18 Nov 2026), plus the Wave 10 final suite number
-    # (18 Nov 2026).
-    "docs/status-maturity.md": 1557,
+    # (18 Nov 2026) and the Wave 11 G1 status entry (18 Nov 2026).
+    "docs/status-maturity.md": 1606,
 }
 
 #: Puspa-owned top-level directories covered by the ratchet.
