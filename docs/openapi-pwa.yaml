@@ -32,6 +32,10 @@ tags:
     description: Web Push subscription
   - name: onboarding
     description: Onboarding telemetry
+  - name: office
+    description: Office screen and operator panels (G31 serve modes)
+  - name: settings
+    description: Own-model selection (G33)
 paths:
   /:
     get:
@@ -570,6 +574,157 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/operator/status:
+    get:
+      tags: [office]
+      summary: Operator status (serve mode, pairing, gateway, live log)
+      description: |
+        G31: the Office screen polls this endpoint for its operator
+        panels. In `local` serve mode the payload carries pairing
+        status, gateway status, and the live log lines, all read from
+        live server state. In `hosted` mode `operator_panels` is false
+        and the panel fields are null: the operator surface of a
+        hosted deployment lives in the cloud backend, not here.
+        Requires a logged-in session cookie. Never returns pairing
+        codes or session tokens.
+      responses:
+        "200":
+          description: Operator status for the current serve mode
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorStatus"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/model-settings:
+    get:
+      tags: [settings]
+      summary: Read the user's own-model selection
+      description: |
+        Returns the stored selection (hosted / BYOK / local). Never
+        returns key material: only `has_byok_key` (boolean) says
+        whether a BYOK key exists in the vault.
+      responses:
+        "200":
+          description: Stored selection (hosted when never set)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelSettings"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [settings]
+      summary: Save the user's own-model selection
+      description: |
+        Persists the choice only; a key must never be sent here —
+        any key field in the body is refused with 400. A BYOK key
+        is saved through POST /api/model-settings/byok-key, which
+        stores it in the vault only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelSettings"
+      responses:
+        "200":
+          description: Saved selection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelSettings"
+        "400":
+          description: Invalid selection (unknown source, bad base URL, key field present)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/model-settings/byok-key:
+    post:
+      tags: [settings]
+      summary: Save a BYOK key into the vault
+      description: |
+        The key is stored only in the existing per-user vault
+        (entry `byok:<provider>`, envelope-encrypted) and is
+        never returned by any endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, key]
+              properties:
+                provider:
+                  type: string
+                  example: openrouter
+                key:
+                  type: string
+                  description: The provider API key; stored in the vault only.
+      responses:
+        "200":
+          description: Key stored in the vault
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        "400":
+          description: Empty provider or key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [settings]
+      summary: Delete a BYOK key from the vault
+      parameters:
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Key deleted (idempotent)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   schemas:
     Error:
@@ -578,6 +733,35 @@ components:
       properties:
         error:
           type: string
+    ModelSettings:
+      type: object
+      description: |
+        The user's own-model selection (G33). Carries no key
+        material: `has_byok_key` only says whether a BYOK key
+        exists in the vault.
+      required: [source, has_byok_key]
+      properties:
+        source:
+          type: string
+          enum: [hosted, byok, local]
+          description: hosted = Puspa default; byok = own API key from the vault; local = local OpenAI-compatible model (Ollama).
+        base_url:
+          type: string
+          nullable: true
+          description: Local model base URL, or a BYOK provider override. Must be a valid http(s) URL.
+          example: http://localhost:11434/v1
+        model:
+          type: string
+          nullable: true
+          description: Model id to ask for (local default `llama3.1`).
+        provider:
+          type: string
+          nullable: true
+          description: BYOK provider name; its key lives in the vault under `byok:<provider>`.
+          example: openrouter
+        has_byok_key:
+          type: boolean
+          description: Whether a BYOK key for `provider` exists in the vault.
     ChatMessage:
       type: object
       required: [sender, text, created_at]
@@ -786,3 +970,128 @@ components:
           type: array
           items:
             type: object
+    OperatorStatus:
+      type: object
+      description: |
+        G31: the `GET /api/operator/status` payload. In `local` serve
+        mode `pairing`, `gateway`, and `log` are read from live server
+        state; in `hosted` mode `operator_panels` is false and the
+        panel fields are null. Pairing codes and session tokens are
+        never included.
+      required: [mode, operator_panels]
+      properties:
+        mode:
+          type: string
+          enum: [local, hosted]
+        operator_panels:
+          type: boolean
+          description: True only in local mode; the client shows the operator panels on this flag alone
+        pairing:
+          $ref: "#/components/schemas/PairingStatus"
+        gateway:
+          $ref: "#/components/schemas/GatewayStatus"
+        log:
+          type: array
+          items:
+            $ref: "#/components/schemas/OperatorLogLine"
+    PairingStatus:
+      type: object
+      description: Live pairing-store snapshot (G31). No codes or tokens, only counts and session metadata.
+      properties:
+        active_codes:
+          type: integer
+        active_sessions:
+          type: integer
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PairingSession"
+        locked_addresses:
+          type: integer
+        locks:
+          type: array
+          items:
+            $ref: "#/components/schemas/PairingLock"
+    PairingSession:
+      type: object
+      properties:
+        user_id:
+          type: string
+        device_label:
+          type: string
+        expires_at:
+          type: number
+    PairingLock:
+      type: object
+      properties:
+        address:
+          type: string
+        failures:
+          type: integer
+        locked_until:
+          type: number
+    GatewayStatus:
+      type: object
+      description: Live action-gateway state (G31). `last_decision` is null until the gateway decides its first action.
+      properties:
+        policy:
+          $ref: "#/components/schemas/GatewayPolicy"
+        dry_run:
+          type: boolean
+        decisions:
+          type: integer
+        last_decision:
+          $ref: "#/components/schemas/GatewayDecision"
+    GatewayPolicy:
+      type: object
+      properties:
+        loaded:
+          type: boolean
+        stale:
+          type: boolean
+          description: True when the snapshot went stale; a stale or never-loaded snapshot refuses everything (fail-closed)
+        dry_run:
+          type: boolean
+        deny_rules:
+          type: array
+          items:
+            type: string
+        allow_rules:
+          type: array
+          items:
+            type: string
+    GatewayDecision:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+        outcome:
+          type: string
+          enum: [allow, deny]
+        rule:
+          type: string
+          nullable: true
+        reason:
+          type: string
+        dry_run:
+          type: boolean
+        forwarded:
+          type: boolean
+        tool:
+          type: string
+        actor:
+          type: string
+        page_host:
+          type: string
+        recorded_at:
+          type: number
+    OperatorLogLine:
+      type: object
+      description: One live log line from the app event log (G31).
+      properties:
+        type:
+          type: string
+        created_at:
+          type: number
+        summary:
+          type: string

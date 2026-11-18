@@ -59,6 +59,41 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     app.state.approval = {}
     app.state.time_onboarding = []
 
+    # -- G31: serve modes (local operator vs hosted) ---------------------
+    # One web codebase, two serve modes (decision locked by Nero, see
+    # docs/modes-decision.md). The mode is resolved once at startup
+    # from PUSPA_SERVE_MODE / PUSPA_SERVE_MODE_FILE; an explicitly
+    # invalid value raises ServeModeError here, so the server refuses
+    # to start rather than serve the wrong surface. Unset means
+    # "local": the operator owns the machine, so the operator surface
+    # is the safe default.
+    from puspa.hosting.pairing import PairingStore
+    from puspa.policy.gateway import DEFAULT_POLICY_DATA, Gateway
+    from puspa.pwa.serve_modes import GatewayDecisionLog, resolve_serve_mode
+
+    serve_mode = resolve_serve_mode()
+    app.state.serve_mode = serve_mode.value
+    app.state.pairing_store = PairingStore()
+    app.state.gateway_log = GatewayDecisionLog()
+
+    # Gateway decisions are audited into the decision log (the
+    # panel's "last decision") and mirrored into the app event log
+    # (the panel's live log lines), so both panels read live state.
+    def _gateway_audit(record):
+        app.state.gateway_log.record(record)
+        app.state.event.append(
+            {
+                "type": "gateway_decision",
+                "task_id": "",
+                "agent_id": "puspa",
+                "content": app.state.gateway_log.last() or {},
+                "created_at": time.time(),
+            }
+        )
+
+    app.state.gateway = Gateway.start(DEFAULT_POLICY_DATA, audit=_gateway_audit)
+    # -- end G31 ---------------------------------------------------------
+
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     if (DIST_DIR / "assets").exists():
@@ -217,6 +252,105 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
                 ctx["agents"] = []
         return ctx
 
+    # -- G32 WebUI lite + trial (BEGIN: lite-mode wiring, do not move) --
+    # The lite mode serves the Jinja templates (apps/pwa/templates/)
+    # with no React build, and the trial entry page (/trial) against
+    # the G2 billing trial entitlements (puspa.pwa.lite). The trial
+    # page is Jinja-only on purpose: it must work even when dist
+    # exists, because it is the zero-install first touch.
+    from puspa.pwa import lite as lite_mode
+
+    app.state.trial_secret = lite_mode.trial_secret_from_env()
+
+    def _trial_state_for(request: Request, user_id: str):
+        token = lite_mode.decode_trial_cookie(request.cookies.get(lite_mode.TRIAL_COOKIE))
+        return lite_mode.check_trial(user_id, secret=app.state.trial_secret, token=token)
+
+    @app.get("/trial", response_class=HTMLResponse)
+    def trial_page(request: Request):
+        user_id = need_user(request)
+        if user_id is None:
+            return RedirectResponse("/masuk")
+        state = _trial_state_for(request, user_id)
+        return render(
+            "trial.html",
+            request,
+            {
+                "user_id": user_id,
+                "trial": state.to_dict(),
+                "message": app.state.chat[user_id],
+                "upgrade_url": lite_mode.upgrade_url(),
+                "error": request.query_params.get("error", ""),
+            },
+        )
+
+    @app.post("/trial/start")
+    def trial_start(request: Request):
+        user_id = need_user(request)
+        if user_id is None:
+            return RedirectResponse("/masuk")
+        secret = app.state.trial_secret
+        existing = _trial_state_for(request, user_id)
+        if existing.status in ("active", "grace") and existing.entitlement is not None:
+            # Already trialling: reuse the presented entitlement,
+            # never mint a second trial.
+            entitlement = existing.entitlement
+        elif (
+            lite_mode.prior_trial_entitlement(
+                user_id,
+                secret=secret,
+                token=lite_mode.decode_trial_cookie(request.cookies.get(lite_mode.TRIAL_COOKIE)),
+            )
+            is not None
+        ):
+            # A previous trial token is still presented (expired):
+            # one trial per user, send them to the upgrade offer.
+            return RedirectResponse("/trial?error=trial_already_used", status_code=303)
+        else:
+            try:
+                entitlement = lite_mode.start_trial(
+                    user_id,
+                    machine_id=lite_mode.machine_id_for_user(user_id),
+                    secret=secret,
+                )
+            except ValueError:
+                return RedirectResponse("/trial?error=trial_unavailable", status_code=303)
+        response = RedirectResponse("/trial", status_code=303)
+        response.set_cookie(
+            lite_mode.TRIAL_COOKIE,
+            lite_mode.encode_trial_cookie(entitlement),
+            max_age=lite_mode.trial_cookie_max_age(),
+            httponly=True,
+            samesite="lax",
+        )
+        return response
+
+    @app.post("/trial/chat")
+    async def trial_chat(request: Request, text: str = Form(...)):
+        # Plain-HTML chat post for the lite trial page (no htmx, no
+        # JS needed): same message + event shape as /api/chat, then
+        # back to the trial page.
+        user_id = need_user(request)
+        if user_id is None:
+            return RedirectResponse("/masuk")
+        state = _trial_state_for(request, user_id)
+        if state.status not in ("active", "grace"):
+            return RedirectResponse("/trial", status_code=303)
+        message = {"sender": "users", "text": text, "created_at": time.time()}
+        app.state.chat[user_id].append(message)
+        app.state.event.append(
+            {
+                "type": "user_message",
+                "task_id": "",
+                "agent_id": "puspa",
+                "content": {"sender": user_id, "text": text},
+                "created_at": time.time(),
+            }
+        )
+        return RedirectResponse("/trial", status_code=303)
+
+    # -- G32 WebUI lite + trial (END) -----------------------------------
+
     # -- SSE: update live dari proyeksi Buku Kerja ----------------------
     @app.get("/sse")
     def sse(request: Request):
@@ -233,6 +367,30 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
         return StreamingResponse(
             aliran(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"}
         )
+
+    # -- G31: serve modes — operator status (local mode only) -----------
+    # The Office screen polls this endpoint for its operator panels.
+    # In local mode the payload is pairing + gateway + live log, all
+    # read from the live objects above; in hosted mode it carries
+    # operator_panels=false and null panels, and the client hides the
+    # panels. Login is required either way: the operator surface is
+    # for the logged-in machine owner.
+    @app.get("/api/operator/status")
+    def operator_status_endpoint(request: Request):
+        user_id = need_user(request)
+        if user_id is None:
+            return JSONResponse({"error": "belum masuk"}, status_code=401)
+        from puspa.pwa.serve_modes import operator_status
+
+        return operator_status(
+            app.state.serve_mode,
+            pairing_store=app.state.pairing_store,
+            gateway=app.state.gateway,
+            decision_log=app.state.gateway_log,
+            recent_events=app.state.event,
+        )
+
+    # -- end G31 ---------------------------------------------------------
 
     # -- panel Bukti -----------------------------------------------------
     @app.get("/bukti/{evidence_id}", response_class=HTMLResponse)
@@ -407,6 +565,96 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
             dsn=app.state.dsn,
         )
         return {"ok": True, "subscription_id": subscription_id}
+
+    # -- G33: own-model selection in Settings -------------------------
+    # Own block: GET/POST /api/model-settings + BYOK key endpoints.
+    # The selection (hosted / BYOK / local) is persisted by
+    # puspa.pwa.model_settings; a BYOK key goes to the vault only
+    # and is never accepted, stored, or returned here.
+    @app.get("/api/model-settings")
+    async def api_get_model_settings(request: Request):
+        user_id = need_user(request)
+        if user_id is None:
+            return JSONResponse({"error": "belum masuk"}, status_code=401)
+        from puspa.pwa.model_settings import get_selection
+
+        try:
+            return get_selection(user_id, dsn=app.state.dsn).to_public_dict()
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.post("/api/model-settings")
+    async def api_save_model_settings(request: Request):
+        user_id = need_user(request)
+        if user_id is None:
+            return JSONResponse({"error": "belum masuk"}, status_code=401)
+        from puspa.pwa.model_settings import save_selection
+
+        try:
+            data = await request.json()
+            if not isinstance(data, dict):
+                raise ValueError("model settings body must be a JSON object")
+            saved = save_selection(
+                user_id,
+                {
+                    "source": data.get("source", "hosted"),
+                    "base_url": data.get("base_url"),
+                    "model": data.get("model"),
+                    "provider": data.get("provider"),
+                    # Any key field the client sends is passed
+                    # through so save_selection refuses it loudly
+                    # instead of silently dropping it.
+                    **{
+                        k: v
+                        for k, v in data.items()
+                        if k not in ("source", "base_url", "model", "provider")
+                    },
+                },
+                dsn=app.state.dsn,
+            )
+            return saved.to_public_dict()
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.post("/api/model-settings/byok-key")
+    async def api_save_byok_key(request: Request):
+        user_id = need_user(request)
+        if user_id is None:
+            return JSONResponse({"error": "belum masuk"}, status_code=401)
+        from puspa.pwa.model_settings import save_byok_key
+
+        try:
+            data = await request.json()
+            if not isinstance(data, dict):
+                raise ValueError("BYOK key body must be a JSON object")
+            save_byok_key(
+                user_id,
+                str(data.get("provider", "")),
+                str(data.get("key", "")),
+                dsn=app.state.dsn,
+            )
+            return {"ok": True}
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.delete("/api/model-settings/byok-key")
+    async def api_delete_byok_key(request: Request, provider: str = ""):
+        user_id = need_user(request)
+        if user_id is None:
+            return JSONResponse({"error": "belum masuk"}, status_code=401)
+        from puspa.pwa.model_settings import delete_byok_key
+
+        try:
+            delete_byok_key(user_id, provider, dsn=app.state.dsn)
+            return {"ok": True}
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    # -- end G33 ---------------------------------------------------------
 
     @app.post("/api/onboarding/waktu")
     async def api_onboarding_time(request: Request):
