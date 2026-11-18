@@ -19,6 +19,14 @@ Tarif di katalog adalah KONFIGURASI (Rp per 1.000 token, dari harga
 publik OpenRouter per Nov 2026, dibulatkan) — bukan angka yang
 dijamin; kalibrasi ulang dari Buku Kerja di `kalibrasi_tarif`.
 Keluarga model dipakai untuk aturan "berbeda keluarga".
+
+Fallback dan kuota (pola 9Router, ditulis ulang sebagai kode Puspa):
+`puspa/router/fallback.py` membangun rantai subscription -> cheap ->
+free di atas katalog ini dan mengeksekusi satu request lewat rantai
+itu, sementara `puspa/router/quota.py` melacak pemakaian dan hitung
+mundur reset per provider. Dua fungsi di bawah ini adalah satu-satunya
+wiring di modul ini: keduanya mendelegasikan ke modul tersebut dengan
+lazy import supaya tidak ada circular import.
 """
 
 from __future__ import annotations
@@ -107,3 +115,29 @@ def build_provider(role: str, *, creator_family: str | None = None,
 
     return build_byok_provider(choice.provider, choice.model,
                                user_id=user_id, dsn=dsn)
+
+
+def default_chain(role: str, *, creator_family: str | None = None):
+    """Rantai fallback subscription -> cheap -> free untuk satu peran.
+
+    Delegasi ke `puspa.router.fallback.build_chain` (pola 9Router,
+    ditulis ulang). Kembalikan list `ChainEntry`, urutan termahal dulu.
+    """
+    from .fallback import build_chain
+
+    return build_chain(role, creator_family=creator_family)
+
+
+def choose_with_quota(role: str, quota_store, *,
+                      creator_family: str | None = None):
+    """Pilih model untuk satu peran dengan memperhatikan kuota terlacak.
+
+    Delegasi ke `puspa.router.fallback.choose_with_quota`: tier pertama
+    yang kuotanya belum habis. Kembalikan `ChoiceModel` atau None bila
+    semua tier habis. `quota_store` adalah `puspa.router.quota.QuotaStore`.
+    """
+    from .fallback import choose_with_quota as _choose_with_quota
+
+    entry = _choose_with_quota(role, quota_store,
+                               creator_family=creator_family)
+    return entry.choice if entry is not None else None
