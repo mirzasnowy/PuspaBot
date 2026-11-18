@@ -28,7 +28,7 @@ import psycopg
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 HEARTBEAT_STALE_SECONDS = 120
 TRIGGER_TYPES = ("schedule", "due_date_bill", "price_drop", "manual",
-                "backup_daily", "consolidation")
+                "backup_daily", "consolidation", "trust_root_refresh")
 
 
 class SchedulerError(Exception):
@@ -225,6 +225,18 @@ def schedule_backup_daily(user_id: str, *, hour: int = 3, dsn=None) -> Trigger:
     return create_trigger(user_id, "backup_daily", tomorrow, schedule=f"harian {hour:02d}:00", dsn=dsn)
 
 
+def schedule_trust_root_refresh(user_id: str, *, hour: int = 3, dsn=None) -> Trigger:
+    """Register the daily Sigstore trust-root refresh job as a trigger.
+
+    Running this trigger calls `puspa.policy.trust_root.run_trust_root_refresh_job`
+    through `run_scheduled_job` below. The refresh runs outside the
+    verify path: verification stays offline, using the cached root
+    (or the bundled root when no cache exists yet).
+    """
+    tomorrow = (_now() + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
+    return create_trigger(user_id, "trust_root_refresh", tomorrow, schedule=f"daily {hour:02d}:00", dsn=dsn)
+
+
 def run_scheduled_job(run: dict, *, dsn=None) -> dict:
     """Eksekusi job sistem untuk satu jalan pemicu (backup/konsolidasi).
 
@@ -249,4 +261,9 @@ def run_scheduled_job(run: dict, *, dsn=None) -> dict:
 
         result = consolidate_idle(str(user_id), dsn=dsn)
         return {"job": "consolidation", "result": result}
+    if event_type == "trust_root_refresh":
+        from puspa.policy.trust_root import run_trust_root_refresh_job
+
+        result = run_trust_root_refresh_job()
+        return {"job": "trust_root_refresh", "result": result}
     return {"job": "regular_task", "result": run["task_id"]}
