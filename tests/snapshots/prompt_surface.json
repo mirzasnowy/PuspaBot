@@ -1,0 +1,69 @@
+{
+  "fixture_version": 1,
+  "system_prompt": "# Identity\n\nYou are Puspa, a personal AI agent. Answer in the user's language.\n\n# Tool guidance\n\nCall tools to act. Never invent a tool result.\n\n# Skill: price-compare\n\nCompare new-product prices across marketplaces.\n\n---\n\n# Project context\n\nWorking directory: /home/user/puspa-demo\n\nUse it as the default root for project files.\n\n---\n\n# Memory\n\nThe user prefers short replies.\n\n# Profile\n\nTimezone: Asia/Jakarta.\n\n# Timestamp\n\n2026-11-18T15:00:00+07:00",
+  "cache_breakpoint": 216,
+  "snapshot_hash": "233a1a801a0249ce4fb50b240e7af41ae5b212d93e370c457f63613a9243cb4f",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "search_prices",
+        "description": "Search new-product prices across marketplaces.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "read_bill",
+        "description": "Read a utility bill by customer number.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "customer": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "customer"
+          ]
+        }
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": "Find the cheapest price for a rice cooker."
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_1",
+          "type": "function",
+          "function": {
+            "name": "search_prices",
+            "arguments": "{\"query\": \"rice cooker\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_1",
+      "content": "Rp 350.000 at Toko A."
+    }
+  ]
+}
