@@ -1,5 +1,21 @@
-import { useState } from "react";
-import { subscribePush } from "../api/client";
+import { useEffect, useState } from "react";
+import {
+  deleteByokKey,
+  getModelSettings,
+  saveByokKey,
+  saveModelSettings,
+  subscribePush,
+  type ModelSettings,
+} from "../api/client";
+import {
+  DEFAULT_LOCAL_BASE_URL,
+  DEFAULT_LOCAL_MODEL,
+  MODEL_SOURCES,
+  defaultModelSettings,
+  describeSource,
+  validateBaseUrl,
+  withDefaults,
+} from "../state/modelSettings";
 
 /** Base64url -> Uint8Array for the VAPID applicationServerKey. */
 function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
@@ -13,6 +29,97 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
 export function SettingsScreen() {
   const [pushStatus, setPushStatus] = useState("");
   const [pushBusy, setPushBusy] = useState(false);
+  const [modelSettings, setModelSettings] = useState<ModelSettings>(defaultModelSettings());
+  const [modelLoaded, setModelLoaded] = useState(false);
+  const [modelStatus, setModelStatus] = useState("");
+  const [modelBusy, setModelBusy] = useState(false);
+  const [byokKey, setByokKey] = useState("");
+  const [byokBusy, setByokBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getModelSettings()
+      .then((settings) => {
+        if (!cancelled) {
+          setModelSettings(settings);
+          setModelLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setModelStatus("Pilihan model belum bisa dimuat; default hosted dipakai.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function saveModelChoice() {
+    setModelBusy(true);
+    setModelStatus("");
+    try {
+      const draft = withDefaults(modelSettings);
+      if (draft.source === "local" && draft.base_url) {
+        const error = validateBaseUrl(draft.base_url);
+        if (error) {
+          setModelStatus(error);
+          return;
+        }
+      }
+      const saved = await saveModelSettings({
+        source: draft.source,
+        base_url: draft.base_url,
+        model: draft.model,
+        provider: draft.provider,
+      });
+      setModelSettings(saved);
+      setModelStatus("Pilihan model tersimpan.");
+    } catch (err) {
+      setModelStatus(
+        `Gagal menyimpan pilihan model: ${err instanceof Error ? err.message : "error tak dikenal"}`,
+      );
+    } finally {
+      setModelBusy(false);
+    }
+  }
+
+  async function saveKey() {
+    setByokBusy(true);
+    setModelStatus("");
+    try {
+      const provider = modelSettings.provider?.trim().toLowerCase() || "openrouter";
+      if (!byokKey.trim()) {
+        setModelStatus("Kunci BYOK tidak boleh kosong.");
+        return;
+      }
+      await saveByokKey(provider, byokKey.trim());
+      setByokKey("");
+      setModelSettings({ ...modelSettings, provider, has_byok_key: true });
+      setModelStatus(`Kunci ${provider} tersimpan di vault.`);
+    } catch (err) {
+      setModelStatus(
+        `Gagal menyimpan kunci: ${err instanceof Error ? err.message : "error tak dikenal"}`,
+      );
+    } finally {
+      setByokBusy(false);
+    }
+  }
+
+  async function removeKey() {
+    setByokBusy(true);
+    setModelStatus("");
+    try {
+      const provider = modelSettings.provider?.trim().toLowerCase() || "openrouter";
+      await deleteByokKey(provider);
+      setModelSettings({ ...modelSettings, has_byok_key: false });
+      setModelStatus(`Kunci ${provider} dihapus dari vault.`);
+    } catch (err) {
+      setModelStatus(
+        `Gagal menghapus kunci: ${err instanceof Error ? err.message : "error tak dikenal"}`,
+      );
+    } finally {
+      setByokBusy(false);
+    }
+  }
 
   async function enableNotifications() {
     setPushBusy(true);
@@ -67,6 +174,117 @@ export function SettingsScreen() {
       <div className="card">
         <strong>Batas belanja</strong>
         <p>Default Rp0 tanpa persetujuan. Agen tidak bisa menaikkannya sendiri.</p>
+      </div>
+      <div className="card">
+        <strong>Model</strong>
+        <p>Pilih model yang dipakai Puspa. Default hosted tidak perlu pengaturan apa pun.</p>
+        {MODEL_SOURCES.map((source) => (
+          <label key={source} style={{ display: "block", marginBottom: "0.5rem" }}>
+            <input
+              type="radio"
+              name="model-source"
+              value={source}
+              checked={modelSettings.source === source}
+              onChange={() => setModelSettings({ ...modelSettings, source })}
+            />{" "}
+            {source === "hosted" ? "Hosted (default)" : source === "byok" ? "Kunci sendiri (BYOK)" : "Model lokal (Ollama)"}
+            <span className="muted"> — {describeSource(source)}</span>
+          </label>
+        ))}
+        {modelSettings.source === "byok" ? (
+          <div>
+            <label>
+              Provider{" "}
+              <input
+                type="text"
+                value={modelSettings.provider ?? ""}
+                placeholder="openrouter"
+                onChange={(event) =>
+                  setModelSettings({ ...modelSettings, provider: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Model (opsional){" "}
+              <input
+                type="text"
+                value={modelSettings.model ?? ""}
+                placeholder="nama model, kosongkan untuk default"
+                onChange={(event) =>
+                  setModelSettings({ ...modelSettings, model: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Base URL (opsional){" "}
+              <input
+                type="text"
+                value={modelSettings.base_url ?? ""}
+                placeholder="https://api.provider.example/v1"
+                onChange={(event) =>
+                  setModelSettings({ ...modelSettings, base_url: event.target.value })
+                }
+              />
+            </label>
+            <p className="muted">
+              {modelSettings.has_byok_key
+                ? "Kunci BYOK sudah tersimpan di vault."
+                : "Belum ada kunci BYOK tersimpan di vault."}
+            </p>
+            <label>
+              Kunci API{" "}
+              <input
+                type="password"
+                value={byokKey}
+                autoComplete="off"
+                placeholder="tempel kunci, lalu simpan"
+                onChange={(event) => setByokKey(event.target.value)}
+              />
+            </label>
+            <button type="button" onClick={saveKey} disabled={byokBusy}>
+              {byokBusy ? "Menyimpan…" : "Simpan kunci ke vault"}
+            </button>{" "}
+            {modelSettings.has_byok_key ? (
+              <button type="button" onClick={removeKey} disabled={byokBusy}>
+                Hapus kunci
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {modelSettings.source === "local" ? (
+          <div>
+            <label>
+              Base URL{" "}
+              <input
+                type="text"
+                value={modelSettings.base_url ?? ""}
+                placeholder={DEFAULT_LOCAL_BASE_URL}
+                onChange={(event) =>
+                  setModelSettings({ ...modelSettings, base_url: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Model{" "}
+              <input
+                type="text"
+                value={modelSettings.model ?? ""}
+                placeholder={DEFAULT_LOCAL_MODEL}
+                onChange={(event) =>
+                  setModelSettings({ ...modelSettings, model: event.target.value })
+                }
+              />
+            </label>
+            <p className="muted">
+              Model lokal butuh hardware beneran; untuk kebanyakan pengguna, BYOK adalah jalur
+              yang realistis, lokal buat yang punya GPU atau sabar dengan CPU.
+            </p>
+          </div>
+        ) : null}
+        <button type="button" onClick={saveModelChoice} disabled={modelBusy || !modelLoaded}>
+          {modelBusy ? "Menyimpan…" : "Simpan pilihan model"}
+        </button>
+        {modelStatus ? <p className="muted">{modelStatus}</p> : null}
       </div>
       <div className="card">
         <strong>Bahasa</strong>
