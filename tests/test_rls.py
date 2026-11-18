@@ -25,24 +25,6 @@ from puspa.accounts import create_user
 from puspa.accounts import rls
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _ensure_app_role(test_dsn):
-    """Pastikan peran puspa_app ada SEBELUM skema diterapkan per tes.
-
-    (create_schema di conftest memberi GRANT ke puspa_app hanya kalau
-    peran sudah ada — jadi peran harus ada dulu. Sama seperti yang
-    dilakukan infra/setup_db.sql.)
-    """
-    with psycopg.connect(test_dsn) as conn:
-        conn.execute(
-            "DO $$ BEGIN "
-            "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'puspa_app') THEN "
-            "CREATE ROLE puspa_app NOLOGIN; "
-            "END IF; END $$"
-        )
-        conn.commit()
-
-
 @pytest.fixture
 def dua_user(test_dsn):
     """Buat pengguna A dan B (sebagai pemilik), masing-masing dengan
