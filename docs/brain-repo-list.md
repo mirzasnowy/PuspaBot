@@ -16,11 +16,11 @@ Rules followed here: study the pattern or idea, then rewrite it as Puspa's own c
 
 ## Counts (computed from the rows below)
 
-- Total rows: **182**
-- By origin: survey1 **81**, survey2 **73**, survey-mention **8**, Nero order **1**, brief **3**, independent finds **16**.
-- Brain-relevant: **125**. Out of scope: **57**.
+- Total rows: **183**
+- By origin: survey1 **81**, survey2 **73**, survey-mention **8**, Nero order **2**, brief **3**, independent finds **16**.
+- Brain-relevant: **126**. Out of scope: **57**.
 - Already in Puspa (dependency, pattern in a named file, or format adopted): **40** total, of which **39** are brain-relevant.
-- Brain-relevant and not yet in Puspa: **86**.
+- Brain-relevant and not yet in Puspa: **87**.
 - Rows carrying a DO NOT USE code restriction (copyleft, non-commercial, custom non-OSI, no license, or proprietary): **32**.
 - Rows marked dead, archived, dormant, maintenance mode, practically dead, or quiet: **21** (overlap with the forbidden set is possible; a row can be both dead and license-blocked).
 
@@ -142,7 +142,7 @@ Note on counting: survey 1 counts 81 items (72 repos plus 9 models) and survey 2
 | MineDojo/Voyager | independent | Open-ended embodied LLM agent in Minecraft: an automatic curriculum proposes tasks, an iterative prompting loop with self-verification writes code, and successful code is stored in an ever-growing skill library indexed by embeddings and reused in new worlds. | MIT, DORMANT as a research archive: about 7.3k stars, last push 3 Apr 2024 per a Sep 2026 snapshot. DO NOT USE AS A DEPENDENCY. | PATTERN ONLY: curriculum plus self-verification plus embedding-indexed skill library shape in puspa/memory/learning_loop.py (propose_next_task, verify_skill, find_reusable_skill), puspa/world/model.py (prediction scoring, misprediction records, trend adoption after a repeated daily move), and puspa/harness/executor.py (SandboxExecutor runs every attempt through puspa/sandbox/runner.py). Minecraft code not used; library not installed. | IMPLEMENTED (Brain phase, 18 Nov 2026). See the In Puspa column for file locations. |
 | invariantlabs-ai/invariant | survey-mention | Original scanner for MCP servers and skills (tool poisoning, rug-pull, prompt injection, toxic flow). Moved to Snyk as agent-scan. | Apache-2.0, DEAD: last pushed Jan 2026, 477 stars. Replaced by snyk/agent-scan. | - | Out of scope for the brain list (security scanner, superseded). Use snyk/agent-scan instead; see the security section. |
 
-## Tool use, MCP, model routers and BYOK (4 rows)
+## Tool use, MCP, model routers and BYOK (5 rows)
 
 | Repo | Origin | Moat / core | License + status | In Puspa | Plan / out-of-scope reason |
 | --- | --- | --- | --- | --- | --- |
@@ -150,6 +150,7 @@ Note on counting: survey 1 counts 81 items (72 repos plus 9 models) and survey 2
 | Portkey-AI/gateway | survey2 | Open LLM gateway: routing, fallback, caching, guardrails, observability. | MIT, alive but quiet, 13,390 stars, last push May 2025, about 6 months quiet. | - | Not present. Keep as a backup reference for puspa/router/router.py. LiteLLM is the primary reference. |
 | modelcontextprotocol/python-sdk | independent | Official Python SDK for the Model Context Protocol: writing MCP servers and clients, the standard way tools are exposed to agents. The spec itself is moving from MIT to Apache-2.0 for new contributions. | MIT, alive, about 24.5k stars, v2.0.0 GA Jul 2026, last push 5 Oct 2026. | USED AS DEPENDENCY (already installed as a nanobot dependency, mcp==1.30.0, MIT): typed MCP client wrapper in puspa/chassis/tools.py (McpToolSpec, McpClientWrapper, StdioMcpTransport, StubMcpTransport); every MCP call passes the signed-skill gate first, then the single outbound gate. | IMPLEMENTED (Brain phase, 18 Nov 2026). See the In Puspa column for file locations. |
 | ShishirPatil/gorilla | independent | Gorilla: fine-tuned models plus the Berkeley Function Calling Leaderboard (BFCL) for measuring tool-call accuracy. The leaderboard is the standard yardstick for function calling. | License not verified by this inventory; BFCL is widely cited but this inventory did not read its LICENSE file. | - | Not present. Not verified: do not adopt code until the license is read. Plan once verified: use the BFCL task format as the shape for Puspa's own tool-use evaluation in puspa/evidence/verifier.py and the cassette replay in puspa/cassette/cassette.py. |
+| decolua/9router | nero | Free LLM gateway: tiered routing across subscription, cheap and free providers, RTK tool_result compression, real-time quota tracking, auto OAuth token refresh, cross-format translation. | MIT, alive, 32,579 stars, 1,569 commits, created 2026-01-05. Sub-projects RTK, Headroom and Ponytail are separate repos with unverified licenses; adopt nothing from them until each LICENSE is read. | - | Not present. Plan: VERY DEEP Tier 2 router item. Rebuild as Puspa code, three mechanisms, each its own iteration: RTK tool_result compression (measure the actual token saving on Puspa tool output; the orphan-number rule applies, compression must never drop a number the Checker or the evidence ledger needs), smart 3-tier fallback with real-time quota tracking, auto token refresh plus format translation. Out of scope: Caveman/Ponytail prompts, multi-account round-robin (Team tier later), cloud sync. Free-tier arbitrage is not the goal; the mechanisms are. |
 
 ## Evaluation and verification harnesses (5 rows)
 
