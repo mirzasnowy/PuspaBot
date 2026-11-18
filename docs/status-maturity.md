@@ -754,12 +754,13 @@ detection is a string-literal heuristic (false positives from
 prose/docstrings, misses dynamically built queries); no live
 provider call proven in the suite (tests use fake
 callable/transport, real extraction still needs a key via
-BYOK). Wave 15 central SOLO suite: pending at docs time (runs
-after this commit; number lands here once it is green) — the
-first run was killed by a VM replacement at ~7 min (SIGTERM,
-empty log; third replacement that day), and the recovery waiter
-was killed by a fourth replacement ~4 min later; recovery
-succeeded on the second attempt.
+BYOK). Wave 15 central SOLO suite: **2,825 passed, 9 skipped, 1
+warning, 17m29s, EXIT 0** (2,812 Wave 14 + 13 new G29 tests,
+exact). The first run was killed by a VM replacement at ~7 min
+(SIGTERM, empty log; third replacement that day), and the
+recovery waiter was killed by a fourth replacement ~4 min
+later; recovery succeeded on the second attempt, and the
+re-run went green on the first try.
 
 ## New items: G29 + G30 (approved by Nero 18 Nov 2026, queued after Wave 14)
 
