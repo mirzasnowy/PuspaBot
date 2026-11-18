@@ -375,6 +375,50 @@ to be included here because no third-party code is vendored.
   `puspa/sentinel/insights.py`. No new pip dependency was added
   for G12.
 
+# NOTICE - Puspa maturity phase, G1 (18 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **OpenBot** (MIT License) - patterns only, rewritten as Puspa
+  TypeScript code (nothing copied verbatim): the API-first order
+  (OpenAPI spec first, TypeScript client generated from it) and
+  the product primitives as a consistent menu structure. Used as
+  patterns in `docs/openapi-pwa.yaml`,
+  `apps/pwa/src/api/generated-types.ts` (generated with
+  openapi-typescript), and the 7-screen menu in
+  `apps/pwa/src/api/bootstrap.ts` / `src/components/Nav.tsx`.
+- **DuskBot** (PolyForm Noncommercial License 1.0.0 — study only,
+  no code used, no dependency) - patterns only, rewritten as Puspa
+  TypeScript code (nothing copied verbatim): the
+  `components/` / `lib/` / per-feature `state/` split and the
+  one-tap approval card (`ApprovalCard` / `AskCard`). Used as
+  patterns in `apps/pwa/src/components/`,
+  `apps/pwa/src/state/` (one store file per screen), and
+  `apps/pwa/src/api/`. Because the license is PolyForm
+  Noncommercial, no DuskBot code is vendored, linked, or depended
+  on, and the patterns are not used to build a competing DuskBot
+  product — they implement Puspa's own PWA surface.
+- **NousResearch/hermes-agent** (MIT License) - patterns only,
+  rewritten as Puspa TypeScript code (nothing copied verbatim):
+  the React + Vite dashboard page list (Chat, Channels, Config,
+  Cron, Docs, Files, Logs, MCP, Models, Pairing, Plugins,
+  ProfileBuilder, Profiles, Sessions, Skills, Analytics, System,
+  Webhooks) used as a checklist; the relevant pages were folded
+  into Puspa's 7 screens as sections, not new screens.
+
+## New npm dependencies (G1)
+
+All MIT except TypeScript (Apache-2.0); licenses read from each
+package's own `package.json`: `react@19.3.1` (MIT),
+`react-dom@19.3.1` (MIT), `vite@6.4.6` (MIT),
+`@vitejs/plugin-react@4.7.0` (MIT), `typescript@5.9.3`
+(Apache-2.0), `vitest@3.2.7` (MIT), `jsdom@26.1.0` (MIT),
+`@testing-library/react@16.3.3` (MIT),
+`@testing-library/user-event@14.6.12` (MIT),
+`openapi-typescript@7.13.0` (MIT), `@types/react@19.3.0` (MIT),
+`@types/react-dom@19.3.0` (MIT). No dependency with a
+non-commercial or copyleft license was added.
+
 ## Puspa license
 
 The code in this directory is Puspa's own work (Nero / Luna). The Puspa

@@ -336,6 +336,37 @@ window query, no new event types) in `puspa/ledger/ledger.py`
 and the `sentinel_scan` trigger type + `schedule_sentinel_scan`
 + dispatch in `puspa/scheduler/scheduler.py`.
 
+## Maturity phase (G1 — full PWA)
+
+Only PATTERNS adapted (rewritten, not copied). New npm dependencies
+(all MIT/Apache-2.0, see the table; no dependency with a
+non-commercial or copyleft license):
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| API-first: OpenAPI spec first, TypeScript client generated from it — frontend never hand-writes the API client | OpenBot (MIT) | The contract-first order + the generated-client rule | `docs/openapi-pwa.yaml` (contract for every PWA route) + `apps/pwa/src/api/generated-types.ts` (generated with openapi-typescript 7.13.0 — never edited by hand) + `apps/pwa/src/api/client.ts` (thin hand-written fetch wrapper typed against the generated types) |
+| 8 product primitives as the consistent menu structure | OpenBot (MIT) | The primitives-as-menu idea | Revision 7's own 7 screens as the menu (`apps/pwa/src/api/bootstrap.ts` `SCREENS`, `Nav.tsx`) — no 8th screen |
+| Split components / lib / per-feature state; one-tap approval cards | DuskBot (PolyForm Noncommercial — study only, no code used) | The `components/` / `lib/` / `state/` split + the one-tap card shape | `apps/pwa/src/components/` (ApprovalCard, Nav, WorkStrip) + `apps/pwa/src/state/` (one store file per screen: chat, tasks, approvals, memory, connectors, office, modules) + `apps/pwa/src/api/` (client, bootstrap) |
+| 26-page React+Vite dashboard as a page checklist | NousResearch/hermes-agent (MIT) | The page list as a checklist | hermes pages folded into the 7 screens as sections, not new screens: Channels + Cron + Skills + Sessions + Analytics checklist in `docs/pwa.md` (Channels in Connectors, Cron note in Tasks, Skills note in Modules, Sessions/Analytics live in Office via SSE) |
+
+New npm dependencies (licenses read from each package's own
+`package.json` in `node_modules/`): `react@19.3.1` (MIT),
+`react-dom@19.3.1` (MIT), `vite@6.4.6` (MIT),
+`@vitejs/plugin-react@4.7.0` (MIT), `typescript@5.9.3`
+(Apache-2.0), `vitest@3.2.7` (MIT), `jsdom@26.1.0` (MIT),
+`@testing-library/react@16.3.3` (MIT),
+`@testing-library/user-event@14.6.12` (MIT),
+`openapi-typescript@7.13.0` (MIT), `@types/react@19.3.0` (MIT),
+`@types/react-dom@19.3.0` (MIT). No OpenBot, DuskBot, or
+hermes-agent code was copied, vendored, or depended on. Server
+wiring: `puspa/pwa/app.py` serves the built SPA (`apps/pwa/dist`)
+with a server bootstrap (`window.__PUSPA_BOOTSTRAP__`) and falls
+back to the Jinja templates when `dist` has not been built; no API
+route or auth behaviour was changed. Note: `node_modules/` and
+`dist/` are build outputs on disk and are not part of the pushed
+sources — a fresh checkout must run `npm install && npm run build`
+in `apps/pwa/` before the SPA is served (see `docs/pwa.md`).
+
 ## Glosarium istilah baru Fase 4 (bukan dari revisi 7)
 
 - `eksekutor_fixture` — NAMA TEKNIS internal (eksekutor data uji:

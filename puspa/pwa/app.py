@@ -1,6 +1,9 @@
 """PWA Puspa — 7 layar, tidak lebih (§2.1 revisi 7).
 
-Stack (keputusan 1): FastAPI + Jinja + HTMX + service worker.
+Stack (keputusan 1, diperbarui G1): FastAPI + TypeScript SPA
+(React 19 + Vite, `apps/pwa/`, dibangun ke `apps/pwa/dist`) + service
+worker. Kalau `dist` belum dibangun, layar jatuh kembali ke template
+Jinja lama. Kontrak API: `docs/openapi-pwa.yaml`.
 Update live lewat SSE dari proyeksi Buku Kerja, tanpa WebSocket
 di MVP. Layar: Chat, Tugas, Modul, Konektor, Memori, Pengaturan,
 Kantor. Bukti, Rencana, Rekor Otonomi, alur, dan modul kustom adalah
@@ -30,6 +33,8 @@ from jinja2 import Environment, FileSystemLoader
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_DIR = BASE_DIR / "apps" / "pwa" / "templates"
 STATIC_DIR = BASE_DIR / "apps" / "pwa" / "static"
+DIST_DIR = BASE_DIR / "apps" / "pwa" / "dist"
+BOOTSTRAP_MARKER = "<!--PUSPA_BOOTSTRAP-->"
 
 SCREENS = ("chat", "tasks", "modules", "connectors", "memory", "settings", "office")
 
@@ -56,6 +61,8 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
 
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    if (DIST_DIR / "assets").exists():
+        app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="assets")
 
     def user(request: Request):
         if app.state.test_user_id:
@@ -90,6 +97,41 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
         ctx.update(context or {})
         return HTMLResponse(jinja.get_template(name).render(ctx))
 
+    def spa_or_template(screen: str, request: Request, context: dict | None = None):
+        """Serve the built SPA shell with server bootstrap, or the Jinja
+        template when `dist` has not been built yet.
+
+        The bootstrap embeds the screen's real data as
+        `window.__PUSPA_BOOTSTRAP__` (schema `Bootstrap` in
+        `docs/openapi-pwa.yaml`), so the SPA hydrates without an extra
+        fetch and the first paint already carries live data. The JSON
+        is escaped so it can never break out of its <script> tag.
+        """
+        index = DIST_DIR / "index.html"
+        ctx = dict(context or {})
+        if index.exists():
+            bootstrap = {
+                "screen": screen,
+                "user_id": ctx.get("user_id"),
+                "messages": ctx.get("message", []),
+                "approvals": ctx.get("approval", []),
+                "agents": ctx.get("agents", []),
+                "profile": ctx.get("profile", []),
+                "office": ctx.get("office"),
+                "handoffs": ctx.get("handoffs", []),
+            }
+            payload = (
+                json.dumps(bootstrap, ensure_ascii=False)
+                .replace("<", "\\u003c")
+                .replace(">", "\\u003e")
+                .replace("&", "\\u0026")
+            )
+            html = index.read_text(encoding="utf-8")
+            script = f"<script>window.__PUSPA_BOOTSTRAP__={payload};</script>"
+            html = html.replace(BOOTSTRAP_MARKER, script, 1)
+            return HTMLResponse(html)
+        return render(f"{screen}.html", request, ctx)
+
     # -- halaman -------------------------------------------------------
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request):
@@ -97,8 +139,14 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
 
     @app.get("/masuk", response_class=HTMLResponse)
     def login(request: Request):
-        client_id = os.environ.get("PUSPA_GOOGLE_CLIENT_ID", "")
-        return render("masuk.html", request, {"client_id_ada": bool(client_id)})
+        # G1: the login screen is part of the SPA; "masuk.html" never
+        # existed (the old template is "login.html"), so the fallback
+        # renders that name.
+        return spa_or_template(
+            "login",
+            request,
+            {"client_id_ada": bool(os.environ.get("PUSPA_GOOGLE_CLIENT_ID", ""))},
+        )
 
     @app.get("/auth/google")
     def auth_google(request: Request):
@@ -134,7 +182,7 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
                 user_id = need_user(request)
                 if user_id is None:
                     return RedirectResponse("/masuk")
-                return render(f"{screen}.html", request, _context_screen(screen, user_id))
+                return spa_or_template(screen, request, _context_screen(screen, user_id))
 
             return page
 

@@ -5,3 +5,6 @@ __pycache__/
 nanobot/
 *.egg-info/
 backups/
+
+node_modules/
+dist/
