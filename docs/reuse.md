@@ -409,7 +409,26 @@ recorded in the log. Without a log it keeps the old manifest
 signature check. `sign_skill_provenance` signs the provenance
 envelope and records it in the log.
 
-Not used: the `sigstore` Python client and any Rekor/Fulcio service
+Rework 4 (18 Nov 2026) added REAL Sigstore bundle verification
+alongside the local mechanism (`puspa/policy/sigstore_verify.py`,
+`sigstore==4.5.0` now an explicit dependency, Apache-2.0,
+verified from the PyPI metadata): `verify_sigstore_bundle`
+checks the certificate chain against the Fulcio roots, the
+expected identity and OIDC issuer, the artifact digest and
+signature, and the Rekor transparency-log inclusion proof,
+using the trust root shipped inside the installed `sigstore`
+4.5.0 package. Verification is fully offline; no Fulcio or
+Rekor call happens at verify time. The trust root is pinned
+to the installed package version and refreshes when the
+package is upgraded; signing is out of scope (community
+authors sign with the `sigstore` CLI). Test fixture
+`bundle_v3.txt` / `bundle_v3.txt.sigstore` is Sigstore's
+public test asset from sigstore-python commit
+`7ee385ac8be192771bff1cc553434b11282ecce6`, Apache-2.0,
+Copyright The Sigstore Authors, embedded unchanged in
+`tests/test_sigstore_verify.py`.
+
+Not used for the LOCAL mechanism: any Rekor/Fulcio service
 (no network dependency for skill trust); no Postgres table for the
 log (file-backed by design, so trust stays verifiable without a
 database; see the persistence rationale in the `signing.py` module
