@@ -9,7 +9,7 @@ and ``REUSE.md``):
 
 - Action kinds that always ask in every edition: delete, send to
   another person, share, post, pay, change account password or
-  settings. Tiered answers: allow once / for this conversation /
+  settings, install a skill. Tiered answers: allow once / for this conversation /
   always. An admin can close one kind for everyone (ask every time,
   or members do it themselves). Rules come from three owners (own,
   admin, allowed for this conversation) and the strictest wins.
@@ -76,7 +76,10 @@ __all__ = [
     "mark_destructive",
 ]
 
-#: Action kinds that always ask in every edition.
+#: Action kinds that always ask in every edition. ``install`` is
+#: a skill install from the marketplace (G30): a local enablement,
+#: not an outbound action — it always asks, and its tiered answers
+#: live in the store like the other kinds.
 ACTION_KINDS = frozenset(
     {
         "delete",
@@ -85,11 +88,16 @@ ACTION_KINDS = frozenset(
         "post",
         "pay",
         "change_credentials",
+        "install",
     }
 )
 
 #: Taxonomy kind -> Gate kind. ``change_credentials`` has no Gate
-#: kind on purpose: it never reaches the gate.
+#: kind on purpose: it never reaches the gate. ``install`` is the
+#: same: a local enablement, never an outbound action, so the
+#: policy ``request`` path (which files with the gate) refuses it
+#: and the install flow asks through ``decide`` + the store
+#: instead (see ``puspa.marketplace.discovery``).
 GATE_KIND_FOR_ACTION = {
     "delete": "delete",
     "send_to_other": "send",
@@ -97,6 +105,7 @@ GATE_KIND_FOR_ACTION = {
     "post": "send",
     "pay": "prepare_payment",
     "change_credentials": None,
+    "install": None,
 }
 
 #: Tiered answers (OpenBot: Allow once / for this conversation /
@@ -174,6 +183,7 @@ _VERB_TO_KIND = {
     "remove": "delete",
     "destroy": "delete",
     "purge": "delete",
+    "install": "install",
     "send": "send_to_other",
     "message": "send_to_other",
     "email": "send_to_other",
@@ -197,6 +207,7 @@ _LABEL_TO_KIND = {
     "share": "share",
     "post": "post",
     "publish": "post",
+    "install": "install",
 }
 
 

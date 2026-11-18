@@ -585,3 +585,53 @@ relative imports with no module are skipped; SQL/config
 detection is a string-literal heuristic; no live provider call
 is proven in the suite (tests use an injected fake callable
 or a fake transport).
+
+## Maturity phase (G30 — skill discovery, vercel-labs find-skills pattern)
+
+No new dependency (httpx was already pinned; the search client
+uses it, and all tests use `httpx.MockTransport`). Only PATTERNS
+adapted (rewritten, not copied):
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| Discover installable skills from a registry: search the API, check the install leaderboard first, fall back to dropping one query word when exact results are under 10 and merge (max 25), verify quality before recommending (prefer 1K+ installs, official sources trusted, repos under 100 stars suspect), present options, install only with user approval | vercel-labs/skills (MIT) — `skills/find-skills/SKILL.md` + `src/find.ts` + registry skills.sh | The search + fallback + quality-rubric shape itself: exact search first, word-drop fallback with dedup and hit/rank/install ordering, the 1K+/100-install and 100-star thresholds, the trusted-owner list, the present-then-install flow | `puspa/marketplace/discovery.py` (`SkillsShClient`: `GET {base}/api/search?q=...` returning `{skills: [{id, name, installs, source}]}`; `search_skills`: exact + word-drop merge; `assess_quality` / `rank_results`: recommended / caution / suspect verdicts with reasons; `DiscoveryCache`: local JSON cache, 24h TTL, stale entries served when the registry is down; `InstallApproval`: per-skill approval evidence bound to slug + sha256; `detect_license`: LICENSE text to SPDX id; `install_discovered`: fetch SKILL.md + LICENSE from the source repo, hash gate, licence allowlist MIT/Apache/BSD, import DISABLED through the G3 registry, enable only with explicit approval, curator telemetry via G24 `record_use`) + the built-in `skills/find-skills/SKILL.md` + `manifest.json` (own wording, wired to the Puspa functions above) + `docs/skill-discovery.md`. The Node CLI was NOT ported; installs go through the G3 registry, not a package manager |
+
+No vercel-labs code was copied; only the documented pattern above
+was followed. Wiring: `install_discovered` reuses the G3
+`MarketplaceRegistry.import_skill` (lands disabled) and
+`install(..., explicit_approval=True)` — a library skill from
+skills.sh scores below the trust floor (unsigned, untrusted
+source), so the user's explicit approval is what lets it through —
+plus the G4 `install` kind (added to the taxonomy in this wave:
+`puspa/policy/approvals.py`, always asks, no Gate kind — install
+is a local enablement, never an outbound action). The evidence
+bridge is `approval_from_store` (builds `InstallApproval` from a
+stored tiered answer for the exact slug + sha256, fresh per
+install) and `consume_install_approval` (spends a "once" answer
+after a successful install). The G24 curator is wired in:
+installs with a `skills_root` call `record_use` on the new skill
+folder.
+Exports added to `puspa/marketplace/__init__.py`
+(`SkillsShClient`, `search_skills`, `search_with_cache`,
+`DiscoveryCache`, `DiscoveredSkill`, `SearchOutcome`,
+`assess_quality`, `rank_results`, `format_options`,
+`format_installs`, `detect_license`, `InstallApproval`,
+`approval_from_store`, `consume_install_approval`,
+`install_discovered`, plus `DiscoveryError`,
+`ApprovalRequiredError`, `HashMismatchError`,
+`LicenseNotAllowedError`). Tests:
+`tests/test_marketplace_discovery.py` (38 tests, run by this
+worker with `--noconftest`, all HTTP via `httpx.MockTransport`,
+no live calls) + `tests/test_marketplace_discovery_approval.py`
+(8 tests: G4 bridge + full install-then-consume flow) +
+`tests/test_approvals_taxonomy.py` (8 install-kind tests).
+Docs: `docs/skill-discovery.md`. Honest limits:
+the registry API returns no description, version, licence, or
+star count (discovered skills import as version 1.0.0, licence
+detected from the repo LICENSE file, stars caller-supplied);
+SKILL.md is fetched from conventional paths only
+(`skills/<slug>/SKILL.md` or `<slug>/SKILL.md` on main/master);
+no live call to skills.sh or GitHub was made while building
+this (API shape from the public `find.ts` source; first live
+search still unverified); the built-in find-skills skill is not
+yet wired into the turn loop's skill activation.

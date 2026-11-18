@@ -12,8 +12,10 @@ import pytest
 
 from puspa.policy import Gate, GateDenied, SpendingLimit, issue_token
 from puspa.policy.approvals import (
+    ACTION_KINDS,
     ANSWER_TTL_SECONDS,
     ASKING_GUIDANCE_MARKER,
+    GATE_KIND_FOR_ACTION,
     ApprovalPolicy,
     ApprovalRule,
     ApprovalStore,
@@ -412,3 +414,75 @@ def test_policy_request_executes_payment_through_gate(ephemeral_keys):
     result = gate.execute(request.request_id, executor=calls.append)
     assert result is None
     assert calls == [{"nominal": 5000}]
+
+
+# --- install kind (G30: skill install through the G4 store) ---
+
+
+def test_install_is_a_first_class_kind():
+    assert "install" in ACTION_KINDS
+    # A local enablement, never an outbound action: no Gate kind,
+    # the same pattern as change_credentials.
+    assert GATE_KIND_FOR_ACTION["install"] is None
+
+
+def test_install_recognized_from_tool_verb():
+    found = classify_action("marketplace.install")
+    assert found.kind == "install"
+    assert found.recognized is True
+
+
+def test_install_recognized_from_button_label():
+    found = classify_action("do_it", button_label="Install")
+    assert found.kind == "install"
+    assert found.recognized is True
+
+
+def test_install_has_no_gate_kind():
+    assert classify_gate_kind("marketplace.install") is None
+
+
+def test_install_decision_is_ask_by_default():
+    policy = ApprovalPolicy()
+    decision = policy.decide(
+        tool_name="marketplace.install",
+        content={"skill_slug": "react-best-practices", "sha256": "abc123"},
+    )
+    assert decision.outcome == "ask"
+    assert decision.kind == "install"
+
+
+def test_install_once_answer_binds_to_exact_content():
+    policy = ApprovalPolicy()
+    content = {"skill_slug": "react-best-practices", "sha256": "abc123"}
+    policy.record_answer("install", "once", content=content)
+    assert policy.decide(tool_name="marketplace.install", content=content).outcome == "allow"
+    # Same skill, different content hash: the "once" answer does not apply.
+    changed = {"skill_slug": "react-best-practices", "sha256": "def456"}
+    assert policy.decide(tool_name="marketplace.install", content=changed).outcome == "ask"
+
+
+def test_install_always_answer_allows():
+    policy = ApprovalPolicy()
+    policy.record_answer("install", "always")
+    decision = policy.decide(
+        tool_name="marketplace.install",
+        content={"skill_slug": "react-best-practices", "sha256": "abc123"},
+    )
+    assert decision.outcome == "allow"
+    assert decision.answer_scope == "always"
+
+
+def test_install_request_raises_at_policy(ephemeral_keys):
+    # Install never reaches the outbound Gate: the policy request
+    # path files with the gate, and there is no gate kind for it.
+    policy = ApprovalPolicy(gate=_gate(ephemeral_keys))
+    token = issue_token(_payload(), ephemeral_keys[0])
+    with pytest.raises(GateDenied, match="no gate kind"):
+        policy.request(
+            user_id="user-1",
+            agent_id="agen-puspa",
+            token=token,
+            tool_name="marketplace.install",
+            content={"skill_slug": "react-best-practices", "sha256": "abc123"},
+        )

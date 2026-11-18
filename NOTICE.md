@@ -622,3 +622,32 @@ The live LLM extractor default (`JsonTripleExtractor`
 resolving `"default"` through the router's
 `resolve_llm_complete`) reuses Puspa's own G21 completion
 seam; no new provider dependency is introduced.
+
+# NOTICE - Puspa maturity phase, G30 (18 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **vercel-labs/skills** (MIT License) - patterns only,
+  rewritten as Puspa Python code (nothing copied verbatim):
+  discovering installable agent skills from a registry
+  (search the skills.sh API, check the install leaderboard
+  first, fall back to dropping one query word when exact
+  results are under 10 and merge at most 25, verify quality
+  before recommending: prefer 1K+ installs, official sources
+  trusted, repos under 100 stars suspect, present options,
+  install only with user approval). Used as the pattern in
+  `puspa/marketplace/discovery.py` (`SkillsShClient`,
+  `search_skills`, `assess_quality` / `rank_results`,
+  `DiscoveryCache`, `InstallApproval`, `detect_license`,
+  `install_discovered`), the built-in
+  `skills/find-skills/SKILL.md` + `manifest.json`, and
+  `docs/skill-discovery.md`. The Node CLI was not ported;
+  installs go through Puspa's own G3 marketplace registry.
+
+## New dependency: none
+
+No new dependency was added for G30. The search client uses
+the already-pinned httpx, and all tests use
+`httpx.MockTransport` (no live calls). No vercel-labs code was
+copied, vendored, or depended on; only the documented pattern
+above was followed, rewritten as Puspa's own code.
