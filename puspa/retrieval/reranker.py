@@ -517,12 +517,16 @@ def retrieve_with_decomposition(retrieve_fn, query: str, top_k: int = 5,
     The decomposer is, in order: ``decomposer`` when one is
     passed, an ``LLMQueryDecomposer`` built from
     ``llm_complete`` when a ``complete(prompt)`` callable is
-    passed, else the regex fallback. Pass both ``decomposer``
-    and ``llm_complete`` is an error. Every merged entry
-    records ``decomposition_source`` ("llm" or "regex") and
-    the sub-questions that retrieved it. An LLM decomposer
-    whose reply is unusable raises ``DecomposerError``; the
-    regex split is never substituted silently for it.
+    passed, else the regex fallback. ``llm_complete`` may also
+    be the string ``"default"``: the explicit opt-in to the
+    router's live completion
+    (``puspa.router.complete.default_llm_complete``), resolved
+    here. Pass both ``decomposer`` and ``llm_complete`` is an
+    error. Every merged entry records ``decomposition_source``
+    ("llm" or "regex") and the sub-questions that retrieved it.
+    An LLM decomposer whose reply is unusable raises
+    ``DecomposerError``; the regex split is never substituted
+    silently for it.
     """
     if top_k < 1:
         raise ValueError("top_k must be at least 1")
@@ -531,6 +535,13 @@ def retrieve_with_decomposition(retrieve_fn, query: str, top_k: int = 5,
     if decomposer is not None and llm_complete is not None:
         raise ValueError(
             "pass only one of decomposer and llm_complete")
+    if isinstance(llm_complete, str):
+        # "default": explicit opt-in to the router's live
+        # completion; resolved lazily so importing this module
+        # never needs a key or the network.
+        from puspa.router.complete import resolve_llm_complete
+
+        llm_complete = resolve_llm_complete(llm_complete)
     if llm_complete is not None:
         decomposer = LLMQueryDecomposer(
             llm_complete, max_subquestions=max_subquestions)
