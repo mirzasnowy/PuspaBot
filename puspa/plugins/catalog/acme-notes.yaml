@@ -1,0 +1,13 @@
+id: acme-notes
+name: Acme Notes
+version: 1.2.0
+description: Store short notes and recall them as turn context.
+author: Acme Example (hello@example.com)
+license: MIT
+repository: https://github.com/acme/notes-plugin
+entry_point: acme_notes.plugin
+kind: general
+api_version: 1
+dependencies:
+  - pyyaml>=6.0
+price_credits: 0

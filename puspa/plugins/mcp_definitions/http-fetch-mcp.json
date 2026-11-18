@@ -1,0 +1,1 @@
+{"dependencies":[],"description":"Fetch a URL and return its text.","id":"http-fetch-mcp","name":"HTTP Fetch MCP","server":{"args":[],"command":"npx","env":{},"transport":"stdio"},"tools":[{"description":"Fetch a URL as text.","name":"fetch_url"}],"version":"0.2.0"}
