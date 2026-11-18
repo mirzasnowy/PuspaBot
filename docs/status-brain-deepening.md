@@ -90,14 +90,78 @@ reranker); LLM extraction not wired (deterministic extractor is the
 default); seedless queries fall back to vector; entity-less passages
 score 0 on the graph.
 
-## Remaining (13 of 20)
+## Wave 2 (18 Nov 2026) - Tier 1 complete (9 of 20 VERY DEEP repos done)
 
-- Wave 2 (Tier 1): google/adk-python (hierarchical multi-agent),
-  NVIDIA NeMo Guardrails (programmable rails).
+Full suite SOLO before the pushes: **898 passed, 0 failed, 5 skipped,
+1 warning** (Wave 1 total 797 + 101 new: hierarchy 29, guardrails 68,
+factory rails wiring 4). The 5 skips are the 4 live-container Docker
+tests plus the Chromium reader test, same as before. The 1 warning is
+the pre-existing starlette testclient DeprecationWarning.
+
+### Iteration 4: google/adk-python (Tier 1) - commit 426086bf
+
+Hierarchical multi-agent composition. `puspa/runtime/hierarchy.py`
+(new): `AgentNode` (single-parent rule, cycle rejection), `HierarchicalRunner`
+(root delegates to children by role; sequential / parallel / loop /
+delegate composition; every delegation through the existing
+`HandoffContract`/`Handoff`, max 3 inter-agent handoffs per task),
+`SessionState` (ADK scopes: plain session keys, `user:`, `app:`,
+`temp:`), `MemoryAccess` (per-agent memory through the existing
+`grant_slice`), `ToolConfirmation` (consequential tools blocked
+fail-closed without confirmation, through the existing Gate approval
+flow), `CallbackRegistry` (before/after model and tool).
+`puspa/runtime/planner.py` gains `decompose_hierarchical` +
+`Planner.run_hierarchical`; `puspa/runtime/subagents.py` gains
+`Subagent.role` + `active_by_role`; flat behavior untouched.
+Tests: `tests/test_hierarchy.py`, 29 passed, all in-memory.
+Honest gaps: parallel composition is logical, not threaded;
+`SessionState` is in-memory only (no Postgres table yet, a
+coordinator decision, not a silent addition); hierarchical plans
+with more than 3 delegated steps hit the handoff contract cap;
+the runner uses an injected executor, no real model execution yet.
+
+### Iteration 5: NVIDIA NeMo Guardrails (Tier 1) - commit a0149ced
+
+Programmable rails. `puspa/guardrails/rails.py` (new): `Rail` +
+`RailSet` (ordered, first-block wins, in-memory violation log),
+input rails (topic allow/deny; injection beyond regex: quarantine
+high-level scan plus deterministic structural signals, stricter for
+tool/retrieved sources than for the user), output rails (numbers
+must carry evidence markers per revision 7 section 2.5, unknown
+evidence ids blocked, secrets blocked), execution rails (spending
+fail-closed without a nominal or a limit, tool allowlist,
+cross-user ownership, unsigned deploy, content hash changed after
+approval, send content carrying injection), dialog flows
+(`DialogFlow`/`FlowController` state machine). `puspa/chassis/hooks.py`
+gains the hook points (optional `rail_set`; without one the hook
+behaves exactly as before; violations recorded through existing
+ledger event types, no new type). Coordinator wiring in
+`puspa/chassis/factory.py`: `PuspaChassis` carries an optional
+`rail_set`, `build_hook`/`build_hook_factory` pass it through, and
+`assemble` builds the default rail set when the chassis carries
+none, so rails are live in the assembled loop (tests in
+`tests/test_factory_rails.py`, 4 passed). Tests:
+`tests/test_guardrails.py`, 68 passed, all in-memory. All 8 attack
+paths still blocked at the rail layer. False positives on a small
+hand-written benign set: **0 of 34** (honest caveat: the set is small
+and written to pass under Puspa's rules, so it measures false
+positives against Puspa's rules, not against everyday language).
+Honest gaps: `before_run` cannot veto the nanobot run (the hook
+interface has no veto); the turn-setup caller still has to skip
+running a blocked turn. No model-backed check (deterministic code
+only), so paraphrased injections outside the signal set will pass.
+
+## Remaining (11 of 20)
+
+- Wiring gaps ordered by Nero (18 Nov 2026): (1) persist learning
+  loop corrections, (2) failed steps teach the model, (3) contact +
+  habit beliefs. Each its own iteration with commit + push, before
+  Tier 2.
 - Tier 2: hermes-agent + letta-code (ONE learning loop), KiloCode
   (modes), AgentBench (held-out eval), mem0 (extraction quality),
   graphiti (temporal edges), snyk/agent-scan (CI scanner),
-  ShishirPatil/gorilla (BFCL eval format).
+  ShishirPatil/gorilla (BFCL eval format). LightRAG-deep, LlamaIndex
+  reranker, and Codex sandbox profiles are already done (Wave 1).
 - Tier 3: openclaw (marketplace), Sahabat-AI (fine-tune), gpt-researcher
   (cited synthesis).
 
