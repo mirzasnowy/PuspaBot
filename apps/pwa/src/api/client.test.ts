@@ -6,7 +6,9 @@ import {
   deleteAgent,
   fetchOperatorStatus,
   formatRupiah,
+  getJson,
   parseSseEvent,
+  postJson,
   sendChat,
   setConnector,
   stopTask,
@@ -166,5 +168,40 @@ describe("fetchOperatorStatus", () => {
     await expect(
       fetchOperatorStatus(fetchMock as unknown as typeof fetch),
     ).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("shared JSON helpers", () => {
+  it("getJson returns parsed JSON on success", async () => {
+    const fetchMock = mockFetch({ ok: true });
+    await expect(getJson("/api/x", fetchMock as unknown as typeof fetch)).resolves.toEqual({
+      ok: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/x", { credentials: "same-origin" });
+  });
+
+  it("getJson throws ApiError with the server error message", async () => {
+    const fetchMock = mockFetch({ error: "belum masuk" }, 401);
+    const error = await getJson("/api/x", fetchMock as unknown as typeof fetch).catch(
+      (err: unknown) => err,
+    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(401);
+    expect((error as ApiError).message).toBe("belum masuk");
+  });
+
+  it("postJson sends a JSON body and returns parsed JSON", async () => {
+    const fetchMock = mockFetch({ ok: true });
+    await expect(
+      postJson("/api/x", { a: 1 }, fetchMock as unknown as typeof fetch),
+    ).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/x",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ a: 1 }),
+      }),
+    );
   });
 });

@@ -30,6 +30,20 @@ export type GatewayDecision = components["schemas"]["GatewayDecision"];
 export type OperatorLogLine = components["schemas"]["OperatorLogLine"];
 export type ModelSettings = components["schemas"]["ModelSettings"];
 export type ModelSource = ModelSettings["source"];
+export type InsightsReport = components["schemas"]["InsightsReport"];
+export type TokenTotals = components["schemas"]["TokenTotals"];
+export type CostSummary = components["schemas"]["CostSummary"];
+export type ModelBreakdown = components["schemas"]["ModelBreakdown"];
+export type DriverBreakdown = components["schemas"]["DriverBreakdown"];
+export type ToolUsage = components["schemas"]["ToolUsage"];
+export type ModuleUsage = components["schemas"]["ModuleUsage"];
+export type DayActivity = components["schemas"]["DayActivity"];
+export type CostlyTask = components["schemas"]["CostlyTask"];
+export type OnboardingStatus = components["schemas"]["OnboardingStatus"];
+export type FirstTaskResult = components["schemas"]["FirstTaskResult"];
+export type OnboardingHint = components["schemas"]["Hint"];
+export type HintsResponse = components["schemas"]["HintsResponse"];
+export type HintSeenResult = components["schemas"]["HintSeenResult"];
 
 export type FetchFn = typeof fetch;
 
@@ -67,7 +81,12 @@ async function postForm<T>(
   return (await response.json()) as T;
 }
 
-async function postJson<T>(
+/**
+ * The single shared JSON POST helper (G31 discipline: one JSON
+ * helper, in this file). The G28 state clients use this directly;
+ * the old `state/http.ts` duplicate is gone.
+ */
+export async function postJson<T>(
   path: string,
   body: unknown,
   fetchFn: FetchFn = fetch,
@@ -82,7 +101,8 @@ async function postJson<T>(
   return (await response.json()) as T;
 }
 
-async function getJson<T>(path: string, fetchFn: FetchFn = fetch): Promise<T> {
+/** The single shared JSON GET helper (see `postJson`). */
+export async function getJson<T>(path: string, fetchFn: FetchFn = fetch): Promise<T> {
   const response = await fetchFn(path, { credentials: "same-origin" });
   if (!response.ok) throw new ApiError(response.status, await readError(response));
   return (await response.json()) as T;
