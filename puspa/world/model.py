@@ -30,6 +30,12 @@ What this module does, in its own design:
   values win over the model, a miss is recorded as a misprediction,
   the model is corrected, and the miss is reported to the learning
   loop (see the seam note below).
+- ``ingest_step_failure(...)`` folds a step that aborted the run:
+  a gate/policy refusal teaches capability only (the pending
+  prediction is discarded unscored, price and bill beliefs are
+  never touched, no misprediction is reported), while a world
+  failure scores a pending prediction against the failure, so a
+  miss becomes a misprediction in the learning loop.
 - ``plan(task)`` lives in ``puspa.world.planner`` and simulates
   multi-step tasks against a copy of this state.
 
@@ -95,6 +101,18 @@ ACTION_TYPES = (
     "estimate_task",
     "attempt_task",
 )
+
+#: Kinds of step failure folded by ``ingest_step_failure``.
+#: "gate_rejected" means policy refused the step before the world
+#: could answer (handoff schema rejection, budget exhaustion):
+#: capability learns, the pending prediction is discarded
+#: unscored, and price/bill beliefs are never touched.
+#: "world_failed" means the step ran and the world said no (the
+#: executor raised): a pending prediction is scored against the
+#: failure, so a miss becomes a misprediction in the learning
+#: loop. The two paths are deliberately separate: a refusal is
+#: policy evidence, not world evidence.
+STEP_FAILURE_KINDS = ("gate_rejected", "world_failed")
 
 
 @dataclass
@@ -214,6 +232,7 @@ class WorldModel:
         self._capability_beliefs: dict[str, _CapabilityBelief] = {}
         self._pending: Prediction | None = None
         self.mispredictions: list[dict] = []
+        self.gate_rejections: list[dict] = []
         self.belief_contradictions: list[dict] = []
         self.stats: dict[str, int] = {"predictions": 0, "correct": 0}
         self.episode_accuracies: list[float] = []
@@ -539,6 +558,97 @@ class WorldModel:
         self._apply_observation(action, observed, correct=None)
         return {"correct": None, "error": None,
                 "predicted": None, "observed": observed}
+
+    def discard_pending_prediction(self, action: dict | None = None) -> bool:
+        """Drop the pending prediction without scoring it.
+
+        Used when a step never produced a world observation (a
+        gate/policy refusal, a budget stop): the world never
+        answered, so there is nothing to score, and a stale
+        prediction must not be scored against a later, unrelated
+        observation. With ``action`` given, only a pending
+        prediction for that same action is dropped. Returns True
+        when a prediction was dropped.
+        """
+        if self._pending is None:
+            return False
+        if action is not None and not self._same_action(self._pending.action, action):
+            return False
+        self._pending = None
+        return True
+
+    def ingest_step_failure(self, *, task_kind: str, action: dict | None = None,
+                            failure_kind: str, reason: str = "",
+                            day: int | None = None) -> dict:
+        """Fold one failed step into the model.
+
+        ``task_kind`` is the step name; ``action`` is the world
+        action the step was translated to, or None for a generic
+        step. Two failure kinds, deliberately separate paths:
+
+        - ``"gate_rejected"``: policy refused the step before the
+          world could answer (handoff schema rejection, budget
+          exhaustion). The pending prediction for the step is
+          discarded WITHOUT scoring (there is no observation to
+          score it against), the capability belief for the task
+          kind records one failure, and the rejection is noted
+          in ``gate_rejections``. Price and bill beliefs are
+          never touched: a refusal says nothing about prices or
+          bills, and no misprediction is reported to the
+          learning loop.
+        - ``"world_failed"``: the step ran and the world said no
+          (the executor raised). A pending prediction for the
+          step is scored against the failure (observed
+          ``{"success": False}``), so a miss is recorded and
+          reported to the learning loop as a misprediction
+          through the usual seam; the capability belief for the
+          task kind records one failure.
+
+        Returns a summary dict with ``task_kind``,
+        ``failure_kind``, the ``update`` outcome under
+        ``"scored"`` (only for a scored ``"world_failed"``) and
+        whether a pending prediction was discarded. Raises
+        ValueError for an unknown failure kind.
+        """
+        if failure_kind not in STEP_FAILURE_KINDS:
+            raise ValueError(f"unknown step failure kind: {failure_kind!r}")
+        day = self.day if day is None else int(day)
+        scored = None
+        discarded = False
+        if failure_kind == "gate_rejected":
+            discarded = self.discard_pending_prediction(action)
+            self._apply_capability_observation(
+                task_kind=str(task_kind), success=False, day=day)
+            self.gate_rejections.append({
+                "task_kind": str(task_kind),
+                "failure_kind": failure_kind,
+                "reason": reason,
+                "action_type": (action or {}).get("type"),
+                "day": day,
+            })
+        else:  # "world_failed"
+            pending_matches = (
+                action is not None and self._pending is not None
+                and self._same_action(self._pending.action, action)
+            )
+            if pending_matches:
+                scored = self.update({
+                    "action": dict(action), "observed": {"success": False},
+                    "task": str(task_kind), "day": day,
+                })
+                # update() already taught capability for the step
+                # when the action is attempt_task (its task kind
+                # is the step name); every other action needs the
+                # step-name observation applied here, once.
+                if not (action.get("type") == "attempt_task"
+                        and str(action.get("task_kind") or "") == str(task_kind)):
+                    self._apply_capability_observation(
+                        task_kind=str(task_kind), success=False, day=day)
+            else:
+                self._apply_capability_observation(
+                    task_kind=str(task_kind), success=False, day=day)
+        return {"task_kind": str(task_kind), "failure_kind": failure_kind,
+                "scored": scored, "discarded_pending": discarded}
 
     @staticmethod
     def _same_action(first: dict, second: dict) -> bool:
