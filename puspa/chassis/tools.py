@@ -211,6 +211,24 @@ class PuspaTool(Tool):
                 content_completed["injection"] = [
                     {"pattern": t.pattern, "level": t.level} for t in findings
                 ]
+        # Compress the tool result before it reaches the model
+        # (RTK pattern, puspa/router/compression.py): the scan above
+        # already ran on the original text, the ledger only records
+        # name/status, and the evidence the checker reads is never
+        # this string. Fail-safe inside: on any failure the original
+        # text is returned unchanged.
+        if isinstance(result, str) and result and status == "ok":
+            try:
+                from puspa.router.compression import compress_tool_result
+
+                compressed = compress_tool_result(str(result), tool_name=name)
+                if compressed.compressed:
+                    result = ToolResult(
+                        compressed.text, is_error=False,
+                        error_code=getattr(result, "error_code", None),
+                    )
+            except Exception:
+                pass
         self._log_event("tool_completed", content_completed)
         return result
 
@@ -511,6 +529,17 @@ class McpClientWrapper:
             self._log_event("tool_completed", {"tool": name, "status": "error"})
             return {"status": "error", "reason": str(exc)}
         self._log_event("tool_completed", {"tool": name, "status": "ok"})
+        # Same compression as PuspaTool.execute: only the text sent
+        # to the model shrinks; the dict shape and status are kept.
+        if isinstance(result, str) and result:
+            try:
+                from puspa.router.compression import compress_tool_result
+
+                compressed = compress_tool_result(result, tool_name=name)
+                if compressed.compressed:
+                    result = compressed.text
+            except Exception:
+                pass
         return {"status": "ok", "result": result}
 
     # -- sync convenience (no pytest-asyncio in this repo) ---------------
