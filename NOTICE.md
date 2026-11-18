@@ -155,6 +155,20 @@ to be included here because no third-party code is vendored.
 - **dsse-lf/dsse** (Apache License 2.0) - pattern: DSSE envelope
   shape and the pre-authentication encoding rule. Only the
   specification was followed; no code was taken.
+- **Aider-AI/aider** (Apache License 2.0) - pattern: concise repo
+  map with classes/functions plus signatures under a token budget;
+  surgical edits as unified diffs with lint/test after the edit.
+  Used as a pattern in `puspa/harness/repo_map.py` and
+  `puspa/harness/diff.py`.
+- **SWE-agent/SWE-agent** (MIT License) - pattern: reproduce-first
+  coding loop (failing reproduction test before the fix, proof of
+  fix after). Used as a pattern in `puspa/harness/reproduce.py`
+  and `puspa/harness/loop.py`.
+- **openai/codex** (Apache License 2.0) - pattern: sandbox profiles
+  (read-only / workspace-write / full) plus approval before acting
+  outside the boundary. Used as a pattern in
+  `puspa/harness/sandbox_profiles.py`. Puspa's `full` is NOT Codex
+  `danger-full-access`.
 
 ## Puspa license
 

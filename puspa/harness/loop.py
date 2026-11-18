@@ -55,6 +55,34 @@ Safety rules enforced here:
   nothing runs; an "ask" tool stops the run as
   ``pending_approval`` until the user approves.
 
+One harness, three mechanisms (see ``docs/brain-depth-triage.md``;
+Aider + SWE-agent + openai/codex are one harness, not three):
+
+- Surgical edits (Aider): with ``diff_mode=True`` the generator may
+  return a unified diff instead of a full program. The diff is
+  applied to the current program text with
+  :mod:`puspa.harness.diff`; a diff whose context does not match is
+  rejected whole (never applied partially) and the attempt fails
+  with the reason recorded.
+- Reproduce-first (SWE-agent): with ``reproduce_first=True`` the
+  loop refuses to call a fix complete unless a failing reproduction
+  was observed first. When the task carries ``starter_code`` that
+  code plus the acceptance tests is run as the reproduction before
+  any fix attempt; otherwise the first failing attempt is the
+  reproduction, and a first attempt that passes straight away ends
+  as ``reproduction_missing`` instead of ``passed``.
+- Sandbox profiles (openai/codex): the ``profile`` parameter
+  (``read_only`` / ``workspace_write`` / ``full``) caps every tool
+  use through :mod:`puspa.harness.sandbox_profiles` and the gate.
+  Under ``read_only`` any write or execution is refused with a
+  clear error before anything runs. The profile never widens the
+  token and the token never widens the profile.
+
+Defaults keep the old behaviour exactly: ``profile`` is
+``workspace_write``, ``diff_mode`` is off, ``reproduce_first`` is
+off, and a generator that returns full program text works as
+before.
+
 No network calls are made from this module. Events go to ``sink``
 (callable ``(event_type, content)``), the same shape as
 ``puspa.runtime.tasks``; the default sink keeps them in memory.
@@ -65,12 +93,15 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 
-from puspa.policy import Gate
+from puspa.policy import Gate, GateDenied
 from puspa.policy.tokens import tool_permission
 from puspa.runtime.budget import CEILING_RP_PER_TASK, BudgetExhausted, BudgetTracker
 from puspa.sandbox import SandboxUnavailable
 
+from .diff import DiffApplyError, apply_diff, is_diff
 from .executor import ExecutionResult, Executor, LocalTestExecutor, SandboxExecutor
+from .reproduce import ReproduceFirst, build_reproduction
+from .sandbox_profiles import PROFILE_WORKSPACE_WRITE, check_tool, get_profile
 
 __all__ = [
     "AttemptRecord",
@@ -94,6 +125,7 @@ STATUS_BUDGET_EXHAUSTED = "budget_exhausted"
 STATUS_SANDBOX_UNAVAILABLE = "sandbox_unavailable"
 STATUS_PENDING_APPROVAL = "pending_approval"
 STATUS_DENIED = "denied"
+STATUS_REPRODUCTION_MISSING = "reproduction_missing"
 
 
 class HarnessError(Exception):
@@ -157,6 +189,14 @@ class HarnessOutcome:
     final_code: str | None = None
     reason: str = ""
     test_only: bool = False
+    # Sandbox profile the run used.
+    profile: str = PROFILE_WORKSPACE_WRITE
+    # Reproduce-first evidence: True once a failing reproduction was
+    # observed (starter probe or a failing attempt), True for
+    # reproduction_verified only when that reproduction later passed
+    # on the fixed program.
+    reproduction_failed: bool = False
+    reproduction_verified: bool = False
 
 
 class CodingHarness:
@@ -176,11 +216,16 @@ class CodingHarness:
         cost_per_attempt_rp: int = 0,
         timeout_s: int = 30,
         production: bool = False,
+        profile: str = PROFILE_WORKSPACE_WRITE,
+        diff_mode: bool = False,
+        reproduce_first: bool = False,
     ) -> None:
         if max_attempts < 1:
             raise HarnessError("max_attempts must be at least 1")
         if cost_ceiling_rp < 0 or cost_per_attempt_rp < 0:
             raise HarnessError("cost ceiling and cost per attempt must not be negative")
+        # Unknown profile names are refused at construction time.
+        get_profile(profile)
         if production and not isinstance(executor, SandboxExecutor):
             raise HarnessError(
                 "production harness requires a SandboxExecutor; "
@@ -188,10 +233,14 @@ class CodingHarness:
                 "test-only and must never run in production."
             )
         self.executor = executor
-        # generator(task, attempts) -> str (full program text).
+        # generator(task, attempts) -> str (full program text, or a
+        # unified diff when diff_mode is on).
         self.generator = generator
         self.gate = gate
         self.token_payload = token_payload
+        self.profile = profile
+        self.diff_mode = diff_mode
+        self.reproduce_first = reproduce_first
         self._event: list[dict] = []
         self.sink = sink or (lambda event_type, content: self._event.append({"type": event_type, "content": content}))
         # verifier(result) -> (passed: bool, reason: str).
@@ -220,14 +269,15 @@ class CodingHarness:
     def _check_tools(self, task: CodingTask) -> str | None:
         """Check the per-tool permissions for this run.
 
-        Returns None when the loop may proceed, or the outcome
-        status "pending_approval" when a tool needs user approval.
-        Raises GateDenied for a denied tool: nothing runs at all.
+        The sandbox profile caps every tool first, then the gate
+        enforces the token side; the effective level is the narrower
+        of the two. Returns None when the loop may proceed, or the
+        outcome status "pending_approval" when a tool needs user
+        approval. Raises GateDenied for a denied tool (profile or
+        token): nothing runs at all.
         """
-        if self.gate is None or self.token_payload is None:
-            return None
         for tool in (TOOL_WRITE_CODE, TOOL_RUN_TESTS):
-            level = self.gate.authorize_tool(self.token_payload, tool)
+            level = check_tool(self.profile, self.gate, self.token_payload, tool)
             if level == "ask":
                 self._record(
                     "approval_requested",
@@ -245,6 +295,7 @@ class CodingHarness:
             agent_id=task.agent_id,
             status=STATUS_ATTEMPT_LIMIT,
             test_only=self.test_only,
+            profile=self.profile,
         )
         self._record("harness_started", {"task_id": task.task_id, "description": task.description})
         pending = self._check_tools(task)
@@ -254,6 +305,36 @@ class CodingHarness:
             self._record("harness_pending_approval", {"task_id": task.task_id})
             return outcome
 
+        # Reproduce-first, starter probe: when the task carries
+        # starter code, run it plus the acceptance tests before any
+        # fix attempt. The probe must FAIL; a starter that already
+        # passes has no bug to reproduce, so the run stops as
+        # reproduction_missing instead of ever claiming a fix.
+        tracker: ReproduceFirst | None = None
+        if self.reproduce_first:
+            tracker = ReproduceFirst(build_reproduction(task.task_id, task.description, task.test_code))
+            if task.starter_code:
+                report = tracker.record_reproduction(
+                    lambda program: self.executor.run(program, timeout_s=self.timeout_s),
+                    task.starter_code,
+                )
+                outcome.reproduction_failed = bool(report["reproduced"])
+                self._record(
+                    "reproduction_checked",
+                    {"task_id": task.task_id, "reproduced": report["reproduced"]},
+                )
+                if not report["reproduced"]:
+                    outcome.status = STATUS_REPRODUCTION_MISSING
+                    outcome.reason = (
+                        "starter code already passes the acceptance tests; "
+                        "no failing reproduction was observed before any fix"
+                    )
+                    self._record("harness_failed", {"task_id": task.task_id, "status": outcome.status})
+                    return outcome
+
+        # Current full program text. A diff attempt applies against
+        # this; a full-program attempt replaces it.
+        current_code = task.starter_code
         for attempt_no in range(1, self.max_attempts + 1):
             try:
                 self.budget.record_cost(self.cost_per_attempt_rp)
@@ -265,7 +346,30 @@ class CodingHarness:
                 self._record("harness_failed", {"task_id": task.task_id, "status": outcome.status})
                 return outcome
             self._record("attempt_started", {"task_id": task.task_id, "attempt": attempt_no})
-            code = self.generator(task, list(outcome.attempts))
+            generated = self.generator(task, list(outcome.attempts))
+            code = generated
+            if self.diff_mode and is_diff(generated):
+                try:
+                    code, _applied = apply_diff(current_code, generated)
+                except DiffApplyError as exc:
+                    # The diff is rejected whole: nothing was
+                    # applied, and the attempt fails with the reason
+                    # recorded for the next generator call.
+                    record = AttemptRecord(
+                        attempt=attempt_no,
+                        code=current_code,
+                        result=ExecutionResult(ok=False, stdout="", stderr=str(exc), exit_code=None),
+                        passed=False,
+                        cost_rp=self.cost_per_attempt_rp,
+                        reason=f"diff did not apply: {exc}",
+                    )
+                    outcome.attempts.append(record)
+                    self._record(
+                        "attempt_finished",
+                        {"task_id": task.task_id, "attempt": attempt_no, "passed": False, "reason": record.reason},
+                    )
+                    continue
+            current_code = code
             try:
                 result = self.executor.run(code, timeout_s=self.timeout_s)
             except SandboxUnavailable as exc:
@@ -291,6 +395,30 @@ class CodingHarness:
                 {"task_id": task.task_id, "attempt": attempt_no, "passed": passed, "reason": reason},
             )
             if passed:
+                if self.reproduce_first and tracker is not None:
+                    if tracker.reproduced:
+                        # The starter probe already failed, and this
+                        # passing attempt is the fix verification.
+                        tracker.record_fix_result(
+                            True,
+                            (result.stdout or "") + (result.stderr or ""),
+                        )
+                        tracker.mark_fixed()
+                        outcome.reproduction_failed = True
+                        outcome.reproduction_verified = True
+                    elif any(not attempt.passed for attempt in outcome.attempts[:-1]):
+                        # No starter probe: an earlier failing attempt
+                        # is the reproduction for this fix.
+                        outcome.reproduction_failed = True
+                        outcome.reproduction_verified = True
+                    else:
+                        outcome.status = STATUS_REPRODUCTION_MISSING
+                        outcome.reason = (
+                            "first attempt passed without a failing "
+                            "reproduction; the fix is not proven"
+                        )
+                        self._record("harness_failed", {"task_id": task.task_id, "status": outcome.status})
+                        return outcome
                 outcome.status = STATUS_PASSED
                 outcome.final_code = code
                 outcome.reason = ""
