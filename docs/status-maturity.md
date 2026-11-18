@@ -517,3 +517,203 @@ boundary lint (test-enforced) + plugin catalog (YAML manifests +
 admission rules + CI test) + optional MCP definitions (seed set).
 Split: G3 owns `manifest.json` + `SKILL.md` (skill/module layer);
 G27 owns plugin YAML manifests + `plugin_api.json` (plugin layer).
+
+## Wave 5: G3+G27 (marketplace, done 18 Nov 2026)
+
+Two parallel workers, disjoint files (G3 owns `manifest.json` +
+`SKILL.md`, the skill/module layer; G27 owns plugin YAML manifests +
+`plugin_api.json`, the plugin layer). Central SOLO suite after the
+wave: **1,800 passed, 9 skipped, 1 warning, 11m15s** (baseline 1,590
++ 210 new: G3 109 + G27 101 passed + 1 skipped). Postgres stayed
+online.
+
+### G3 Module marketplace (commit 024d9a0f)
+
+New package `puspa/marketplace/` (10 modules) + 8 test files + 1
+helper (109 passed, 0.55 s `--noconftest`). `manifest.py` (strict
+skill folder + manifest validation: id matches folder name +
+`^[a-z0-9]+(-[a-z0-9]+)*$`, semver version, non-empty
+name/description, non-empty triggerTerms, requiredCapabilities string
+array; frontmatter `---` required at the top of SKILL.md; manifest
+stores sha256, importedAt, license, compatibility, warnings,
+skippedFiles, referencesSha256 (re-hashed, a missing reference file
+fails); caps: max 30 skills, index max 4,000 bytes, max 20 staged).
+`registry.py` (registry + import → install → rollback → uninstall +
+audit; import takes only SKILL.md and lands DISABLED; rollback
+restores the previous version from sha256 + source records (new
+install row, the old version is never rewritten); uninstall removes
+the install but keeps the audit; origins strictly builtin/user/library
+from the manifest, the import argument only overrides). `store.py`
+(own store: `create_schema()` with 3 tables
+`marketplace_installs`/`marketplace_versions`/`marketplace_audit` +
+`MemoryStore` + `PostgresStore`, same interface; install/rollback
+records do NOT enter the ledger — no new ledger event types, still
+31). `trust.py` (FLAGSHIP: trust score 0-100 from 5 signals —
+Sigstore/local signature via the existing `verify_skill` = 30,
+manifest completeness = 20, known license = 15, trusted source = 20,
+clean install history = 15; floor `MIN_TRUST_SCORE = 60`; below the
+floor install is refused without explicit user approval; no history
+= 0 points, so even an unsigned skill from a trusted source only
+scores 55 and is refused — the signature really decides).
+`share.py` (off|ask|auto, default ask + two invariants: share never
+changes the running conversation's index; a skill only reaches peers
+no more numerous than where it was learned (cap `learned_from_peers`;
+learned alone = cannot share)). `authoring.py` (tested authoring
+standards: description ≤60 characters, native tools not shell utils
+(grep→search_files, cat→read_file; code blocks excluded), platform
+gating must be marked audited in frontmatter, human credit first
+(author + credit line), standard section order, inline code blocks
+max 10 lines, `{{config.x}}` placeholders must be declared in
+frontmatter; `resolve_config` (asked at setup via asker) +
+`inject_config` (injected at load)). `narrowing.py` (per-run
+narrowing: deterministic triggerTerms match, or an injected
+`llm_complete`; failure → fail-open whole catalog; above 50 tools the
+rest wait behind one `search_tools` tool; above 128 tools the run is
+refused with audit `agent.tool_limit_refused`; takes a tool list as
+input, no dependency on G27's loader). `learning.py` (learn from chat
++ background review after reply: max 3 changes, 3-minute timeout, 3
+consecutive failures → step discarded; deterministic by default;
+optional `llm_complete`, failure → deterministic fallback, never
+fakes proposals). `errors.py`. Price/license: the manifest carries
+`priceCredits` + `license`, each install records both; the
+entitlement check is an injected callable (default: free (price 0)
+allowed, paid without entitlement refused) — real charging is G2.
+Honest limits: the learning review (item 9) is not wired to the
+reply loop (no clean seam from the reply loop; G24's background
+review writes facts, not skill changes; call site + follow-up
+documented in the `learning.py` docstring: wire
+`review_after_reply` to the post-reply hook once it exists, with the
+skill registry store as `apply_change`). The real Sigstore bundle
+path is not tested end-to-end (trust scoring uses the existing
+`verify_skill`; only the local Ed25519 signal was tested, including
+rejection of a manifest changed after signing — no real bundle
+fixture can be made offline). `puspa/skills/` does not exist in this
+repo — the existing skill registry is
+`puspa/chassis/skill_loader.py` (PuspaSkillsLoader + `verify_skill`);
+the marketplace is a new package, the old loader untouched.
+Entitlement is a seam (G2 owns real charging). No new deps (only
+yaml, cryptography, psycopg already present). Design decision: index
+entries are compact (no sha256/source/license — those stay in
+store/manifest) so 30 skills fit the 4,000-byte index cap; the staged
+cap 20 binds before the 30-skill cap, so filling the index fully
+needs installing in parts (covered by tests). PostgresStore
+smoke-tested manually (`create_schema` + round-trip in `puspa_test`,
+rows cleaned); not in the automatic suite (tests designed
+in-memory). 0 live LLM calls.
+
+### G27 Plugin system (commit fb17f2ee)
+
+New package `puspa/plugins/` (14 modules + 3 YAML catalog seeds + 3
+JSON MCP seeds) + 6 test files (101 passed, 1 skipped, 6.43 s) +
+chassis wiring. `context.py` (`PluginContext` `ctx`: the only surface
+plugins may use — `register_tool`/`register_hook`/`register_command`/
+`register_memory_provider`/`register_context_engine`/`log` + name
+validation, JSON Schema parameter validation, handler arity
+validation at load time). `plugin_api.json` (published API, single
+source of truth: ctx methods, hook events, single-select kinds, name
+patterns, allowed imports, core-importable plugin modules).
+`loader.py` (discovery 3 sources user→project→pip entry point
+`puspa.plugins`, fixed order + `load_plugin`/`load_plugins` +
+`PluginRecord` + `run_command`; broken plugins rejected with
+`PluginStructureError` naming the plugin and the problem;
+`load_plugins` collects failures per source, never fails discovery).
+`single_select.py` (generic single-select registry, same G24
+pattern: first-wins, `PluginShadowError` anti-shadowing, explicit
+selection → env `PUSPA_<KIND>_PLUGIN` → default; losers never
+silently active + `install_into_provider_registry` bridge to G24's
+`ProviderRegistry`, closing G24's entry-point follow-up for the
+plugin path). `context_engine.py` (`ContextEngine` ABC, part of the
+published API). `errors.py`. `builtin/echo.py` (general plugin proof:
+tool `plugin_echo` read-only, hook `after_run`, command `echo`).
+`builtin/simple_context.py` (single-select proof: tool
+`remember_note` + engine `simple` — keyword overlap + stopwords +
+word normalization, state shared only via `ctx.shared` — a real
+mechanism, not an empty ABC). `builtin/memory_inmemory.py` (second
+single-select proof: in-memory `MemoryProvider`, G24 record shape, no
+Postgres). `adapters.py` (the ONLY module allowed to import nanobot:
+`PluginTool` wraps a `ToolDefinition` into a nanobot `Tool`,
+sync/async handlers, errors → `ToolResult.error` + `PluginHook`
+dispatches to `AgentHook`, handlers isolated, `finalize_content` may
+replace the answer + `attach_plugin_tools`/`build_plugin_hook`).
+`boundary.py` (AST import lint: B1 core never imports builtin
+plugins, B2 plugins only use the published API, B3 builtins don't
+import other builtins; runs as `python -m puspa.plugins.boundary`,
+exit 1 on violation). `catalog.py` (third-party plugin YAML manifests
++ admission: required fields, license allowlist MIT/Apache-2.0/BSD/
+ISC, semver, https github/gitlab repo, kind, `api_version`, optional
+`price_credits` owned by G3 + duplicate ids rejected +
+`check_repository_alive` (HEAD then GET, never raises)). `catalog/`
+seeds: 3 valid manifests (acme-notes, local-llm-context,
+sqlite-memory). `mcp.py` (MCP definition format validation
+server/tools/transport/dependencies + `check_readiness`/
+`check_mcp_readiness` — checks modules importable + commands on
+PATH, no installation/download/execution). `mcp_definitions/` seeds:
+3 (local-files, http-fetch, sqlite). Modified:
+`puspa/chassis/factory.py` + `puspa/chassis/__init__.py`
+(`PuspaChassis` gains `plugin_dirs`/`plugins`/`plugin_failures`;
+`load_chassis_plugins()` discovery (dirs + env `PUSPA_PLUGIN_DIRS` +
+default user/project + entry point), failures recorded on the
+chassis + ledger sink, never fail startup; `build_registry()`
+attaches plugin tools (same `PuspaTool` enforcement); `assemble()`
+adds `PluginHook` only when plugins exist; default behavior
+unchanged — without plugins hooks stay 1, old factory tests pass).
+Bug found and fixed: `load_plugin(..., single_select=registry)`
+discarded an empty registry passed by the caller
+(`SingleSelectRegistry` defines `__len__` → falsy); fixed to `is not
+None` (caused 4 of 6 initial test failures). Tests: 101 passed, 1
+skipped (seed repo liveness check needs network + fictional
+`github.com/acme/*` repos, gated by `PUSPA_CATALOG_NETWORK=1`);
+regression with conftest 105 passed, 1 skipped (101 plugin + 4
+`test_factory_rails.py`); boundary lint CLI clean on the current
+tree; probes prove the lint fails (B1/B2/B3) on newly introduced
+violations (synthetic tree, never touched the real tree); ratchet +
+drift 6 passed. Honest limits: two file-plugins with the same stem
+from different dirs share the module name `_puspa_plugin_<stem>` in
+`sys.modules` (second overwrites first) — doesn't break behavior
+(each record holds its own context/handlers, duplicate ids still
+rejected) but naming should be made unique per path in a follow-up.
+pip entry point tested with monkeypatched
+`importlib.metadata.entry_points`, not a real installed distribution
+— follow-up: install a dummy distribution with a `puspa.plugins`
+entry point in CI. Catalog liveness only tested fail-closed (missing
+URL → False); the live seed-repo check is skipped. MCP seed only 3
+definitions (not 66 like hermes); `check_readiness` only checks
+presence, not matching versions. `python -m puspa.plugins.boundary`
+emits a harmless stdlib `RuntimeWarning` (boundary already in
+`sys.modules` when the package `__init__` imports it). Not yet: PM
+plugin installation (out of G27 — PM prepares deps before use; here
+only the readiness-check side), a dashboard calling `check_readiness`
+(call site doesn't exist yet; the function is ready).
+
+**Integration gap (coordinator-verified): the G3↔G27 seam is
+one-sided.** G27 exposes `load_plugin` (`loader.py:339`), but G3's
+marketplace code never imports or calls it (only a comment in
+`narrowing.py:20` mentions the G27 loader). The marketplace
+installer needs a `plugin_loader` injected callable (default lazy
+import of `puspa.plugins.loader.load_plugin`) so installing a
+plugin-type module actually loads it. Follow-up, not a blocker.
+
+## Next: G2+G8 (billing + scheduler)
+
+In progress (spawned after Wave 5): two parallel workers, disjoint
+files. G2 (DuskBot billing + hermes client state machine): contract
+v1 (Cart → Quote with line items, one price source, additive only) +
+swappable payment provider module + fake provider + webhook with
+signature verification + signed entitlements + usage ledger
+(`UsageRow` + Battery view + forecast) + client state machine
+(typed refusal codes, idempotency, settlement polling, effect
+preview, fail-closed). **Billing model (credits vs subscription vs
+selling compute) is Nero's decision: the mechanism is built with the
+model as a config (default: the brief's numbers — tiers +
+credits); no real money moves (no real gateway integration, no real
+charges); the model question goes to the parent for Nero.** G8
+(DuskBot routines + hermes cron): explicit-union schedule schema
+(once/daily/interval/cron + explicit timezone) + split
+due/schedules/execution/recovery/holds/receipts modules + event
+receipts (idempotency key per event) + general cron job model
+(prompt + skills + deliver + per-job zone + grace) + atomic saves.
+Shared seam: `puspa/billing/ledger.py::task_budget_remaining(user_id,
+task_id, *, cap_rp=2000, dsn=None) -> int` (G2 defines it; G8's
+curriculum runner calls it via an injected callable, default lazy
+import). G2 does NOT touch `puspa/scheduler/`; G8 does NOT touch
+`puspa/billing/` or `puspa/pricing/`.
