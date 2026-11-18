@@ -884,3 +884,92 @@ patungan, B12 joint shopping, B13 drafts), then B15 culture LAST
 (the BUDAYA GO! 2026 batik demo order from ~05:37 WIB was
 cancelled by Nero before any work started). Then uji + 15 gates
 + 10 reference tasks (waiting on Nero's decisions).
+
+## Wave 21: Kosmos K1 (Intent Engine, DONE 19 Nov 2026)
+
+First Kosmos item after all 28 G gaps. K1 builds the intent
+SIGNAL (kosmos-design.md section B); the act-vs-ask RULE itself
+is K2, already folded into G4/G5 — K1 adds what the rule needs
+from intent, and the ask always goes through the existing G4
+approval mechanism. No second approval system was built
+(worker 5b70678c, verified centrally by the coordinator).
+
+What was built (new package `puspa/intent/`, all files under
+1000 lines; tests 786 lines; docs 222 lines):
+- `distribution.py` — `IntentDistribution` with the three
+  levels (desire, goal, values), each a scored set of
+  `IntentHypothesis` values normalized to sum to 1 per level.
+  Empty levels are allowed and recorded as empty, never
+  invented. Unnormalized direct construction raises
+  ValueError. Conflict = top-two weights within 0.15.
+- `inference.py` — default deterministic inferrer: keyword /
+  topic coverage against the user's known goals/values from
+  the profile (only intent-bearing keys: `goal*` -> goal,
+  `value*` / `principle*` -> values, `want*` / `need*` /
+  `desire*` / `preference*` -> desire; identity facts like
+  name/address ignored) plus world beliefs (unpaid bills,
+  known prices -> desire; repeated habits, schedules -> goal).
+  A small hand-written signal lexicon is a fallback only at
+  the desire level when nothing grounded scored, and concept
+  expansion is how one message reads at all three levels.
+  `IntentInferrer` is the pluggable interface;
+  `build_llm_prompt` documents the LLM seam contract (JSON,
+  weights sum to 1, empty level = `[]`) — the LLM inferrer
+  itself is NOT built, per spec.
+- `act_ask.py` — the intent signal feeding act-vs-ask.
+  Decision order: G4 policy first when wired in and the kind
+  is recognized (deny/ask/escalate wins; allow lets intent
+  run) -> fully empty distribution fails open to act -> desire
+  unread asks -> conflicting asks -> top weight < 0.6 asks ->
+  irreversible/high-stakes asks -> otherwise act. Plus
+  `clarifying_question` (one calm question naming what was
+  read).
+- `turn_wiring.py` — `IntentTurnAdvisor` (profile + world +
+  `ActionSpec` per tool: reversible/stakes) and the ask
+  payload (`tool_was_run: false` + question).
+
+Wiring into the turn loop (`puspa/turns/loop.py`): optional
+`intent_advisor` on `TurnLoop`. Consulted before a registry
+tool call (never for intercepted tools); on `ask` the tool is
+NOT run and the model gets the ask payload; on `act` the call
+runs as before. Verdicts land on `TurnResult.intent_decisions`
+plus an `intent_ask` sink event. A broken advisor fails open
+to running the call. Without an advisor behavior is unchanged.
+Also a short K1 paragraph in `docs/turn-loop.md`.
+
+Two bugs found by the worker's own tests and fixed in code:
+`_world_state` returned `{}` for a `WorldModel` (its `state`
+property yields a dict, not a callable), and the conflict check
+was unreachable after the confidence check (normalized weights
+make a conflicting top necessarily < 0.575 < 0.6), so conflict
+is now checked before low confidence, with the math documented
+in the module docstring.
+
+Suite (coordinator, SOLO, 19 Nov 2026): 3,200 passed, 23 skipped,
+1 warning, 21m32s, EXIT 0 (log hidden_files/suite-wave21-k1.log).
+Reconciliation: 3,149 (Wave 20) + 51 (K1 module tests) = 3,200;
+skipped unchanged at 23. Module tests (coordinator re-run): 51 passed
+(test_intent.py + test_intent_turn_wiring.py, incl. the run
+test proving the distribution changes the decision: same
+message "buy the laptop" with one recorded preference -> act
+and the tool runs; with two equally-matching preferences ->
+ask and the tool never runs; same for world state, "pay the
+bill" acts with one unpaid bill, asks with two). Regression
+(coordinator re-run): 72 passed (test_turn_loop.py +
+test_approvals_taxonomy.py). Ruff check + format: clean. Mypy
+on the changed files: clean.
+
+Honest limits: keyword overlap, not understanding
+(paraphrases with no shared words read nothing; "save the
+file" false-matches a "save money" goal); no morphology
+("prices" != "price", "frugality" != "frugal"); thresholds
+0.6/0.15 are chosen, not calibrated; no learning from
+corrections yet; the advisor reads only the last user message,
+not turn history; profile freshness is the caller's job (or
+use `context_provider`); LLM inferrer is a documented seam
+only, no live model call exists.
+
+Remaining: Kosmos K3, K4, K5, K6, K10, K11, K12, K13, then B
+features (B6, B9, B10, B11, B12, B13), then B15 culture LAST.
+Then uji + 15 gates + 10 reference tasks (waiting on Nero's
+decisions).
