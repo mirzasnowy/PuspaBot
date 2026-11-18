@@ -367,6 +367,24 @@ route or auth behaviour was changed. Note: `node_modules/` and
 sources — a fresh checkout must run `npm install && npm run build`
 in `apps/pwa/` before the SPA is served (see `docs/pwa.md`).
 
+## Maturity phase (G13 — multi-tenant teams / hosting)
+
+No new dependency. Only PATTERNS adapted (rewritten, not copied):
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| Team as its own entity, separate from billing; owner/member roles; invitations via token; visibility as a function of (thread, member); per-member bot access with access requests; workspace moves with move-freeze | DuskBot (PolyForm Noncommercial — study only, no code used) | The team entity split from billing, the two-role shape, the invitation-token shape, the per-(thread, member) visibility rule, the bot-access-gate + access-request shape, the move-freeze rule | `puspa/teams/teams.py` (create/delete, owner-only role changes, last-owner guard) + `puspa/teams/invitations.py` (hash-only tokens, 7-day TTL, single use, idempotent accept, revoke) + `puspa/teams/visibility.py` (`can_see_thread` pure function + `BotAccessGate` grants/requests) + `puspa/teams/moves.py` (pending/in_progress/done/failed/cancelled, freeze derived from move records, failed stays frozen and resumable) |
+| Signed entitlement per machine-id as the "may this home run" gate; without a valid entitlement only a signed admin + the liveness probe are answered; public key pinned in the release | DuskBot (PolyForm Noncommercial — study only, no code used) | The signed-entitlement gate shape + the pinned-key idea | `puspa/teams/entitlements.py` (Ed25519-signed `v1.<payload>.<signature>` tokens, canonical JSON payload, tier list from G2 billing tiers + `admin`, `HomeGate.decide` with plain deny reasons; Ed25519 — not G2's HMAC — because the home must not hold the server secret) |
+| Organisations, roles, org audit | OpenBot (MIT) | The organisation/role/audit idea | Team roles + the durable `bot_access_requests` audit table (`puspa/teams/visibility.py` + `infra/schema_teams.sql`); no org-audit HTTP surface yet |
+| Deploy: multi-stage Dockerfile, s6-overlay as PID 1, UID/GID remap, dashboard bound to 127.0.0.1 by default, remote access only via SSH tunnel or authenticated reverse proxy, API server dead unless its key is uncommented; gateway + dashboard in compose | NousResearch/hermes-agent (MIT) | The deploy shape (s6-overlay, localhost default, UID remap, API key opt-in, gateway + dashboard services) | `Dockerfile` (builder + runtime stages, s6-overlay 3.2.3.2, cont-init home fix, one s6 service dropping to the puspa user) + `docker-compose.yml` (gateway on 127.0.0.1:8001, dashboard on 127.0.0.1:8000, shared `puspa-home` volume) + `puspa/teams/deploy.py` (offline parse + rule validation — Docker cannot run on the dev VM, so the files are validated by parsing, not by building) |
+
+No DuskBot code was copied (its code is TypeScript; Puspa's is
+Python) and no DuskBot code is vendored or depended on. No
+hermes-agent or OpenBot code was copied; only the documented shapes
+above were followed. Schema: `infra/schema_teams.sql` (seven tables
++ RLS policies following `puspa/accounts/schema.sql`); docs:
+`docs/teams.md`.
+
 ## Glosarium istilah baru Fase 4 (bukan dari revisi 7)
 
 - `eksekutor_fixture` — NAMA TEKNIS internal (eksekutor data uji:

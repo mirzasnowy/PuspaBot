@@ -419,6 +419,46 @@ package's own `package.json`: `react@19.3.1` (MIT),
 `@types/react-dom@19.3.0` (MIT). No dependency with a
 non-commercial or copyleft license was added.
 
+# NOTICE - Puspa maturity phase, G13 (18 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **DuskBot** (PolyForm Noncommercial License 1.0.0 — study only,
+  no code used, no dependency) - patterns only, rewritten as Puspa
+  Python code (DuskBot is TypeScript; nothing was copied verbatim):
+  the team as its own entity, separate from billing, with
+  owner/member roles, from `server/cloud-team*.ts` and
+  `server/team-*.ts`; invitations via token; visibility as a
+  function of (thread, member); per-member bot access
+  (`bot-access-gate.ts`, `access-requests.ts`); the signed
+  entitlement per machine-id as the "may this home run" gate
+  (`cloud-entitlement.ts`: without a valid entitlement only a
+  signed admin and the liveness probe are answered); and workspace
+  moves with move-freeze (`bot-moves.ts`, `move-freeze.ts`). Used
+  as patterns in `puspa/teams/` (`teams.py`, `invitations.py`,
+  `visibility.py`, `entitlements.py`, `moves.py`) and
+  `infra/schema_teams.sql`. Because the license is PolyForm
+  Noncommercial, no DuskBot code is vendored, linked, or depended
+  on, and the patterns are not used to build a competing DuskBot
+  product — they implement Puspa's own multi-tenant teams.
+- **OpenBot** (MIT License) - patterns only, rewritten as Puspa
+  Python code (nothing copied verbatim): organisations, roles, and
+  org audit. Used as a pattern for the team roles and the durable
+  `bot_access_requests` audit table (`puspa/teams/visibility.py`,
+  `infra/schema_teams.sql`).
+- **NousResearch/hermes-agent** (MIT License) - patterns only,
+  rewritten as Puspa code (nothing copied verbatim): the multiplex
+  + hosted room shape and the multi-tenant deploy shape —
+  multi-stage `Dockerfile` (s6-overlay as PID 1, UID/GID remap,
+  dashboard bound to 127.0.0.1 by default, remote access only via
+  SSH tunnel or authenticated reverse proxy, API server dead unless
+  its key is uncommented) and `docker-compose.yml` (gateway +
+  dashboard). Used as patterns in `Dockerfile`,
+  `docker-compose.yml`, and `puspa/teams/deploy.py` (offline
+  validation of both files). No new pip dependency was added for
+  G13 (`cryptography==50.0.2`, `psycopg`, `PyYAML`, all already
+  pinned).
+
 ## Puspa license
 
 The code in this directory is Puspa's own work (Nero / Luna). The Puspa
