@@ -18,9 +18,19 @@ This module implements the same two hooks in Puspa's own code:
   tests and the offline path use.
 - ``CrossEncoderReranker``: a real cross-encoder backed by
   sentence-transformers (``cross-encoder/ms-marco-MiniLM-L-6-v2``,
-  Apache-2.0). ``from_sentence_transformers`` loads the model
-  once per process and scores real (query, passage) pairs; the
-  batch path scores the whole shortlist in one ``predict`` call.
+  Apache-2.0) or by FlagEmbedding
+  (``BAAI/bge-reranker-v2-m3``, Apache-2.0, multilingual).
+  ``from_sentence_transformers`` loads the model once per
+  process and scores real (query, passage) pairs; the batch
+  path scores the whole shortlist in one ``predict`` call.
+  ``from_flagembedding`` is the same shape through
+  ``FlagReranker.compute_score``. The bge model is the
+  default (``make_reranker(kind="cross_encoder")``): it
+  loads and scores on this dev VM, measured 18 Nov 2026
+  (load about 23-28 s, peak RSS 2,148 MB for one scored
+  pair, total RAM 7,934 MB). The small MS MARCO model stays
+  available as backend "sentence_transformers" for machines
+  where about 2.2 GB free RAM is not available.
   ``from_fastembed`` stays as the honest seam: fastembed 0.9.1
   ships no reranker, so it still raises ``RerankerUnavailable``.
   ``DeterministicReranker`` remains the fallback when no model
@@ -55,17 +65,40 @@ from puspa.memory.episodic import extract_concepts
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _SPLIT_RE = re.compile(r"\s+and\s+|\s+vs\.?\s+|;\s*|\?\s*")
 
-#: Default cross-encoder model. MiniLM-L6-v2 is the small MS MARCO
-#: reranker (about 90 MB, MRR@10 39.01 on MS MARCO dev): fast on
-#: CPU and small enough to load once per process in tests. The
-#: stronger multilingual BAAI/bge-reranker-v2-m3 (about 2.3 GB)
-#: is a later swap through the same seam, not the default here.
+#: Default cross-encoder model for the sentence-transformers
+#: backend. MiniLM-L6-v2 is the small MS MARCO reranker (about
+#: 90 MB, MRR@10 39.01 on MS MARCO dev): fast on CPU and small
+#: enough to load once per process in tests. It is the light
+#: backend for machines where the bge model does not fit, not
+#: the ``make_reranker`` default (see below).
 DEFAULT_CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
-#: Loaded cross-encoder models, one per model name per process.
-#: ``from_sentence_transformers`` reuses the cached model so a
-#: second factory call never reloads the weights.
+#: Default FlagEmbedding cross-encoder model, and the default
+#: cross-encoder backend: the multilingual
+#: BAAI/bge-reranker-v2-m3 (Apache-2.0, verified from the
+#: HuggingFace API tag ``license:apache-2.0`` on 18 Nov 2026).
+#: The weights file alone is 2,271,071,852 bytes (about
+#: 2.3 GB, fp32). Measured 18 Nov 2026 on this dev VM (total
+#: RAM 7,934 MB) the model loads in about 23-28 s and scores,
+#: with peak RSS 2,148 MB for one scored pair. Free RAM on
+#: this shared VM fluctuates (about 0.5-3.0 GB observed while
+#: working), so on a busy moment the load can fail or the
+#: kernel OOM killer can step in; a failed load raises
+#: ``RerankerUnavailable`` and the caller falls back to the
+#: small MS MARCO backend or the deterministic reranker.
+DEFAULT_BGE_RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
+
+#: Loaded cross-encoder models, one per (backend, model name)
+#: per process. Each factory reuses the cached model so a
+#: second factory call never reloads the weights. The backend
+#: is part of the key because the two backends load the same
+#: model name into different wrapper objects.
 _MODEL_CACHE: dict[str, object] = {}
+
+
+def _cache_key(backend: str, model_name: str) -> str:
+    """Cache key for a loaded model: backend plus model name."""
+    return f"{backend}:{model_name}"
 
 
 class RerankerUnavailable(Exception):
@@ -181,8 +214,9 @@ class CrossEncoderReranker:
         when the library is missing or the model cannot load,
         with the reason attached.
         """
-        if model_name in _MODEL_CACHE:
-            model = _MODEL_CACHE[model_name]
+        cache_key = _cache_key("sentence_transformers", model_name)
+        if cache_key in _MODEL_CACHE:
+            model = _MODEL_CACHE[cache_key]
         else:
             try:
                 from sentence_transformers import CrossEncoder
@@ -197,7 +231,7 @@ class CrossEncoderReranker:
                 raise RerankerUnavailable(
                     f"could not load cross-encoder {model_name!r}: {exc}"
                 ) from exc
-            _MODEL_CACHE[model_name] = model
+            _MODEL_CACHE[cache_key] = model
 
         def _score(query, text):
             return float(model.predict([(query, text)])[0])
@@ -205,6 +239,66 @@ class CrossEncoderReranker:
         def _score_many(query, texts):
             return [float(score) for score in
                     model.predict([(query, text) for text in texts])]
+
+        return cls(_score, score_many_fn=_score_many,
+                   model=model, model_name=model_name)
+
+    @classmethod
+    def from_flagembedding(
+            cls, model_name: str = DEFAULT_BGE_RERANKER_MODEL,
+            use_fp16: bool = False, normalize: bool = False):
+        """Build a cross-encoder reranker through FlagEmbedding.
+
+        Loads ``BAAI/bge-reranker-v2-m3`` (multilingual,
+        Apache-2.0) once per process: a second call with the
+        same name reuses the cached model instead of reloading
+        the weights. Runs on CPU (``devices=["cpu"]``).
+        Scores come from ``FlagReranker.compute_score`` on
+        (query, passage) pairs; the batch path scores the whole
+        shortlist in one call. ``use_fp16`` is accepted for API
+        parity, but FlagEmbedding forces it off on CPU, so it
+        changes nothing on this machine. ``normalize`` applies
+        a sigmoid to the raw logits when True; False (raw
+        logits, same scale shape as the MS MARCO model) is the
+        default. Raises ``RerankerUnavailable`` when the
+        library is missing or the model cannot load, with the
+        reason attached.
+
+        Measured 18 Nov 2026 on this dev VM (total RAM
+        7,934 MB): the model loads in about 23-28 s and scores,
+        peak RSS 2,148 MB for one scored pair. Free RAM on
+        this shared VM fluctuates (about 0.5-3.0 GB observed
+        while working), so a load on a busy moment can fail;
+        that failure surfaces here as ``RerankerUnavailable``.
+        """
+        cache_key = _cache_key("flagembedding", model_name)
+        if cache_key in _MODEL_CACHE:
+            model = _MODEL_CACHE[cache_key]
+        else:
+            try:
+                from FlagEmbedding import FlagReranker
+            except ImportError as exc:
+                raise RerankerUnavailable(
+                    "FlagEmbedding is not installed; "
+                    "install it to use the bge cross-encoder "
+                    "reranker"
+                ) from exc
+            try:
+                model = FlagReranker(
+                    model_name, use_fp16=use_fp16,
+                    devices=["cpu"], normalize=normalize)
+            except Exception as exc:  # noqa: BLE001 - any load failure
+                raise RerankerUnavailable(
+                    f"could not load cross-encoder {model_name!r}: {exc}"
+                ) from exc
+            _MODEL_CACHE[cache_key] = model
+
+        def _score(query, text):
+            return float(model.compute_score([query, text])[0])
+
+        def _score_many(query, texts):
+            return [float(score) for score in model.compute_score(
+                [(query, text) for text in texts])]
 
         return cls(_score, score_many_fn=_score_many,
                    model=model, model_name=model_name)
@@ -224,9 +318,9 @@ class CrossEncoderReranker:
         except ImportError as exc:
             raise RerankerUnavailable(
                 "fastembed 0.9.1 ships no reranker (no TextReranker); "
-                "a real cross-encoder backend such as "
-                "BAAI/bge-reranker-v2-m3 needs FlagEmbedding or "
-                "sentence-transformers, which is not a dependency yet"
+                "use CrossEncoderReranker.from_flagembedding "
+                "(BAAI/bge-reranker-v2-m3) or "
+                "from_sentence_transformers instead"
             ) from exc
         try:
             model = TextReranker(model_name)
@@ -274,15 +368,30 @@ class CrossEncoderReranker:
 
 
 def make_reranker(kind: str = "deterministic",
-                  backend: str = "sentence_transformers", **kwargs):
+                  backend: str = "bge", **kwargs):
     """Build a reranker by kind: "deterministic" or "cross_encoder".
 
     "cross_encoder" builds a real cross-encoder through the
-    named backend: "sentence_transformers" (default, loads
-    cross-encoder/ms-marco-MiniLM-L-6-v2) or "fastembed"
-    (raises RerankerUnavailable on the pinned fastembed 0.9.1,
-    which ships no reranker; see
+    named backend: "bge" (default, also spelled
+    "flagembedding"; loads BAAI/bge-reranker-v2-m3 through
+    FlagEmbedding, the multilingual model),
+    "sentence_transformers" (loads
+    cross-encoder/ms-marco-MiniLM-L-6-v2, the light English
+    backend for machines where the bge model does not fit)
+    or "fastembed" (raises RerankerUnavailable on the pinned
+    fastembed 0.9.1, which ships no reranker; see
     ``CrossEncoderReranker.from_fastembed``).
+
+    The bge default was earned by measurement, 18 Nov 2026
+    on this dev VM (total RAM 7,934 MB): the weights file
+    alone is 2,271,071,852 bytes, the model loads in about
+    23-28 s and scores, peak RSS 2,148 MB for one scored
+    pair. Free RAM on this shared VM fluctuates (about
+    0.5-3.0 GB observed while working); when about 2.2 GB
+    is not free the load fails with ``RerankerUnavailable``,
+    and the caller should fall back to
+    backend="sentence_transformers" or the deterministic
+    reranker.
     """
     if kind == "deterministic":
         return DeterministicReranker(**kwargs)
@@ -290,6 +399,8 @@ def make_reranker(kind: str = "deterministic",
         if backend == "sentence_transformers":
             return CrossEncoderReranker.from_sentence_transformers(
                 **kwargs)
+        if backend in ("bge", "flagembedding"):
+            return CrossEncoderReranker.from_flagembedding(**kwargs)
         if backend == "fastembed":
             return CrossEncoderReranker.from_fastembed(**kwargs)
         raise ValueError(
