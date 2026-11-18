@@ -10,10 +10,15 @@ report) when no single passage shares the query words.
 HippoRAG 2 adds two steps on top, both reimplemented here in
 Puspa's own code:
 
-- query-to-triple filtering: before the walk, triples that share
-  no concept with the query and touch no seed node are dropped,
-  so the walk does not spread through unrelated parts of the
-  graph;
+- query-to-triple filtering: before the walk, an LLM judge
+  (``puspa.retrieval.triple_filter.LLMTripleJudge``) reads the
+  triples against the query and drops the ones that do not help
+  answer it, so the walk does not spread through unrelated parts
+  of the graph. The judge is injected as a completion callable;
+  with no LLM wired, the deterministic rule (a triple survives
+  when it touches a seed node, touches a node next to a seed, or
+  shares a concept token with the query) runs instead, and every
+  decision records which source made it;
 - passage re-ranking: the final passage score combines the PPR
   node score with vector similarity and lexical overlap, instead
   of trusting the graph score alone.
@@ -33,6 +38,11 @@ from puspa.memory.embeddings import HashEmbedding, cosine_similarity
 from puspa.memory.episodic import extract_concepts, extract_entities
 
 from .knowledge_graph import KnowledgeGraph, hop_distances, normalize_entity_name
+from .triple_filter import (
+    DeterministicTripleFilter,
+    LLMTripleJudge,
+    TripleDecision,
+)
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
@@ -173,11 +183,22 @@ class HippoRAGRetriever:
     offline). ``weights`` are (graph, vector, lexical) and
     default to the dual-level split already used in episodic
     retrieval: the graph score carries the entity weight.
+
+    ``triple_filter`` is the query-to-triple filter (see
+    ``puspa.retrieval.triple_filter``): an LLM judge when one is
+    injected, the deterministic rule otherwise. ``llm_complete``
+    is a shortcut for the judge: pass a ``complete(prompt)``
+    callable and the retriever builds an ``LLMTripleJudge`` from
+    it, with the deterministic filter as its fallback. With
+    neither, the deterministic filter runs and every decision
+    records ``source="deterministic"``. The decisions of the
+    last retrieval are kept on ``last_filter_decisions``.
     """
 
     def __init__(self, graph: KnowledgeGraph, embedder=None,
                  damping: float = 0.85, top_nodes: int = 10,
-                 weights=(0.5, 0.3, 0.2)):
+                 weights=(0.5, 0.3, 0.2), triple_filter=None,
+                 llm_complete=None):
         self.graph = graph
         self.embedder = embedder or HashEmbedding()
         self.damping = damping
@@ -185,33 +206,51 @@ class HippoRAGRetriever:
         if len(weights) != 3:
             raise ValueError("weights must be (graph, vector, lexical)")
         self.weights = weights
+        if llm_complete is not None and triple_filter is not None:
+            raise ValueError(
+                "pass only one of triple_filter and llm_complete")
+        if llm_complete is not None:
+            self.triple_filter = LLMTripleJudge(llm_complete)
+        elif triple_filter is not None:
+            self.triple_filter = triple_filter
+        else:
+            self.triple_filter = DeterministicTripleFilter()
+        self.last_filter_decisions: list[TripleDecision] = []
 
     def seed_nodes(self, query: str) -> list:
         """Seed nodes for a query (see ``find_seed_nodes``)."""
         return find_seed_nodes(self.graph, query)
 
-    def _filtered_adjacency(self, query_concepts, seeds):
+    def _filtered_adjacency(self, query, query_concepts, seeds):
         """Adjacency kept after HippoRAG 2 style triple filtering.
 
-        A triple survives when it touches a seed node, touches a
-        node next to a seed (so the walk can reach two hops out),
-        or shares a concept token with the query. The walk then
-        runs on the filtered graph, not the whole index. This is
-        a deterministic stand-in for HippoRAG 2's LLM triple
-        filter, which judges each triple against the query.
+        Every triple in the graph is judged against the query by
+        the retriever's triple filter (an LLM judge when one is
+        injected, the deterministic rule otherwise) and only the
+        kept triples become edges of the graph the walk runs on.
+        The filter sees the seeds widened by one hop, so a triple
+        touching a node next to a seed can still survive and the
+        walk can reach two hops out. Every decision (keep or drop,
+        with its reason and its source) is kept on
+        ``last_filter_decisions``.
         """
         adjacency = {name: set() for name in self.graph.nodes}
         full = self.graph.adjacency()
         near_seeds = set(seeds)
         for seed in seeds:
             near_seeds |= full.get(seed, set())
-        for (subject, _, obj) in self.graph.edges:
-            triple_tokens = set(_TOKEN_RE.findall(subject + " " + obj))
-            touches_seed = subject in near_seeds or obj in near_seeds
-            if touches_seed or triple_tokens & set(query_concepts):
-                if subject in adjacency and obj in adjacency:
-                    adjacency[subject].add(obj)
-                    adjacency[obj].add(subject)
+        triples = sorted(self.graph.edges)
+        decisions = self.triple_filter.filter(
+            query, triples, seeds=near_seeds,
+            query_concepts=query_concepts)
+        self.last_filter_decisions = list(decisions)
+        for decision in decisions:
+            if not decision.keep:
+                continue
+            subject, obj = decision.subject, decision.object
+            if subject in adjacency and obj in adjacency:
+                adjacency[subject].add(obj)
+                adjacency[obj].add(subject)
         return adjacency
 
     def retrieve(self, query: str, top_k: int = 5, reranker=None) -> list:
@@ -240,7 +279,8 @@ class HippoRAGRetriever:
         if not seeds:
             return self._vector_fallback(
                 query, query_vec, query_concepts, top_k, reranker)
-        filtered = self._filtered_adjacency(query_concepts, set(seeds))
+        filtered = self._filtered_adjacency(
+            query, query_concepts, set(seeds))
         proxy = _FilteredGraph(self.graph, filtered)
         scores = personalized_pagerank(
             proxy, weights, damping=self.damping)
