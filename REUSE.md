@@ -298,6 +298,44 @@ judges answer-relevance, not trust evidence. No code was
 copied from FlagEmbedding or BAAI; only the public
 `FlagReranker` / `compute_score` API was used.
 
+## Maturity phase (G11 — multi-tenant hosting auth/relay/pairing)
+
+No new dependency. Only PATTERNS adapted (rewritten, not copied):
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| Loopback trust only when Host + Origin are loopback; a browser never gets it; `service` mode restricts sessionless loopback to an explicit allowlist | DuskBot (PolyForm Noncommercial — study only, no code used) | The trust rule + the explicit (method, path regex) allowlist shape | `puspa/hosting/loopback.py` (loopback parsing, browser markers `Sec-Fetch-Mode` / `Mozilla/` UA) + `puspa/hosting/service_allow.py` (`re.fullmatch` allowlist, default 3 read-only endpoints) + `puspa/hosting/gateway.py` (`authorize_request`: Google session → pairing session → loopback/service-allow → deny) |
+| Pairing: short code, 30-day session, 5 wrong → 10-minute address lock | DuskBot (PolyForm Noncommercial — study only, no code used) | The code/session/lockout numbers | `puspa/hosting/pairing.py`: 6-digit code, 5-minute TTL, single-use, SHA-256 hashes only, 30-day session token, per-address lockout; in-memory store |
+| Card seal: per-start sealing key never written to disk, each seal signed by the long-term identity key pinned by the app | DuskBot (PolyForm Noncommercial — study only, no code used) | The seal shape (ephemeral sealing key + identity signature + pinning) | `puspa/hosting/identity.py` (Ed25519 identity key, file mode 0600, backup-excluded) + `puspa/hosting/seal.py` (HPKE `DHKEM(X25519)` + `HKDF-SHA256` + `AES-256-GCM` via pinned `cryptography==50.0.2`; no fallback needed — HPKE is available) |
+| Link/relay: 7-character code without l/o/0/1, rate limits, AES-256-GCM relay frames, fallback direct → tunnel → relay | DuskBot (PolyForm Noncommercial — study only, no code used) | The code alphabet, the rate-limit numbers, the frame shape, the fallback order | `puspa/hosting/link.py` (7-char codes, 30/hour per address + 2,000/hour global) + `puspa/hosting/relay.py` (AES-256-GCM frames, 1 MiB cap, in-memory `RelayHub` holding no keys) + `puspa/hosting/fallback.py` (fixed order, injected probes, attempt accounting) |
+
+Google login (`puspa.auth`) stays in front; this pattern is the
+server-to-server path behind it. No DuskBot code was copied (its
+code is TypeScript; Puspa's is Python) and no DuskBot code is
+vendored or depended on.
+
+## Maturity phase (G12 — Sentinel + decision log)
+
+No new dependency. Only PATTERNS adapted (rewritten, not copied):
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| Periodic self-scanner over the server's own records with 5 detectors (toolError, turnStop, queueWait, cost, retryLoop) + default thresholds (queue 5 min, cost $5, retry min. 3, lookback 7 days, rescan 30 min) + state file (readState/readIssues/markCounted/upsertIssues/pruneSeen/writeSentinelFiles) | DuskBot (PolyForm Noncommercial — study only, no code used) | The five detector names, the default numbers, the state-file function shape | `puspa/sentinel/detectors.py` (pure detectors over ledger events: `tool_completed` status, `task_stopped`/stall, `trigger_fired`→`task_created` wait, summed `cost_rp`, consecutive failed tool calls) + `puspa/sentinel/thresholds.py` + `puspa/sentinel/state.py` (atomic JSON state, open/acknowledged/resolved, prune rules) + `puspa/sentinel/scanner.py` (rescan gate, auto-resolve of cleared conditions, scheduler entry `run_sentinel_scan`) |
+| Decision log: every decision recorded (actor, source, via) into daily files, 180-day retention | DuskBot (PolyForm Noncommercial — study only, no code used) | The daily-file shape + the 180-day retention number | `puspa/sentinel/decision_log.py` (`DailyDecisionLog`: JSONL daily files, SHA-256 entry hash over the decision without the timestamp, `prune` touches only `decisions-*.jsonl`) |
+| Usage traces as span trees; anonymous analytics + crash reports, switchable off | DuskBot (PolyForm Noncommercial — study only, no code used) | The span-tree idea + the analytics off-switch | `puspa/sentinel/traces.py` (span tree from ledger events, span ids reuse event ids, unpaired calls stay visible) + `puspa/sentinel/analytics.py` (snake_case counter names only, crash reports without the exception message, no network sender at all) |
+| Batch trajectory runner over a prompt dataset (parallel runs, per-batch output, checkpoint + resume, aggregate tool usage) + trajectory storage with redaction before saving + ShareGPT trajectory format | NousResearch/hermes-agent (MIT) | The batch-runner shape (checkpoint = output file, resume skips done tasks), the redact-before-save rule, the ShareGPT mapping | `puspa/sentinel/trajectory.py` (runs on top of the existing `puspa/evidence/eval_harness.py`, not a replacement; `record_prompt_run` for bare-prompt agent runs; redaction via G7 `puspa.memory.trust.redact_secrets`) + `docs/trajectory-format.md` |
+| Session insights from `state.db`: tokens, cost estimate (sub-cent labels at 4 decimals, never `~$0.00`), tool/skill usage, activity, model/platform breakdown | NousResearch/hermes-agent (MIT) | The insight categories + the 4-decimal sub-cent label rule | `puspa/sentinel/insights.py` (ledger events + G26 `state.db` read-only; tokens via G19 `count_tokens`; cost via the router catalog or recorded `cost_rp`; nothing invented when data is absent) |
+| Independent verifier as the detectors' eyes, kept in a separate module so the two evolve independently (K8 fold) | Puspa's own K8 design (verifier pattern from the maturity report) | — | `puspa/sentinel/verifier.py` (`confirmed` / `stale` / `duplicate` / `unverifiable`, fail-closed, never writes) |
+| Verification discipline as a written rule (isolated fixtures, never verify a mutation on live user data) | DuskBot `docs/verification/` (PolyForm Noncommercial — study only) | The rule itself (already written by G15 in `docs/verification.md`) | Sentinel-specific section added to `docs/verification.md` ("Sentinel self-checks": fresh-read re-verification, synthetic-event tests, read-only ledger access, own home directory for writes) |
+
+No DuskBot code was copied (its code is TypeScript; Puspa's is
+Python) and no DuskBot code is vendored or depended on. No
+hermes-agent code was copied; only the documented shapes above
+were followed. New wiring: `Ledger.recent_events` (read-only
+window query, no new event types) in `puspa/ledger/ledger.py`
+and the `sentinel_scan` trigger type + `schedule_sentinel_scan`
++ dispatch in `puspa/scheduler/scheduler.py`.
+
 ## Glosarium istilah baru Fase 4 (bukan dari revisi 7)
 
 - `eksekutor_fixture` — NAMA TEKNIS internal (eksekutor data uji:

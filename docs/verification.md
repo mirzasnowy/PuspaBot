@@ -137,6 +137,28 @@ families it does not enable (blind-except, tryceratops, bandit) are
 deliberate resilience patterns in this codebase, and enabling one is a
 follow-up task with its reason recorded in the config comments.
 
+## Sentinel self-checks
+
+The sentinel (`puspa/sentinel/`, G12) watches Puspa's own
+records, so its own verification follows the same rule as
+everything else here — as a written rule, not an exhortation:
+
+- A sentinel finding is a claim about the ledger, and it is
+  verified the same way: the independent verifier
+  (`puspa/sentinel/verifier.py`, K8) re-reads fresh ledger
+  events and re-runs the single detector for the issue's scope.
+  A detector result that cannot be reproduced from a fresh read
+  is `stale`, never confirmed.
+- Sentinel tests use synthetic events and throwaway directories
+  (`tmp_path`), never the live ledger or the live state file.
+  The scanner's event source is injected, so a test never needs
+  a database.
+- The sentinel only reads the ledger. Its writes (state file,
+  decision log, traces, analytics) go to its own home
+  directory (`~/.puspa/sentinel` by default), never into the
+  user's live data. A test that writes sentinel state into a
+  live home is wrong, not the rule.
+
 ## License — pending decision
 
 This repo has **no LICENSE file**, deliberately. Choosing the license
