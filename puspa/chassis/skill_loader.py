@@ -50,6 +50,8 @@ class PuspaSkillsLoader(SkillsLoader):
         public_key=None,
         builtin_skills_dir=None,
         disabled_skills=None,
+        transparency_log=None,
+        expected_identity=None,
     ) -> None:
         super().__init__(
             workspace,
@@ -57,6 +59,8 @@ class PuspaSkillsLoader(SkillsLoader):
             disabled_skills=disabled_skills,
         )
         self._puspa_public_key = public_key
+        self._transparency_log = transparency_log
+        self._expected_identity = expected_identity
 
     def _resolve_entry(self, name: str) -> dict | None:
         """Entri skill (``{name, path, source}``) untuk nama/alias ini."""
@@ -73,6 +77,11 @@ class PuspaSkillsLoader(SkillsLoader):
             if self._puspa_public_key is None:
                 return None
             skill_dir = Path(entry["path"]).parent
-            if not verify_skill(skill_dir, self._puspa_public_key):
+            if not verify_skill(
+                skill_dir,
+                self._puspa_public_key,
+                self._transparency_log,
+                self._expected_identity,
+            ):
                 return None
         return super()._load_skill(name, for_context=for_context)
