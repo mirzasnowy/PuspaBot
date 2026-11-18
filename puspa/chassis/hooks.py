@@ -28,6 +28,16 @@ Dipasang lewat konstruktor ``AgentLoop`` (``hooks=[...]``) atau lewat
 factory per-turn (``hook_factories=[...]``) — keduanya parameter resmi.
 ``make_puspa_hook_factory`` mengembalikan ``AgentTurnHookFactory`` yang
 dipanggil ``build_agent_turn_hook`` tiap turn.
+
+Rails (NeMo Guardrails pattern, ``puspa/guardrails``): ``PuspaHook``
+takes an optional ``rail_set``. The hook stays observation-only,
+nanobot gives no veto in ``before_run``, so hard enforcement lives
+in two places: ``check_input``/``check_action``, which callers run
+BEFORE acting (a violation blocks the action and is recorded
+through an existing ledger type), and ``finalize_content``, which
+replaces a blocked turn answer with the refusal text (the nanobot
+runner calls ``finalize_content`` on every answer, so blocked text
+never reaches the user).
 """
 
 from __future__ import annotations
@@ -35,6 +45,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from nanobot.agent.hook import AgentHook, AgentTurnHookContext
+
+from puspa.guardrails import REFUSAL_TEXT, RailSet, RailVerdict
 
 __all__ = [
     "HOOK_SKILL_APPROVED",
@@ -56,13 +68,26 @@ _MAX_MESSAGE_CHARS = 2000
 
 
 class PuspaHook(AgentHook):
-    """Hook observasi: siklus tugas + pesan akhir ke Buku Kerja."""
+    """Hook observasi: siklus tugas + pesan akhir ke Buku Kerja.
 
-    def __init__(self, *, task_id: str, agent_id: str, log=None) -> None:
+    With an optional ``rail_set``, this hook also enforces the
+    guardrails: input rails run in ``before_run``, output rails run
+    in ``finalize_content`` and ``after_run``, and ``check_action``
+    is the execution-rail check callers run before acting. A blocked
+    turn sets ``rail_blocked`` and every later model answer in that
+    turn is replaced by the refusal text.
+    """
+
+    def __init__(self, *, task_id: str, agent_id: str, log=None,
+                 rail_set: RailSet | None = None) -> None:
         super().__init__()
         self.task_id = task_id
         self.agent_id = agent_id
         self._log = log
+        self.rail_set = rail_set
+        self.rail_blocked = False
+        self.rail_block_reason: str | None = None
+        self._output_blocked = False
 
     def _log_event(self, event_type: str, content: dict) -> None:
         if self._log is None:
@@ -72,7 +97,99 @@ class PuspaHook(AgentHook):
         except Exception:
             pass
 
+    @property
+    def violations(self) -> list[dict]:
+        """Rail violations recorded in memory for this hook's rail set."""
+        if self.rail_set is None:
+            return []
+        return self.rail_set.list_violations()
+
+    def check_input(self, text: str, *, source: str = "user") -> RailVerdict:
+        """Run the input rails. A block marks the turn blocked and is
+        recorded as ``task_failed`` (existing ledger type)."""
+        if self.rail_set is None:
+            return RailVerdict.allow("", "input")
+        verdict = self.rail_set.check_input(text, source=source)
+        if not verdict.allowed:
+            self.rail_blocked = True
+            self.rail_block_reason = verdict.reason
+            self._log_event("task_failed", {
+                "task_id": self.task_id, "agent_id": self.agent_id,
+                "reason": f"rail_blocked: {verdict.reason}",
+            })
+        return verdict
+
+    def check_output(self, text: str, *, evidence_ids=None) -> RailVerdict:
+        """Run the output rails. A block is recorded as a failed
+        verification (existing ledger type)."""
+        if self.rail_set is None:
+            return RailVerdict.allow("", "output")
+        verdict = self.rail_set.check_output(text, evidence_ids=evidence_ids)
+        if not verdict.allowed:
+            self._log_event("verification_completed", {
+                "task_id": self.task_id, "passed": False,
+                "reason": f"rail_blocked: {verdict.reason}",
+            })
+        return verdict
+
+    def check_action(self, action: dict, **extra) -> RailVerdict:
+        """Run the execution rails on a proposed action. Callers must
+        check the verdict BEFORE executing: a block means no action
+        happens. A block is recorded as ``approval_rejected``
+        (existing ledger type)."""
+        if self.rail_set is None:
+            return RailVerdict.allow("", "action")
+        verdict = self.rail_set.check_action(action, **extra)
+        if not verdict.allowed:
+            self._log_event("approval_rejected", {
+                "task_id": self.task_id, "agent_id": self.agent_id,
+                "kind": action.get("kind", ""),
+                "reason": f"rail_blocked: {verdict.reason}",
+            })
+        return verdict
+
+    def finalize_content(self, context, content: str | None) -> str | None:
+        """Replace a rail-blocked answer with the refusal text.
+
+        The nanobot runner calls this on every model answer, so it
+        is the hard enforcement point for output rails and for
+        turns whose input was already blocked. A block is logged
+        once per turn through ``check_output``.
+        """
+        if content is None:
+            return None
+        if self.rail_blocked:
+            return REFUSAL_TEXT
+        if self.rail_set is None:
+            return content
+        if self._output_blocked:
+            return REFUSAL_TEXT
+        verdict = self.check_output(content)
+        if not verdict.allowed:
+            self._output_blocked = True
+            return REFUSAL_TEXT
+        return content
+
+    @staticmethod
+    def _last_user_text(messages) -> str:
+        """Text of the last user-role message, or empty string."""
+        for message in reversed(messages or []):
+            if isinstance(message, dict) and message.get("role") == "user":
+                content = message.get("content")
+                if isinstance(content, str):
+                    return content
+        return ""
+
     async def before_run(self, context) -> None:
+        if self.rail_set is not None:
+            # Input rails on the turn's user message. This cannot
+            # veto the nanobot run itself (no veto exists in the
+            # hook interface), but it marks the turn blocked, so
+            # finalize_content refuses every answer of this turn.
+            self.check_input(
+                self._last_user_text(getattr(context, "messages", [])),
+                source="user",
+            )
         self._log_event(
             "task_created",
             {"task_id": self.task_id, "agent_id": self.agent_id},
@@ -81,6 +198,13 @@ class PuspaHook(AgentHook):
     async def after_run(self, context) -> None:
         content = {"task_id": self.task_id, "agent_id": self.agent_id}
         final = (context.final_content or "")[:_MAX_MESSAGE_CHARS]
+        if final and self.rail_set is not None:
+            verdict = self.check_output(final)
+            if not verdict.allowed:
+                # Blocked draft: no task_completed, only the
+                # refusal as the agent message.
+                self._log_event("agent_message", {"content": REFUSAL_TEXT})
+                return
         if final:
             content["summaries"] = final
         self._log_event("task_completed", content)
@@ -98,11 +222,13 @@ class PuspaHook(AgentHook):
         )
 
 
-def make_puspa_hook_factory(task_id: str, agent_id: str, log=None):
+def make_puspa_hook_factory(task_id: str, agent_id: str, log=None,
+                            rail_set: RailSet | None = None):
     """Factory per-turn (``AgentTurnHookFactory``) untuk ``PuspaHook``."""
 
     def factory(turn_ctx: AgentTurnHookContext) -> AgentHook | None:
-        return PuspaHook(task_id=task_id, agent_id=agent_id, log=log)
+        return PuspaHook(task_id=task_id, agent_id=agent_id, log=log,
+                         rail_set=rail_set)
 
     return factory
 

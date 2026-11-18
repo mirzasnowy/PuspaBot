@@ -657,3 +657,68 @@ verbatim; no fork was made; no new dependency was added.
   `puspa/runtime/subagents.py` (`Subagent.role`, `spawn(role=...)`,
   `SubagentPool.active_by_role`).
 - Tests: `tests/test_hierarchy.py` (29 tests, in-memory only).
+## NeMo Guardrails (programmable rails) - deepening phase, 18 Nov 2026
+
+Pattern source: NVIDIA NeMo Guardrails, Apache License 2.0
+(https://github.com/NVIDIA/NeMo-Guardrails, README on the develop
+branch, and https://docs.nvidia.com/nemo/guardrails, read 18 Nov
+2026). No NeMo Guardrails code was copied, the library is not a
+dependency, and no fork was created. The pattern was rewritten from
+scratch as Puspa code from the documented behavior: five rail types
+(input, retrieval, dialog, execution, output), rails as testable
+rules that run before, during, and after the model call, Colang as
+the dialog-flow language, and the rule that the application runs
+the checks and uses their results to decide whether to continue.
+
+What was built:
+
+- `puspa/guardrails/rails.py`: `Rail` (one condition plus an
+  allow/block action, fail-closed when its check raises), `RailSet`
+  (ordered rails, first block wins, in-memory violation log),
+  input rails (topic allow/deny control, injection detection that
+  combines the existing quarantine scan with structural signals:
+  agent-directed imperative plus money or secret target, secrecy
+  instruction, urgency, and instructions hidden inside a
+  `[DATA: ...]` marked span; stricter for untrusted tool and
+  retrieved text than for user text), output rails (numbers must
+  come from evidence markers per revision 7 section 2.5, unknown
+  evidence ids block, secret values in a draft block), execution
+  rails (spending limit with fail-closed no-limit and no-nominal
+  cases, tool allowlist, cross-user ownership, unsigned deploy,
+  tampered content hash, injected send content), and `DialogFlow` /
+  `FlowController` (the Colang `define flow` idea as a small state
+  machine: idle, collecting, awaiting approval, presenting, done;
+  presenting while approval is pending blocks).
+- `puspa/guardrails/__init__.py`: public exports.
+- `puspa/chassis/hooks.py` (hook point only, minimal change):
+  `PuspaHook` takes an optional `rail_set`; `check_input`,
+  `check_output`, and `check_action` run the rails and record a
+  block through an existing ledger type (`task_failed`,
+  `verification_completed`, `approval_rejected`, all inside the
+  closed set of 31); `finalize_content` replaces a blocked answer
+  with the refusal text, which is the hard enforcement point in
+  the nanobot runner; `make_puspa_hook_factory` passes the rail
+  set through. No new ledger event type was added.
+- `tests/test_guardrails.py`: 68 tests, all in-memory.
+
+Measured results: all 8 attack paths from `tests/test_attacks.py`
+still block at the rail layer, with zero actions executed by the
+counting executor when a rail blocks. False positives on the
+hand-written benign sets are zero in every group: 0 of 12 user
+inputs, 0 of 6 tool inputs, 0 of 12 outputs, 0 of 4 actions.
+
+Honest limits: `before_run` cannot veto a nanobot run (the hook
+interface has no veto), so a blocked input is enforced by
+refusing every answer of that turn through `finalize_content`
+and by callers checking `check_action` before executing; the
+turn-setup caller still has to skip running a blocked turn. No
+model-backed check exists (no self-check rail, no classifier):
+detection is deterministic code only, so paraphrased injections
+outside the signal set will pass. Retrieval rails are not a
+separate kind here: retrieved text is checked as input with
+source "retrieved" or "tool". The `puspa/chassis/factory.py`
+wiring is done by the coordinator: `PuspaChassis` carries an
+optional `rail_set`, `build_hook`/`build_hook_factory` pass it
+through, and `assemble` builds the default rail set when the
+chassis carries none, so rails are live in the assembled loop
+(tests in `tests/test_factory_rails.py`).
