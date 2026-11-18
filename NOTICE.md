@@ -260,6 +260,10 @@ to be included here because no third-party code is vendored.
   flat-rate subscription or zero-cost provider is wired yet),
   and quota state is in-memory until Postgres persistence
   lands.
+- **decolua/9router** (MIT) - pattern: OAuth auto-refresh and
+  provider format translation. Used as a pattern in
+  `puspa/router/oauth.py` and `puspa/router/translate.py`;
+  no 9Router code was copied.
 
 ## Puspa license
 
