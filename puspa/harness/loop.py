@@ -77,11 +77,36 @@ Aider + SWE-agent + openai/codex are one harness, not three):
   Under ``read_only`` any write or execution is refused with a
   clear error before anything runs. The profile never widens the
   token and the token never widens the profile.
+- Working modes (KiloCode): the ``mode`` parameter
+  (``architect`` / ``code`` / ``debug`` / ``ask``) changes what
+  the agent does in this phase, through :mod:`puspa.harness.modes`.
+  Architect plans (repo map plus a plan) under ``read_only`` and
+  never executes code; Code implements through unified diffs only;
+  Debug reproduces first and then fixes through diffs; Ask answers
+  once without changing anything. A mode is enforced by its
+  profile and the gate, never just a label: a read-only mode
+  proves ``write_code`` and ``run_tests`` are denied before it
+  starts, and a Code/Debug run fails any attempt whose generator
+  answer is not a diff. :meth:`CodingHarness.with_mode` builds
+  the same harness in another mode, so one task can move through
+  phases (plan, then code, then debug) without rebuilding the
+  executor or the generator.
 
-Defaults keep the old behaviour exactly: ``profile`` is
-``workspace_write``, ``diff_mode`` is off, ``reproduce_first`` is
-off, and a generator that returns full program text works as
-before.
+Defaults keep the old behaviour exactly: ``mode`` is None, so
+``profile`` is ``workspace_write``, ``diff_mode`` is off,
+``reproduce_first`` is off, and a generator that returns full
+program text works as before. Passing ``mode`` overrides the
+profile and the ``diff_mode`` / ``reproduce_first`` flags with
+the mode's spec; the separate flags are ignored while a mode is
+set.
+
+Defaults keep the old behaviour exactly: ``mode`` is None, so
+``profile`` is ``workspace_write``, ``diff_mode`` is off,
+``reproduce_first`` is off, and a generator that returns full
+program text works as before. Passing ``mode`` overrides the
+profile and the ``diff_mode`` / ``reproduce_first`` flags with
+the mode's spec; the separate flags are ignored while a mode is
+set.
 
 No network calls are made from this module. Events go to ``sink``
 (callable ``(event_type, content)``), the same shape as
@@ -91,7 +116,9 @@ No network calls are made from this module. Events go to ``sink``
 from __future__ import annotations
 
 import hashlib
+import inspect
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from puspa.policy import Gate, GateDenied
 from puspa.policy.tokens import tool_permission
@@ -100,7 +127,16 @@ from puspa.sandbox import SandboxUnavailable
 
 from .diff import DiffApplyError, apply_diff, is_diff
 from .executor import ExecutionResult, Executor, LocalTestExecutor, SandboxExecutor
+from .modes import (
+    MODE_ARCHITECT,
+    MODE_ASK,
+    ModeError,
+    ModeSpec,
+    enforce_read_only_tools,
+    get_mode,
+)
 from .reproduce import ReproduceFirst, build_reproduction
+from .repo_map import build_repo_map, render_repo_map
 from .sandbox_profiles import PROFILE_WORKSPACE_WRITE, check_tool, get_profile
 
 __all__ = [
@@ -126,11 +162,33 @@ STATUS_SANDBOX_UNAVAILABLE = "sandbox_unavailable"
 STATUS_PENDING_APPROVAL = "pending_approval"
 STATUS_DENIED = "denied"
 STATUS_REPRODUCTION_MISSING = "reproduction_missing"
+STATUS_PLANNED = "planned"
+STATUS_ANSWERED = "answered"
 
 
 class HarnessError(Exception):
     """The harness itself is misconfigured or misused (not a test
     failure and not a sandbox failure)."""
+
+
+def _call_generator(generator, task, attempts, *, repo_map=None):
+    """Call the generator, passing the repo map when it accepts it.
+
+    The generator protocol is ``(task, attempts) -> str``; a
+    generator that declares a ``repo_map`` keyword (or ``**kwargs``)
+    also receives the rendered repo map, so an Architect plan is
+    built from the real map instead of from memory. A generator
+    that takes only two arguments is called as before.
+    """
+    try:
+        params = inspect.signature(generator).parameters
+    except (TypeError, ValueError):
+        return generator(task, attempts)
+    if "repo_map" in params or any(
+        param.kind == inspect.Parameter.VAR_KEYWORD for param in params.values()
+    ):
+        return generator(task, attempts, repo_map=repo_map)
+    return generator(task, attempts)
 
 
 def default_verdict(result: ExecutionResult) -> tuple[bool, str]:
@@ -197,6 +255,13 @@ class HarnessOutcome:
     # on the fixed program.
     reproduction_failed: bool = False
     reproduction_verified: bool = False
+    # Working mode the run used (None keeps the old behaviour), and
+    # the mode-specific result: a plan (architect), an answer
+    # (ask), and the rendered repo map the plan was built from.
+    mode: str | None = None
+    plan: str | None = None
+    answer: str | None = None
+    repo_map_text: str | None = None
 
 
 class CodingHarness:
@@ -219,11 +284,26 @@ class CodingHarness:
         profile: str = PROFILE_WORKSPACE_WRITE,
         diff_mode: bool = False,
         reproduce_first: bool = False,
+        mode: str | None = None,
+        workspace_root: str | Path | None = None,
     ) -> None:
         if max_attempts < 1:
             raise HarnessError("max_attempts must be at least 1")
         if cost_ceiling_rp < 0 or cost_per_attempt_rp < 0:
             raise HarnessError("cost ceiling and cost per attempt must not be negative")
+        # A mode overrides the profile and the diff / reproduce
+        # flags with its spec; an unknown mode is refused here,
+        # before anything runs. With no mode the separate flags
+        # apply exactly as before.
+        mode_spec: ModeSpec | None = None
+        if mode is not None:
+            try:
+                mode_spec = get_mode(mode)
+            except ModeError as exc:
+                raise HarnessError(str(exc)) from exc
+            profile = mode_spec.profile
+            diff_mode = mode_spec.diff_mode
+            reproduce_first = mode_spec.reproduce_first
         # Unknown profile names are refused at construction time.
         get_profile(profile)
         if production and not isinstance(executor, SandboxExecutor):
@@ -241,6 +321,9 @@ class CodingHarness:
         self.profile = profile
         self.diff_mode = diff_mode
         self.reproduce_first = reproduce_first
+        self.mode = mode
+        self.mode_spec = mode_spec
+        self.workspace_root = workspace_root
         self._event: list[dict] = []
         self.sink = sink or (lambda event_type, content: self._event.append({"type": event_type, "content": content}))
         # verifier(result) -> (passed: bool, reason: str).
@@ -265,6 +348,31 @@ class CodingHarness:
         """Events recorded by the default sink (for tests)."""
         return list(self._event)
 
+    def with_mode(self, mode: str) -> "CodingHarness":
+        """The same harness in another working mode.
+
+        One task moves through phases (plan, then code, then
+        debug) by switching modes on the same executor, generator,
+        gate, and token. The mode is validated at construction, so
+        an unknown mode is refused here. The sink is shared, so
+        events from every phase land in one log.
+        """
+        return CodingHarness(
+            executor=self.executor,
+            generator=self.generator,
+            gate=self.gate,
+            token_payload=self.token_payload,
+            sink=self.sink,
+            verifier=self.verifier,
+            max_attempts=self.max_attempts,
+            cost_ceiling_rp=self.budget.rupiah_max,
+            cost_per_attempt_rp=self.cost_per_attempt_rp,
+            timeout_s=self.timeout_s,
+            production=self.production,
+            mode=mode,
+            workspace_root=self.workspace_root,
+        )
+
     # -- permissions ----------------------------------------------------
     def _check_tools(self, task: CodingTask) -> str | None:
         """Check the per-tool permissions for this run.
@@ -288,7 +396,14 @@ class CodingHarness:
 
     # -- the loop ---------------------------------------------------------
     def run(self, task: CodingTask) -> HarnessOutcome:
-        """Run the generate, test, fix loop until green or a limit."""
+        """Run the generate, test, fix loop until green or a limit.
+
+        In ``architect`` mode this plans instead of looping (repo
+        map plus a plan, no execution); in ``ask`` mode it answers
+        once without changing anything. With no mode, or in
+        ``code`` / ``debug`` mode, the generate, test, fix loop
+        below runs.
+        """
         outcome = HarnessOutcome(
             task_id=task.task_id,
             user_id=task.user_id,
@@ -296,8 +411,13 @@ class CodingHarness:
             status=STATUS_ATTEMPT_LIMIT,
             test_only=self.test_only,
             profile=self.profile,
+            mode=self.mode,
         )
         self._record("harness_started", {"task_id": task.task_id, "description": task.description})
+        if self.mode == MODE_ARCHITECT:
+            return self._run_plan(task, outcome)
+        if self.mode == MODE_ASK:
+            return self._run_answer(task, outcome)
         pending = self._check_tools(task)
         if pending is not None:
             outcome.status = pending
@@ -347,6 +467,28 @@ class CodingHarness:
                 return outcome
             self._record("attempt_started", {"task_id": task.task_id, "attempt": attempt_no})
             generated = self.generator(task, list(outcome.attempts))
+            if self.mode_spec is not None and self.mode_spec.requires_diff and not is_diff(generated):
+                # Code and Debug modes implement through surgical
+                # diffs only: a full-program answer fails this
+                # attempt with the reason recorded, and the program
+                # stays untouched for the next attempt.
+                record = AttemptRecord(
+                    attempt=attempt_no,
+                    code=current_code,
+                    result=ExecutionResult(ok=False, stdout="", stderr="", exit_code=None),
+                    passed=False,
+                    cost_rp=self.cost_per_attempt_rp,
+                    reason=(
+                        f"{self.mode} mode requires a unified diff; "
+                        "the generator returned full program text"
+                    ),
+                )
+                outcome.attempts.append(record)
+                self._record(
+                    "attempt_finished",
+                    {"task_id": task.task_id, "attempt": attempt_no, "passed": False, "reason": record.reason},
+                )
+                continue
             code = generated
             if self.diff_mode and is_diff(generated):
                 try:
@@ -428,6 +570,83 @@ class CodingHarness:
         outcome.reason = f"still failing after {self.max_attempts} attempts"
         self._record("attempt_limit_reached", {"task_id": task.task_id, "max_attempts": self.max_attempts})
         self._record("harness_failed", {"task_id": task.task_id, "status": outcome.status})
+        return outcome
+
+    # -- working modes: plan and answer (no loop) -----------------------
+    def _charge_one_step(self, task: CodingTask, outcome: HarnessOutcome) -> bool:
+        """Charge one budget step for a plan or answer call.
+
+        Returns True when the step was charged, False when the
+        budget is exhausted (the outcome is already set to
+        ``budget_exhausted`` in that case).
+        """
+        try:
+            self.budget.record_cost(self.cost_per_attempt_rp)
+            self.budget.record_step(1)
+        except BudgetExhausted as exc:
+            outcome.status = STATUS_BUDGET_EXHAUSTED
+            outcome.reason = str(exc)
+            self._record("budget_exhausted", {"task_id": task.task_id, "reason": str(exc)})
+            self._record("harness_failed", {"task_id": task.task_id, "status": outcome.status})
+            return False
+        return True
+
+    def _run_plan(self, task: CodingTask, outcome: HarnessOutcome) -> HarnessOutcome:
+        """Architect mode: repo map plus a plan, nothing else.
+
+        Enforcement runs first: the Gate and the ``read_only``
+        profile must refuse ``write_code`` and ``run_tests``
+        (:func:`puspa.harness.modes.enforce_read_only_tools`).
+        Then the repo map is built from the workspace root (the
+        explicit ``workspace_root`` when given, else the executor
+        workdir when it has one) and the generator plans from that
+        map. The executor is never called: no code runs and no
+        file is written in this mode.
+        """
+        enforce_read_only_tools(self.profile, self.gate, self.token_payload)
+        self._record(
+            "mode_enforced",
+            {"task_id": task.task_id, "mode": MODE_ARCHITECT, "profile": self.profile},
+        )
+        if not self._charge_one_step(task, outcome):
+            return outcome
+        repo_map_text: str | None = None
+        map_for_generator = ""
+        root = self.workspace_root
+        if root is None:
+            root = getattr(self.executor, "workdir", None)
+        if root is not None:
+            repo_map = build_repo_map(root)
+            repo_map_text, _report = render_repo_map(repo_map)
+            map_for_generator = repo_map_text
+        plan = _call_generator(self.generator, task, [], repo_map=map_for_generator)
+        outcome.status = STATUS_PLANNED
+        outcome.plan = plan
+        outcome.repo_map_text = repo_map_text
+        outcome.reason = ""
+        self._record("plan_ready", {"task_id": task.task_id, "mode": MODE_ARCHITECT})
+        return outcome
+
+    def _run_answer(self, task: CodingTask, outcome: HarnessOutcome) -> HarnessOutcome:
+        """Ask mode: one answer, no file changes, no execution.
+
+        Same enforcement as Architect: the Gate and the
+        ``read_only`` profile must refuse ``write_code`` and
+        ``run_tests`` first. The generator answers once and the
+        executor is never called.
+        """
+        enforce_read_only_tools(self.profile, self.gate, self.token_payload)
+        self._record(
+            "mode_enforced",
+            {"task_id": task.task_id, "mode": MODE_ASK, "profile": self.profile},
+        )
+        if not self._charge_one_step(task, outcome):
+            return outcome
+        answer = _call_generator(self.generator, task, [])
+        outcome.status = STATUS_ANSWERED
+        outcome.answer = answer
+        outcome.reason = ""
+        self._record("answer_ready", {"task_id": task.task_id, "mode": MODE_ASK})
         return outcome
 
     # -- deploy (approval gate, after the loop passes) ------------------
