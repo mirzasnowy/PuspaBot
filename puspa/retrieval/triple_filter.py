@@ -138,7 +138,11 @@ def build_judge_prompt(query: str, triples) -> str:
         "question below. A triple helps when it is about the "
         "question's topic or a fact the answer would need; a "
         "triple that only shares a word with the question but says "
-        "nothing about it does NOT help.",
+        "nothing about it does NOT help. When the question asks "
+        "whether a deal, seller, or product is trustworthy, safe, "
+        "or reliable, a triple about a report, complaint, or "
+        "fraud involving that seller, deal, or product DOES help, "
+        "even when it names no product or price.",
         "",
         f"Question: {query}",
         "",
@@ -152,8 +156,8 @@ def build_judge_prompt(query: str, triples) -> str:
         "Reply with JSON only, one decision per triple, in this "
         "shape: {\"decisions\": [{\"index\": 0, \"keep\": true, "
         "\"reason\": \"...\"}, ...]}. \"keep\" is true only when the "
-        "triple helps answer the question. \"reason\" is one short "
-        "sentence per triple.")
+        "triple helps answer the question. \"reason\" is at most "
+        "five words. No extra text.")
     return "\n".join(lines)
 
 
