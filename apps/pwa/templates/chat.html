@@ -2,16 +2,16 @@
 {% block content %}
 <h1>Chat</h1>
 <p class="pesan-sub">Group chat: kamu, Puspa, dan agenmu di satu thread. Sub-agen terlipat secara default; @mention agen atau sub-agen untuk bicara langsung. Pesanmu selalu menyela tugas yang berjalan.</p>
-<div id="strip-kerja" hx-get="/kantor" hx-trigger="every 5s" hx-select="#strip-kerja" hx-swap="outerHTML"></div>
+<div id="strip-kerja" hx-get="/office" hx-trigger="every 5s" hx-select="#strip-kerja" hx-swap="outerHTML"></div>
 <div id="riwayat">
 {% for p in message %}
-<div class="kartu"><strong>{{ p.dari }}</strong>: {{ p.text }}</div>
+<div class="kartu"><strong>{{ p.sender }}</strong>: {{ p.text }}</div>
 {% else %}
 <p class="pesan-sub">Belum ada pesan. Sapa Puspa dulu.</p>
 {% endfor %}
 </div>
 <form hx-post="/api/chat" hx-swap="none" method="post">
-<input name="teks" placeholder="Tulis pesan ke Puspa..." required style="width:70%">
+<input name="text" placeholder="Tulis pesan ke Puspa..." required style="width:70%">
 <button type="submit">Kirim</button>
 </form>
 <p class="pesan-sub">Kirim foto untuk cek harga (fase 3). Angka bermakna punya tombol Bukti di panelnya.</p>

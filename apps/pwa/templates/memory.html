@@ -3,7 +3,7 @@
 <h1>Memori</h1>
 <h2>Profil</h2>
 {% for f in profile %}
-<div class="kartu">{{ f }}</div>
+<div class="kartu"><strong>{{ f.key }}</strong>: {{ f.value }} <span class="pesan-sub">({{ f.status }})</span></div>
 {% else %}
 <p class="pesan-sub">Belum ada fakta profil. Puspa belajar dari percakapanmu.</p>
 {% endfor %}
