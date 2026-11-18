@@ -250,6 +250,16 @@ to be included here because no third-party code is vendored.
   `puspa/router/compression.py` and the wiring in
   `puspa/chassis/tools.py`. The BUSL-1.1 engine and proxy were
   not used; no RTK code was copied.
+- **decolua/9router** (MIT) - pattern: smart 3-tier fallback
+  (subscription -> cheap -> free, automatic fallthrough on
+  quota exhaustion / 429 / 5xx) plus per-provider quota
+  tracking, reset countdowns, and cost estimates. Used as a
+  pattern in `puspa/router/fallback.py` and
+  `puspa/router/quota.py`; no 9Router code was copied. Puspa's
+  tiers are cost bands over its own OpenRouter catalog (no
+  flat-rate subscription or zero-cost provider is wired yet),
+  and quota state is in-memory until Postgres persistence
+  lands.
 
 ## Puspa license
 
