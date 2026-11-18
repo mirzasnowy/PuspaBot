@@ -1,0 +1,32 @@
+{
+  "name": "puspa-pwa",
+  "version": "0.1.0",
+  "description": "Puspa PWA: 7-screen TypeScript app (React 19 + Vite). API contract: docs/openapi-pwa.yaml.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "generate": "openapi-typescript ../../docs/openapi-pwa.yaml -o src/api/generated-types.ts"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.12",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "jsdom": "^26.1.0",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.6",
+    "vitest": "^3.2.7"
+  },
+  "private": true,
+  "type": "module"
+}

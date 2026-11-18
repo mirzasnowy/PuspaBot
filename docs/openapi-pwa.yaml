@@ -1,0 +1,788 @@
+openapi: 3.1.0
+info:
+  title: Puspa PWA API
+  version: 1.0.0
+  description: |
+    Contract for the Puspa progressive web app (7 screens, revision 7).
+    This spec is the source of truth for the TypeScript client in
+    `apps/pwa/src/api/` (types generated with openapi-typescript; the
+    thin fetch wrapper in `client.ts` is hand-written against those
+    generated types). The server implementation is
+    `puspa/pwa/app.py` (FastAPI). Form posts use
+    `application/x-www-form-urlencoded`; JSON bodies are used only
+    where the server reads `request.json()` (push subscription,
+    onboarding time).
+  license:
+    name: License pending (Nero's decision)
+servers:
+  - url: /
+    description: Same origin (the FastAPI app serves both pages and API)
+tags:
+  - name: pages
+    description: HTML screens served by the app
+  - name: chat
+    description: Group chat
+  - name: tasks
+    description: Tasks and approvals
+  - name: agents
+    description: Agent management
+  - name: connectors
+    description: Connector grants per agent
+  - name: push
+    description: Web Push subscription
+  - name: onboarding
+    description: Onboarding telemetry
+paths:
+  /:
+    get:
+      tags: [pages]
+      summary: Home (redirects to /chat)
+      responses:
+        "302":
+          description: Redirect to /chat
+  /masuk:
+    get:
+      tags: [pages]
+      summary: Login screen
+      description: Serves the SPA login screen; the Google flow starts at /auth/google.
+      responses:
+        "200":
+          description: Login screen (HTML)
+          content:
+            text/html:
+              schema:
+                type: string
+  /auth/google:
+    get:
+      tags: [pages]
+      summary: Start Google OAuth login
+      responses:
+        "302":
+          description: Redirect to Google
+        "503":
+          description: Google login not configured (PUSPA_GOOGLE_CLIENT_ID empty)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /auth/google/callback:
+    get:
+      tags: [pages]
+      summary: Google OAuth callback
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Callback acknowledgement (full login is completed in puspa.auth)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notes:
+                    type: string
+                  code_accepted:
+                    type: boolean
+  /chat:
+    get:
+      tags: [pages]
+      summary: Chat screen
+      responses:
+        "200":
+          description: Chat screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /tasks:
+    get:
+      tags: [pages]
+      summary: Tasks screen
+      responses:
+        "200":
+          description: Tasks screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /modules:
+    get:
+      tags: [pages]
+      summary: Modules screen
+      responses:
+        "200":
+          description: Modules screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /connectors:
+    get:
+      tags: [pages]
+      summary: Connectors screen
+      responses:
+        "200":
+          description: Connectors screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /memory:
+    get:
+      tags: [pages]
+      summary: Memory screen
+      responses:
+        "200":
+          description: Memory screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /settings:
+    get:
+      tags: [pages]
+      summary: Settings screen
+      responses:
+        "200":
+          description: Settings screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /office:
+    get:
+      tags: [pages]
+      summary: Office screen
+      responses:
+        "200":
+          description: Office screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /sse:
+    get:
+      tags: [chat]
+      summary: Live event stream (Server-Sent Events)
+      description: |
+        Streams the office projection first, then a heartbeat event.
+        Events are `data: {...}\n\n` frames with `type` `office` or
+        `heartbeat`. Requires a logged-in session cookie.
+      responses:
+        "200":
+          description: Event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE frames; each data frame is an SseEvent
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /bukti/{evidence_id}:
+    get:
+      tags: [pages]
+      summary: Evidence panel
+      parameters:
+        - name: evidence_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Evidence panel (HTML)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /manifest.json:
+    get:
+      tags: [pages]
+      summary: PWA manifest
+      responses:
+        "200":
+          description: Web app manifest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Manifest"
+  /sw.js:
+    get:
+      tags: [pages]
+      summary: Service worker script
+      responses:
+        "200":
+          description: Service worker JavaScript
+          content:
+            application/javascript:
+              schema:
+                type: string
+  /api/chat:
+    post:
+      tags: [chat]
+      summary: Send a chat message
+      description: Appends the message to the group chat and records a user_message event.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  description: Message text
+      responses:
+        "200":
+          description: Message accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, message]
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    $ref: "#/components/schemas/ChatMessage"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/agen:
+    post:
+      tags: [agents]
+      summary: Create an agent
+      description: Max 3 agents per user (Puspa + 2 user agents).
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                role:
+                  type: string
+                purpose:
+                  type: string
+      responses:
+        "200":
+          description: Agent created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "400":
+          description: Invalid name or agent limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/agen/{agent_id}:
+    delete:
+      tags: [agents]
+      summary: Delete an agent
+      description: The mandatory Puspa agent cannot be deleted (400).
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Agent deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        "400":
+          description: Puspa agent or unknown agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/tugas:
+    post:
+      tags: [tasks]
+      summary: Create and run a task
+      description: Runs synchronously through the TaskRunner and returns the outcome.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [purpose]
+              properties:
+                purpose:
+                  type: string
+                  description: What the task should do
+      responses:
+        "200":
+          description: Task outcome
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskOutcome"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/tugas/{task_id}/hentikan:
+    post:
+      tags: [tasks]
+      summary: Stop a task
+      description: Stops all sub-agents of the task and revokes their tokens (target under 5s).
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Stop result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StopResult"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/persetujuan/{request_id}:
+    post:
+      tags: [tasks]
+      summary: Decide an approval request (one tap)
+      description: |
+        Content-bound approval: if the approved content changes
+        afterwards, the approval is void and asked again.
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [approve]
+              properties:
+                approve:
+                  type: string
+                  enum: ["ya", "tidak"]
+                  description: 'Value "ya" approves, anything else rejects'
+      responses:
+        "200":
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, status]
+                properties:
+                  ok:
+                    type: boolean
+                  status:
+                    type: string
+                    enum: [approved, rejected]
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Unknown approval request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/konektor/{konektor}:
+    post:
+      tags: [connectors]
+      summary: Grant or revoke a connector for an agent
+      parameters:
+        - name: konektor
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [gmail, drive, calendar]
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [agent_id, action]
+              properties:
+                agent_id:
+                  type: string
+                action:
+                  type: string
+                  description: '"cabut" revokes; any other value grants'
+      responses:
+        "200":
+          description: Grant or revoke result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorResult"
+        "400":
+          description: Unknown connector or agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/push/langganan:
+    post:
+      tags: [push]
+      summary: Save a Web Push subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint, keys]
+              properties:
+                endpoint:
+                  type: string
+                  format: uri
+                keys:
+                  type: object
+                  required: [p256dh, auth]
+                  properties:
+                    p256dh:
+                      type: string
+                    auth:
+                      type: string
+      responses:
+        "200":
+          description: Subscription saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, subscription_id]
+                properties:
+                  ok:
+                    type: boolean
+                  subscription_id:
+                    type: string
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/onboarding/waktu:
+    post:
+      tags: [onboarding]
+      summary: Record onboarding time spent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                seconds:
+                  type: number
+      responses:
+        "200":
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    ChatMessage:
+      type: object
+      required: [sender, text, created_at]
+      properties:
+        sender:
+          type: string
+          description: Sender id ("users" for the user in the demo store)
+        text:
+          type: string
+        created_at:
+          type: number
+          description: Unix timestamp (seconds)
+    Agent:
+      type: object
+      required: [agent_id, name]
+      properties:
+        agent_id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        purpose:
+          type: string
+        required:
+          type: boolean
+          description: True for the mandatory Puspa agent
+    TaskOutcome:
+      type: object
+      required: [task_id, status]
+      properties:
+        task_id:
+          type: string
+        status:
+          type: string
+        stage:
+          type: string
+        question:
+          type: string
+          nullable: true
+    StopResult:
+      type: object
+      properties:
+        stopped:
+          type: integer
+          description: Number of sub-agents stopped (0 when none were active)
+        revoked_tokens:
+          type: array
+          items:
+            type: string
+        seconds:
+          type: number
+    ApprovalRequest:
+      type: object
+      required: [request_id, status]
+      properties:
+        request_id:
+          type: string
+        kind:
+          type: string
+          description: Action kind, e.g. spend, send, share
+        task_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        summary:
+          type: string
+          description: Full human-readable content of what is being approved
+        amount_rp:
+          type: integer
+          nullable: true
+        target:
+          type: string
+          description: Where the action goes (recipient, merchant, account)
+        content_hash:
+          type: string
+          description: Hash binding the approval to the exact content
+    ConnectorResult:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        connected:
+          type: boolean
+        agent_id:
+          type: string
+        connector:
+          type: string
+        scope:
+          type: string
+    OfficeProjection:
+      type: object
+      properties:
+        agent:
+          type: object
+          description: Live agent status keyed by agent id
+          additionalProperties:
+            $ref: "#/components/schemas/OfficeAgent"
+    OfficeAgent:
+      type: object
+      properties:
+        agent_id:
+          type: string
+        status:
+          type: string
+          enum: [idle, working]
+        last_task:
+          type: string
+        cost_rp:
+          type: integer
+        subagents:
+          type: array
+          items:
+            type: object
+            properties:
+              status:
+                type: string
+              permission_class:
+                type: string
+                enum: [reader, executor, checker]
+    ProfileFact:
+      type: object
+      description: One sourced profile fact (puspa.memory.profile)
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+        origin:
+          type: string
+          enum: [user_stated, user_confirmed, inferred]
+        status:
+          type: string
+          enum: [proposal, active, rejected, replaced]
+    SseEvent:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [office, heartbeat]
+        content:
+          $ref: "#/components/schemas/OfficeProjection"
+        created_at:
+          type: number
+    Manifest:
+      type: object
+      required: [name, short_name, start_url, display]
+      properties:
+        name:
+          type: string
+        short_name:
+          type: string
+        start_url:
+          type: string
+        display:
+          type: string
+        background_color:
+          type: string
+        theme_color:
+          type: string
+        icons:
+          type: array
+          items:
+            type: object
+            properties:
+              src:
+                type: string
+              sizes:
+                type: string
+              type:
+                type: string
+    Bootstrap:
+      type: object
+      description: |
+        Server-rendered seed embedded in every screen's HTML as
+        `window.__PUSPA_BOOTSTRAP__` (JSON). The SPA hydrates its
+        per-screen stores from it, so the first paint already has
+        real data and no extra fetch is needed.
+      properties:
+        screen:
+          type: string
+          enum: [chat, tasks, modules, connectors, memory, settings, office, login]
+        user_id:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+        approvals:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApprovalRequest"
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Agent"
+        profile:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProfileFact"
+        office:
+          $ref: "#/components/schemas/OfficeProjection"
+        handoffs:
+          type: array
+          items:
+            type: object
