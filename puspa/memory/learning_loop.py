@@ -122,7 +122,7 @@ def _check_gate_approval(gate, request_id, user_id):
         if getattr(request, "user_id", None) != user_id:
             return False
         return getattr(request, "status", None) in ("approved", "executed")
-    except Exception:  # noqa: BLE001 - fail closed on any gate problem
+    except Exception:
         return False
 
 
@@ -176,8 +176,7 @@ class LearningLoop:
             "error": record["error"],
             "count": (previous["count"] if previous else 0) + 1,
             "experience_ids": (
-                (previous["experience_ids"] if previous else [])
-                + [experience["id"]]
+                (previous["experience_ids"] if previous else []) + [experience["id"]]
             ),
         }
         gap = self.gaps.get(task, {"mispredictions": 0, "last_error": None})
@@ -226,10 +225,7 @@ class LearningLoop:
             "verdict": verdict,
             "predicted": predicted,
             "observed": correction if verdict == "wrong" else predicted,
-            "error": (
-                "user feedback: answer was wrong" if verdict == "wrong"
-                else None
-            ),
+            "error": ("user feedback: answer was wrong" if verdict == "wrong" else None),
             "context": {"source": FEEDBACK_SOURCE, "feedback_source": source},
         }
         self.experiences.append(experience)
@@ -282,8 +278,7 @@ class LearningLoop:
             "error": "user feedback: answer was wrong",
             "count": (previous["count"] if previous else 0) + 1,
             "experience_ids": (
-                (previous["experience_ids"] if previous else [])
-                + [experience["id"]]
+                (previous["experience_ids"] if previous else []) + [experience["id"]]
             ),
             "source": FEEDBACK_SOURCE,
             "feedback_source": source,
@@ -331,8 +326,7 @@ class LearningLoop:
         """
         return {
             "corrections": {
-                task: dict(correction)
-                for task, correction in self.corrections.items()
+                task: dict(correction) for task, correction in self.corrections.items()
             },
             "experiences": [dict(exp) for exp in self.experiences],
         }
@@ -352,10 +346,7 @@ class LearningLoop:
             raise ValueError("state must be a dict")
         corrections = state.get("corrections") or {}
         experiences = state.get("experiences") or []
-        self.corrections = {
-            str(task): dict(correction)
-            for task, correction in corrections.items()
-        }
+        self.corrections = {str(task): dict(correction) for task, correction in corrections.items()}
         self.experiences = [dict(exp) for exp in experiences]
         self.gaps = {}
         for task, correction in self.corrections.items():
@@ -376,10 +367,7 @@ class LearningLoop:
         draft skill, as a verification task.
         """
         if self.gaps:
-            task = sorted(
-                self.gaps.items(),
-                key=lambda item: (-item[1]["mispredictions"], item[0]),
-            )[0][0]
+            task = min(self.gaps.items(), key=lambda item: (-item[1]["mispredictions"], item[0]))[0]
             return {
                 "task": task,
                 "reason": "misprediction_gap",
@@ -388,7 +376,7 @@ class LearningLoop:
             }
         drafts = [s for s in self.skills.values() if s["status"] == "draft"]
         if drafts:
-            skill = sorted(drafts, key=lambda s: s["created_order"])[0]
+            skill = min(drafts, key=lambda s: s["created_order"])
             return {
                 "task": f"verify_skill:{skill['name']}",
                 "reason": "unverified_draft",
@@ -410,8 +398,16 @@ class LearningLoop:
 
     # -- skill library: draft, verify, approve, activate ---------
 
-    def draft_skill(self, task, code, *, name=None, verification=None,
-                    embedding_key=None, source_experience_ids=None):
+    def draft_skill(
+        self,
+        task,
+        code,
+        *,
+        name=None,
+        verification=None,
+        embedding_key=None,
+        source_experience_ids=None,
+    ):
         """Draft a learned skill from a successful task.
 
         The draft is INACTIVE (status "draft", active False) and
@@ -477,7 +473,7 @@ class LearningLoop:
                 else:
                     raise RuntimeError("code is not executable here")
                 ok = result == expected
-            except Exception as exc:  # noqa: BLE001 - a failing case
+            except Exception as exc:
                 ok, result = False, f"error: {exc}"
             details.append({"case": case, "result": result, "passed": ok})
             if ok:
@@ -487,15 +483,21 @@ class LearningLoop:
         verified = failed == 0 and passed > 0
         skill["verified"] = verified
         skill["verification"] = {
-            "passed": passed, "failed": failed, "details": details,
+            "passed": passed,
+            "failed": failed,
+            "details": details,
         }
         return {
-            "skill_id": skill_id, "passed": passed, "failed": failed,
-            "verified": verified, "details": details,
+            "skill_id": skill_id,
+            "passed": passed,
+            "failed": failed,
+            "verified": verified,
+            "details": details,
         }
 
-    def activate_skill(self, skill_id, *, user_id=None, gate=None,
-                       approval_request_id=None, approved_by=None):
+    def activate_skill(
+        self, skill_id, *, user_id=None, gate=None, approval_request_id=None, approved_by=None
+    ):
         """Activate a drafted skill after user approval.
 
         Requires either an approved Gate request (`gate` plus
@@ -515,8 +517,7 @@ class LearningLoop:
             raise ValueError("a rejected skill cannot be activated")
         if skill.get("conflicts_with_manual_edit"):
             raise ValueError(
-                "skill conflicts with a manual user edit and cannot "
-                "be activated over it"
+                "skill conflicts with a manual user edit and cannot be activated over it"
             )
         if not skill.get("verified"):
             raise ValueError("only a verified skill can be activated")
@@ -528,9 +529,7 @@ class LearningLoop:
         elif approved_by is not None:
             approved = user_id is None or approved_by == user_id
         if not approved:
-            raise PermissionError(
-                "learned skill needs user approval before activation"
-            )
+            raise PermissionError("learned skill needs user approval before activation")
         skill["status"] = "active"
         skill["active"] = True
         return self._public_skill(skill)
@@ -605,10 +604,13 @@ class LearningLoop:
             {"step": f"for task {skill['task']}"},
         ]
         return store.record_successful_task(
-            user_id, f"{LEARNED_DRAFT_PREFIX}{skill['name']}", step,
+            user_id,
+            f"{LEARNED_DRAFT_PREFIX}{skill['name']}",
+            step,
             output_schema={"skill_id": skill["id"], "verified": skill["verified"]},
             required_checks=["user_approval"],
-            source_event_id=None, dsn=dsn,
+            source_event_id=None,
+            dsn=dsn,
         )
 
     def _public_skill(self, skill):
@@ -662,6 +664,4 @@ def record_feedback(task, verdict, *, correction=None, source="user"):
     from the default `LearningLoop` instance (see
     `LearningLoop.record_feedback`).
     """
-    return _DEFAULT_LOOP.record_feedback(
-        task, verdict, correction=correction, source=source
-    )
+    return _DEFAULT_LOOP.record_feedback(task, verdict, correction=correction, source=source)

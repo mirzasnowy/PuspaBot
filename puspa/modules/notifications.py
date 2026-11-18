@@ -23,8 +23,7 @@ def evaluate_notifications(manifest: dict, data: dict) -> list[dict]:
         for row in rows_list:
             try:
                 if evaluate_expression(rule.get("condition", ""), dict(row)):
-                    output.append({"table": table, "rows": row,
-                                   "message": rule.get("message", "")})
-            except Exception:  # noqa: BLE001 — kondisi rusak = tidak memicu
+                    output.append({"table": table, "rows": row, "message": rule.get("message", "")})
+            except Exception:
                 continue
     return output

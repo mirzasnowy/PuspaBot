@@ -40,7 +40,7 @@ yang di luar scope worker ini; lihat laporan ke koordinator.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 STALE_EXPIRED = "expired"
@@ -63,14 +63,19 @@ def _require_aware(value: datetime | None, field_name: str) -> datetime | None:
     if not isinstance(value, datetime):
         raise TemporalError(f"{field_name} harus datetime atau None, bukan {type(value).__name__}")
     if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
-        raise TemporalError(f"{field_name} harus timezone-aware (pakai datetime dengan tzinfo=timezone.utc)")
+        raise TemporalError(
+            f"{field_name} harus timezone-aware (pakai datetime dengan tzinfo=timezone.utc)"
+        )
     return value
 
 
 def _as_of_or_now(as_of: datetime | None) -> datetime:
     if as_of is None:
-        return datetime.now(timezone.utc)
-    return _require_aware(as_of, "as_of")
+        return datetime.now(UTC)
+    checked = _require_aware(as_of, "as_of")
+    if checked is None:
+        return datetime.now(UTC)
+    return checked
 
 
 @dataclass
@@ -100,9 +105,7 @@ class TemporalEdge:
             return False
         if self.valid_from is not None and moment < self.valid_from:
             return False
-        if self.valid_until is not None and moment >= self.valid_until:
-            return False
-        return True
+        return not (self.valid_until is not None and moment >= self.valid_until)
 
     def stale_reason(self, as_of: datetime | None = None) -> str | None:
         """Alasan edge ini basi pada `as_of`, atau None bila segar."""
@@ -145,12 +148,18 @@ class TemporalGraph:
     def __init__(self):
         self.edges: list[TemporalEdge] = []
 
-    def add_edge(self, subject: str, relation: str, object: str, *,
-                 valid_from: datetime | None = None,
-                 valid_until: datetime | None = None,
-                 source_id: str | None = None,
-                 supersede: bool = True,
-                 as_of: datetime | None = None) -> dict:
+    def add_edge(
+        self,
+        subject: str,
+        relation: str,
+        object: str,
+        *,
+        valid_from: datetime | None = None,
+        valid_until: datetime | None = None,
+        source_id: str | None = None,
+        supersede: bool = True,
+        as_of: datetime | None = None,
+    ) -> dict:
         """Tambah edge; gantikan edge aktif untuk kunci yang sama.
 
         Kembalikan {"edge": edge_baru, "superseded": [id_lama]}.
@@ -192,15 +201,25 @@ class TemporalGraph:
                 old.valid_until = close_at
                 superseded_ids.append(old.id)
         edge = TemporalEdge(
-            subject=subject, relation=relation, object=object,
-            valid_from=valid_from, valid_until=valid_until,
-            source_ids={source_id} if source_id else set())
+            subject=subject,
+            relation=relation,
+            object=object,
+            valid_from=valid_from,
+            valid_until=valid_until,
+            source_ids={source_id} if source_id else set(),
+        )
         self.edges.append(edge)
         return {"edge": edge, "superseded": superseded_ids}
 
-    def query(self, subject: str | None = None, relation: str | None = None,
-              object: str | None = None, *, as_of: datetime | None = None,
-              include_stale: bool = False) -> list[dict]:
+    def query(
+        self,
+        subject: str | None = None,
+        relation: str | None = None,
+        object: str | None = None,
+        *,
+        as_of: datetime | None = None,
+        include_stale: bool = False,
+    ) -> list[dict]:
         """Edge yang cocok, sebagai dict.
 
         Default: hanya edge yang masih berlaku pada `as_of`.
@@ -224,9 +243,14 @@ class TemporalGraph:
             out.append(edge.to_dict(moment))
         return out
 
-    def neighbors(self, name: str, relation: str | None = None, *,
-                  as_of: datetime | None = None,
-                  include_stale: bool = False) -> list[str]:
+    def neighbors(
+        self,
+        name: str,
+        relation: str | None = None,
+        *,
+        as_of: datetime | None = None,
+        include_stale: bool = False,
+    ) -> list[str]:
         """Nama tetangga satu node, hanya lewat edge yang berlaku."""
         name = _normalize_name(name)
         out = set()
@@ -239,8 +263,9 @@ class TemporalGraph:
                 out.add(entry["subject"])
         return sorted(out)
 
-    def relations(self, name: str, *, as_of: datetime | None = None,
-                  include_stale: bool = False) -> list[tuple]:
+    def relations(
+        self, name: str, *, as_of: datetime | None = None, include_stale: bool = False
+    ) -> list[tuple]:
         """Triple yang menyentuh satu node, hanya yang berlaku."""
         name = _normalize_name(name)
         return sorted(
@@ -249,20 +274,19 @@ class TemporalGraph:
             if e["subject"] == name or e["object"] == name
         )
 
-    def history(self, subject: str, relation: str, *,
-                as_of: datetime | None = None) -> list[dict]:
+    def history(self, subject: str, relation: str, *, as_of: datetime | None = None) -> list[dict]:
         """Semua versi satu fakta (aktif + diganti + kedaluwarsa),
         terurut dari yang terbaru. Riwayat tidak pernah dihapus
         oleh supersede, hanya ditandai."""
-        entries = self.query(subject=subject, relation=relation,
-                             as_of=as_of, include_stale=True)
+        entries = self.query(subject=subject, relation=relation, as_of=as_of, include_stale=True)
         entries.sort(
-            key=lambda e: e["valid_from"] or datetime.min.replace(tzinfo=timezone.utc),
-            reverse=True)
+            key=lambda e: e["valid_from"] or datetime.min.replace(tzinfo=UTC), reverse=True
+        )
         return entries
 
-    def current_fact(self, subject: str, relation: str, *,
-                     as_of: datetime | None = None) -> dict | None:
+    def current_fact(
+        self, subject: str, relation: str, *, as_of: datetime | None = None
+    ) -> dict | None:
         """Satu fakta aktif untuk (subject, relation), atau None."""
         found = self.query(subject=subject, relation=relation, as_of=as_of)
         return found[0] if found else None
@@ -279,8 +303,7 @@ class TemporalGraph:
         kept = []
         removed = 0
         for edge in self.edges:
-            if (not edge.superseded and edge.valid_until is not None
-                    and moment >= edge.valid_until):
+            if not edge.superseded and edge.valid_until is not None and moment >= edge.valid_until:
                 removed += 1
             else:
                 kept.append(edge)
@@ -328,16 +351,22 @@ def from_knowledge_graph(knowledge_graph, validity=None) -> TemporalGraph:
         lookup = validity
     else:
         mapping = validity or {}
-        lookup = lambda triple: mapping.get(
-            (triple.subject, triple.relation, triple.object))
+
+        def lookup(triple):
+            return mapping.get((triple.subject, triple.relation, triple.object))
+
     for triple in knowledge_graph.edges.values():
         window = lookup(triple)
         valid_from, valid_until = (None, None)
         if window is not None:
             valid_from, valid_until = window
         graph.add_edge(
-            triple.subject, triple.relation, triple.object,
-            valid_from=valid_from, valid_until=valid_until,
-            source_id=sorted(triple.source_ids)[0] if triple.source_ids else None,
-            supersede=False)
+            triple.subject,
+            triple.relation,
+            triple.object,
+            valid_from=valid_from,
+            valid_until=valid_until,
+            source_id=min(triple.source_ids) if triple.source_ids else None,
+            supersede=False,
+        )
     return graph

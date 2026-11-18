@@ -40,7 +40,7 @@ from __future__ import annotations
 import math
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .embeddings import HashEmbedding, cosine_similarity
 from .episodic import dual_level_search, extract_concepts, extract_entities
@@ -100,8 +100,22 @@ _FILLER_PREFIXES = (
 
 #: A question states no fact, so it is not stored as a memory.
 _INTERROGATIVES = frozenset(
-    "apa siapa kapan mana berapa bagaimana mengapa "
-    "which what when where who why how".split()
+    [
+        "apa",
+        "siapa",
+        "kapan",
+        "mana",
+        "berapa",
+        "bagaimana",
+        "mengapa",
+        "which",
+        "what",
+        "when",
+        "where",
+        "who",
+        "why",
+        "how",
+    ]
 )
 
 #: Polarity markers for conflict detection. Negative markers are
@@ -150,10 +164,7 @@ def _normalized(text):
 def _is_filler_or_greeting(normalized):
     if normalized in _FILLER_TEXTS:
         return True
-    return any(
-        normalized.startswith(prefix)
-        for prefix in _GREETING_PREFIXES + _FILLER_PREFIXES
-    )
+    return any(normalized.startswith(prefix) for prefix in _GREETING_PREFIXES + _FILLER_PREFIXES)
 
 
 def _is_question(text):
@@ -193,9 +204,9 @@ def extract_facts(text):
         raise ValueError("text must be a string")
     facts = []
     for chunk in _SENTENCE_SPLIT_RE.split(text):
-        chunk = " ".join(chunk.split())
-        if chunk and len(extract_concepts(chunk)) >= 2:
-            facts.append(chunk)
+        cleaned = " ".join(chunk.split())
+        if cleaned and len(extract_concepts(cleaned)) >= 2:
+            facts.append(cleaned)
     return facts
 
 
@@ -247,19 +258,15 @@ def memories_conflict(a, b):
     """
     a_concepts, b_concepts = set(a["concepts"]), set(b["concepts"])
     shared_concepts = a_concepts & b_concepts
-    subject_shared = bool(set(a["entities"]) & set(b["entities"])) or len(
-        shared_concepts
-    ) >= 2
+    subject_shared = bool(set(a["entities"]) & set(b["entities"])) or len(shared_concepts) >= 2
     if not subject_shared:
         return False
     polarity_a = detect_polarity(a["content"])
     polarity_b = detect_polarity(b["content"])
-    if polarity_a != 0 and polarity_b != 0 and polarity_a != polarity_b:
+    if polarity_a != 0 and polarity_b not in (0, polarity_a):
         return True
     numbers_a, numbers_b = _numbers(a["content"]), _numbers(b["content"])
-    if numbers_a and numbers_b and numbers_a != numbers_b:
-        return True
-    return False
+    return bool(numbers_a and numbers_b and numbers_a != numbers_b)
 
 
 def is_duplicate(a, b, embedder=None):
@@ -282,7 +289,7 @@ def is_duplicate(a, b, embedder=None):
 
 
 def _new_memory(content):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return {
         "id": uuid.uuid4().hex[:12],
         "content": content,
@@ -313,7 +320,7 @@ def _merge_into(existing, candidate):
         existing["facts"] = candidate["facts"]
         existing["entities"] = candidate["entities"]
         existing["concepts"] = candidate["concepts"]
-    existing["updated_at"] = datetime.now(timezone.utc)
+    existing["updated_at"] = datetime.now(UTC)
     return existing
 
 
@@ -376,11 +383,7 @@ class MemoryStore:
                     "memory": merged,
                     "merged_into": merged["id"],
                 }
-        conflicts = [
-            memory
-            for memory in self._memories
-            if memories_conflict(candidate, memory)
-        ]
+        conflicts = [memory for memory in self._memories if memories_conflict(candidate, memory)]
         if conflicts:
             candidate["status"] = "conflicted"
             candidate["conflicts_with"] = [m["id"] for m in conflicts]
@@ -388,7 +391,7 @@ class MemoryStore:
                 if candidate["id"] not in memory["conflicts_with"]:
                     memory["conflicts_with"].append(candidate["id"])
                 memory["status"] = "conflicted"
-                memory["updated_at"] = datetime.now(timezone.utc)
+                memory["updated_at"] = datetime.now(UTC)
             self._memories.append(candidate)
             return {
                 "action": "conflict",
@@ -401,8 +404,10 @@ class MemoryStore:
     def recall(self, query, limit=5, embedder=None):
         """Ranked recall over the stored memories."""
         return rank_memories(
-            self._memories, query,
-            embedder=embedder or self._embedder, limit=limit,
+            self._memories,
+            query,
+            embedder=embedder or self._embedder,
+            limit=limit,
         )
 
     def measure_recall(self, queries, ks=(1, 3, 5), embedder=None):
@@ -412,7 +417,9 @@ class MemoryStore:
         queries whose expected memory appears in the top k.
         """
         return measure_recall_at_ks(
-            self._memories, queries, ks=ks,
+            self._memories,
+            queries,
+            ks=ks,
             embedder=embedder or self._embedder,
         )
 
@@ -438,7 +445,7 @@ def rank_memories(memories, query, embedder=None, limit=5):
         return []
     embedder = embedder or HashEmbedding()
     ranked = dual_level_search(memories, query, embedder=embedder, limit=len(memories))
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     scored = []
     for result in ranked:
         # A zero base score means no shared entity, concept, or
@@ -452,11 +459,9 @@ def rank_memories(memories, query, embedder=None, limit=5):
         recency_bonus = 0.0
         if isinstance(created_at, datetime):
             if created_at.tzinfo is None:
-                created_at = created_at.replace(tzinfo=timezone.utc)
+                created_at = created_at.replace(tzinfo=UTC)
             age_days = max(0.0, (now - created_at).total_seconds() / 86400.0)
-            recency_bonus = RECENCY_BONUS * max(
-                0.0, 1.0 - age_days / RECENCY_WINDOW_DAYS
-            )
+            recency_bonus = RECENCY_BONUS * max(0.0, 1.0 - age_days / RECENCY_WINDOW_DAYS)
         entry = dict(result)
         entry["score"] = result["score"] + support_bonus + recency_bonus
         scored.append(entry)
@@ -485,6 +490,4 @@ def recall_at_k(memories, queries, k, embedder=None):
 def measure_recall_at_ks(memories, queries, ks=(1, 3, 5), embedder=None):
     """Measured recall for each k in `ks`: returns ``{k: recall}``."""
     embedder = embedder or HashEmbedding()
-    return {
-        k: recall_at_k(memories, queries, k, embedder=embedder) for k in ks
-    }
+    return {k: recall_at_k(memories, queries, k, embedder=embedder) for k in ks}

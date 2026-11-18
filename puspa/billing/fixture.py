@@ -14,26 +14,37 @@ mendeteksi perubahan itu sebelum dipakai user (§3.6).
 
 from __future__ import annotations
 
-import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any, ClassVar
 from urllib.parse import quote, unquote
 
 # Nilai uji (bukan tagihan nyata siapa pun).
-DATA_TEST = {
-    "pln": {"amount": 132500, "due_date": "2026-11-20", "status": "not_yet_pay",
-            "period": "November 2026"},
-    "pdam": {"amount": 87500, "due_date": "2026-11-25", "status": "not_yet_pay",
-             "period": "November 2026"},
-    "airtime": {"amount": 50000, "due_date": None, "status": "active",
-              "period": "balance"},
-    "paket data": {"amount": 75000, "due_date": "2026-12-01", "status": "active",
-                   "period": "30 hari"},
+DATA_TEST: dict[str, dict[str, Any]] = {
+    "pln": {
+        "amount": 132500,
+        "due_date": "2026-11-20",
+        "status": "not_yet_pay",
+        "period": "November 2026",
+    },
+    "pdam": {
+        "amount": 87500,
+        "due_date": "2026-11-25",
+        "status": "not_yet_pay",
+        "period": "November 2026",
+    },
+    "airtime": {"amount": 50000, "due_date": None, "status": "active", "period": "balance"},
+    "paket data": {
+        "amount": 75000,
+        "due_date": "2026-12-01",
+        "status": "active",
+        "period": "30 hari",
+    },
 }
 
 
 class _Handler(BaseHTTPRequestHandler):
-    data: dict = dict(DATA_TEST)
+    data: ClassVar[dict] = dict(DATA_TEST)
 
     def log_message(self, *args):  # diam — jangan penuhi log tes
         pass

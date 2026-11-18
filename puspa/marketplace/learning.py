@@ -45,7 +45,6 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 
 __all__ = [
     "MAX_CHANGES_PER_REVIEW",
@@ -133,11 +132,13 @@ def _deterministic_changes(messages: list, known_skill_ids: set) -> list[dict]:
             if key in seen:
                 continue
             seen.add(key)
-            changes.append({
-                "skill_id": skill_id,
-                "note": note or "correction requested",
-                "source": "chat",
-            })
+            changes.append(
+                {
+                    "skill_id": skill_id,
+                    "note": note or "correction requested",
+                    "source": "chat",
+                }
+            )
             if len(changes) >= MAX_CHANGES_PER_REVIEW:
                 return changes
     return changes
@@ -154,7 +155,7 @@ def _llm_changes(messages: list, known_skill_ids: set, llm_complete):
         prompt = (
             "From this chat transcript, propose at most 3 concrete skill "
             "improvements. Reply with JSON only: "
-            "{\"changes\": [{\"skill_id\": \"...\", \"note\": \"...\"}]}. "
+            '{"changes": [{"skill_id": "...", "note": "..."}]}. '
             "Propose nothing when there is no concrete improvement.\n"
             f"Known skills: {sorted(known_skill_ids)}\n"
             f"Transcript:\n{transcript}"
@@ -174,15 +175,13 @@ def _llm_changes(messages: list, known_skill_ids: set, llm_complete):
                 continue
             if known_skill_ids and skill_id not in known_skill_ids:
                 continue
-            changes.append({"skill_id": skill_id, "note": note,
-                            "source": "llm"})
+            changes.append({"skill_id": skill_id, "note": note, "source": "llm"})
         return changes
     except Exception:
         return None
 
 
-def learn_from_turn(messages: list, *, known_skill_ids=None,
-                    llm_complete=None) -> list[dict]:
+def learn_from_turn(messages: list, *, known_skill_ids=None, llm_complete=None) -> list[dict]:
     """Propose at most 3 skill changes learned from one turn.
 
     The LLM path runs first when ``llm_complete`` is given; any
@@ -233,14 +232,10 @@ def _run_review(changes, *, apply_change, step: LearningStep, box):
             try:
                 applied = apply_change(change)
             except Exception as exc:
-                outcome.errors.append(
-                    f"change for {change.get('skill_id')!r} failed: {exc}"
-                )
+                outcome.errors.append(f"change for {change.get('skill_id')!r} failed: {exc}")
                 continue
             if applied is False:
-                outcome.errors.append(
-                    f"change for {change.get('skill_id')!r} was rejected"
-                )
+                outcome.errors.append(f"change for {change.get('skill_id')!r} was rejected")
                 continue
             outcome.changes_applied += 1
             step.changes_applied += 1
@@ -258,9 +253,16 @@ def _run_review(changes, *, apply_change, step: LearningStep, box):
     box["result"] = outcome
 
 
-def review_after_reply(messages: list, *, apply_change, step=None,
-                       known_skill_ids=None, llm_complete=None,
-                       sync=False, timeout_seconds=REVIEW_TIMEOUT_SECONDS):
+def review_after_reply(
+    messages: list,
+    *,
+    apply_change,
+    step=None,
+    known_skill_ids=None,
+    llm_complete=None,
+    sync=False,
+    timeout_seconds=REVIEW_TIMEOUT_SECONDS,
+):
     """Review one finished turn after the reply, in the background.
 
     ``apply_change(change) -> bool`` applies one proposed change
@@ -277,12 +279,17 @@ def review_after_reply(messages: list, *, apply_change, step=None,
     if step.discarded:
         return ReviewOutcome(
             status="discarded",
-            errors=["learning step was discarded after "
-                    f"{MAX_CONSECUTIVE_FAILURES} consecutive failures"],
+            errors=[
+                (
+                    "learning step was discarded after "
+                    f"{MAX_CONSECUTIVE_FAILURES} consecutive failures"
+                )
+            ],
             step_id=step.step_id,
         )
     changes = learn_from_turn(
-        messages, known_skill_ids=known_skill_ids,
+        messages,
+        known_skill_ids=known_skill_ids,
         llm_complete=llm_complete,
     )
     if not changes:

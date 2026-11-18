@@ -32,10 +32,10 @@ __all__ = [
     "TokenError",
     "canonical_json",
     "decode_payload",
-    "issue_child",
-    "issue_token",
     "is_revoked",
     "is_subset",
+    "issue_child",
+    "issue_token",
     "revoke",
     "revoke_all_for_task",
     "token_id",
@@ -91,7 +91,9 @@ _revoked: set[str] = set()
 
 def canonical_json(obj) -> bytes:
     """JSON kanonis: kunci terurut, tanpa spasi, UTF-8."""
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
 
 def _b64url_encode(data: bytes) -> str:
@@ -166,14 +168,14 @@ def _validate_payload(payload: dict) -> None:
     if payload["parent"] is not None and not isinstance(payload["parent"], str):
         raise TokenError("field parent harus str atau null")
     permissions = payload.get("tool_permissions")
-    if permissions is not None:
-        if not isinstance(permissions, dict) or not all(
+    if permissions is not None and (
+        not isinstance(permissions, dict)
+        or not all(
             isinstance(k, str) and isinstance(v, str) and v in TOOL_PERMISSION_LEVELS
             for k, v in permissions.items()
-        ):
-            raise TokenError(
-                "field tool_permissions harus {nama_tool: 'allow'|'ask'|'deny'}"
-            )
+        )
+    ):
+        raise TokenError("field tool_permissions harus {nama_tool: 'allow'|'ask'|'deny'}")
 
 
 def issue_token(payload: dict, signing_key: Ed25519PrivateKey) -> str:
@@ -301,9 +303,7 @@ def is_subset(child: dict, parent: dict) -> bool:
         if child["exp"] > parent["exp"]:
             return False
         # Sub-agen tidak bisa membuat sub-agen (satu level saja, 2.2).
-        if child.get("subagent_id") is not None and parent.get("subagent_id") is not None:
-            return False
-        return True
+        return not (child.get("subagent_id") is not None and parent.get("subagent_id") is not None)
     except (KeyError, TypeError, AttributeError):
         return False
 

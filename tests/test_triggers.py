@@ -1,15 +1,16 @@
 """Tes pemicu (§2.12 + §2.14): 4 pemicu MVP, tolak email/webhook."""
 
-from datetime import date, datetime, timezone
-
-import pytest
+from datetime import UTC, date, datetime
 
 from puspa.workflow.triggers import (
-    TriggerError, match_price_drop, match_due_date, next_trigger_at,
-    save_to_scheduler, validate_trigger,
+    match_due_date,
+    match_price_drop,
+    next_trigger_at,
+    save_to_scheduler,
+    validate_trigger,
 )
 
-SEKARANG = datetime(2026, 11, 17, 12, 0, tzinfo=timezone.utc)
+SEKARANG = datetime(2026, 11, 17, 12, 0, tzinfo=UTC)
 
 
 def test_schedule_date_monthly():
@@ -38,8 +39,7 @@ def test_schedule_interval_minimal_1_hour():
     assert any("minimal 1 jam" in m for m in validate_trigger(p))
     p2 = {"type": "schedule", "mode": "interval_hour", "hour": 1}
     assert validate_trigger(p2) == []
-    assert next_trigger_at(p2, SEKARANG) == datetime(
-        2026, 11, 17, 13, 0, tzinfo=timezone.utc)
+    assert next_trigger_at(p2, SEKARANG) == datetime(2026, 11, 17, 13, 0, tzinfo=UTC)
 
 
 def test_trigger_email_and_webhook_rejected():
@@ -73,15 +73,18 @@ def test_price_drops_below_threshold():
 def test_save_trigger_schedule_to_scheduler_phase2(make_user, test_dsn):
     user_id = make_user()["user_id"]
     p = {"type": "schedule", "mode": "date", "date": 25, "start_time": "07:00"}
-    trigger = save_to_scheduler(user_id=user_id, workflow_id="alur-uji",
-                                 trigger=p, now=SEKARANG, dsn=test_dsn)
+    trigger = save_to_scheduler(
+        user_id=user_id, workflow_id="alur-uji", trigger=p, now=SEKARANG, dsn=test_dsn
+    )
     assert trigger is not None
     assert trigger.event_type == "schedule"
     assert trigger.workflow == "alur-uji"
-    assert (trigger.next_trigger_at.year, trigger.next_trigger_at.month,
-            trigger.next_trigger_at.day) == (2026, 11, 25)
+    assert (
+        trigger.next_trigger_at.year,
+        trigger.next_trigger_at.month,
+        trigger.next_trigger_at.day,
+    ) == (2026, 11, 25)
 
 
 def test_non_schedule_trigger_not_stored_in_scheduler():
-    assert save_to_scheduler(user_id="u", workflow_id="a",
-                               trigger={"type": "manual"}) is None
+    assert save_to_scheduler(user_id="u", workflow_id="a", trigger={"type": "manual"}) is None

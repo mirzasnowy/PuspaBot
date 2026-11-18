@@ -10,7 +10,7 @@ schemas and truncates tables on collection; that is unavoidable
 for any file under tests/.)
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -25,8 +25,8 @@ from puspa.memory.embeddings import (
     make_embedder,
 )
 
-
 # --- embeddings: real provider, stub interface, safe fallback --------------
+
 
 class _StubTextEmbedding:
     """Fake fastembed model: fixed 384-dim vectors per text."""
@@ -112,23 +112,31 @@ def test_default_embedder_returns_384_dim_normalized_vector():
     assert len(vec) == 384
     assert abs(sum(x * x for x in vec) - 1.0) < 1e-6
     assert emb.embed("harga laptop asus vivobook") == vec
-    similar = cosine_similarity(
-        vec, emb.embed("laptop asus vivobook empat belas inci"))
+    similar = cosine_similarity(vec, emb.embed("laptop asus vivobook empat belas inci"))
     different = cosine_similarity(vec, emb.embed("tagihan listrik pln"))
     assert similar > different
 
 
 # --- procedural: promotion, decay, contradiction ----------------
 
+
 def _proc(status="trial", successful=1, failed=0, consecutive=0, agents=None):
     return {
-        "id": "proc-1", "user_id": "user-1", "service": "check_pln",
-        "version": 1, "step": ["open site", "read bill"],
-        "output_schema": {}, "required_checks": [], "status": status,
-        "successful_runs": successful, "failed_runs": failed,
+        "id": "proc-1",
+        "user_id": "user-1",
+        "service": "check_pln",
+        "version": 1,
+        "step": ["open site", "read bill"],
+        "output_schema": {},
+        "required_checks": [],
+        "status": status,
+        "successful_runs": successful,
+        "failed_runs": failed,
         "consecutive_failed_runs": consecutive,
         "agent_ids": list(agents or ["agent-a"]),
-        "source_event_id": None, "created_at": None, "updated_at": None,
+        "source_event_id": None,
+        "created_at": None,
+        "updated_at": None,
     }
 
 
@@ -199,7 +207,7 @@ def test_success_resets_consecutive_failures():
 
 
 def test_stale_verified_procedure_decays_to_trial():
-    old = datetime.now(timezone.utc) - timedelta(days=120)
+    old = datetime.now(UTC) - timedelta(days=120)
     proc = _proc(status="verified", successful=5)
     proc["updated_at"] = old
     assert procedural.is_stale(proc) is True
@@ -210,13 +218,13 @@ def test_stale_verified_procedure_decays_to_trial():
 
 
 def test_fresh_or_trial_procedure_does_not_decay():
-    recent = datetime.now(timezone.utc) - timedelta(days=10)
+    recent = datetime.now(UTC) - timedelta(days=10)
     proc = _proc(status="verified", successful=5)
     proc["updated_at"] = recent
     assert procedural.is_stale(proc) is False
     assert procedural.apply_decay(proc)["decayed"] is False
     trial = _proc(status="trial", successful=1)
-    trial["updated_at"] = datetime.now(timezone.utc) - timedelta(days=200)
+    trial["updated_at"] = datetime.now(UTC) - timedelta(days=200)
     assert procedural.is_stale(trial) is False
 
 
@@ -236,16 +244,29 @@ def test_contradiction_detected_but_never_silent():
 
 # --- consolidate: reflection into Proposals --------------------------------
 
+
 def _episodes():
     return [
-        {"type": "task_completed", "content": "check_pln: berhasil, tagihan terbaca",
-         "event_id": "ev-1"},
-        {"type": "task_completed", "content": "check_pln: berhasil, tagihan terbaca",
-         "event_id": "ev-2"},
-        {"type": "user_message", "content": "I always prefer the cheapest price",
-         "event_id": "ev-3"},
-        {"type": "user_message", "content": "I always prefer the cheapest price",
-         "event_id": "ev-4"},
+        {
+            "type": "task_completed",
+            "content": "check_pln: berhasil, tagihan terbaca",
+            "event_id": "ev-1",
+        },
+        {
+            "type": "task_completed",
+            "content": "check_pln: berhasil, tagihan terbaca",
+            "event_id": "ev-2",
+        },
+        {
+            "type": "user_message",
+            "content": "I always prefer the cheapest price",
+            "event_id": "ev-3",
+        },
+        {
+            "type": "user_message",
+            "content": "I always prefer the cheapest price",
+            "event_id": "ev-4",
+        },
     ]
 
 
@@ -260,18 +281,19 @@ def test_reflection_turns_repeated_success_into_inference():
 
 
 def test_reflection_needs_two_pieces_of_evidence():
-    single = [{"type": "task_completed",
-               "content": "check_pln: berhasil", "event_id": "ev-1"}]
+    single = [{"type": "task_completed", "content": "check_pln: berhasil", "event_id": "ev-1"}]
     assert consolidate.reflect_episodes(single) == []
     assert consolidate.reflect_episodes([]) == []
 
 
 def test_reflection_detects_repeated_failure():
     episodes = [
-        {"type": "task_completed", "content": "check_pln: gagal, situs tidak bisa dibuka",
-         "event_id": "ev-1"},
-        {"type": "task_completed", "content": "check_pln: gagal, timeout",
-         "event_id": "ev-2"},
+        {
+            "type": "task_completed",
+            "content": "check_pln: gagal, situs tidak bisa dibuka",
+            "event_id": "ev-1",
+        },
+        {"type": "task_completed", "content": "check_pln: gagal, timeout", "event_id": "ev-2"},
     ]
     inferences = consolidate.reflect_episodes(episodes)
     assert len(inferences) == 1
@@ -285,12 +307,10 @@ def test_reflection_proposes_never_writes_active_facts():
     seen = []
 
     def fake_propose(user_id, key, value, source, agent_id=None, event_id=None, dsn=None):
-        seen.append({"key": key, "value": value, "source": source,
-                     "event_id": event_id})
+        seen.append({"key": key, "value": value, "source": source, "event_id": event_id})
         return {"key": key, "value": value, "source": source, "status": "proposed"}
 
-    proposals = consolidate.reflect_and_propose(
-        "user-1", _episodes(), propose=fake_propose)
+    proposals = consolidate.reflect_and_propose("user-1", _episodes(), propose=fake_propose)
     assert len(proposals) == 2
     assert all(p["source"] == "inferred" for p in seen)
     assert all(p["status"] == "proposed" for p in proposals)
@@ -298,6 +318,7 @@ def test_reflection_proposes_never_writes_active_facts():
 
 
 # --- episodic: dual-level retrieval ----------------------------------------
+
 
 def test_extract_entities_and_concepts():
     assert "sm-a546e" in episodic.extract_entities("Samsung Galaxy SM-A546E price")
@@ -313,8 +334,7 @@ def test_dual_level_entity_match_beats_concept_match():
         {"id": "ep-entity", "content": "Asus Vivobook 14 X1404 price dropped"},
         {"id": "ep-other", "content": "tagihan listrik pln bulan ini"},
     ]
-    results = episodic.dual_level_search(
-        episodes, "Asus Vivobook 14 X1404 price")
+    results = episodic.dual_level_search(episodes, "Asus Vivobook 14 X1404 price")
     assert results[0]["id"] == "ep-entity"
     assert results[0]["level"] == "entity"
     assert results[1]["id"] == "ep-concept"
@@ -328,8 +348,7 @@ def test_dual_level_vector_similarity_breaks_ties_with_embedder():
         {"id": "ep-a", "content": "kopi tubruk pagi hari"},
         {"id": "ep-b", "content": "tagihan listrik pln"},
     ]
-    results = episodic.dual_level_search(
-        episodes, "kopi tubruk", embedder=HashEmbedding())
+    results = episodic.dual_level_search(episodes, "kopi tubruk", embedder=HashEmbedding())
     assert results[0]["id"] == "ep-a"
     assert results[0]["similarity"] > results[1]["similarity"]
 
@@ -343,14 +362,30 @@ def test_dual_level_search_validates_input():
 
 # --- graphs/identity: dual-level product ranking ----------------------------
 
+
 def _products():
     return [
-        {"id": "p-1", "brand": "Asus", "series": "Vivobook",
-         "model_number": "X1404", "category": "laptop"},
-        {"id": "p-2", "brand": "Asus", "series": "Zenbook",
-         "model_number": "UX3405", "category": "laptop"},
-        {"id": "p-3", "brand": "Samsung", "series": "Galaxy",
-         "model_number": "SM-A546E", "category": "phone"},
+        {
+            "id": "p-1",
+            "brand": "Asus",
+            "series": "Vivobook",
+            "model_number": "X1404",
+            "category": "laptop",
+        },
+        {
+            "id": "p-2",
+            "brand": "Asus",
+            "series": "Zenbook",
+            "model_number": "UX3405",
+            "category": "laptop",
+        },
+        {
+            "id": "p-3",
+            "brand": "Samsung",
+            "series": "Galaxy",
+            "model_number": "SM-A546E",
+            "category": "phone",
+        },
     ]
 
 

@@ -16,7 +16,7 @@ kategori + vonis + waktu). Fungsi `skor_sumber` memakai ulang
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import psycopg
 from psycopg.rows import dict_row
@@ -28,7 +28,8 @@ DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 def _connect(dsn=None):
     return psycopg.connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
+        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
+    )
 
 
 def source_score(source: str, category: str = "", dsn=None) -> dict:
@@ -38,20 +39,24 @@ def source_score(source: str, category: str = "", dsn=None) -> dict:
     "umur_pembacaan_terakhir_detik"}. Tanpa pembacaan -> persen None,
     turunkan_vonis False (belum ada bukti buruk).
     """
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT vonis, created_at FROM source_readings"
-                " WHERE sumber = %s AND category = %s"
-                " ORDER BY created_at DESC LIMIT 50",
-                (source, category))
-            rows = cur.fetchall()
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT vonis, created_at FROM source_readings"
+            " WHERE sumber = %s AND category = %s"
+            " ORDER BY created_at DESC LIMIT 50",
+            (source, category),
+        )
+        rows = cur.fetchall()
     if not rows:
-        return {"percent_verified": None, "amount": 0,
-                "downgrade_verdict": False, "last_reading_age_seconds": None}
+        return {
+            "percent_verified": None,
+            "amount": 0,
+            "downgrade_verdict": False,
+            "last_reading_age_seconds": None,
+        }
     # skor_keandalan memakai 50 TERAKHIR dalam urutan kronologis.
     result = reliability_score([r["vonis"] for r in reversed(rows)])
-    umur = (datetime.now(timezone.utc) - rows[0]["created_at"]).total_seconds()
+    umur = (datetime.now(UTC) - rows[0]["created_at"]).total_seconds()
     result["last_reading_age_seconds"] = round(umur, 1)
     return result
 
@@ -72,9 +77,12 @@ def procedure_score(procedure_id: str, user_id: str, dsn=None) -> dict:
     if total == 0:
         return {"percent_verified": None, "amount": 0, "downgrade_verdict": False}
     percent = round(procedure["successful_runs"] / total * 100, 1)
-    return {"percent_verified": percent, "amount": total,
-            "downgrade_verdict": percent < 80.0,
-            "status": procedure["status"]}
+    return {
+        "percent_verified": percent,
+        "amount": total,
+        "downgrade_verdict": percent < 80.0,
+        "status": procedure["status"],
+    }
 
 
 def label_panel(source: str, category: str = "", dsn=None) -> str:
@@ -83,6 +91,8 @@ def label_panel(source: str, category: str = "", dsn=None) -> str:
     score = source_score(source, category, dsn=dsn)
     if score["amount"] == 0:
         return f"{source}, kategori {category or '-'}: belum ada pembacaan"
-    return (f"{source}, kategori {category or '-'}: "
-            f"{score['percent_verified']}% terverifikasi dari "
-            f"{score['amount']} pembacaan terakhir")
+    return (
+        f"{source}, kategori {category or '-'}: "
+        f"{score['percent_verified']}% terverifikasi dari "
+        f"{score['amount']} pembacaan terakhir"
+    )

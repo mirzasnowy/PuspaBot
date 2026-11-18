@@ -14,7 +14,7 @@ A run whose due time has passed is not silently dropped:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 __all__ = [
     "LATE_GRACE",
@@ -31,13 +31,13 @@ LATE_GRACE = timedelta(hours=12)
 
 def _aware(moment: datetime) -> datetime:
     if moment.tzinfo is None:
-        return moment.replace(tzinfo=timezone.utc)
+        return moment.replace(tzinfo=UTC)
     return moment
 
 
 def lateness(due_at: datetime, now: datetime | None = None) -> timedelta:
     """How far past due a run is (negative when not yet due)."""
-    now = _aware(now or datetime.now(timezone.utc))
+    now = _aware(now or datetime.now(UTC))
     return now - _aware(due_at)
 
 
@@ -75,7 +75,7 @@ def sort_due_first(runs, *, now: datetime | None = None) -> list:
     worker that takes from the front always picks the most urgent
     runnable run first.
     """
-    now = _aware(now or datetime.now(timezone.utc))
+    now = _aware(now or datetime.now(UTC))
 
     def key(run):
         due_at = _aware(run["due_at"])

@@ -36,8 +36,8 @@ def _master_key():
         )
     try:
         key = base64.urlsafe_b64decode(raw.encode())
-    except Exception:
-        raise VaultError("PUSPA_VAULT_MASTER_KEY bukan base64 urlsafe yang valid")
+    except Exception as err:
+        raise VaultError("PUSPA_VAULT_MASTER_KEY bukan base64 urlsafe yang valid") from err
     if len(key) != 32:
         raise VaultError("PUSPA_VAULT_MASTER_KEY harus 32 byte")
     return key
@@ -91,13 +91,12 @@ def get(user_id, name, dsn=None):
     """Ambil nilai terdekripsi. Raise KeyError kalau nama tidak ada
     untuk pengguna ini (termasuk kalau nama itu milik pengguna lain)."""
     _master_key()  # fail-closed: tanpa master key, tolak sebelum menyentuh DB
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT ciphertext FROM vault WHERE user_id = %s AND name = %s",
-                (user_id, name),
-            )
-            row = cur.fetchone()
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT ciphertext FROM vault WHERE user_id = %s AND name = %s",
+            (user_id, name),
+        )
+        row = cur.fetchone()
     if row is None:
         raise KeyError(name)
     return _fernet(user_id).decrypt(row[0].encode()).decode()
@@ -118,11 +117,10 @@ def delete(user_id, name, dsn=None):
 def list_names(user_id, dsn=None):
     """Daftar nama entri vault milik pengguna, terurut."""
     _master_key()  # fail-closed: tanpa master key, tolak sebelum menyentuh DB
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT name FROM vault WHERE user_id = %s ORDER BY name",
-                (user_id,),
-            )
-            rows = cur.fetchall()
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT name FROM vault WHERE user_id = %s ORDER BY name",
+            (user_id,),
+        )
+        rows = cur.fetchall()
     return [r[0] for r in rows]

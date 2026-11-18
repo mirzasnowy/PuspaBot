@@ -27,7 +27,7 @@ tanpa memanggil ``executor`` lagi.
 import hashlib
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .tokens import (
     TokenError,
@@ -48,16 +48,16 @@ KIND_TOOLS = {
     "send": {"send", "gmail.kirim", "gmail.send", "email.kirim"},
     "create_event": {"create_event", "calendar.create_event", "calendar.create"},
     "prepare_payment": {"prepare_payment", "pay", "payment.bayar"},
-    "delete": {"delete", "delete"},
+    "delete": {"delete"},
     "deploy": {"deploy"},
 }
 
 # Scope konektor yang mengizinkan tiap kind.
 KIND_SCOPES = {
-    "send": {"send", "send", "write"},
+    "send": {"send", "write"},
     "create_event": {"create_event", "write", "create"},
     "prepare_payment": {"prepare_payment", "pay"},
-    "delete": {"delete", "delete"},
+    "delete": {"delete"},
     "deploy": {"deploy"},
 }
 
@@ -98,10 +98,7 @@ def _token_allows_kind(payload: dict, kind: str) -> bool:
         if tool_permission(payload, tool) in ("allow", "ask"):
             return True
     scopes = KIND_SCOPES.get(kind, set())
-    for items_scope in payload.get("connectors", {}).values():
-        if set(items_scope) & scopes:
-            return True
-    return False
+    return any(set(items_scope) & scopes for items_scope in payload.get("connectors", {}).values())
 
 
 class Gate:
@@ -167,9 +164,7 @@ class Gate:
             tid = token_id(payload)
         elif isinstance(token, str):
             if self.public_key is None:
-                raise GateDenied(
-                    "Gate butuh public_key untuk memverifikasi token string"
-                )
+                raise GateDenied("Gate butuh public_key untuk memverifikasi token string")
             try:
                 payload = verify_token(token, self.public_key)
             except TokenError as exc:
@@ -196,9 +191,7 @@ class Gate:
             if nominal is not None:
                 rupiah_max = payload.get("budget", {}).get("rupiah_max")
                 if rupiah_max is not None and nominal > rupiah_max:
-                    raise GateDenied(
-                        f"nominal Rp{nominal} melebihi anggaran token Rp{rupiah_max}"
-                    )
+                    raise GateDenied(f"nominal Rp{nominal} melebihi anggaran token Rp{rupiah_max}")
 
     # -- API kontrak --------------------------------------------------
     def request_approval(self, *, user_id, agent_id, token, kind, content: dict) -> ApprovalRequest:
@@ -270,7 +263,9 @@ class Gate:
         if request.status != "approved":
             self._deny(request, f"aksi belum disetujui (status: {request.status!r})")
         if _content_hash(request.content) != request.content_hash:
-            self._deny(request, "action content changed after approval; approval void", invalidate=True)
+            self._deny(
+                request, "action content changed after approval; approval void", invalidate=True
+            )
         # Token masih valid? (cek ulang exp + pencabutan)
         if request.token_payload.get("exp", 0) <= int(time.time()):
             self._deny(request, "token sudah kedaluwarsa", invalidate=True)

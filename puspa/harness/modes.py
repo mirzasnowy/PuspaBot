@@ -47,11 +47,11 @@ from .sandbox_profiles import (
 )
 
 __all__ = [
+    "MODES",
     "MODE_ARCHITECT",
     "MODE_ASK",
     "MODE_CODE",
     "MODE_DEBUG",
-    "MODES",
     "ModeError",
     "ModeSpec",
     "enforce_read_only_tools",
@@ -99,8 +99,7 @@ MODES: dict[str, ModeSpec] = {
     MODE_ARCHITECT: ModeSpec(
         name=MODE_ARCHITECT,
         description=(
-            "Plan only: build a repo map and a plan, never write a "
-            "file and never execute code."
+            "Plan only: build a repo map and a plan, never write a file and never execute code."
         ),
         profile=PROFILE_READ_ONLY,
         diff_mode=False,
@@ -113,8 +112,7 @@ MODES: dict[str, ModeSpec] = {
     MODE_CODE: ModeSpec(
         name=MODE_CODE,
         description=(
-            "Implement through surgical unified diffs only; every "
-            "generator answer must be a diff."
+            "Implement through surgical unified diffs only; every generator answer must be a diff."
         ),
         profile=PROFILE_WORKSPACE_WRITE,
         diff_mode=True,
@@ -140,10 +138,7 @@ MODES: dict[str, ModeSpec] = {
     ),
     MODE_ASK: ModeSpec(
         name=MODE_ASK,
-        description=(
-            "Answer only: one answer, no file changes, no code "
-            "execution."
-        ),
+        description=("Answer only: one answer, no file changes, no code execution."),
         profile=PROFILE_READ_ONLY,
         diff_mode=False,
         reproduce_first=False,
@@ -169,10 +164,7 @@ def get_mode(name: str) -> ModeSpec:
     try:
         spec = MODES[name]
     except KeyError:
-        raise ModeError(
-            f"unknown working mode {name!r}; known modes: "
-            f"{sorted(MODES)}"
-        ) from None
+        raise ModeError(f"unknown working mode {name!r}; known modes: {sorted(MODES)}") from None
     get_profile(spec.profile)
     return spec
 

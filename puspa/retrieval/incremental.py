@@ -115,10 +115,8 @@ class IncrementalUpdater:
     removes them.
     """
 
-    def __init__(self, graph: KnowledgeGraph | None = None,
-                 extractor=None):
-        self.graph = graph if graph is not None else KnowledgeGraph(
-            extractor=extractor)
+    def __init__(self, graph: KnowledgeGraph | None = None, extractor=None):
+        self.graph = graph if graph is not None else KnowledgeGraph(extractor=extractor)
         self.extractor = extractor or self.graph.extractor
         # passage id -> content hash, and hash -> first passage id
         # that indexed that text. Both are the dedup registry.
@@ -138,11 +136,9 @@ class IncrementalUpdater:
         node = self.graph.nodes.get(normalize_entity_name(name))
         return len(node.source_ids) if node is not None else 0
 
-    def edge_weight(self, subject: str, relation: str,
-                    object: str) -> int:
+    def edge_weight(self, subject: str, relation: str, object: str) -> int:
         """Passages supporting a triple: 0 when the edge is absent."""
-        key = (normalize_entity_name(subject), relation,
-               normalize_entity_name(object))
+        key = (normalize_entity_name(subject), relation, normalize_entity_name(object))
         edge = self.graph.edges.get(key)
         return len(edge.source_ids) if edge is not None else 0
 
@@ -162,18 +158,14 @@ class IncrementalUpdater:
         """What a snapshot does not contain any more: new node
         names, edge keys and passage ids, each sorted."""
         return {
-            "nodes": sorted(
-                set(self.graph.nodes) - set(before["nodes"])),
-            "edges": sorted(
-                set(self.graph.edges) - set(before["edges"])),
-            "passages": sorted(
-                set(self.graph.passages) - set(before["passages"])),
+            "nodes": sorted(set(self.graph.nodes) - set(before["nodes"])),
+            "edges": sorted(set(self.graph.edges) - set(before["edges"])),
+            "passages": sorted(set(self.graph.passages) - set(before["passages"])),
         }
 
     # -- adding ----------------------------------------------------
 
-    def add_passage(self, passage_id: str, text: str,
-                    extractor=None) -> dict:
+    def add_passage(self, passage_id: str, text: str, extractor=None) -> dict:
         """Merge one passage into the graph.
 
         Same id with the same text is a no-op (already indexed).
@@ -189,8 +181,8 @@ class IncrementalUpdater:
         digest = content_hash(text)
         if passage_id in self.graph.passages:
             if self._passage_hash.get(passage_id) == digest or (
-                    normalize_text(self.graph.passages[passage_id])
-                    == normalize_text(text)):
+                normalize_text(self.graph.passages[passage_id]) == normalize_text(text)
+            ):
                 stats = _empty_stats()
                 stats["duplicate_passages"] = 1
                 stats["already_indexed"] = True
@@ -201,8 +193,7 @@ class IncrementalUpdater:
             stats["duplicate_passages"] = 1
             stats["duplicate_of"] = self._hash_to_passage[digest]
             return _finish(stats, self.graph)
-        return _finish(
-            self._merge(passage_id, text, digest, extractor), self.graph)
+        return _finish(self._merge(passage_id, text, digest, extractor), self.graph)
 
     def add_passages(self, passages, extractor=None) -> dict:
         """Merge several passages: a dict id to text, or an
@@ -210,10 +201,7 @@ class IncrementalUpdater:
         across the batch; a duplicate inside the batch counts
         as a duplicate, not as an addition.
         """
-        if isinstance(passages, dict):
-            items = list(passages.items())
-        else:
-            items = list(passages)
+        items = list(passages.items()) if isinstance(passages, dict) else list(passages)
         total = _empty_stats()
         for passage_id, text in items:
             stats = self.add_passage(passage_id, text, extractor)
@@ -227,12 +215,10 @@ class IncrementalUpdater:
             total["removed_nodes"] += stats["removed_nodes"]
             total["removed_edges"] += stats["removed_edges"]
             total["weight_changes"] += stats["weight_changes"]
-            total["already_indexed"] = (
-                total["already_indexed"] or stats["already_indexed"])
+            total["already_indexed"] = total["already_indexed"] or stats["already_indexed"]
         return _finish(total, self.graph)
 
-    def add_document(self, doc_id: str, text: str,
-                     extractor=None) -> dict:
+    def add_document(self, doc_id: str, text: str, extractor=None) -> dict:
         """Merge one document, passage by passage.
 
         The document is split the same way the graph splits it,
@@ -247,13 +233,10 @@ class IncrementalUpdater:
         if not isinstance(text, str) or text == "":
             raise ValueError("text must be a non-empty string")
         if doc_id in self.graph.doc_passages:
-            old_text = " ".join(
-                self.graph.passages[pid]
-                for pid in self.graph.doc_passages[doc_id])
+            old_text = " ".join(self.graph.passages[pid] for pid in self.graph.doc_passages[doc_id])
             if normalize_text(old_text) == normalize_text(text):
                 stats = _empty_stats()
-                stats["duplicate_passages"] = len(
-                    self.graph.doc_passages[doc_id])
+                stats["duplicate_passages"] = len(self.graph.doc_passages[doc_id])
                 stats["already_indexed"] = True
                 stats["doc_id"] = doc_id
                 return _finish(stats, self.graph)
@@ -280,10 +263,7 @@ class IncrementalUpdater:
     def add_documents(self, documents, extractor=None) -> dict:
         """Merge several documents: a dict doc id to text, or an
         iterable of (doc_id, text) pairs."""
-        if isinstance(documents, dict):
-            items = list(documents.items())
-        else:
-            items = list(documents)
+        items = list(documents.items()) if isinstance(documents, dict) else list(documents)
         total = _empty_stats()
         for doc_id, text in items:
             stats = self.add_document(doc_id, text, extractor)
@@ -297,14 +277,12 @@ class IncrementalUpdater:
             total["removed_nodes"] += stats["removed_nodes"]
             total["removed_edges"] += stats["removed_edges"]
             total["weight_changes"] += stats["weight_changes"]
-            total["already_indexed"] = (
-                total["already_indexed"] or stats["already_indexed"])
+            total["already_indexed"] = total["already_indexed"] or stats["already_indexed"]
         return _finish(total, self.graph)
 
     # -- replacing -------------------------------------------------
 
-    def update_passage(self, passage_id: str, new_text: str,
-                       extractor=None) -> dict:
+    def update_passage(self, passage_id: str, new_text: str, extractor=None) -> dict:
         """Replace one passage in place: detach the old text,
         then merge the new text. The rest of the graph is
         untouched. A passage that does not exist yet is simply
@@ -316,8 +294,7 @@ class IncrementalUpdater:
             raise ValueError("text must be a non-empty string")
         if passage_id not in self.graph.passages:
             return self.add_passage(passage_id, new_text, extractor)
-        if normalize_text(self.graph.passages[passage_id]) == (
-                normalize_text(new_text)):
+        if normalize_text(self.graph.passages[passage_id]) == (normalize_text(new_text)):
             stats = _empty_stats()
             stats["duplicate_passages"] = 1
             stats["already_indexed"] = True
@@ -332,14 +309,12 @@ class IncrementalUpdater:
         added = self._merge(passage_id, new_text, digest, extractor)
         if owner is not None:
             self._passage_doc[passage_id] = owner
-        for key in ("added_passages", "new_nodes", "merged_nodes",
-                    "new_edges", "merged_edges"):
+        for key in ("added_passages", "new_nodes", "merged_nodes", "new_edges", "merged_edges"):
             removed[key] += added[key]
         removed["weight_changes"] += added["weight_changes"]
         return _finish(removed, self.graph)
 
-    def update_document(self, doc_id: str, new_text: str,
-                        extractor=None) -> dict:
+    def update_document(self, doc_id: str, new_text: str, extractor=None) -> dict:
         """Replace one document in place: only that document is
         detached and re-merged. Every other document keeps its
         nodes, edges and passages exactly as they were.
@@ -350,21 +325,23 @@ class IncrementalUpdater:
             raise ValueError("text must be a non-empty string")
         if doc_id not in self.graph.doc_passages:
             return self.add_document(doc_id, new_text, extractor)
-        old_text = " ".join(
-            self.graph.passages[pid]
-            for pid in self.graph.doc_passages[doc_id])
+        old_text = " ".join(self.graph.passages[pid] for pid in self.graph.doc_passages[doc_id])
         if normalize_text(old_text) == normalize_text(new_text):
             stats = _empty_stats()
-            stats["duplicate_passages"] = len(
-                self.graph.doc_passages[doc_id])
+            stats["duplicate_passages"] = len(self.graph.doc_passages[doc_id])
             stats["already_indexed"] = True
             stats["doc_id"] = doc_id
             return _finish(stats, self.graph)
         removed = self.remove_document(doc_id)
         added = self.add_document(doc_id, new_text, extractor)
-        for key in ("added_passages", "duplicate_passages",
-                    "new_nodes", "merged_nodes", "new_edges",
-                    "merged_edges"):
+        for key in (
+            "added_passages",
+            "duplicate_passages",
+            "new_nodes",
+            "merged_nodes",
+            "new_edges",
+            "merged_edges",
+        ):
             removed[key] += added[key]
         removed["weight_changes"] += added["weight_changes"]
         removed["doc_id"] = doc_id
@@ -418,8 +395,8 @@ class IncrementalUpdater:
             seen_here.add(entity.name)
             if entity.name not in self.graph.nodes:
                 self.graph.nodes[entity.name] = Entity(
-                    name=entity.name, kind=entity.kind,
-                    source_ids=set(entity.source_ids))
+                    name=entity.name, kind=entity.kind, source_ids=set(entity.source_ids)
+                )
                 stats["new_nodes"] += 1
             else:
                 node = self.graph.nodes[entity.name]
@@ -428,17 +405,20 @@ class IncrementalUpdater:
                 if node.kind is None and entity.kind:
                     node.kind = entity.kind
                 stats["merged_nodes"] += 1
-                stats["weight_changes"].append({
-                    "kind": "node", "name": entity.name,
-                    "weight_before": before,
-                    "weight_after": len(node.source_ids)})
+                stats["weight_changes"].append(
+                    {
+                        "kind": "node",
+                        "name": entity.name,
+                        "weight_before": before,
+                        "weight_after": len(node.source_ids),
+                    }
+                )
             counted_nodes.add(entity.name)
         for triple in extraction.triples:
             for name in (triple.subject, triple.object):
                 seen_here.add(name)
                 if name not in self.graph.nodes:
-                    self.graph.nodes[name] = Entity(
-                        name=name, source_ids=set(triple.source_ids))
+                    self.graph.nodes[name] = Entity(name=name, source_ids=set(triple.source_ids))
                     stats["new_nodes"] += 1
                     counted_nodes.add(name)
                 elif name not in counted_nodes:
@@ -447,32 +427,41 @@ class IncrementalUpdater:
                     node.source_ids |= triple.source_ids
                     if len(node.source_ids) != before:
                         stats["merged_nodes"] += 1
-                        stats["weight_changes"].append({
-                            "kind": "node", "name": name,
-                            "weight_before": before,
-                            "weight_after": len(node.source_ids)})
+                        stats["weight_changes"].append(
+                            {
+                                "kind": "node",
+                                "name": name,
+                                "weight_before": before,
+                                "weight_after": len(node.source_ids),
+                            }
+                        )
                     counted_nodes.add(name)
         self.graph.passage_entities[passage_id] = seen_here
         for triple in extraction.triples:
             key = (triple.subject, triple.relation, triple.object)
             if key not in self.graph.edges:
                 self.graph.edges[key] = Triple(
-                    subject=triple.subject, relation=triple.relation,
+                    subject=triple.subject,
+                    relation=triple.relation,
                     object=triple.object,
-                    source_ids=set(triple.source_ids))
+                    source_ids=set(triple.source_ids),
+                )
                 stats["new_edges"] += 1
             else:
                 edge = self.graph.edges[key]
                 before = len(edge.source_ids)
                 edge.source_ids |= triple.source_ids
                 stats["merged_edges"] += 1
-                stats["weight_changes"].append({
-                    "kind": "edge",
-                    "subject": triple.subject,
-                    "relation": triple.relation,
-                    "object": triple.object,
-                    "weight_before": before,
-                    "weight_after": len(edge.source_ids)})
+                stats["weight_changes"].append(
+                    {
+                        "kind": "edge",
+                        "subject": triple.subject,
+                        "relation": triple.relation,
+                        "object": triple.object,
+                        "weight_before": before,
+                        "weight_after": len(edge.source_ids),
+                    }
+                )
         stats["added_passages"] = 1
         return stats
 
@@ -515,8 +504,7 @@ class IncrementalUpdater:
         self.graph.passages.pop(passage_id, None)
         self.graph.passage_entities.pop(passage_id, None)
         digest = self._passage_hash.pop(passage_id, None)
-        if digest is not None and self._hash_to_passage.get(digest) == (
-                passage_id):
+        if digest is not None and self._hash_to_passage.get(digest) == (passage_id):
             del self._hash_to_passage[digest]
         self._passage_extraction.pop(passage_id, None)
         doc_id = self._passage_doc.pop(passage_id, None)

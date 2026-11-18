@@ -44,23 +44,21 @@ EMBEDDER = HashEmbedding()
 #: which is the normal shape of an incremental update: new
 #: listings arrive, old answers must keep working.
 NEW_LINE_DOCS = {
-    "d13": "Sony WH-1000XM5 is a headphone. "
-           "Sony WH-1000XM5 costs Rp4.999.000 at Shopee.",
+    "d13": "Sony WH-1000XM5 is a headphone. Sony WH-1000XM5 costs Rp4.999.000 at Shopee.",
     "d14": "Toko Audio Jaya sells Sony WH-1000XM5. "
-           "Toko Audio Jaya offers a promo: Sony WH-1000XM5 "
-           "for Rp3.999.000.",
+    "Toko Audio Jaya offers a promo: Sony WH-1000XM5 "
+    "for Rp3.999.000.",
     "d15": "Fraud report FR-99: Toko Audio Jaya ran a fake promo. "
-           "The seller never shipped the headphone.",
+    "The seller never shipped the headphone.",
 }
 
 #: New promo passages attached to the seller the fraud report
 #: is about. Used only by the dilution test.
 SAME_SELLER_PROMO = {
-    "d13": "Google Pixel 9 is a phone. "
-           "Google Pixel 9 costs Rp10.999.000 at Tokopedia.",
+    "d13": "Google Pixel 9 is a phone. Google Pixel 9 costs Rp10.999.000 at Tokopedia.",
     "d14": "Toko Gadget Murah sells Google Pixel 9. "
-           "Toko Gadget Murah offers a promo: Google Pixel 9 "
-           "for Rp6.999.000.",
+    "Toko Gadget Murah offers a promo: Google Pixel 9 "
+    "for Rp6.999.000.",
 }
 
 
@@ -75,9 +73,9 @@ def _recall_at_k(graph, k):
     reranker = DeterministicReranker(embedder=EMBEDDER)
     hits = 0
     for question, targets in QUERIES:
-        ids = {r["passage_id"]
-               for r in retriever.retrieve(
-                   question, top_k=k, reranker=reranker)[:k]}
+        ids = {
+            r["passage_id"] for r in retriever.retrieve(question, top_k=k, reranker=reranker)[:k]
+        }
         if ids & targets:
             hits += 1
     return hits / len(QUERIES)
@@ -103,8 +101,7 @@ def test_new_passage_makes_new_entity_retrievable():
     # Four passages mention the new product.
     assert updater.node_weight("google pixel") == 4
     retriever = HippoRAGRetriever(updater.graph, embedder=EMBEDDER)
-    ids = [r["passage_id"] for r in retriever.retrieve(
-        "Where can I buy Google Pixel 9?", top_k=5)]
+    ids = [r["passage_id"] for r in retriever.retrieve("Where can I buy Google Pixel 9?", top_k=5)]
     assert "d14#p0" in ids
     assert "d13#p0" in ids
 
@@ -124,55 +121,53 @@ def test_old_entities_and_edges_survive_update():
     assert "wh-1000xm5" in added["nodes"]
     assert "toko audio jaya" in added["nodes"]
     assert "fr-99" in added["nodes"]
-    assert updater.graph.node_count == (
-        len(before["nodes"]) + len(added["nodes"]))
-    assert updater.graph.edge_count == (
-        len(before["edges"]) + len(added["edges"]))
+    assert updater.graph.node_count == (len(before["nodes"]) + len(added["nodes"]))
+    assert updater.graph.edge_count == (len(before["edges"]) + len(added["edges"]))
 
 
 def test_same_passage_twice_is_idempotent():
     updater = build_updater()
-    counts = (updater.graph.node_count, updater.graph.edge_count,
-              updater.graph.passage_count)
-    first = updater.add_passage(
-        "n1#p0", "Toko Baru sells Samsung Galaxy S24.")
+    counts = (updater.graph.node_count, updater.graph.edge_count, updater.graph.passage_count)
+    first = updater.add_passage("n1#p0", "Toko Baru sells Samsung Galaxy S24.")
     assert first["added_passages"] == 1
     assert first["new_nodes"] == 1  # toko baru; the product merges
-    counts = (updater.graph.node_count, updater.graph.edge_count,
-              updater.graph.passage_count)
+    counts = (updater.graph.node_count, updater.graph.edge_count, updater.graph.passage_count)
     # Same id, same text: a no-op.
-    again = updater.add_passage(
-        "n1#p0", "Toko Baru sells Samsung Galaxy S24.")
+    again = updater.add_passage("n1#p0", "Toko Baru sells Samsung Galaxy S24.")
     assert again["already_indexed"] is True
     assert again["added_passages"] == 0
-    assert (updater.graph.node_count, updater.graph.edge_count,
-            updater.graph.passage_count) == counts
+    assert (
+        updater.graph.node_count,
+        updater.graph.edge_count,
+        updater.graph.passage_count,
+    ) == counts
     # Same text under a different id: recognised as a duplicate
     # by content hash, not added as a second passage.
-    other = updater.add_passage(
-        "n2#p0", "Toko Baru sells Samsung Galaxy S24.")
+    other = updater.add_passage("n2#p0", "Toko Baru sells Samsung Galaxy S24.")
     assert other["duplicate_passages"] == 1
     assert other["duplicate_of"] == "n1#p0"
     assert other["added_passages"] == 0
-    assert (updater.graph.node_count, updater.graph.edge_count,
-            updater.graph.passage_count) == counts
+    assert (
+        updater.graph.node_count,
+        updater.graph.edge_count,
+        updater.graph.passage_count,
+    ) == counts
 
 
 def test_same_document_twice_is_idempotent():
     updater = build_updater()
-    counts = (updater.graph.node_count, updater.graph.edge_count,
-              updater.graph.passage_count)
-    first = updater.add_document(
-        "d13", "Google Pixel 9 is a phone.")
+    counts = (updater.graph.node_count, updater.graph.edge_count, updater.graph.passage_count)
+    first = updater.add_document("d13", "Google Pixel 9 is a phone.")
     assert first["added_passages"] == 1
-    counts = (updater.graph.node_count, updater.graph.edge_count,
-              updater.graph.passage_count)
-    again = updater.add_document(
-        "d13", "Google Pixel 9 is a phone.")
+    counts = (updater.graph.node_count, updater.graph.edge_count, updater.graph.passage_count)
+    again = updater.add_document("d13", "Google Pixel 9 is a phone.")
     assert again["already_indexed"] is True
     assert again["added_passages"] == 0
-    assert (updater.graph.node_count, updater.graph.edge_count,
-            updater.graph.passage_count) == counts
+    assert (
+        updater.graph.node_count,
+        updater.graph.edge_count,
+        updater.graph.passage_count,
+    ) == counts
 
 
 def test_repeated_triple_raises_edge_weight_not_duplicate_edge():
@@ -185,8 +180,7 @@ def test_repeated_triple_raises_edge_weight_not_duplicate_edge():
     nodes_before = updater.graph.node_count
     # Different wording, same triple: not a content duplicate,
     # so it merges and the edge weight goes up by one.
-    stats = updater.add_passage(
-        "n1#p0", "Toko Gadget Murah sells Samsung Galaxy S24 today.")
+    stats = updater.add_passage("n1#p0", "Toko Gadget Murah sells Samsung Galaxy S24 today.")
     assert stats["added_passages"] == 1
     assert stats["new_edges"] == 0
     assert stats["merged_edges"] == 1
@@ -195,37 +189,31 @@ def test_repeated_triple_raises_edge_weight_not_duplicate_edge():
     assert updater.edge_weight(*key) == 2
     assert updater.node_weight("toko gadget murah") == seller_before + 1
     change = next(
-        c for c in stats["weight_changes"]
-        if c["kind"] == "edge" and c["subject"] == key[0])
+        c for c in stats["weight_changes"] if c["kind"] == "edge" and c["subject"] == key[0]
+    )
     assert (change["weight_before"], change["weight_after"]) == (1, 2)
 
 
 def test_update_passage_replaces_old_facts():
     updater = build_updater()
     updater.add_passage("u1#p0", "Toko Baru sells Samsung Galaxy S24.")
-    assert updater.edge_weight(
-        "toko baru", "sells", "samsung galaxy s24") == 1
-    stats = updater.update_passage(
-        "u1#p0", "Toko Baru sells Xiaomi Redmi Note 13.")
+    assert updater.edge_weight("toko baru", "sells", "samsung galaxy s24") == 1
+    stats = updater.update_passage("u1#p0", "Toko Baru sells Xiaomi Redmi Note 13.")
     assert stats["removed_passages"] == 1
     assert stats["removed_edges"] == 1
     assert stats["added_passages"] == 1
     assert stats["new_edges"] == 1
     # The old fact is gone, the new fact is in, the seller node
     # survives, and the passage text is the new text.
-    assert updater.edge_weight(
-        "toko baru", "sells", "samsung galaxy s24") == 0
-    assert updater.edge_weight(
-        "toko baru", "sells", "xiaomi redmi note 13") == 1
+    assert updater.edge_weight("toko baru", "sells", "samsung galaxy s24") == 0
+    assert updater.edge_weight("toko baru", "sells", "xiaomi redmi note 13") == 1
     assert "toko baru" in updater.graph.nodes
-    assert updater.graph.passages["u1#p0"] == (
-        "Toko Baru sells Xiaomi Redmi Note 13.")
+    assert updater.graph.passages["u1#p0"] == ("Toko Baru sells Xiaomi Redmi Note 13.")
     # The shared product node survives: other passages still
     # mention it.
     assert "samsung galaxy s24" in updater.graph.nodes
     # Repeating the update with the same text is a no-op.
-    again = updater.update_passage(
-        "u1#p0", "Toko Baru sells Xiaomi Redmi Note 13.")
+    again = updater.update_passage("u1#p0", "Toko Baru sells Xiaomi Redmi Note 13.")
     assert again["already_indexed"] is True
     assert again["added_passages"] == 0
 
@@ -249,15 +237,12 @@ def test_remove_passage_drops_orphans_only():
 
 def test_update_document_replaces_only_that_doc():
     updater = build_updater()
-    updater.add_document(
-        "d15", "Toko Kamera Jaya sells Canon EOS R50.")
+    updater.add_document("d15", "Toko Kamera Jaya sells Canon EOS R50.")
     assert "canon" in updater.graph.nodes
     other_before = {
-        pid: text for pid, text in updater.graph.passages.items()
-        if not pid.startswith("d15#")
+        pid: text for pid, text in updater.graph.passages.items() if not pid.startswith("d15#")
     }
-    stats = updater.update_document(
-        "d15", "Toko Kamera Jaya sells Nikon Z30.")
+    stats = updater.update_document("d15", "Toko Kamera Jaya sells Nikon Z30.")
     assert stats["removed_passages"] == 1
     assert stats["added_passages"] == 1
     assert stats["removed_nodes"] >= 1
@@ -266,8 +251,7 @@ def test_update_document_replaces_only_that_doc():
     assert "toko kamera jaya" in updater.graph.nodes
     # Every passage outside d15 is byte-for-byte untouched.
     other_after = {
-        pid: text for pid, text in updater.graph.passages.items()
-        if not pid.startswith("d15#")
+        pid: text for pid, text in updater.graph.passages.items() if not pid.startswith("d15#")
     }
     assert other_after == other_before
 
@@ -303,49 +287,47 @@ def test_same_seller_promo_update_dilutes_top10_but_keeps_reach():
 def test_new_passage_bridges_old_seller_to_new_fraud_report():
     updater = build_updater()
     updater.add_passage(
-        "n1#p0", "Fraud report FR-99: Toko Ponsel Abal ran a fake "
-        "promo for Asus Vivobook 14.")
+        "n1#p0", "Fraud report FR-99: Toko Ponsel Abal ran a fake promo for Asus Vivobook 14."
+    )
     assert "fr-99" in updater.graph.nodes
     assert "fr-99" in updater.graph.neighbors("toko ponsel abal")
-    assert "asus vivobook 14" in updater.graph.neighbors(
-        "toko ponsel abal")
+    assert "asus vivobook 14" in updater.graph.neighbors("toko ponsel abal")
     retriever = HippoRAGRetriever(updater.graph, embedder=EMBEDDER)
-    ids = [r["passage_id"] for r in retriever.retrieve(
-        "Who should I avoid when buying Asus Vivobook 14?", top_k=10)]
+    ids = [
+        r["passage_id"]
+        for r in retriever.retrieve("Who should I avoid when buying Asus Vivobook 14?", top_k=10)
+    ]
     assert "n1#p0" in ids
     assert "d9#p0" in ids
 
 
 def test_batch_add_reports_merged_vs_new():
     updater = build_updater()
-    counts = (updater.graph.node_count, updater.graph.edge_count,
-              updater.graph.passage_count)
-    stats = updater.add_passages({
-        "b1#p0": "Toko Baru sells Samsung Galaxy S24.",
-        "b2#p0": "Toko Baru sells Samsung Galaxy S24.",
-        "b3#p0": "Toko Baru offers a promo: Samsung Galaxy S24 "
-                  "for Rp5.000.000.",
-    })
+    counts = (updater.graph.node_count, updater.graph.edge_count, updater.graph.passage_count)
+    stats = updater.add_passages(
+        {
+            "b1#p0": "Toko Baru sells Samsung Galaxy S24.",
+            "b2#p0": "Toko Baru sells Samsung Galaxy S24.",
+            "b3#p0": "Toko Baru offers a promo: Samsung Galaxy S24 for Rp5.000.000.",
+        }
+    )
     assert stats["added_passages"] == 2
     assert stats["duplicate_passages"] == 1
     assert stats["new_edges"] == 2
     assert "toko baru" in updater.graph.nodes
-    assert updater.edge_weight(
-        "toko baru", "sells", "samsung galaxy s24") == 1
-    assert updater.edge_weight(
-        "toko baru", "offers", "samsung galaxy s24") == 1
-    assert (updater.graph.node_count, updater.graph.edge_count,
-            updater.graph.passage_count) == (
+    assert updater.edge_weight("toko baru", "sells", "samsung galaxy s24") == 1
+    assert updater.edge_weight("toko baru", "offers", "samsung galaxy s24") == 1
+    assert (updater.graph.node_count, updater.graph.edge_count, updater.graph.passage_count) == (
         counts[0] + stats["new_nodes"],
         counts[1] + stats["new_edges"],
-        counts[2] + 2)
+        counts[2] + 2,
+    )
 
 
 def test_weights_are_zero_for_unknown_nodes_and_edges():
     updater = build_updater()
     assert updater.node_weight("no such seller") == 0
-    assert updater.edge_weight(
-        "no such seller", "sells", "no such product") == 0
+    assert updater.edge_weight("no such seller", "sells", "no such product") == 0
     assert updater.node_weight("samsung galaxy s24") > 0
 
 

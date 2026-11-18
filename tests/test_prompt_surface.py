@@ -142,9 +142,7 @@ def render_snapshot(surface, *, tools) -> dict:
 
 def write_snapshot(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def load_snapshot(path: Path) -> dict:
@@ -165,9 +163,7 @@ def test_layer_order_is_fixed_stable_then_context_then_volatile():
 
 def test_stable_layer_byte_identical_across_turns_in_one_session():
     session = PromptSession(stable=FIXTURE_STABLE, tools=FIXTURE_TOOLS)
-    first = session.build(
-        FIXTURE_MESSAGES, context=FIXTURE_CONTEXT, volatile=FIXTURE_VOLATILE
-    )
+    first = session.build(FIXTURE_MESSAGES, context=FIXTURE_CONTEXT, volatile=FIXTURE_VOLATILE)
     second = session.build(
         FIXTURE_MESSAGES,
         context="# Project context\n\nWorking directory: /other/project",
@@ -212,9 +208,7 @@ def test_empty_layers_render_without_dangling_separators():
 
 def test_builder_freezes_stable_and_records_refused_change():
     builder = PromptBuilder(tools=FIXTURE_TOOLS)
-    first = builder.build(
-        FIXTURE_MESSAGES, stable=FIXTURE_STABLE, volatile=FIXTURE_VOLATILE
-    )
+    first = builder.build(FIXTURE_MESSAGES, stable=FIXTURE_STABLE, volatile=FIXTURE_VOLATILE)
     second = builder.build(
         FIXTURE_MESSAGES,
         stable="# Identity\n\nYou are someone else now.",
@@ -266,9 +260,7 @@ def test_builder_passes_compressed_messages_through_untouched():
     ]
     before = [dict(message) for message in compressed]
     builder = PromptBuilder(tools=FIXTURE_TOOLS)
-    surface = builder.build(
-        compressed, stable=FIXTURE_STABLE, volatile=FIXTURE_VOLATILE
-    )
+    surface = builder.build(compressed, stable=FIXTURE_STABLE, volatile=FIXTURE_VOLATILE)
     assert surface.messages == compressed
     assert surface.messages is not compressed  # new list, same dicts
     assert all(a is b for a, b in zip(surface.messages, compressed))
@@ -286,9 +278,7 @@ def test_message_contract_is_validated_not_rewritten():
             stable=FIXTURE_STABLE,
         )
     with pytest.raises(ValueError, match="role must be one of"):
-        builder.build(
-            [{"role": "observer", "content": "hello"}], stable=FIXTURE_STABLE
-        )
+        builder.build([{"role": "observer", "content": "hello"}], stable=FIXTURE_STABLE)
     with pytest.raises(ValueError, match="must be a dict"):
         builder.build(["not a dict"], stable=FIXTURE_STABLE)
 
@@ -299,9 +289,7 @@ def test_message_contract_is_validated_not_rewritten():
 def test_snapshot_matches_committed_file():
     surface = build_fixture_surface()
     if os.environ.get("PROMPT_SURFACE_REGEN") == "1":
-        write_snapshot(
-            SNAPSHOT_PATH, render_snapshot(surface, tools=FIXTURE_TOOLS)
-        )
+        write_snapshot(SNAPSHOT_PATH, render_snapshot(surface, tools=FIXTURE_TOOLS))
     snapshot = load_snapshot(SNAPSHOT_PATH)
     assert snapshot["fixture_version"] == SNAPSHOT_VERSION
     assert snapshot["system_prompt"] == surface.system_prompt
@@ -362,21 +350,15 @@ def test_deferred_skill_change_held_to_next_session():
     )
     assert outcome == "deferred"
     assert len(session.pending_changes) == 1
-    current = session.build(
-        FIXTURE_MESSAGES, context=FIXTURE_CONTEXT, volatile=FIXTURE_VOLATILE
-    )
+    current = session.build(FIXTURE_MESSAGES, context=FIXTURE_CONTEXT, volatile=FIXTURE_VOLATILE)
     assert "billing" not in current.system_prompt
     nxt = session.next_session()
     assert session.pending_changes == []
-    applied = nxt.build(
-        FIXTURE_MESSAGES, context=FIXTURE_CONTEXT, volatile=FIXTURE_VOLATILE
-    )
+    applied = nxt.build(FIXTURE_MESSAGES, context=FIXTURE_CONTEXT, volatile=FIXTURE_VOLATILE)
     assert "# Skill: billing" in applied.system_prompt
     assert "Pay PLN and PDAM bills on time." in applied.system_prompt
     # The old session keeps its frozen stable layer until dropped.
-    again = session.build(
-        FIXTURE_MESSAGES, context=FIXTURE_CONTEXT, volatile=FIXTURE_VOLATILE
-    )
+    again = session.build(FIXTURE_MESSAGES, context=FIXTURE_CONTEXT, volatile=FIXTURE_VOLATILE)
     assert "billing" not in again.system_prompt
 
 
@@ -389,16 +371,12 @@ def test_explicit_opt_in_applies_skill_change_immediately():
     )
     assert outcome == "applied"
     assert session.pending_changes == []
-    surface = session.build(
-        FIXTURE_MESSAGES, context=FIXTURE_CONTEXT, volatile=FIXTURE_VOLATILE
-    )
+    surface = session.build(FIXTURE_MESSAGES, context=FIXTURE_CONTEXT, volatile=FIXTURE_VOLATILE)
     assert "# Skill: billing" in surface.system_prompt
 
 
 def test_deferred_model_switch_applies_next_session_only():
-    session = PromptSession(
-        stable=FIXTURE_STABLE, tools=FIXTURE_TOOLS, model=FIXTURE_MODEL
-    )
+    session = PromptSession(stable=FIXTURE_STABLE, tools=FIXTURE_TOOLS, model=FIXTURE_MODEL)
     assert session.request_change("set_model", {"model": "other/model"}) == "deferred"
     assert session.model == FIXTURE_MODEL
     nxt = session.next_session()
@@ -407,23 +385,16 @@ def test_deferred_model_switch_applies_next_session_only():
 
 
 def test_opt_in_model_switch_applies_immediately():
-    session = PromptSession(
-        stable=FIXTURE_STABLE, tools=FIXTURE_TOOLS, model=FIXTURE_MODEL
-    )
+    session = PromptSession(stable=FIXTURE_STABLE, tools=FIXTURE_TOOLS, model=FIXTURE_MODEL)
     assert (
-        session.request_change(
-            "set_model", {"model": "other/model"}, apply_now=True
-        )
-        == "applied"
+        session.request_change("set_model", {"model": "other/model"}, apply_now=True) == "applied"
     )
     assert session.model == "other/model"
 
 
 def test_deferred_remove_skill_applies_next_session():
     session = PromptSession(stable=FIXTURE_STABLE, tools=FIXTURE_TOOLS)
-    session.request_change(
-        "add_skill", {"skill": "billing", "text": "Pay bills."}, apply_now=True
-    )
+    session.request_change("add_skill", {"skill": "billing", "text": "Pay bills."}, apply_now=True)
     assert session.request_change("remove_skill", {"skill": "billing"}) == "deferred"
     current = session.build([], context=None, volatile=None)
     assert "# Skill: billing" in current.system_prompt
@@ -483,12 +454,8 @@ def test_openai_messages_put_system_first_and_keep_history():
 
 def test_surface_feeds_both_formats_through_translate():
     surface = build_fixture_surface()
-    openai_req = openai_request(
-        surface, model=FIXTURE_MODEL, tools=FIXTURE_TOOLS
-    )
-    to_anthropic = translate_request(
-        openai_req, source="openai", target="anthropic"
-    )
+    openai_req = openai_request(surface, model=FIXTURE_MODEL, tools=FIXTURE_TOOLS)
+    to_anthropic = translate_request(openai_req, source="openai", target="anthropic")
     assert to_anthropic.payload["system"] == surface.system_prompt
     assert to_anthropic.payload["messages"][0]["role"] == "user"
     assert to_anthropic.report.dropped == []
@@ -497,9 +464,7 @@ def test_surface_feeds_both_formats_through_translate():
         "search_prices",
         "read_bill",
     ]
-    anthropic_req = anthropic_request(
-        surface, model=FIXTURE_MODEL, tools=anthropic_tools
-    )
+    anthropic_req = anthropic_request(surface, model=FIXTURE_MODEL, tools=anthropic_tools)
     blocks = anthropic_req["system"]
     assert blocks[0]["cache_control"] == {"type": "ephemeral"}
     back = translate_request(anthropic_req, source="anthropic", target="openai")
@@ -515,7 +480,7 @@ def test_anthropic_request_rejects_system_message_in_history():
         [{"role": "system", "content": "stray system message"}],
         stable=FIXTURE_STABLE,
     )
-    with pytest.raises(ValueError, match="system.*messages"):
+    with pytest.raises(ValueError, match=r"system.*messages"):
         anthropic_request(surface, model=FIXTURE_MODEL)
 
 

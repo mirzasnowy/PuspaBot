@@ -49,7 +49,13 @@ def test_execute_live_still_refuses_when_flag_on_no_client_yet():
 def test_wedge_definitions_carry_full_contracts():
     definitions = {d.connector_id: d for d in build_wedge_definitions()}
     assert sorted(definitions) == [
-        "blibli", "data", "pdam", "pln", "pulsa", "shopee", "tokopedia",
+        "blibli",
+        "data",
+        "pdam",
+        "pln",
+        "pulsa",
+        "shopee",
+        "tokopedia",
     ]
     price = definitions["shopee"].operation("check_price")
     assert price.request_schema == {"query": "string", "max_results": "integer"}

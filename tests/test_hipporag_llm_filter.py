@@ -27,6 +27,7 @@ prompt, the parsing, and the batching are exercised for real.
 
 import json
 import re
+from typing import Any
 
 import pytest
 
@@ -37,7 +38,6 @@ from puspa.retrieval.triple_filter import (
     DEFAULT_BATCH_SIZE,
     DeterministicTripleFilter,
     LLMTripleJudge,
-    TripleDecision,
     build_judge_prompt,
     parse_judge_reply,
 )
@@ -58,25 +58,29 @@ TRIPLES = [
 #: answers the trustworthiness question, drop the other product.
 STUB_DECISIONS = {
     ("fake promo", "reported_in", "fraud report fr-88"): (
-        True, "the fraud report answers whether the deal is "
-        "trustworthy"),
+        True,
+        ("the fraud report answers whether the deal is trustworthy"),
+    ),
     ("galaxy tab a9", "sells", "toko abal"): (
-        False, "Toko Abal sells a different product, irrelevant "
-        "to the S24 deal"),
+        False,
+        ("Toko Abal sells a different product, irrelevant to the S24 deal"),
+    ),
     ("promo", "is_a", "fake promo"): (
-        True, "a fake promo is exactly what makes the deal "
-        "untrustworthy"),
+        True,
+        ("a fake promo is exactly what makes the deal untrustworthy"),
+    ),
     ("samsung galaxy s24", "mentioned_with", "galaxy tab a9"): (
-        False, "Galaxy Tab A9 is a different product, nothing to "
-        "do with the S24 deal"),
+        False,
+        ("Galaxy Tab A9 is a different product, nothing to do with the S24 deal"),
+    ),
     ("samsung galaxy s24", "sells", "toko gadget murah"): (
-        True, "the seller of the phone the question asks about"),
-    ("toko gadget murah", "offers", "promo"): (
-        True, "the deal the question asks about"),
+        True,
+        "the seller of the phone the question asks about",
+    ),
+    ("toko gadget murah", "offers", "promo"): (True, "the deal the question asks about"),
 }
 
-_TRIPLE_LINE_RE = re.compile(
-    r"^(\d+)\. \((.*?)\) -\[(.*?)\]-> \((.*?)\)$", re.M)
+_TRIPLE_LINE_RE = re.compile(r"^(\d+)\. \((.*?)\) -\[(.*?)\]-> \((.*?)\)$", re.MULTILINE)
 
 
 class StubJudge:
@@ -96,13 +100,11 @@ class StubJudge:
         found = {}
         for match in _TRIPLE_LINE_RE.finditer(prompt):
             index = int(match.group(1))
-            found[index] = (
-                match.group(2), match.group(3), match.group(4))
-        reply = {"decisions": []}
+            found[index] = (match.group(2), match.group(3), match.group(4))
+        reply: dict[str, list[dict[str, Any]]] = {"decisions": []}
         for index in sorted(found):
             keep, reason = self.decisions[found[index]]
-            reply["decisions"].append(
-                {"index": index, "keep": keep, "reason": reason})
+            reply["decisions"].append({"index": index, "keep": keep, "reason": reason})
         return json.dumps(reply)
 
     @property
@@ -113,16 +115,20 @@ class StubJudge:
 def build_chain_graph() -> KnowledgeGraph:
     graph = KnowledgeGraph()
     nodes = (
-        "samsung galaxy s24", "toko gadget murah", "promo",
-        "fake promo", "fraud report fr-88", "galaxy tab a9",
+        "samsung galaxy s24",
+        "toko gadget murah",
+        "promo",
+        "fake promo",
+        "fraud report fr-88",
+        "galaxy tab a9",
         "toko abal",
     )
     for name in nodes:
         graph.nodes[name] = Entity(name=name, source_ids={"hand"})
     for subject, relation, obj in TRIPLES:
         graph.edges[(subject, relation, obj)] = Triple(
-            subject=subject, relation=relation, object=obj,
-            source_ids={"hand"})
+            subject=subject, relation=relation, object=obj, source_ids={"hand"}
+        )
     graph.passages = {
         "p1": "Samsung Galaxy S24 costs Rp12.999.000 at Tokopedia.",
         "p2": "Toko Gadget Murah sells Samsung Galaxy S24.",
@@ -161,6 +167,7 @@ def passage_ids(results):
 # The prompt and the reply parser
 # ---------------------------------------------------------------------------
 
+
 def test_judge_prompt_lists_every_triple_numbered():
     prompt = build_judge_prompt(QUERY, TRIPLES)
     assert QUERY in prompt
@@ -170,12 +177,15 @@ def test_judge_prompt_lists_every_triple_numbered():
 
 
 def test_parse_judge_reply_accepts_a_full_verdict():
-    reply = json.dumps({"decisions": [
-        {"index": 0, "keep": True, "reason": "helps"},
-        {"index": 1, "keep": False, "reason": "off topic"},
-    ]})
-    assert parse_judge_reply(reply, 2) == {
-        0: (True, "helps"), 1: (False, "off topic")}
+    reply = json.dumps(
+        {
+            "decisions": [
+                {"index": 0, "keep": True, "reason": "helps"},
+                {"index": 1, "keep": False, "reason": "off topic"},
+            ]
+        }
+    )
+    assert parse_judge_reply(reply, 2) == {0: (True, "helps"), 1: (False, "off topic")}
 
 
 def test_parse_judge_reply_rejects_bad_replies():
@@ -184,34 +194,64 @@ def test_parse_judge_reply_rejects_bad_replies():
     with pytest.raises(ValueError):
         parse_judge_reply(json.dumps({"decisions": []}), 1)
     with pytest.raises(ValueError):
-        parse_judge_reply(json.dumps({"decisions": [
-            {"index": 0, "keep": True, "reason": "helps"},
-            {"index": 0, "keep": False, "reason": "twice"},
-        ]}), 2)
+        parse_judge_reply(
+            json.dumps(
+                {
+                    "decisions": [
+                        {"index": 0, "keep": True, "reason": "helps"},
+                        {"index": 0, "keep": False, "reason": "twice"},
+                    ]
+                }
+            ),
+            2,
+        )
     with pytest.raises(ValueError):
-        parse_judge_reply(json.dumps({"decisions": [
-            {"index": 5, "keep": True, "reason": "out of range"},
-        ]}), 1)
+        parse_judge_reply(
+            json.dumps(
+                {
+                    "decisions": [
+                        {"index": 5, "keep": True, "reason": "out of range"},
+                    ]
+                }
+            ),
+            1,
+        )
     with pytest.raises(ValueError):
-        parse_judge_reply(json.dumps({"decisions": [
-            {"index": 0, "keep": "yes", "reason": "not a bool"},
-        ]}), 1)
+        parse_judge_reply(
+            json.dumps(
+                {
+                    "decisions": [
+                        {"index": 0, "keep": "yes", "reason": "not a bool"},
+                    ]
+                }
+            ),
+            1,
+        )
     with pytest.raises(ValueError):
-        parse_judge_reply(json.dumps({"decisions": [
-            {"index": 0, "keep": True, "reason": ""},
-        ]}), 1)
+        parse_judge_reply(
+            json.dumps(
+                {
+                    "decisions": [
+                        {"index": 0, "keep": True, "reason": ""},
+                    ]
+                }
+            ),
+            1,
+        )
 
 
 # ---------------------------------------------------------------------------
 # The LLM judge itself: batching, verdicts, fallback
 # ---------------------------------------------------------------------------
 
+
 def test_judge_calls_the_llm_once_for_a_batch():
     stub = StubJudge(STUB_DECISIONS)
     judge = LLMTripleJudge(stub.complete)
     assert judge.batch_size == DEFAULT_BATCH_SIZE
-    decisions = judge.filter(QUERY, TRIPLES, seeds={"samsung galaxy s24"},
-                             query_concepts=["cheap", "galaxy", "s24"])
+    decisions = judge.filter(
+        QUERY, TRIPLES, seeds={"samsung galaxy s24"}, query_concepts=["cheap", "galaxy", "s24"]
+    )
     assert stub.calls == 1
     assert len(decisions) == len(TRIPLES)
     for decision, triple in zip(decisions, TRIPLES):
@@ -247,9 +287,11 @@ def test_judge_rejects_a_non_callable_and_a_bad_batch_size():
 def test_judge_falls_back_to_deterministic_on_a_bad_reply():
     judge = LLMTripleJudge(lambda prompt: "this is not json")
     decisions = judge.filter(
-        QUERY, TRIPLES, seeds={"samsung galaxy s24"},
-        query_concepts=["cheap", "galaxy", "s24", "deal",
-                        "trustworthy"])
+        QUERY,
+        TRIPLES,
+        seeds={"samsung galaxy s24"},
+        query_concepts=["cheap", "galaxy", "s24", "deal", "trustworthy"],
+    )
     # The bad reply must not drop the graph: the deterministic
     # rule decides instead, and says so.
     assert judge.fallback_batches == 1
@@ -265,8 +307,7 @@ def test_judge_falls_back_to_deterministic_when_the_call_raises():
         raise RuntimeError("model unavailable")
 
     judge = LLMTripleJudge(boom)
-    decisions = judge.filter(QUERY, TRIPLES, seeds=set(),
-                             query_concepts=[])
+    decisions = judge.filter(QUERY, TRIPLES, seeds=set(), query_concepts=[])
     assert judge.fallback_batches == 1
     assert all(d.source == "deterministic" for d in decisions)
     # With no seeds and no concepts nothing survives the rule.
@@ -277,19 +318,23 @@ def test_judge_falls_back_to_deterministic_when_the_call_raises():
 # Judge versus deterministic rule: the verdicts genuinely differ
 # ---------------------------------------------------------------------------
 
+
 def test_llm_keeps_what_the_rule_drops_and_drops_what_it_keeps():
-    seeds = {"samsung galaxy s24", "galaxy tab a9",
-             "toko gadget murah", "toko abal"}
+    seeds = {"samsung galaxy s24", "galaxy tab a9", "toko gadget murah", "toko abal"}
     concepts = ["cheap", "deal", "galaxy", "s24", "trustworthy"]
     rule = DeterministicTripleFilter()
-    rule_kept = {d.triple for d in rule.filter(
-        QUERY, TRIPLES, seeds=seeds, query_concepts=concepts)
-        if d.keep}
+    rule_kept = {
+        d.triple
+        for d in rule.filter(QUERY, TRIPLES, seeds=seeds, query_concepts=concepts)
+        if d.keep
+    }
     stub = StubJudge(STUB_DECISIONS)
     judge = LLMTripleJudge(stub.complete)
-    llm_kept = {d.triple for d in judge.filter(
-        QUERY, TRIPLES, seeds=seeds, query_concepts=concepts)
-        if d.keep}
+    llm_kept = {
+        d.triple
+        for d in judge.filter(QUERY, TRIPLES, seeds=seeds, query_concepts=concepts)
+        if d.keep
+    }
     # Semantically relevant but sharing no word with the query:
     # kept by the LLM, dropped by the rule.
     assert ("promo", "is_a", "fake promo") in llm_kept
@@ -308,15 +353,14 @@ def test_llm_keeps_what_the_rule_drops_and_drops_what_it_keeps():
 # The retriever with the judge: the filtered walk really changes
 # ---------------------------------------------------------------------------
 
+
 def test_retriever_without_llm_uses_the_deterministic_filter():
     graph = build_chain_graph()
     retriever = HippoRAGRetriever(graph, embedder=HashEmbedding())
     results = retriever.retrieve(QUERY, top_k=10)
-    assert all(d.source == "deterministic"
-               for d in retriever.last_filter_decisions)
+    assert all(d.source == "deterministic" for d in retriever.last_filter_decisions)
     assert len(retriever.last_filter_decisions) == len(TRIPLES)
-    kept = {d.triple for d in retriever.last_filter_decisions
-            if d.keep}
+    kept = {d.triple for d in retriever.last_filter_decisions if d.keep}
     assert ("promo", "is_a", "fake promo") not in kept
     # The fraud report is cut off from the walk: the node is
     # unreachable from every seed, so its passage is not returned
@@ -328,23 +372,19 @@ def test_retriever_without_llm_uses_the_deterministic_filter():
 def test_retriever_with_llm_judge_reaches_the_fraud_report():
     graph = build_chain_graph()
     stub = StubJudge(STUB_DECISIONS)
-    retriever = HippoRAGRetriever(
-        graph, embedder=HashEmbedding(), llm_complete=stub.complete)
+    retriever = HippoRAGRetriever(graph, embedder=HashEmbedding(), llm_complete=stub.complete)
     results = retriever.retrieve(QUERY, top_k=10)
     assert stub.calls == 1
-    assert all(d.source == "llm"
-               for d in retriever.last_filter_decisions)
+    assert all(d.source == "llm" for d in retriever.last_filter_decisions)
     assert len(retriever.last_filter_decisions) == len(TRIPLES)
-    kept = {d.triple for d in retriever.last_filter_decisions
-            if d.keep}
+    kept = {d.triple for d in retriever.last_filter_decisions if d.keep}
     assert ("promo", "is_a", "fake promo") in kept
     assert ("fake promo", "reported_in", "fraud report fr-88") in kept
     assert ("samsung galaxy s24", "mentioned_with", "galaxy tab a9") not in kept
     # The walk now reaches the fraud report through the kept
     # chain, and the unrelated seller's passage loses the walk:
     # compare against the deterministic retriever on the same graph.
-    plain = HippoRAGRetriever(
-        graph, embedder=HashEmbedding()).retrieve(QUERY, top_k=10)
+    plain = HippoRAGRetriever(graph, embedder=HashEmbedding()).retrieve(QUERY, top_k=10)
     assert "p5" not in passage_ids(plain)
     assert "p5" in passage_ids(results)
     assert graph_score(results, "p5") > 0.05
@@ -359,22 +399,18 @@ def test_retriever_accepts_a_judge_object_and_rejects_both_seams():
     graph = build_chain_graph()
     stub = StubJudge(STUB_DECISIONS)
     judge = LLMTripleJudge(stub.complete)
-    retriever = HippoRAGRetriever(
-        graph, embedder=HashEmbedding(), triple_filter=judge)
+    retriever = HippoRAGRetriever(graph, embedder=HashEmbedding(), triple_filter=judge)
     retriever.retrieve(QUERY, top_k=5)
     assert stub.calls == 1
-    assert all(d.source == "llm"
-               for d in retriever.last_filter_decisions)
+    assert all(d.source == "llm" for d in retriever.last_filter_decisions)
     with pytest.raises(ValueError):
-        HippoRAGRetriever(graph, triple_filter=judge,
-                          llm_complete=stub.complete)
+        HippoRAGRetriever(graph, triple_filter=judge, llm_complete=stub.complete)
 
 
 def test_retriever_records_every_decision_with_a_reason():
     graph = build_chain_graph()
     stub = StubJudge(STUB_DECISIONS)
-    retriever = HippoRAGRetriever(
-        graph, embedder=HashEmbedding(), llm_complete=stub.complete)
+    retriever = HippoRAGRetriever(graph, embedder=HashEmbedding(), llm_complete=stub.complete)
     retriever.retrieve(QUERY, top_k=5)
     by_triple = {d.triple: d for d in retriever.last_filter_decisions}
     assert set(by_triple) == set(TRIPLES)

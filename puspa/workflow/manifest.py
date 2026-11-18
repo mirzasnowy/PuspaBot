@@ -70,7 +70,8 @@ def subset_permission(manifest: dict, permission_user: dict) -> tuple[bool, list
     if int(manifest.get("spending_limit", 0)) > int(permission_user.get("spending_limit", 0)):
         less.append(
             f"batas belanja Rp{manifest['spending_limit']:,} melebihi "
-            f"batas user Rp{permission_user.get('spending_limit', 0):,}".replace(",", "."))
+            f"batas user Rp{permission_user.get('spending_limit', 0):,}".replace(",", ".")
+        )
     return (not less, less)
 
 

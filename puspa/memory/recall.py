@@ -25,10 +25,9 @@ forbidden from building FTS5: this module owns it.
 
 from __future__ import annotations
 
-import math
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .embeddings import HashEmbedding, cosine_similarity
 
@@ -75,8 +74,8 @@ class FtsIndex:
         self.path = path
         self._conn = sqlite3.connect(path or ":memory:")
         self._conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts "
-            "USING fts5(id UNINDEXED, key, content)")
+            "CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(id UNINDEXED, key, content)"
+        )
         self._conn.commit()
 
     def close(self):
@@ -87,14 +86,12 @@ class FtsIndex:
         self.remove_fact(fact["id"])
         self._conn.execute(
             "INSERT INTO facts_fts (id, key, content) VALUES (?, ?, ?)",
-            (str(fact["id"]), str(fact.get("key") or ""),
-             str(fact.get("content") or "")),
+            (str(fact["id"]), str(fact.get("key") or ""), str(fact.get("content") or "")),
         )
         self._conn.commit()
 
     def remove_fact(self, fact_id):
-        self._conn.execute(
-            "DELETE FROM facts_fts WHERE id = ?", (str(fact_id),))
+        self._conn.execute("DELETE FROM facts_fts WHERE id = ?", (str(fact_id),))
         self._conn.commit()
 
     def rebuild(self, facts):
@@ -102,8 +99,7 @@ class FtsIndex:
         self._conn.execute("DELETE FROM facts_fts")
         self._conn.executemany(
             "INSERT INTO facts_fts (id, key, content) VALUES (?, ?, ?)",
-            [(str(f["id"]), str(f.get("key") or ""),
-              str(f.get("content") or "")) for f in facts],
+            [(str(f["id"]), str(f.get("key") or ""), str(f.get("content") or "")) for f in facts],
         )
         self._conn.commit()
 
@@ -133,22 +129,29 @@ def _rrf(ranks):
 
 def _recency_rank(facts, now):
     """Facts ordered newest first; returns {fact_id: rank}."""
+
     def age(fact):
         stamp = fact.get("valid_from") or fact.get("created_at")
         if stamp is None:
             return float("inf")
         if stamp.tzinfo is None:
-            stamp = stamp.replace(tzinfo=timezone.utc)
+            stamp = stamp.replace(tzinfo=UTC)
         return (now - stamp).total_seconds()
 
     ordered = sorted(facts, key=age)
     return {fact["id"]: rank + 1 for rank, fact in enumerate(ordered)}
 
 
-def hybrid_recall(query, facts, embedder=None, fts_index=None,
-                  now=None, limit=MAX_FACTS,
-                  cosine_threshold=COSINE_THRESHOLD,
-                  keyword_threshold=COSINE_THRESHOLD_WITH_KEYWORD):
+def hybrid_recall(
+    query,
+    facts,
+    embedder=None,
+    fts_index=None,
+    now=None,
+    limit=MAX_FACTS,
+    cosine_threshold=COSINE_THRESHOLD,
+    keyword_threshold=COSINE_THRESHOLD_WITH_KEYWORD,
+):
     """Recall facts for ``query`` from four fused signals.
 
     ``facts`` is a list of shared-shape fact records (see
@@ -165,7 +168,7 @@ def hybrid_recall(query, facts, embedder=None, fts_index=None,
         raise ValueError("query must be a non-empty string")
     if limit < 1:
         raise ValueError("limit must be at least 1")
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     active = [f for f in (facts or []) if f.get("status") == "active"]
     if not active:
         return []
@@ -179,8 +182,7 @@ def hybrid_recall(query, facts, embedder=None, fts_index=None,
     finally:
         if own_index:
             fts_index.close()
-    bm25_rank = {fact_id: rank + 1
-                 for rank, (fact_id, _score) in enumerate(bm25_hits)}
+    bm25_rank = {fact_id: rank + 1 for rank, (fact_id, _score) in enumerate(bm25_hits)}
 
     query_tokens = set(_tokens(query))
     query_vector = embedder.embed(query)
@@ -192,23 +194,23 @@ def hybrid_recall(query, facts, embedder=None, fts_index=None,
         name_tokens = set(_tokens(fact.get("key") or ""))
         name_overlap = len(query_tokens & name_tokens)
         keyword_hit = fact["id"] in bm25_rank or name_overlap > 0
-        threshold = (keyword_threshold if keyword_hit
-                     else cosine_threshold)
+        threshold = keyword_threshold if keyword_hit else cosine_threshold
         if cosine < threshold:
             continue
-        scored.append({
-            "fact": fact, "cosine": cosine,
-            "keyword_hit": keyword_hit,
-            "name_overlap": name_overlap,
-        })
+        scored.append(
+            {
+                "fact": fact,
+                "cosine": cosine,
+                "keyword_hit": keyword_hit,
+                "name_overlap": name_overlap,
+            }
+        )
     if not scored:
         return []
 
     by_cosine = sorted(scored, key=lambda s: -s["cosine"])
-    cosine_rank = {s["fact"]["id"]: rank + 1
-                   for rank, s in enumerate(by_cosine)}
-    by_name = sorted(scored, key=lambda s: (-s["name_overlap"],
-                                            -s["cosine"]))
+    cosine_rank = {s["fact"]["id"]: rank + 1 for rank, s in enumerate(by_cosine)}
+    by_name = sorted(scored, key=lambda s: (-s["name_overlap"], -s["cosine"]))
     name_rank = {}
     for rank, item in enumerate(by_name):
         if item["name_overlap"] > 0:
@@ -223,14 +225,16 @@ def hybrid_recall(query, facts, embedder=None, fts_index=None,
             ranks.append(bm25_rank[fact_id])
         if fact_id in name_rank:
             ranks.append(name_rank[fact_id])
-        results.append({
-            "fact": item["fact"],
-            "score": _rrf(ranks),
-            "cosine": item["cosine"],
-            "bm25_rank": bm25_rank.get(fact_id),
-            "name_rank": name_rank.get(fact_id),
-            "recency_rank": recency[fact_id],
-            "keyword_hit": item["keyword_hit"],
-        })
+        results.append(
+            {
+                "fact": item["fact"],
+                "score": _rrf(ranks),
+                "cosine": item["cosine"],
+                "bm25_rank": bm25_rank.get(fact_id),
+                "name_rank": name_rank.get(fact_id),
+                "recency_rank": recency[fact_id],
+                "keyword_hit": item["keyword_hit"],
+            }
+        )
     results.sort(key=lambda r: -r["score"])
     return results[:limit]

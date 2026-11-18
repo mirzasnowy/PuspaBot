@@ -64,8 +64,7 @@ def _code_challenge(verifier: str) -> str:
     return _b64url(digest)
 
 
-def build_auth_url(client_id, redirect_uri, scopes=None, state=None,
-                   code_verifier=None):
+def build_auth_url(client_id, redirect_uri, scopes=None, state=None, code_verifier=None):
     """Bangun URL otorisasi + kembalikan state/verifier/challenge.
 
     Pemanggil menyimpan `state` + `code_verifier` di sesi browser
@@ -110,8 +109,7 @@ def _http_post(http_client, url, data):
     return resp.json()
 
 
-def exchange_code(code, code_verifier, client_id, client_secret,
-                  redirect_uri, http_client=None):
+def exchange_code(code, code_verifier, client_id, client_secret, redirect_uri, http_client=None):
     """Tukar authorization code -> token (access + refresh + id_token)."""
     data = {
         "code": code,
@@ -161,13 +159,9 @@ def fetch_userinfo(access_token, http_client=None):
         import httpx
 
         with httpx.Client(timeout=30) as client:
-            resp = client.get(
-                USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"}
-            )
+            resp = client.get(USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"})
     else:
-        resp = http_client.get(
-            USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"}
-        )
+        resp = http_client.get(USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"})
     if resp.status_code != 200:
         raise OAuthError(f"userinfo ditolak: HTTP {resp.status_code}")
     info = resp.json()
@@ -184,9 +178,7 @@ def _rsa_public_key_from_jwk(jwk):
         padded = value + "=" * (-len(value) % 4)
         return int.from_bytes(base64.urlsafe_b64decode(padded), "big")
 
-    numbers = rsa.RSAPublicNumbers(
-        _b64_to_int(jwk["e"]), _b64_to_int(jwk["n"])
-    )
+    numbers = rsa.RSAPublicNumbers(_b64_to_int(jwk["e"]), _b64_to_int(jwk["n"]))
     return numbers.public_key()
 
 
@@ -272,10 +264,9 @@ def _connect(dsn=None):
 def find_user_by_email(email, dsn=None):
     """Cari user_id dari email (normalisasi seperti users.py)."""
     email_n = email.strip().lower()
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id FROM users WHERE email = %s", (email_n,))
-            row = cur.fetchone()
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute("SELECT id FROM users WHERE email = %s", (email_n,))
+        row = cur.fetchone()
     return str(row["id"]) if row else None
 
 
@@ -292,15 +283,14 @@ def create_google_user(email, dsn=None):
         raise ValueError("email kosong")
     # Kata sandi acak 48 byte — tidak disimpan, tidak diketahui siapa
     # pun; kolom password_hash NOT NULL di skema Fase 0.
-    password_hash = PasswordHasher(
-        time_cost=2, memory_cost=65536, parallelism=1
-    ).hash(secrets.token_urlsafe(48))
+    password_hash = PasswordHasher(time_cost=2, memory_cost=65536, parallelism=1).hash(
+        secrets.token_urlsafe(48)
+    )
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             try:
                 cur.execute(
-                    "INSERT INTO users (email, password_hash) VALUES (%s, %s) "
-                    "RETURNING id",
+                    "INSERT INTO users (email, password_hash) VALUES (%s, %s) RETURNING id",
                     (email_n, password_hash),
                 )
             except pg_errors.UniqueViolation as exc:
@@ -310,9 +300,17 @@ def create_google_user(email, dsn=None):
     return str(row["id"])
 
 
-def complete_google_login(code, code_verifier, client_id, client_secret,
-                         redirect_uri, jwks, device_label="perangkat",
-                         http_client=None, dsn=None):
+def complete_google_login(
+    code,
+    code_verifier,
+    client_id,
+    client_secret,
+    redirect_uri,
+    jwks,
+    device_label="perangkat",
+    http_client=None,
+    dsn=None,
+):
     """Selesaikan login Google: tukar code -> verifikasi ID -> sesi.
 
     Kembalikan {user_id, email, session_token, baru}. Sesi dibuat
@@ -321,7 +319,11 @@ def complete_google_login(code, code_verifier, client_id, client_secret,
     from puspa.accounts.user_sessions import create_session
 
     tokens = exchange_code(
-        code, code_verifier, client_id, client_secret, redirect_uri,
+        code,
+        code_verifier,
+        client_id,
+        client_secret,
+        redirect_uri,
         http_client=http_client,
     )
     payload = verify_id_token(tokens.get("id_token", ""), jwks, client_id)

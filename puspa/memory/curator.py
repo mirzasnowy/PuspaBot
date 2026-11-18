@@ -36,27 +36,27 @@ from __future__ import annotations
 import json
 import shutil
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 __all__ = [
-    "SkillUsage",
-    "CuratorReport",
-    "STATE_ACTIVE",
-    "STATE_STALE",
-    "STATE_ARCHIVED",
-    "STALE_AFTER_DAYS",
     "ARCHIVE_AFTER_DAYS",
+    "STALE_AFTER_DAYS",
+    "STATE_ACTIVE",
+    "STATE_ARCHIVED",
+    "STATE_STALE",
     "USAGE_FILENAME",
+    "CuratorReport",
+    "SkillUsage",
+    "backup_skills",
+    "discover_skills",
     "load_usage",
-    "save_usage",
+    "next_state",
+    "record_patch",
     "record_use",
     "record_view",
-    "record_patch",
-    "next_state",
-    "discover_skills",
-    "backup_skills",
     "run_curator",
+    "save_usage",
 ]
 
 #: Skill states (deterministic machine: active -> stale -> archived).
@@ -85,14 +85,14 @@ def _parse_time(value):
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed
 
 
 def _format_time(moment):
     if moment is None:
         return None
-    return moment.astimezone(timezone.utc).isoformat()
+    return moment.astimezone(UTC).isoformat()
 
 
 @dataclass
@@ -139,7 +139,7 @@ class SkillUsage:
 
     def touch(self, now=None):
         """Mark one activity (use, view, or patch) at ``now``."""
-        self.last_activity_at = now or datetime.now(timezone.utc)
+        self.last_activity_at = now or datetime.now(UTC)
 
 
 def _usage_path(skill_dir):
@@ -209,8 +209,9 @@ def record_patch(skill_dir, *, now=None):
     return usage
 
 
-def next_state(usage, *, now=None, stale_after_days=STALE_AFTER_DAYS,
-               archive_after_days=ARCHIVE_AFTER_DAYS):
+def next_state(
+    usage, *, now=None, stale_after_days=STALE_AFTER_DAYS, archive_after_days=ARCHIVE_AFTER_DAYS
+):
     """Pure next state for one skill's usage (deterministic).
 
     - Pinned skills stay active, always.
@@ -231,9 +232,9 @@ def next_state(usage, *, now=None, stale_after_days=STALE_AFTER_DAYS,
     last = usage.last_activity_at
     if last is None:
         return STATE_ACTIVE
-    moment = now or datetime.now(timezone.utc)
+    moment = now or datetime.now(UTC)
     if last.tzinfo is None:
-        last = last.replace(tzinfo=timezone.utc)
+        last = last.replace(tzinfo=UTC)
     inactive_days = (moment - last).days
     if usage.state == STATE_STALE:
         if inactive_days >= archive_after_days:
@@ -256,9 +257,8 @@ def discover_skills(skills_root):
         raise ValueError(f"skills root is not a directory: {skills_root}")
     found = []
     for child in sorted(root.iterdir(), key=lambda p: p.name):
-        if child.is_dir() and not child.name.startswith("."):
-            if (child / "SKILL.md").exists():
-                found.append(child)
+        if child.is_dir() and not child.name.startswith(".") and (child / "SKILL.md").exists():
+            found.append(child)
     return found
 
 
@@ -270,8 +270,8 @@ def backup_skills(skills_root, backup_dir, *, now=None):
     so a bad run can be rolled back by copying it back.
     """
     root = Path(skills_root)
-    moment = now or datetime.now(timezone.utc)
-    stamp = moment.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    moment = now or datetime.now(UTC)
+    stamp = moment.astimezone(UTC).strftime("%Y%m%dT%H%M%S")
     target = Path(backup_dir) / stamp
     if target.exists():
         raise ValueError(f"backup target already exists: {target}")
@@ -293,9 +293,16 @@ class CuratorReport:
     dry_run: bool = False
 
 
-def run_curator(skills_root, *, now=None, dry_run=False, backup_dir=None,
-                consolidate=None, stale_after_days=STALE_AFTER_DAYS,
-                archive_after_days=ARCHIVE_AFTER_DAYS):
+def run_curator(
+    skills_root,
+    *,
+    now=None,
+    dry_run=False,
+    backup_dir=None,
+    consolidate=None,
+    stale_after_days=STALE_AFTER_DAYS,
+    archive_after_days=ARCHIVE_AFTER_DAYS,
+):
     """Run one inactivity-curation pass over ``skills_root``.
 
     Order: (1) snapshot backup (skipped on a dry run, which
@@ -307,13 +314,11 @@ def run_curator(skills_root, *, now=None, dry_run=False, backup_dir=None,
     run). Nothing is ever deleted. Per-skill failures are
     collected in ``report.errors`` and do not stop the run.
     """
-    moment = now or datetime.now(timezone.utc)
+    moment = now or datetime.now(UTC)
     report = CuratorReport(dry_run=dry_run)
     if not dry_run and backup_dir is not None:
         try:
-            report.backup_path = str(
-                backup_skills(skills_root, backup_dir, now=moment)
-            )
+            report.backup_path = str(backup_skills(skills_root, backup_dir, now=moment))
         except (OSError, ValueError) as exc:
             report.errors.append({"skill": None, "error": str(exc)})
             return report
@@ -330,24 +335,19 @@ def run_curator(skills_root, *, now=None, dry_run=False, backup_dir=None,
             if usage.pinned:
                 report.pinned.append(name)
             target = next_state(
-                usage, now=moment,
+                usage,
+                now=moment,
                 stale_after_days=stale_after_days,
                 archive_after_days=archive_after_days,
             )
             if target == STATE_STALE and consolidate is not None:
                 try:
                     outcome = consolidate(skill_dir, usage)
-                    report.consolidated.append(
-                        {"skill": name, "outcome": str(outcome)}
-                    )
+                    report.consolidated.append({"skill": name, "outcome": str(outcome)})
                 except Exception as exc:
-                    report.errors.append(
-                        {"skill": name, "error": f"consolidate: {exc}"}
-                    )
+                    report.errors.append({"skill": name, "error": f"consolidate: {exc}"})
             if target != usage.state:
-                report.transitions.append(
-                    {"skill": name, "from": usage.state, "to": target}
-                )
+                report.transitions.append({"skill": name, "from": usage.state, "to": target})
                 if target == STATE_ARCHIVED:
                     report.archived.append(name)
                 if not dry_run:

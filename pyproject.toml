@@ -1,0 +1,112 @@
+# Puspa tool configuration: ruff (lint + format) and mypy (typecheck).
+#
+# Added 18 Nov 2026 (CI lint/typecheck lanes, G15 follow-up): ruff and
+# mypy are pinned in requirements-dev.txt and run in CI as the `lint`,
+# `format`, and `typecheck` jobs. The same commands run locally:
+#   .venv/bin/ruff check puspa tests demo
+#   .venv/bin/ruff format --check puspa tests demo
+#   .venv/bin/python -m mypy puspa tests demo
+# (CI runs the same three commands; see .github/workflows/ci.yml.)
+
+[tool.ruff]
+# The codebase's natural width is around 100 columns (only 180 lines
+# exceed 100, versus 749 exceeding 88), so the formatter wraps at 100.
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# Explicit selection (never rely on ruff's implicit default: it grows
+# between versions, so an unpinned default would break CI on upgrade).
+# Core hygiene + bug-finding families. Whole families are selected, and
+# the noisy members are ignored below with reasons (a bare family select
+# would add ~1,400 errors that are design decisions, not bugs).
+select = [
+  "E4", "E7", "E9", # pycodestyle errors (E501 line-length is NOT here:
+                     # width is enforced by `ruff format`, not the linter)
+  "F",              # pyflakes (unused imports/variables, undefined names)
+  "I",              # isort (import sorting)
+  "W",              # pycodestyle warnings
+  "UP",             # pyupgrade (datetime.UTC, X | None, ...)
+  "B",              # bugbear (mutable defaults, duplicate values, ...)
+  "SIM",            # simplify (collapsible if, needless bool, ...)
+  "RUF",            # ruff-specific (unsorted __all__, unused noqa, ...)
+  "FURB",           # refurb (sorted min/max, regex flags, ...)
+  "PIE",            # flake8-pie (unnecessary range start, ...)
+  "RET",            # flake8-return (unnecessary return None, ...)
+  "PL",             # pylint (subprocess without check, useless return, ...)
+  "ISC",            # flake8-implicit-str-concat
+]
+# Ignored members of the selected families (each is a design decision,
+# not a bug a linter should rewrite; enabling one is a follow-up task):
+ignore = [
+  "E402",    # module-import-not-at-top-of-file: lazy imports inside
+             # functions are deliberate here (circular-import avoidance
+             # and heavy optional deps). Moving them to the top risks
+             # circular imports.
+  "PLC0415", # import-outside-top-level: same reason as E402.
+  "PLR2004", # magic-value-comparison: ~750 comparisons against literal
+             # numbers/strings; naming a constant for each is a refactor.
+  "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR0917",
+             # complexity caps (too many returns/branches/arguments/
+             # statements/positional args): design metrics, not bugs.
+             # Enforcing them means splitting handlers and routers.
+  "B905",    # zip-without-explicit-strict: several call sites rely on
+             # zip truncating to the shortest input; adding strict= is a
+             # per-call decision.
+  "PLW0603", # global-statement: module-level state (caches, singletons)
+             # is deliberate; replacing it is a dependency-injection
+             # refactor.
+]
+# Deliberately NOT selected (each is a design decision, not a lint fix):
+# - BLE (blind-except): this codebase catches broad exceptions on purpose
+#   in its fallback/resilience paths (router fallback, skill loader,
+#   sandbox, credential pool). Narrowing the ~98 handlers is a
+#   behaviour-affecting refactor. Follow-up: audit the handlers, then
+#   enable BLE001 per module.
+# - TRY (tryceratops): TRY004 fires on raises inside try blocks, which
+#   this codebase uses as its error-translation pattern. Follow-up: move
+#   the raises out of the try blocks where it is safe, then enable TRY.
+# - S (bandit): S110/S112 (silent except-pass/continue) are deliberate
+#   ignore-and-continue guards in fallback paths, and S102 (exec) is the
+#   point of the sandbox executor. Follow-up: audit per call site.
+# - E501: line width is enforced by `ruff format`, not by the linter.
+
+[tool.mypy]
+python_version = "3.12"
+explicit_package_bases = true
+show_error_codes = true
+warn_unused_ignores = true
+# Default (non-strict) mode: most of the codebase is unannotated, so
+# mypy checks what the annotations say. No strict flags until the
+# annotations cover the core packages.
+# NOTE: demo/ is deliberately NOT on mypy_path. The demo modules are
+# imported two ways at runtime (package-qualified `demo.byok_provider`
+# from puspa/, and top-level `byok_provider` from tests via sys.path),
+# and putting demo/ on the search path makes mypy see the same file
+# under two module names and refuse to check anything. The top-level
+# names are ignored below instead (they resolve at runtime via
+# sys.path manipulation in demo/ and in tests/conftest.py).
+
+[[tool.mypy.overrides]]
+module = ["nanobot.*"]
+ignore_missing_imports = true
+# nanobot (installed from GitHub) ships no py.typed marker, so mypy
+# cannot resolve its submodules. The chassis integration tests cover
+# the boundary instead.
+
+[[tool.mypy.overrides]]
+module = ["FlagEmbedding"]
+ignore_missing_imports = true
+# FlagEmbedding ships no type stubs and no py.typed marker.
+
+[[tool.mypy.overrides]]
+module = ["byok_provider", "mock_provider_server", "openrouter_provider", "dynamic_credentials", "test_sigstore_verify"]
+ignore_missing_imports = true
+# Top-level names resolved at runtime via sys.path manipulation, not via
+# the package tree: demo/ modules import each other by top-level name,
+# tests import them the same way (conftest puts demo/ on sys.path), and
+# dynamic_credentials lives outside the repo (injected at runtime by
+# demo/openrouter_provider.py from _DYNAMIC_CREDENTIALS_DIR).
+# test_sigstore_verify is a test module imported by sibling test files;
+# pytest puts tests/ on sys.path, so the import works at runtime, but
+# mypy cannot resolve a top-level name for a file under tests/.

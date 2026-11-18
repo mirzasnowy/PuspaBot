@@ -351,7 +351,6 @@ class _HabitBelief:
         return False
 
 
-
 def _price_key(product_id: str, store: str) -> str:
     return f"{product_id}@{store}"
 
@@ -422,16 +421,11 @@ class WorldModel:
         self.day = state["day"]
         self._price_beliefs = copy.deepcopy(state["price_beliefs"])
         self._bill_beliefs = copy.deepcopy(state["bill_beliefs"])
-        self._schedule_beliefs = copy.deepcopy(
-            state.get("schedule_beliefs") or {})
-        self._capability_beliefs = copy.deepcopy(
-            state.get("capability_beliefs") or {})
-        self._contact_beliefs = copy.deepcopy(
-            state.get("contact_beliefs") or {})
-        self._habit_beliefs = copy.deepcopy(
-            state.get("habit_beliefs") or {})
-        self.belief_contradictions = copy.deepcopy(
-            state.get("belief_contradictions") or [])
+        self._schedule_beliefs = copy.deepcopy(state.get("schedule_beliefs") or {})
+        self._capability_beliefs = copy.deepcopy(state.get("capability_beliefs") or {})
+        self._contact_beliefs = copy.deepcopy(state.get("contact_beliefs") or {})
+        self._habit_beliefs = copy.deepcopy(state.get("habit_beliefs") or {})
+        self.belief_contradictions = copy.deepcopy(state.get("belief_contradictions") or [])
 
     # -- building the model from memory graphs and task results --------
     def ingest_graph(self, entities: list[dict], relations: list[dict] | None = None) -> None:
@@ -452,10 +446,17 @@ class WorldModel:
                 "attributes": dict(entity.get("attributes") or {}),
             }
             attrs = self.entities[entity_id]["attributes"]
-            if self.entities[entity_id]["kind"] == "product" and "price" in attrs and "store" in attrs:
+            if (
+                self.entities[entity_id]["kind"] == "product"
+                and "price" in attrs
+                and "store" in attrs
+            ):
                 self._apply_price_observation(
-                    product_id=entity_id, store=str(attrs["store"]),
-                    price=float(attrs["price"]), day=self.day)
+                    product_id=entity_id,
+                    store=str(attrs["store"]),
+                    price=float(attrs["price"]),
+                    day=self.day,
+                )
             if self.entities[entity_id]["kind"] == "bill":
                 self._apply_bill_observation(
                     bill_id=entity_id,
@@ -465,14 +466,16 @@ class WorldModel:
                         "status": attrs.get("status"),
                         "amount_due": attrs.get("amount_due"),
                     },
-                    day=self.day)
+                    day=self.day,
+                )
         for relation in relations or []:
             if isinstance(relation, dict):
                 self.relations.append(dict(relation))
             else:
                 subject, predicate, obj = relation
                 self.relations.append(
-                    {"subject": str(subject), "predicate": str(predicate), "object": str(obj)})
+                    {"subject": str(subject), "predicate": str(predicate), "object": str(obj)}
+                )
 
     def ingest_task_result(self, task: dict) -> None:
         """Fold one finished task result into the model.
@@ -491,15 +494,18 @@ class WorldModel:
         task_kind = str(task.get("task") or result.get("task_kind") or "unknown")
         day = int(result.get("day", self.day))
         self._apply_capability_observation(
-            task_kind=task_kind, success=bool(task.get("success", True)), day=day)
+            task_kind=task_kind, success=bool(task.get("success", True)), day=day
+        )
         # Every finished task is one more data point in the user's
         # own history: it feeds the habit belief for its kind.
         # Hour and weekday come only from the result when the
         # caller observed them; they are never guessed.
         self._apply_habit_observation(
-            task_kind=task_kind, day=day,
+            task_kind=task_kind,
+            day=day,
             hour=(int(result["hour"]) if result.get("hour") is not None else None),
-            weekday=(int(result["weekday"]) if result.get("weekday") is not None else None))
+            weekday=(int(result["weekday"]) if result.get("weekday") is not None else None),
+        )
         # A result that names a contact is one observed
         # interaction with that contact: reply or silence, the
         # channel used, and the reply delay when it replied.
@@ -510,29 +516,42 @@ class WorldModel:
                 replied=(bool(result["replied"]) if result.get("replied") is not None else None),
                 reply_delay_hours=(
                     float(result["reply_delay_hours"])
-                    if result.get("reply_delay_hours") is not None else None),
-                day=day)
+                    if result.get("reply_delay_hours") is not None
+                    else None
+                ),
+                day=day,
+            )
         if "duration_days" in result:
             self._apply_schedule_observation(
                 task_kind=task_kind,
                 duration_days=float(result["duration_days"]),
-                deadline_days=(float(result["deadline_days"])
-                               if result.get("deadline_days") is not None else None),
-                day=day)
+                deadline_days=(
+                    float(result["deadline_days"])
+                    if result.get("deadline_days") is not None
+                    else None
+                ),
+                day=day,
+            )
         if not task.get("success", True):
             return
         if "price" in result and "store" in result and "product_id" in result:
             self._apply_price_observation(
-                product_id=str(result["product_id"]), store=str(result["store"]),
-                price=float(result["price"]), day=int(result.get("day", self.day)))
+                product_id=str(result["product_id"]),
+                store=str(result["store"]),
+                price=float(result["price"]),
+                day=int(result.get("day", self.day)),
+            )
         if "bill_id" in result and "status" in result:
             self._apply_bill_observation(
-                bill_id=str(result["bill_id"]), observed=result,
-                day=int(result.get("day", self.day)))
+                bill_id=str(result["bill_id"]),
+                observed=result,
+                day=int(result.get("day", self.day)),
+            )
         if "entity_id" in result:
             entity_id = str(result["entity_id"])
             entity = self.entities.setdefault(
-                entity_id, {"id": entity_id, "kind": "unknown", "attributes": {}})
+                entity_id, {"id": entity_id, "kind": "unknown", "attributes": {}}
+            )
             for key, value in result.items():
                 if key != "entity_id":
                     entity["attributes"][key] = value
@@ -552,7 +571,7 @@ class WorldModel:
         if action_type not in ACTION_TYPES:
             raise ValueError(f"unknown action type: {action_type!r}")
         live = state is None
-        if live:
+        if state is None:
             state = self.state
         outcome, confidence = self._forecast(action, state)
         prediction = Prediction(action=dict(action), outcome=outcome, confidence=confidence)
@@ -582,7 +601,8 @@ class WorldModel:
 
     def _forecast_price(self, action: dict, state: dict) -> tuple[dict, float]:
         belief = state["price_beliefs"].get(
-            _price_key(str(action["product_id"]), str(action["store"])))
+            _price_key(str(action["product_id"]), str(action["store"]))
+        )
         if belief is None or belief.last_price is None:
             return {"price": None, "known": False}, 0.0
         days = max(0, state["day"] - (belief.last_day or state["day"]))
@@ -617,8 +637,9 @@ class WorldModel:
             rate = capability.success_rate or 0.0
             if rate < 0.5:
                 return {"success": False, "reason": "low_capability"}, capability.confidence
-            return {"success": True, "status": "paid", "amount_due": 0}, \
-                min(MAX_CONFIDENCE, 0.5 + 0.4 * rate)
+            return {"success": True, "status": "paid", "amount_due": 0}, min(
+                MAX_CONFIDENCE, 0.5 + 0.4 * rate
+            )
         return {"success": True, "status": "paid", "amount_due": 0}, 0.85
 
     def _forecast_buy(self, action: dict, state: dict) -> tuple[dict, float]:
@@ -631,8 +652,11 @@ class WorldModel:
             if rate < 0.5:
                 return {"success": False, "reason": "low_capability"}, capability.confidence
             confidence = min(MAX_CONFIDENCE, 0.5 + 0.4 * rate)
-        return {"success": True, "store": str(action["store"]),
-                "price": outcome["price"]}, confidence
+        return {
+            "success": True,
+            "store": str(action["store"]),
+            "price": outcome["price"],
+        }, confidence
 
     def _forecast_schedule(self, action: dict, state: dict) -> tuple[dict, float]:
         """Forecast how long a task kind usually takes.
@@ -643,12 +667,14 @@ class WorldModel:
         task_kind = str(action.get("task_kind") or action.get("task") or "unknown")
         belief = state["schedule_beliefs"].get(task_kind)
         if belief is None or belief.mean_duration is None:
-            return {"task_kind": task_kind, "expected_days": None,
-                    "known": False}, 0.0
+            return {"task_kind": task_kind, "expected_days": None, "known": False}, 0.0
         rate = belief.on_time_rate
-        return {"task_kind": task_kind, "expected_days": belief.mean_duration,
-                "deadline_reliable": rate is not None and rate >= 0.8,
-                "observations": belief.observations}, belief.confidence
+        return {
+            "task_kind": task_kind,
+            "expected_days": belief.mean_duration,
+            "deadline_reliable": rate is not None and rate >= 0.8,
+            "observations": belief.observations,
+        }, belief.confidence
 
     def _forecast_capability(self, action: dict, state: dict) -> tuple[dict, float]:
         """Forecast whether the agent can do a task kind.
@@ -659,12 +685,13 @@ class WorldModel:
         task_kind = str(action.get("task_kind") or action.get("task") or "unknown")
         belief = state["capability_beliefs"].get(task_kind)
         if belief is None or belief.success_rate is None:
-            return {"task_kind": task_kind, "success": None,
-                    "known": False}, 0.0
-        return {"task_kind": task_kind,
-                "success": belief.success_rate >= 0.5,
-                "success_rate": belief.success_rate,
-                "observations": belief.observations}, belief.confidence
+            return {"task_kind": task_kind, "success": None, "known": False}, 0.0
+        return {
+            "task_kind": task_kind,
+            "success": belief.success_rate >= 0.5,
+            "success_rate": belief.success_rate,
+            "observations": belief.observations,
+        }, belief.confidence
 
     def _forecast_contact(self, action: dict, state: dict) -> tuple[dict, float]:
         """Forecast how a contact will respond, from observed interactions only.
@@ -676,14 +703,15 @@ class WorldModel:
         contact_id = str(action.get("contact_id") or "")
         belief = state["contact_beliefs"].get(contact_id)
         if belief is None or belief.reply_rate is None:
-            return {"contact_id": contact_id, "reply_likely": None,
-                    "known": False}, 0.0
-        return {"contact_id": contact_id,
-                "reply_likely": belief.reply_rate >= 0.5,
-                "reply_rate": belief.reply_rate,
-                "preferred_channel": belief.preferred_channel,
-                "mean_reply_delay_hours": belief.mean_reply_delay_hours,
-                "observations": belief.observations}, belief.confidence
+            return {"contact_id": contact_id, "reply_likely": None, "known": False}, 0.0
+        return {
+            "contact_id": contact_id,
+            "reply_likely": belief.reply_rate >= 0.5,
+            "reply_rate": belief.reply_rate,
+            "preferred_channel": belief.preferred_channel,
+            "mean_reply_delay_hours": belief.mean_reply_delay_hours,
+            "observations": belief.observations,
+        }, belief.confidence
 
     def _forecast_habit(self, action: dict, state: dict) -> tuple[dict, float]:
         """Forecast the recurring pattern for one kind of task.
@@ -695,16 +723,26 @@ class WorldModel:
         """
         task_kind = str(action.get("task_kind") or action.get("task") or "unknown")
         belief = state["habit_beliefs"].get(task_kind)
-        if (belief is None or belief.observations < HABIT_MIN_OBSERVATIONS
-                or not belief.has_repeated_pattern):
-            return {"task_kind": task_kind, "pattern_known": False,
-                    "peak_hour": None, "peak_weekday": None,
-                    "mean_interval_days": None}, 0.0
-        return {"task_kind": task_kind, "pattern_known": True,
-                "peak_hour": belief.peak_hour,
-                "peak_weekday": belief.peak_weekday,
-                "mean_interval_days": belief.mean_interval_days,
-                "observations": belief.observations}, belief.confidence
+        if (
+            belief is None
+            or belief.observations < HABIT_MIN_OBSERVATIONS
+            or not belief.has_repeated_pattern
+        ):
+            return {
+                "task_kind": task_kind,
+                "pattern_known": False,
+                "peak_hour": None,
+                "peak_weekday": None,
+                "mean_interval_days": None,
+            }, 0.0
+        return {
+            "task_kind": task_kind,
+            "pattern_known": True,
+            "peak_hour": belief.peak_hour,
+            "peak_weekday": belief.peak_weekday,
+            "mean_interval_days": belief.mean_interval_days,
+            "observations": belief.observations,
+        }, belief.confidence
 
     # -- simulation helper for the planner ------------------------------
     def apply_predicted(self, state: dict, action: dict, outcome: dict) -> dict:
@@ -762,11 +800,14 @@ class WorldModel:
                 self.mispredictions.append(record)
                 self._report_misprediction(record)
             self._apply_observation(action, observed, correct=correct)
-            return {"correct": correct, "error": error,
-                    "predicted": predicted, "observed": observed}
+            return {
+                "correct": correct,
+                "error": error,
+                "predicted": predicted,
+                "observed": observed,
+            }
         self._apply_observation(action, observed, correct=None)
-        return {"correct": None, "error": None,
-                "predicted": None, "observed": observed}
+        return {"correct": None, "error": None, "predicted": None, "observed": observed}
 
     def discard_pending_prediction(self, action: dict | None = None) -> bool:
         """Drop the pending prediction without scoring it.
@@ -786,9 +827,15 @@ class WorldModel:
         self._pending = None
         return True
 
-    def ingest_step_failure(self, *, task_kind: str, action: dict | None = None,
-                            failure_kind: str, reason: str = "",
-                            day: int | None = None) -> dict:
+    def ingest_step_failure(
+        self,
+        *,
+        task_kind: str,
+        action: dict | None = None,
+        failure_kind: str,
+        reason: str = "",
+        day: int | None = None,
+    ) -> dict:
         """Fold one failed step into the model.
 
         ``task_kind`` is the step name; ``action`` is the world
@@ -826,47 +873,58 @@ class WorldModel:
         discarded = False
         if failure_kind == "gate_rejected":
             discarded = self.discard_pending_prediction(action)
-            self._apply_capability_observation(
-                task_kind=str(task_kind), success=False, day=day)
-            self.gate_rejections.append({
-                "task_kind": str(task_kind),
-                "failure_kind": failure_kind,
-                "reason": reason,
-                "action_type": (action or {}).get("type"),
-                "day": day,
-            })
+            self._apply_capability_observation(task_kind=str(task_kind), success=False, day=day)
+            self.gate_rejections.append(
+                {
+                    "task_kind": str(task_kind),
+                    "failure_kind": failure_kind,
+                    "reason": reason,
+                    "action_type": (action or {}).get("type"),
+                    "day": day,
+                }
+            )
         else:  # "world_failed"
             pending_matches = (
-                action is not None and self._pending is not None
+                action is not None
+                and self._pending is not None
                 and self._same_action(self._pending.action, action)
             )
-            if pending_matches:
-                scored = self.update({
-                    "action": dict(action), "observed": {"success": False},
-                    "task": str(task_kind), "day": day,
-                })
+            if pending_matches and action is not None:
+                scored = self.update(
+                    {
+                        "action": dict(action),
+                        "observed": {"success": False},
+                        "task": str(task_kind),
+                        "day": day,
+                    }
+                )
                 # update() already taught capability for the step
                 # when the action is attempt_task (its task kind
                 # is the step name); every other action needs the
                 # step-name observation applied here, once.
-                if not (action.get("type") == "attempt_task"
-                        and str(action.get("task_kind") or "") == str(task_kind)):
+                if not (
+                    action.get("type") == "attempt_task"
+                    and str(action.get("task_kind") or "") == str(task_kind)
+                ):
                     self._apply_capability_observation(
-                        task_kind=str(task_kind), success=False, day=day)
+                        task_kind=str(task_kind), success=False, day=day
+                    )
             else:
-                self._apply_capability_observation(
-                    task_kind=str(task_kind), success=False, day=day)
-        return {"task_kind": str(task_kind), "failure_kind": failure_kind,
-                "scored": scored, "discarded_pending": discarded}
+                self._apply_capability_observation(task_kind=str(task_kind), success=False, day=day)
+        return {
+            "task_kind": str(task_kind),
+            "failure_kind": failure_kind,
+            "scored": scored,
+            "discarded_pending": discarded,
+        }
 
     @staticmethod
     def _same_action(first: dict, second: dict) -> bool:
         if first.get("type") != second.get("type"):
             return False
         for key in ("product_id", "store", "bill_id", "task_kind", "contact_id"):
-            if key in first or key in second:
-                if str(first.get(key)) != str(second.get(key)):
-                    return False
+            if (key in first or key in second) and str(first.get(key)) != str(second.get(key)):
+                return False
         return True
 
     @staticmethod
@@ -915,8 +973,13 @@ class WorldModel:
                 return 1.0
             return 0.0 if bool(predicted["reply_likely"]) == bool(observed["replied"]) else 1.0
         if action_type == "habit_pattern":
-            if predicted.get("mean_interval_days") is not None and observed.get("interval_days") is not None:
-                diff = abs(float(predicted["mean_interval_days"]) - float(observed["interval_days"]))
+            if (
+                predicted.get("mean_interval_days") is not None
+                and observed.get("interval_days") is not None
+            ):
+                diff = abs(
+                    float(predicted["mean_interval_days"]) - float(observed["interval_days"])
+                )
                 return 0.0 if diff <= INTERVAL_TOLERANCE_DAYS else diff
             if predicted.get("peak_hour") is not None and observed.get("hour") is not None:
                 return 0.0 if int(predicted["peak_hour"]) == int(observed["hour"]) else 1.0
@@ -926,32 +989,38 @@ class WorldModel:
     def _apply_observation(self, action: dict, observed: dict, correct: bool | None) -> None:
         action_type = action.get("type")
         if action_type in ("check_price", "buy_from_store"):
-            belief = self._price_beliefs.setdefault(
-                _price_key(str(action["product_id"]), str(action["store"])), _PriceBelief())
+            price_belief = self._price_beliefs.setdefault(
+                _price_key(str(action["product_id"]), str(action["store"])), _PriceBelief()
+            )
             if observed.get("price") is not None:
                 self._apply_price_observation(
-                    product_id=str(action["product_id"]), store=str(action["store"]),
-                    price=float(observed["price"]), day=self.day)
+                    product_id=str(action["product_id"]),
+                    store=str(action["store"]),
+                    price=float(observed["price"]),
+                    day=self.day,
+                )
             if correct is True:
-                belief.confidence = min(MAX_CONFIDENCE, belief.confidence + 0.05)
+                price_belief.confidence = min(MAX_CONFIDENCE, price_belief.confidence + 0.05)
             elif correct is False:
-                belief.confidence = max(0.1, belief.confidence - 0.2)
+                price_belief.confidence = max(0.1, price_belief.confidence - 0.2)
             if action_type == "buy_from_store" and observed.get("success") is not None:
                 self._apply_capability_observation(
-                    task_kind="buy_from_store", success=bool(observed["success"]),
-                    day=self.day)
+                    task_kind="buy_from_store", success=bool(observed["success"]), day=self.day
+                )
         elif action_type in ("check_bill", "pay_bill"):
             self._apply_bill_observation(
-                bill_id=str(action["bill_id"]), observed=observed, day=self.day)
-            belief = self._bill_beliefs.get(str(action["bill_id"]))
-            if belief is not None:
+                bill_id=str(action["bill_id"]), observed=observed, day=self.day
+            )
+            bill_belief = self._bill_beliefs.get(str(action["bill_id"]))
+            if bill_belief is not None:
                 if correct is True:
-                    belief.confidence = min(MAX_CONFIDENCE, belief.confidence + 0.05)
+                    bill_belief.confidence = min(MAX_CONFIDENCE, bill_belief.confidence + 0.05)
                 elif correct is False:
-                    belief.confidence = max(0.1, belief.confidence - 0.2)
+                    bill_belief.confidence = max(0.1, bill_belief.confidence - 0.2)
             if action_type == "pay_bill" and observed.get("success") is not None:
                 self._apply_capability_observation(
-                    task_kind="pay_bill", success=bool(observed["success"]), day=self.day)
+                    task_kind="pay_bill", success=bool(observed["success"]), day=self.day
+                )
         elif action_type == "wait_day" and observed.get("day") is not None:
             self.day = int(observed["day"])
         elif action_type == "estimate_task" and observed.get("duration_days") is not None:
@@ -959,53 +1028,72 @@ class WorldModel:
             self._apply_schedule_observation(
                 task_kind=task_kind,
                 duration_days=float(observed["duration_days"]),
-                deadline_days=(float(observed["deadline_days"])
-                               if observed.get("deadline_days") is not None else None),
-                day=self.day)
-            belief = self._schedule_beliefs.get(task_kind)
-            if belief is not None:
+                deadline_days=(
+                    float(observed["deadline_days"])
+                    if observed.get("deadline_days") is not None
+                    else None
+                ),
+                day=self.day,
+            )
+            schedule_belief = self._schedule_beliefs.get(task_kind)
+            if schedule_belief is not None:
                 if correct is True:
-                    belief.confidence = min(MAX_CONFIDENCE, belief.confidence + 0.05)
+                    schedule_belief.confidence = min(
+                        MAX_CONFIDENCE, schedule_belief.confidence + 0.05
+                    )
                 elif correct is False:
-                    belief.confidence = max(0.1, belief.confidence - 0.2)
+                    schedule_belief.confidence = max(0.1, schedule_belief.confidence - 0.2)
         elif action_type == "attempt_task" and observed.get("success") is not None:
             task_kind = str(action.get("task_kind") or action.get("task") or "unknown")
             self._apply_capability_observation(
-                task_kind=task_kind, success=bool(observed["success"]), day=self.day)
+                task_kind=task_kind, success=bool(observed["success"]), day=self.day
+            )
         elif action_type == "contact_reply":
             contact_id = str(action.get("contact_id") or "")
             self._apply_contact_observation(
                 contact_id=contact_id,
                 channel=(str(observed["channel"]) if observed.get("channel") is not None else None),
-                replied=(bool(observed["replied"]) if observed.get("replied") is not None else None),
+                replied=(
+                    bool(observed["replied"]) if observed.get("replied") is not None else None
+                ),
                 reply_delay_hours=(
                     float(observed["reply_delay_hours"])
-                    if observed.get("reply_delay_hours") is not None else None),
-                day=self.day)
-            belief = self._contact_beliefs.get(contact_id)
-            if belief is not None:
+                    if observed.get("reply_delay_hours") is not None
+                    else None
+                ),
+                day=self.day,
+            )
+            contact_belief = self._contact_beliefs.get(contact_id)
+            if contact_belief is not None:
                 if correct is True:
-                    belief.confidence = min(MAX_CONFIDENCE, belief.confidence + 0.05)
+                    contact_belief.confidence = min(
+                        MAX_CONFIDENCE, contact_belief.confidence + 0.05
+                    )
                 elif correct is False:
-                    belief.confidence = max(0.1, belief.confidence - 0.2)
+                    contact_belief.confidence = max(0.1, contact_belief.confidence - 0.2)
         elif action_type == "habit_pattern":
             task_kind = str(action.get("task_kind") or action.get("task") or "unknown")
             self._apply_habit_observation(
-                task_kind=task_kind, day=self.day,
+                task_kind=task_kind,
+                day=self.day,
                 hour=(int(observed["hour"]) if observed.get("hour") is not None else None),
                 weekday=(int(observed["weekday"]) if observed.get("weekday") is not None else None),
                 interval_days=(
                     float(observed["interval_days"])
-                    if observed.get("interval_days") is not None else None))
-            belief = self._habit_beliefs.get(task_kind)
-            if belief is not None:
+                    if observed.get("interval_days") is not None
+                    else None
+                ),
+            )
+            habit_belief = self._habit_beliefs.get(task_kind)
+            if habit_belief is not None:
                 if correct is True:
-                    belief.confidence = min(MAX_CONFIDENCE, belief.confidence + 0.05)
+                    habit_belief.confidence = min(MAX_CONFIDENCE, habit_belief.confidence + 0.05)
                 elif correct is False:
-                    belief.confidence = max(0.1, belief.confidence - 0.2)
+                    habit_belief.confidence = max(0.1, habit_belief.confidence - 0.2)
 
-    def _apply_price_observation(self, *, product_id: str, store: str,
-                                 price: float, day: int) -> None:
+    def _apply_price_observation(
+        self, *, product_id: str, store: str, price: float, day: int
+    ) -> None:
         belief = self._price_beliefs.setdefault(_price_key(product_id, store), _PriceBelief())
         if belief.last_price is not None and belief.last_day is not None:
             elapsed = day - belief.last_day
@@ -1017,7 +1105,8 @@ class WorldModel:
         belief.observations += 1
         entity_id = product_id
         entity = self.entities.setdefault(
-            entity_id, {"id": entity_id, "kind": "product", "attributes": {}})
+            entity_id, {"id": entity_id, "kind": "product", "attributes": {}}
+        )
         entity["attributes"]["price"] = price
         entity["attributes"]["store"] = store
 
@@ -1058,39 +1147,44 @@ class WorldModel:
             belief.paid = True
         belief.observations += 1
         entity = self.entities.setdefault(
-            bill_id, {"id": bill_id, "kind": "bill", "attributes": {}})
-        entity["attributes"].update(
-            {k: v for k, v in observed.items() if v is not None})
+            bill_id, {"id": bill_id, "kind": "bill", "attributes": {}}
+        )
+        entity["attributes"].update({k: v for k, v in observed.items() if v is not None})
 
     # -- schedule and capability beliefs (learned only from observations)
     def _snapshot_schedule(self, belief: _ScheduleBelief, reason: str, day: int) -> None:
         """Keep the current schedule version in history before replacing it."""
-        belief.history.append({
-            "version": belief.version,
-            "status": belief.status,
-            "observations": belief.observations,
-            "mean_duration": belief.mean_duration,
-            "on_time_rate": belief.on_time_rate,
-            "durations": list(belief.durations),
-            "reason": reason,
-            "day": day,
-        })
+        belief.history.append(
+            {
+                "version": belief.version,
+                "status": belief.status,
+                "observations": belief.observations,
+                "mean_duration": belief.mean_duration,
+                "on_time_rate": belief.on_time_rate,
+                "durations": list(belief.durations),
+                "reason": reason,
+                "day": day,
+            }
+        )
 
     def _snapshot_capability(self, belief: _CapabilityBelief, reason: str, day: int) -> None:
         """Keep the current capability version in history before replacing it."""
-        belief.history.append({
-            "version": belief.version,
-            "status": belief.status,
-            "observations": belief.observations,
-            "success_rate": belief.success_rate,
-            "successes": belief.successes,
-            "failures": belief.failures,
-            "reason": reason,
-            "day": day,
-        })
+        belief.history.append(
+            {
+                "version": belief.version,
+                "status": belief.status,
+                "observations": belief.observations,
+                "success_rate": belief.success_rate,
+                "successes": belief.successes,
+                "failures": belief.failures,
+                "reason": reason,
+                "day": day,
+            }
+        )
 
-    def _apply_schedule_observation(self, *, task_kind: str, duration_days: float,
-                                    deadline_days: float | None, day: int) -> None:
+    def _apply_schedule_observation(
+        self, *, task_kind: str, duration_days: float, deadline_days: float | None, day: int
+    ) -> None:
         """Fold one observed duration into the schedule belief.
 
         A duration that disagrees wildly with a verified belief
@@ -1099,19 +1193,21 @@ class WorldModel:
         confirming observations promote it to a new version, with
         the old version kept in history.
         """
-        belief = self._schedule_beliefs.setdefault(
-            task_kind, _ScheduleBelief(task_kind=task_kind))
+        belief = self._schedule_beliefs.setdefault(task_kind, _ScheduleBelief(task_kind=task_kind))
         mean = belief.mean_duration
-        if (belief.status == "verified" and mean is not None and mean > 0
-                and (duration_days > 2 * mean or duration_days < mean / 2)):
+        if (
+            belief.status == "verified"
+            and mean is not None
+            and mean > 0
+            and (duration_days > 2 * mean or duration_days < mean / 2)
+        ):
             candidate = None
             for existing in belief.candidates:
                 if abs(existing["durations"][-1] - duration_days) <= DURATION_TOLERANCE_DAYS:
                     candidate = existing
                     break
             if candidate is None:
-                candidate = {"durations": [], "on_time": 0, "with_deadline": 0,
-                             "confirmations": 0}
+                candidate = {"durations": [], "on_time": 0, "with_deadline": 0, "confirmations": 0}
                 belief.candidates.append(candidate)
             candidate["durations"].append(duration_days)
             candidate["confirmations"] += 1
@@ -1119,12 +1215,16 @@ class WorldModel:
                 candidate["with_deadline"] += 1
                 if duration_days <= deadline_days:
                     candidate["on_time"] += 1
-            self.belief_contradictions.append({
-                "kind": "schedule", "task_kind": task_kind,
-                "observed_duration_days": duration_days,
-                "believed_mean_days": mean, "day": day,
-                "confirmations": candidate["confirmations"],
-            })
+            self.belief_contradictions.append(
+                {
+                    "kind": "schedule",
+                    "task_kind": task_kind,
+                    "observed_duration_days": duration_days,
+                    "believed_mean_days": mean,
+                    "day": day,
+                    "confirmations": candidate["confirmations"],
+                }
+            )
             if candidate["confirmations"] >= CONTRADICTION_CONFIRMATIONS:
                 self._snapshot_schedule(belief, reason="contradiction", day=day)
                 belief.version += 1
@@ -1149,8 +1249,7 @@ class WorldModel:
             belief.status = "verified"
         belief.confidence = min(0.9, DEFAULT_CONFIDENCE + 0.05 * belief.observations)
 
-    def _apply_capability_observation(self, *, task_kind: str, success: bool,
-                                      day: int) -> None:
+    def _apply_capability_observation(self, *, task_kind: str, success: bool, day: int) -> None:
         """Fold one task outcome into the capability belief.
 
         An outcome that contradicts a verified belief (a failure
@@ -1161,10 +1260,12 @@ class WorldModel:
         directly.
         """
         belief = self._capability_beliefs.setdefault(
-            task_kind, _CapabilityBelief(task_kind=task_kind))
+            task_kind, _CapabilityBelief(task_kind=task_kind)
+        )
         rate = belief.success_rate
         contradicts = (
-            belief.status == "verified" and rate is not None
+            belief.status == "verified"
+            and rate is not None
             and ((rate >= 0.8 and not success) or (rate <= 0.2 and success))
         )
         if contradicts:
@@ -1174,11 +1275,16 @@ class WorldModel:
                 belief.contradiction_value = success
                 belief.consecutive_contradictions = 1
             belief.candidates.append({"success": success, "day": day})
-            self.belief_contradictions.append({
-                "kind": "capability", "task_kind": task_kind,
-                "observed_success": success, "believed_success_rate": rate,
-                "day": day, "consecutive": belief.consecutive_contradictions,
-            })
+            self.belief_contradictions.append(
+                {
+                    "kind": "capability",
+                    "task_kind": task_kind,
+                    "observed_success": success,
+                    "believed_success_rate": rate,
+                    "day": day,
+                    "consecutive": belief.consecutive_contradictions,
+                }
+            )
             if belief.consecutive_contradictions >= CAPABILITY_CONTRADICTION_RUNS:
                 self._snapshot_capability(belief, reason="contradiction", day=day)
                 belief.version += 1
@@ -1207,34 +1313,43 @@ class WorldModel:
     # -- contact and habit beliefs (learned only from observations)
     def _snapshot_contact(self, belief: _ContactBelief, reason: str, day: int) -> None:
         """Keep the current contact version in history before replacing it."""
-        belief.history.append({
-            "version": belief.version,
-            "status": belief.status,
-            "observations": belief.observations,
-            "reply_rate": belief.reply_rate,
-            "preferred_channel": belief.preferred_channel,
-            "mean_reply_delay_hours": belief.mean_reply_delay_hours,
-            "reason": reason,
-            "day": day,
-        })
+        belief.history.append(
+            {
+                "version": belief.version,
+                "status": belief.status,
+                "observations": belief.observations,
+                "reply_rate": belief.reply_rate,
+                "preferred_channel": belief.preferred_channel,
+                "mean_reply_delay_hours": belief.mean_reply_delay_hours,
+                "reason": reason,
+                "day": day,
+            }
+        )
 
     def _snapshot_habit(self, belief: _HabitBelief, reason: str, day: int) -> None:
         """Keep the current habit version in history before replacing it."""
-        belief.history.append({
-            "version": belief.version,
-            "status": belief.status,
-            "observations": belief.observations,
-            "peak_hour": belief.peak_hour,
-            "peak_weekday": belief.peak_weekday,
-            "mean_interval_days": belief.mean_interval_days,
-            "reason": reason,
-            "day": day,
-        })
+        belief.history.append(
+            {
+                "version": belief.version,
+                "status": belief.status,
+                "observations": belief.observations,
+                "peak_hour": belief.peak_hour,
+                "peak_weekday": belief.peak_weekday,
+                "mean_interval_days": belief.mean_interval_days,
+                "reason": reason,
+                "day": day,
+            }
+        )
 
-    def _apply_contact_observation(self, *, contact_id: str, channel: str | None,
-                                   replied: bool | None,
-                                   reply_delay_hours: float | None,
-                                   day: int) -> None:
+    def _apply_contact_observation(
+        self,
+        *,
+        contact_id: str,
+        channel: str | None,
+        replied: bool | None,
+        reply_delay_hours: float | None,
+        day: int,
+    ) -> None:
         """Fold one observed interaction into the contact belief.
 
         An interaction with no reply when the contact almost
@@ -1247,11 +1362,12 @@ class WorldModel:
         channel still counts as one observed interaction, but
         teaches nothing about reply rate or channel.
         """
-        belief = self._contact_beliefs.setdefault(
-            contact_id, _ContactBelief(contact_id=contact_id))
+        belief = self._contact_beliefs.setdefault(contact_id, _ContactBelief(contact_id=contact_id))
         rate = belief.reply_rate
         contradicts = (
-            belief.status == "verified" and rate is not None and replied is not None
+            belief.status == "verified"
+            and rate is not None
+            and replied is not None
             and ((rate >= 0.8 and not replied) or (rate <= 0.2 and replied))
         )
         if contradicts:
@@ -1260,15 +1376,24 @@ class WorldModel:
             else:
                 belief.contradiction_value = replied
                 belief.consecutive_contradictions = 1
-            belief.candidates.append({
-                "replied": replied, "channel": channel,
-                "reply_delay_hours": reply_delay_hours, "day": day,
-            })
-            self.belief_contradictions.append({
-                "kind": "contact", "contact_id": contact_id,
-                "observed_replied": replied, "believed_reply_rate": rate,
-                "day": day, "consecutive": belief.consecutive_contradictions,
-            })
+            belief.candidates.append(
+                {
+                    "replied": replied,
+                    "channel": channel,
+                    "reply_delay_hours": reply_delay_hours,
+                    "day": day,
+                }
+            )
+            self.belief_contradictions.append(
+                {
+                    "kind": "contact",
+                    "contact_id": contact_id,
+                    "observed_replied": replied,
+                    "believed_reply_rate": rate,
+                    "day": day,
+                    "consecutive": belief.consecutive_contradictions,
+                }
+            )
             if belief.consecutive_contradictions >= CONTACT_CONTRADICTION_RUNS:
                 self._snapshot_contact(belief, reason="contradiction", day=day)
                 belief.version += 1
@@ -1276,14 +1401,16 @@ class WorldModel:
                 belief.observations = len(kept)
                 belief.replies = sum(1 for item in kept if item.get("replied"))
                 belief.reply_delays = [
-                    float(item["reply_delay_hours"]) for item in kept
+                    float(item["reply_delay_hours"])
+                    for item in kept
                     if item.get("replied") and item.get("reply_delay_hours") is not None
                 ]
                 belief.channels = {}
                 for item in kept:
                     if item.get("channel") is not None:
                         belief.channels[item["channel"]] = (
-                            belief.channels.get(item["channel"], 0) + 1)
+                            belief.channels.get(item["channel"], 0) + 1
+                        )
                 belief.candidates = []
                 belief.consecutive_contradictions = 0
                 belief.contradiction_value = None
@@ -1306,10 +1433,15 @@ class WorldModel:
             belief.status = "verified"
         belief.confidence = min(0.9, DEFAULT_CONFIDENCE + 0.05 * belief.observations)
 
-    def _apply_habit_observation(self, *, task_kind: str, day: int,
-                                 hour: int | None = None,
-                                 weekday: int | None = None,
-                                 interval_days: float | None = None) -> None:
+    def _apply_habit_observation(
+        self,
+        *,
+        task_kind: str,
+        day: int,
+        hour: int | None = None,
+        weekday: int | None = None,
+        interval_days: float | None = None,
+    ) -> None:
         """Fold one observed task into the habit belief for its kind.
 
         The gap since the previous observed task of the same kind
@@ -1322,12 +1454,10 @@ class WorldModel:
         promote a new version, with the old version kept in
         history.
         """
-        belief = self._habit_beliefs.setdefault(
-            task_kind, _HabitBelief(task_kind=task_kind))
+        belief = self._habit_beliefs.setdefault(task_kind, _HabitBelief(task_kind=task_kind))
         peak = belief.peak_hour
         contradicts = (
-            belief.status == "verified" and peak is not None
-            and hour is not None and hour != peak
+            belief.status == "verified" and peak is not None and hour is not None and hour != peak
         )
         if contradicts:
             if belief.contradiction_hour == hour:
@@ -1335,14 +1465,23 @@ class WorldModel:
             else:
                 belief.contradiction_hour = hour
                 belief.consecutive_contradictions = 1
-            belief.candidates.append({
-                "hour": hour, "weekday": weekday, "day": day,
-            })
-            self.belief_contradictions.append({
-                "kind": "habit", "task_kind": task_kind,
-                "observed_hour": hour, "believed_peak_hour": peak,
-                "day": day, "consecutive": belief.consecutive_contradictions,
-            })
+            belief.candidates.append(
+                {
+                    "hour": hour,
+                    "weekday": weekday,
+                    "day": day,
+                }
+            )
+            self.belief_contradictions.append(
+                {
+                    "kind": "habit",
+                    "task_kind": task_kind,
+                    "observed_hour": hour,
+                    "believed_peak_hour": peak,
+                    "day": day,
+                    "consecutive": belief.consecutive_contradictions,
+                }
+            )
             if belief.consecutive_contradictions >= HABIT_CONTRADICTION_CONFIRMATIONS:
                 self._snapshot_habit(belief, reason="contradiction", day=day)
                 belief.version += 1
@@ -1367,7 +1506,9 @@ class WorldModel:
                 belief.contradiction_hour = None
                 belief.last_day = day
                 belief.status = "verified" if belief.has_repeated_pattern else "trial"
-                belief.confidence = KNOWN_CONFIDENCE if belief.status == "verified" else DEFAULT_CONFIDENCE
+                belief.confidence = (
+                    KNOWN_CONFIDENCE if belief.status == "verified" else DEFAULT_CONFIDENCE
+                )
             return
         belief.consecutive_contradictions = 0
         belief.contradiction_hour = None
@@ -1387,8 +1528,7 @@ class WorldModel:
             belief.weekdays[key] = belief.weekdays.get(key, 0) + 1
         belief.observations += 1
         belief.last_day = day
-        if (belief.observations >= HABIT_MIN_OBSERVATIONS
-                and belief.has_repeated_pattern):
+        if belief.observations >= HABIT_MIN_OBSERVATIONS and belief.has_repeated_pattern:
             belief.status = "verified"
         belief.confidence = min(0.9, DEFAULT_CONFIDENCE + 0.05 * belief.observations)
 
@@ -1409,22 +1549,27 @@ class WorldModel:
         """
         day = self.day if now_day is None else int(now_day)
         decayed = []
-        for kind, beliefs in (("schedule", self._schedule_beliefs),
-                              ("capability", self._capability_beliefs),
-                              ("contact", self._contact_beliefs),
-                              ("habit", self._habit_beliefs)):
+        for kind, beliefs in (
+            ("schedule", self._schedule_beliefs),
+            ("capability", self._capability_beliefs),
+            ("contact", self._contact_beliefs),
+            ("habit", self._habit_beliefs),
+        ):
             for key, belief in beliefs.items():
                 if belief.status != "verified" or belief.last_day is None:
                     continue
                 if day - belief.last_day < BELIEF_STALE_AFTER_DAYS:
                     continue
-                if kind == "schedule":
+                # kind always matches its source dict, so the
+                # isinstance here only narrows the type for mypy;
+                # it does not change behavior.
+                if kind == "schedule" and isinstance(belief, _ScheduleBelief):
                     self._snapshot_schedule(belief, reason="decay", day=day)
-                elif kind == "capability":
+                elif kind == "capability" and isinstance(belief, _CapabilityBelief):
                     self._snapshot_capability(belief, reason="decay", day=day)
-                elif kind == "contact":
+                elif kind == "contact" and isinstance(belief, _ContactBelief):
                     self._snapshot_contact(belief, reason="decay", day=day)
-                else:
+                elif isinstance(belief, _HabitBelief):
                     self._snapshot_habit(belief, reason="decay", day=day)
                 belief.version += 1
                 belief.status = "trial"

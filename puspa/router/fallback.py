@@ -70,29 +70,29 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .quota import QuotaStore
-from .router import CATALOG, ChoiceModel, choose, compute_cost
+from .router import CATALOG, ChoiceModel, compute_cost
 
 __all__ = [
-    "TIER_SUBSCRIPTION",
+    "TIERS",
     "TIER_CHEAP",
     "TIER_FREE",
-    "TIERS",
-    "ChainEntry",
+    "TIER_SUBSCRIPTION",
+    "AllTiersFailed",
     "CallResult",
+    "ChainEntry",
     "FallbackAttempt",
     "FallbackHop",
     "FallbackResult",
-    "ProviderFailure",
-    "RateLimited",
-    "QuotaExhaustedError",
-    "ProviderError",
     "NonRetryableError",
-    "AllTiersFailed",
-    "classify_failure",
+    "ProviderError",
+    "ProviderFailure",
+    "QuotaExhaustedError",
+    "RateLimited",
     "build_chain",
-    "choose_with_quota",
-    "seed_chain_quotas",
     "call_with_fallback",
+    "choose_with_quota",
+    "classify_failure",
+    "seed_chain_quotas",
 ]
 
 TIER_SUBSCRIPTION = "subscription"
@@ -108,6 +108,7 @@ RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
 # Failures
 # ---------------------------------------------------------------------------
 
+
 def classify_failure(status: int | None, message: str = "") -> str:
     """Classify a provider failure from its status and message.
 
@@ -117,8 +118,7 @@ def classify_failure(status: int | None, message: str = "") -> str:
     its own decides the retryable / non-retryable split.
     """
     text = (message or "").lower()
-    quota_words = ("quota", "insufficient_quota", "exhausted",
-                   "allowance", "usage limit", "credit")
+    quota_words = ("quota", "insufficient_quota", "exhausted", "allowance", "usage limit", "credit")
     if status == 429:
         if any(word in text for word in quota_words):
             return "quota_exhausted"
@@ -145,8 +145,9 @@ class ProviderFailure(Exception):
     ``call_with_fallback`` to the failure it finally raises.
     """
 
-    def __init__(self, message: str, *, status: int | None = None,
-                 retry_after_seconds: int | None = None) -> None:
+    def __init__(
+        self, message: str, *, status: int | None = None, retry_after_seconds: int | None = None
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.status = status
@@ -156,8 +157,7 @@ class ProviderFailure(Exception):
 
     @property
     def retryable(self) -> bool:
-        return self.kind in ("rate_limited", "quota_exhausted",
-                             "provider_error")
+        return self.kind in ("rate_limited", "quota_exhausted", "provider_error")
 
     def __str__(self) -> str:
         status = f"status {self.status}" if self.status is not None else "no status"
@@ -167,30 +167,36 @@ class ProviderFailure(Exception):
 class RateLimited(ProviderFailure):
     """HTTP 429: the tier is rate limited right now."""
 
-    def __init__(self, message: str = "rate limited",
-                 *, retry_after_seconds: int | None = None) -> None:
-        super().__init__(message, status=429,
-                         retry_after_seconds=retry_after_seconds)
+    def __init__(
+        self, message: str = "rate limited", *, retry_after_seconds: int | None = None
+    ) -> None:
+        super().__init__(message, status=429, retry_after_seconds=retry_after_seconds)
 
 
 class QuotaExhaustedError(ProviderFailure):
     """The tier's quota is exhausted (429/402/403 with a quota signal)."""
 
-    def __init__(self, message: str = "quota exhausted",
-                 *, status: int | None = 429,
-                 retry_after_seconds: int | None = None) -> None:
-        super().__init__(message, status=status,
-                         retry_after_seconds=retry_after_seconds)
+    def __init__(
+        self,
+        message: str = "quota exhausted",
+        *,
+        status: int | None = 429,
+        retry_after_seconds: int | None = None,
+    ) -> None:
+        super().__init__(message, status=status, retry_after_seconds=retry_after_seconds)
 
 
 class ProviderError(ProviderFailure):
     """A 5xx or transport failure: the tier itself is broken."""
 
-    def __init__(self, message: str = "provider error",
-                 *, status: int | None = None,
-                 retry_after_seconds: int | None = None) -> None:
-        super().__init__(message, status=status,
-                         retry_after_seconds=retry_after_seconds)
+    def __init__(
+        self,
+        message: str = "provider error",
+        *,
+        status: int | None = None,
+        retry_after_seconds: int | None = None,
+    ) -> None:
+        super().__init__(message, status=status, retry_after_seconds=retry_after_seconds)
 
 
 class NonRetryableError(ProviderFailure):
@@ -200,8 +206,7 @@ class NonRetryableError(ProviderFailure):
     executor raises this immediately instead of trying other tiers.
     """
 
-    def __init__(self, message: str = "request rejected",
-                 *, status: int | None = 400) -> None:
+    def __init__(self, message: str = "request rejected", *, status: int | None = 400) -> None:
         super().__init__(message, status=status)
 
 
@@ -213,16 +218,14 @@ class AllTiersFailed(Exception):
     swallowed.
     """
 
-    def __init__(self, attempts: list[FallbackAttempt],
-                 hops: list[FallbackHop]) -> None:
+    def __init__(self, attempts: list[FallbackAttempt], hops: list[FallbackHop]) -> None:
         self.attempts = list(attempts)
         self.hops = list(hops)
         lines = ["all tiers failed:"]
         for attempt in attempts:
             lines.append(
                 f"  {attempt.tier} ({attempt.provider}/{attempt.model}): "
-                f"{attempt.outcome}"
-                + (f" - {attempt.reason}" if attempt.reason else "")
+                f"{attempt.outcome}" + (f" - {attempt.reason}" if attempt.reason else "")
             )
         super().__init__("\n".join(lines))
 
@@ -230,6 +233,7 @@ class AllTiersFailed(Exception):
 # ---------------------------------------------------------------------------
 # Chain
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class ChainEntry:
@@ -251,9 +255,12 @@ class ChainEntry:
     @property
     def choice(self) -> ChoiceModel:
         return ChoiceModel(
-            provider=self.provider, model=self.model, family=self.family,
+            provider=self.provider,
+            model=self.model,
+            family=self.family,
             rp_per_1k_input=self.rp_per_1k_input,
-            rp_per_1k_output=self.rp_per_1k_output, vision=self.vision,
+            rp_per_1k_output=self.rp_per_1k_output,
+            vision=self.vision,
         )
 
     def estimate_cost_rp(self, input_tokens: int, output_tokens: int) -> int:
@@ -267,8 +274,11 @@ def _role_candidates(role: str, creator_family: str | None = None):
     if role in ("pembaca", "pencari"):
         return list(CATALOG)
     if role == "pemeriksa":
-        rows = [row for row in CATALOG if row[2] != creator_family] \
-            if creator_family else list(CATALOG)
+        rows = (
+            [row for row in CATALOG if row[2] != creator_family]
+            if creator_family
+            else list(CATALOG)
+        )
         return rows or list(CATALOG)
     if role == "vision":
         return [row for row in CATALOG if row[5]]
@@ -305,16 +315,23 @@ def build_chain(role: str, *, creator_family: str | None = None) -> list[ChainEn
             picked.append(row)
     chain: list[ChainEntry] = []
     for tier, row in zip(TIERS, picked):
-        chain.append(ChainEntry(
-            tier=tier, provider=row[0], model=row[1], family=row[2],
-            rp_per_1k_input=row[3], rp_per_1k_output=row[4],
-            vision=row[5],
-        ))
+        chain.append(
+            ChainEntry(
+                tier=tier,
+                provider=row[0],
+                model=row[1],
+                family=row[2],
+                rp_per_1k_input=row[3],
+                rp_per_1k_output=row[4],
+                vision=row[5],
+            )
+        )
     return chain
 
 
-def choose_with_quota(role: str, quota_store: QuotaStore, *,
-                      creator_family: str | None = None) -> ChainEntry | None:
+def choose_with_quota(
+    role: str, quota_store: QuotaStore, *, creator_family: str | None = None
+) -> ChainEntry | None:
     """Quota-aware routing: first chain tier whose quota is not exhausted.
 
     A tier with no registered quota counts as available (unknown is
@@ -326,8 +343,9 @@ def choose_with_quota(role: str, quota_store: QuotaStore, *,
     return None
 
 
-def seed_chain_quotas(quota_store: QuotaStore, chain: list[ChainEntry], *,
-                      limit_tokens: int, reset_after_seconds: int) -> None:
+def seed_chain_quotas(
+    quota_store: QuotaStore, chain: list[ChainEntry], *, limit_tokens: int, reset_after_seconds: int
+) -> None:
     """Register the same quota window for every entry of a chain.
 
     The limit and window must come from the provider's actual plan;
@@ -335,7 +353,8 @@ def seed_chain_quotas(quota_store: QuotaStore, chain: list[ChainEntry], *,
     """
     for entry in chain:
         quota_store.register(
-            entry.provider_key, tier=entry.tier,
+            entry.provider_key,
+            tier=entry.tier,
             limit_tokens=limit_tokens,
             reset_after_seconds=reset_after_seconds,
             rp_per_1k_input=entry.rp_per_1k_input,
@@ -346,6 +365,7 @@ def seed_chain_quotas(quota_store: QuotaStore, chain: list[ChainEntry], *,
 # ---------------------------------------------------------------------------
 # Execution with fallback
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class CallResult:
@@ -424,9 +444,9 @@ def _failure_from_exception(exc: BaseException) -> ProviderFailure:
     return ProviderError(f"{type(exc).__name__}: {exc}")
 
 
-def call_with_fallback(chain: list[ChainEntry], call_fn, *,
-                       quota_store: QuotaStore | None = None,
-                       budget=None) -> FallbackResult:
+def call_with_fallback(
+    chain: list[ChainEntry], call_fn, *, quota_store: QuotaStore | None = None, budget=None
+) -> FallbackResult:
     """Run one request through the chain, falling through on failure.
 
     ``call_fn(entry)`` is the caller-supplied provider call (see the
@@ -446,8 +466,7 @@ def call_with_fallback(chain: list[ChainEntry], call_fn, *,
         raise ValueError("fallback chain is empty")
     if budget is not None and budget.remaining_rupiah <= 0:
         raise BudgetExhausted(
-            f"budget exhausted before any tier was tried "
-            f"(ceiling Rp{budget.rupiah_max})"
+            f"budget exhausted before any tier was tried (ceiling Rp{budget.rupiah_max})"
         )
 
     attempts: list[FallbackAttempt] = []
@@ -460,27 +479,40 @@ def call_with_fallback(chain: list[ChainEntry], call_fn, *,
         next_entry = chain[index + 1] if index + 1 < len(chain) else None
 
         if quota_store is not None and quota_store.is_exhausted(entry.provider_key):
-            attempts.append(FallbackAttempt(
-                tier=entry.tier, provider=entry.provider, model=entry.model,
-                outcome="skipped", reason="quota_exhausted",
-            ))
-            if next_entry is not None:
-                hops.append(FallbackHop(
-                    from_tier=entry.tier, to_tier=next_entry.tier,
+            attempts.append(
+                FallbackAttempt(
+                    tier=entry.tier,
+                    provider=entry.provider,
+                    model=entry.model,
+                    outcome="skipped",
                     reason="quota_exhausted",
-                ))
+                )
+            )
+            if next_entry is not None:
+                hops.append(
+                    FallbackHop(
+                        from_tier=entry.tier,
+                        to_tier=next_entry.tier,
+                        reason="quota_exhausted",
+                    )
+                )
             continue
 
         try:
             raw = call_fn(entry)
         except BaseException as exc:  # failure of this tier, not of the run
             failure = _failure_from_exception(exc)
-            attempts.append(FallbackAttempt(
-                tier=entry.tier, provider=entry.provider, model=entry.model,
-                outcome="failed", reason=failure.kind, status=failure.status,
-            ))
-            if failure.kind in ("rate_limited", "quota_exhausted") \
-                    and quota_store is not None:
+            attempts.append(
+                FallbackAttempt(
+                    tier=entry.tier,
+                    provider=entry.provider,
+                    model=entry.model,
+                    outcome="failed",
+                    reason=failure.kind,
+                    status=failure.status,
+                )
+            )
+            if failure.kind in ("rate_limited", "quota_exhausted") and quota_store is not None:
                 quota_store.apply_rate_limit(
                     entry.provider_key,
                     retry_after_seconds=failure.retry_after_seconds,
@@ -488,12 +520,16 @@ def call_with_fallback(chain: list[ChainEntry], call_fn, *,
                 )
             if not failure.retryable:
                 failure.attempts = list(attempts)
-                raise failure
+                raise failure from exc
             if next_entry is not None:
-                hops.append(FallbackHop(
-                    from_tier=entry.tier, to_tier=next_entry.tier,
-                    reason=failure.kind, status=failure.status,
-                ))
+                hops.append(
+                    FallbackHop(
+                        from_tier=entry.tier,
+                        to_tier=next_entry.tier,
+                        reason=failure.kind,
+                        status=failure.status,
+                    )
+                )
             continue
 
         if isinstance(raw, CallResult):
@@ -503,14 +539,19 @@ def call_with_fallback(chain: list[ChainEntry], call_fn, *,
             value = raw
             input_tokens, output_tokens = 0, 0
         cost_rp = entry.estimate_cost_rp(input_tokens, output_tokens)
-        attempts.append(FallbackAttempt(
-            tier=entry.tier, provider=entry.provider, model=entry.model,
-            outcome="succeeded", cost_rp=cost_rp,
-            input_tokens=input_tokens, output_tokens=output_tokens,
-        ))
+        attempts.append(
+            FallbackAttempt(
+                tier=entry.tier,
+                provider=entry.provider,
+                model=entry.model,
+                outcome="succeeded",
+                cost_rp=cost_rp,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+        )
         if quota_store is not None:
-            quota_store.record_usage(entry.provider_key,
-                                     input_tokens, output_tokens)
+            quota_store.record_usage(entry.provider_key, input_tokens, output_tokens)
         total_cost += cost_rp
         total_in += input_tokens
         total_out += output_tokens
@@ -521,9 +562,13 @@ def call_with_fallback(chain: list[ChainEntry], call_fn, *,
             # dodge the ceiling.
             budget.record_cost(cost_rp, input_tokens + output_tokens)
         return FallbackResult(
-            value=value, tier_used=entry, attempts=attempts, hops=hops,
+            value=value,
+            tier_used=entry,
+            attempts=attempts,
+            hops=hops,
             total_cost_rp=total_cost,
-            total_input_tokens=total_in, total_output_tokens=total_out,
+            total_input_tokens=total_in,
+            total_output_tokens=total_out,
         )
 
     raise AllTiersFailed(attempts, hops)

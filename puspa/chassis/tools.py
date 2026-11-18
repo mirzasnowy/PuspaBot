@@ -39,6 +39,8 @@ nama tool, status, dan alasan penolakan / temuan injeksi.
 
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Callable
 from typing import Any
 
 from nanobot.agent.tools.base import Tool, ToolResult
@@ -61,9 +63,7 @@ __all__ = [
 ]
 
 #: tool nanobot -> kind aksi keluar (balikan KIND_TOOLS dari gate).
-_TOOL_TO_KIND: dict[str, str] = {
-    tool: kind for kind, tools in KIND_TOOLS.items() for tool in tools
-}
+_TOOL_TO_KIND: dict[str, str] = {tool: kind for kind, tools in KIND_TOOLS.items() for tool in tools}
 
 
 def kind_for_tool(tool_name: str) -> str | None:
@@ -141,10 +141,8 @@ class PuspaTool(Tool):
     def _log_event(self, event_type: str, content: dict) -> None:
         if self._log is None:
             return
-        try:
+        with contextlib.suppress(Exception):
             self._log(event_type, content)
-        except Exception:
-            pass
 
     # -- eksekusi berpengawal ----------------------------------------------
     async def execute(self, **kwargs: Any) -> Any:
@@ -152,9 +150,7 @@ class PuspaTool(Tool):
         payload = resolve_token_payload()
 
         def _reject(reason: str):
-            self._log_event(
-                "tool_called", {"tool": name, "status": "rejected", "reason": reason}
-            )
+            self._log_event("tool_called", {"tool": name, "status": "rejected", "reason": reason})
             self._log_event(
                 "tool_completed", {"tool": name, "status": "rejected", "reason": reason}
             )
@@ -224,7 +220,8 @@ class PuspaTool(Tool):
                 compressed = compress_tool_result(str(result), tool_name=name)
                 if compressed.compressed:
                     result = ToolResult(
-                        compressed.text, is_error=False,
+                        compressed.text,
+                        is_error=False,
                         error_code=getattr(result, "error_code", None),
                     )
             except Exception:
@@ -261,6 +258,12 @@ class PuspaTool(Tool):
 # (list_tools / call_tool over plain dicts, no network, no process)
 # for tests and offline development.
 # ---------------------------------------------------------------------------
+
+# The SDK names below are None when the optional import fails;
+# explicit annotation so assigning None is legal.
+_McpClientSession: type[Any] | None = None
+_stdio_client: Callable[..., Any] | None = None
+_McpTool: type[Any] | None = None
 
 try:
     from mcp import ClientSession as _McpClientSession
@@ -302,11 +305,11 @@ def mcp_sdk_info() -> dict:
             "available": _MCP_SDK_AVAILABLE,
         }
     except Exception:
-        return {"name": "mcp", "version": None, "license": None,
-                "available": _MCP_SDK_AVAILABLE}
+        return {"name": "mcp", "version": None, "license": None, "available": _MCP_SDK_AVAILABLE}
 
 
 if _PydanticBaseModel is not None:
+
     class McpToolSpec(_PydanticBaseModel):
         """A typed MCP tool, validated at registration time.
 
@@ -322,8 +325,9 @@ if _PydanticBaseModel is not None:
         skill_name: str = ""
 
         @classmethod
-        def from_sdk_tool(cls, tool: Any, *, server_name: str = "",
-                          skill_name: str = "") -> "McpToolSpec":
+        def from_sdk_tool(
+            cls, tool: Any, *, server_name: str = "", skill_name: str = ""
+        ) -> McpToolSpec:
             """Build a spec from an SDK ``mcp.types.Tool`` (or a dict)."""
             if isinstance(tool, dict):
                 data = dict(tool)
@@ -332,15 +336,18 @@ if _PydanticBaseModel is not None:
                     name=str(data.get("name", "")),
                     description=str(data.get("description", "") or ""),
                     input_schema=dict(schema),
-                    server_name=server_name, skill_name=skill_name,
+                    server_name=server_name,
+                    skill_name=skill_name,
                 )
             return cls(
                 name=str(tool.name),
                 description=str(tool.description or ""),
                 input_schema=dict(tool.inputSchema or {}),
-                server_name=server_name, skill_name=skill_name,
+                server_name=server_name,
+                skill_name=skill_name,
             )
 else:  # pragma: no cover - pydantic is pinned, this never runs here
+
     class McpToolSpec:  # type: ignore
         def __init__(self, **kwargs):
             raise McpUnavailable("pydantic is required for McpToolSpec")
@@ -357,8 +364,9 @@ class StubMcpTransport:
     and then runs the handler.
     """
 
-    def __init__(self, tools: dict[str, tuple[dict, Any]] | None = None,
-                 *, server_name: str = "stub") -> None:
+    def __init__(
+        self, tools: dict[str, tuple[dict, Any]] | None = None, *, server_name: str = "stub"
+    ) -> None:
         self._tools: dict[str, tuple[dict, Any]] = dict(tools or {})
         self.server_name = server_name
         self.calls: list[dict] = []
@@ -368,8 +376,9 @@ class StubMcpTransport:
 
     async def list_tools(self) -> list[McpToolSpec]:
         return [
-            McpToolSpec(name=name, description="", input_schema=schema,
-                        server_name=self.server_name)
+            McpToolSpec(
+                name=name, description="", input_schema=schema, server_name=self.server_name
+            )
             for name, (schema, _handler) in self._tools.items()
         ]
 
@@ -397,8 +406,9 @@ class StdioMcpTransport:
     involved: stdio is a local pipe to a local process.
     """
 
-    def __init__(self, command: str, args: list[str] | None = None,
-                 *, server_name: str = "") -> None:
+    def __init__(
+        self, command: str, args: list[str] | None = None, *, server_name: str = ""
+    ) -> None:
         self.command = command
         self.args = list(args or [])
         self.server_name = server_name or command
@@ -413,9 +423,13 @@ class StdioMcpTransport:
 
         class _SessionContext:
             async def __aenter__(self):
-                self._stdio = _stdio_client(params)
+                stdio_client = _stdio_client
+                client_session_cls = _McpClientSession
+                if stdio_client is None or client_session_cls is None:
+                    raise McpUnavailable("MCP SDK is not installed")
+                self._stdio = stdio_client(params)
                 read, write = await self._stdio.__aenter__()
-                self._session = _McpClientSession(read, write)
+                self._session = client_session_cls(read, write)
                 await self._session.__aenter__()
                 await self._session.initialize()
                 return self._session
@@ -436,9 +450,16 @@ class McpClientWrapper:
     and never executes an outbound kind without an approval request.
     """
 
-    def __init__(self, transport, *, gate=None, log=None,
-                 skill_manifest: dict | None = None, public_key=None,
-                 server_name: str = "") -> None:
+    def __init__(
+        self,
+        transport,
+        *,
+        gate=None,
+        log=None,
+        skill_manifest: dict | None = None,
+        public_key=None,
+        server_name: str = "",
+    ) -> None:
         self.transport = transport
         self._gate = gate
         self._log = log
@@ -449,10 +470,8 @@ class McpClientWrapper:
     def _log_event(self, event_type: str, content: dict) -> None:
         if self._log is None:
             return
-        try:
+        with contextlib.suppress(Exception):
             self._log(event_type, content)
-        except Exception:
-            pass
 
     def _check_skill(self, tool_name: str) -> None:
         """Signed-skill gate: raise SkillRejected for unsigned tools."""
@@ -465,8 +484,10 @@ class McpClientWrapper:
         if hasattr(self.transport, "session"):
             async with self.transport.session() as session:
                 raw = await session.list_tools()
-                tools = [McpToolSpec.from_sdk_tool(
-                    tool, server_name=self.server_name) for tool in raw.tools]
+                tools = [
+                    McpToolSpec.from_sdk_tool(tool, server_name=self.server_name)
+                    for tool in raw.tools
+                ]
         else:
             tools = await self.transport.list_tools()
         allowed = []
@@ -478,8 +499,9 @@ class McpClientWrapper:
             allowed.append(spec)
         return allowed
 
-    async def call_tool(self, name: str, arguments: dict | None = None,
-                        *, token_payload: dict | None = None) -> dict:
+    async def call_tool(
+        self, name: str, arguments: dict | None = None, *, token_payload: dict | None = None
+    ) -> dict:
         """Call one MCP tool, gated. Returns a result dict, never raw.
 
         - Unsigned skill / tool outside the manifest: ``{"status":
@@ -495,27 +517,34 @@ class McpClientWrapper:
         try:
             self._check_skill(name)
         except SkillRejected as exc:
-            self._log_event("tool_called", {"tool": name, "status": "rejected",
-                                            "reason": str(exc)})
+            self._log_event("tool_called", {"tool": name, "status": "rejected", "reason": str(exc)})
             return {"status": "rejected", "reason": f"unsigned skill: {exc}"}
         kind = kind_for_tool(name)
         if kind is not None:
             if self._gate is None:
-                return {"status": "rejected",
-                        "reason": f"outbound action {kind!r} without an approval gate"}
+                return {
+                    "status": "rejected",
+                    "reason": f"outbound action {kind!r} without an approval gate",
+                }
             if token_payload is None:
-                return {"status": "rejected",
-                        "reason": "outbound action needs a permission token payload"}
+                return {
+                    "status": "rejected",
+                    "reason": "outbound action needs a permission token payload",
+                }
             try:
                 request = self._gate.request_approval(
                     user_id=token_payload["user_id"],
                     agent_id=token_payload["agent_id"],
-                    token=token_payload, kind=kind, content=dict(arguments),
+                    token=token_payload,
+                    kind=kind,
+                    content=dict(arguments),
                 )
             except GateDenied as exc:
                 return {"status": "rejected", "reason": f"gate refused: {exc}"}
-            self._log_event("tool_called", {"tool": name, "status": "pending_approval",
-                                            "request_id": request.request_id})
+            self._log_event(
+                "tool_called",
+                {"tool": name, "status": "pending_approval", "request_id": request.request_id},
+            )
             return {"status": "pending_approval", "request_id": request.request_id}
         self._log_event("tool_called", {"tool": name})
         try:
@@ -544,15 +573,17 @@ class McpClientWrapper:
 
     # -- sync convenience (no pytest-asyncio in this repo) ---------------
     def list_tools_sync(self) -> list[McpToolSpec]:
-        import anyio
         from functools import partial
+
+        import anyio
 
         return anyio.run(partial(self.list_tools))
 
-    def call_tool_sync(self, name: str, arguments: dict | None = None,
-                       *, token_payload: dict | None = None) -> dict:
-        import anyio
+    def call_tool_sync(
+        self, name: str, arguments: dict | None = None, *, token_payload: dict | None = None
+    ) -> dict:
         from functools import partial
 
-        return anyio.run(partial(
-            self.call_tool, name, arguments, token_payload=token_payload))
+        import anyio
+
+        return anyio.run(partial(self.call_tool, name, arguments, token_payload=token_payload))

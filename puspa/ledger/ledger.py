@@ -20,7 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -78,7 +78,6 @@ EVENT_TYPES = frozenset(
 )
 
 
-
 def canonical_json(obj) -> str:
     """JSON kanonis: kunci terurut, tanpa spasi, untuk hash yang stabil."""
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -86,7 +85,7 @@ def canonical_json(obj) -> str:
 
 def _time_iso(created_at: datetime) -> str:
     """Stempel waktu sebagai ISO-8601 UTC — kebal terhadap timezone sesi DB."""
-    return created_at.astimezone(timezone.utc).isoformat()
+    return created_at.astimezone(UTC).isoformat()
 
 
 def compute_event_hash(
@@ -183,9 +182,7 @@ class Ledger:
         with self._connect() as conn:
             with conn.cursor() as cur:
                 # Kunci per tugas: dua append bersamaan tidak boleh bercabang.
-                cur.execute(
-                    "SELECT pg_advisory_xact_lock(hashtext(%s))", (task_id,)
-                )
+                cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (task_id,))
                 cur.execute("SELECT now() AS created_at")
                 created_at = cur.fetchone()["created_at"]
                 cur.execute(
@@ -227,10 +224,9 @@ class Ledger:
             conn.commit()
 
         # Baca kembali dari DB (waktu dari DB, bukan dari memori).
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT * FROM events WHERE id = %s", (event_id,))
-                row = cur.fetchone()
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute("SELECT * FROM events WHERE id = %s", (event_id,))
+            row = cur.fetchone()
         if row is None:  # tidak mungkin terjadi; pertahanan terakhir
             raise LedgerError(f"kejadian {event_id} hilang setelah INSERT")
         return _row_to_event(row)
@@ -239,21 +235,19 @@ class Ledger:
         """Semua kejadian satu tugas, urut penyisipan; opsional saring `event_type`."""
         if event_type is not None and event_type not in EVENT_TYPES:
             raise InvalidEventTypeError(event_type)
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                if event_type is None:
-                    cur.execute(
-                        "SELECT * FROM events WHERE task_id = %s "
-                        "ORDER BY created_at ASC, id ASC",
-                        (task_id,),
-                    )
-                else:
-                    cur.execute(
-                        "SELECT * FROM events WHERE task_id = %s AND type = %s "
-                        "ORDER BY created_at ASC, id ASC",
-                        (task_id, event_type),
-                    )
-                rows = cur.fetchall()
+        with self._connect() as conn, conn.cursor() as cur:
+            if event_type is None:
+                cur.execute(
+                    "SELECT * FROM events WHERE task_id = %s ORDER BY created_at ASC, id ASC",
+                    (task_id,),
+                )
+            else:
+                cur.execute(
+                    "SELECT * FROM events WHERE task_id = %s AND type = %s "
+                    "ORDER BY created_at ASC, id ASC",
+                    (task_id, event_type),
+                )
+            rows = cur.fetchall()
         return [_row_to_event(row) for row in rows]
 
     def verify_chain(self, task_id: str) -> tuple[bool, list[str]]:

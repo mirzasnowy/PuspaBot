@@ -16,12 +16,7 @@ DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 def resolve_dsn(dsn=None):
     """DSN Postgres: argumen, lalu env, lalu default peer-auth lokal."""
-    return (
-        dsn
-        or os.environ.get("PUSPA_DSN")
-        or os.environ.get("PUSPA_TEST_DSN")
-        or DEFAULT_DSN
-    )
+    return dsn or os.environ.get("PUSPA_DSN") or os.environ.get("PUSPA_TEST_DSN") or DEFAULT_DSN
 
 
 def create_schema(dsn=None):

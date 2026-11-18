@@ -2,7 +2,7 @@
 
 Pattern studied, then rewritten as Puspa's own code (see docs/reuse.md):
 9Router (decolua/9router, MIT) exposes one OpenAI-compatible
-endpoint in front of 40+ providers, so every provider behind it , 
+endpoint in front of 40+ providers, so every provider behind it ,
 Anthropic, Google, xAI, Copilot, Codex, is spoken to in that
 provider's own wire format while the client only ever speaks
 OpenAI. Only the PATTERN is taken: no 9Router code is copied, and
@@ -56,9 +56,9 @@ import json
 from dataclasses import dataclass, field
 
 __all__ = [
-    "FORMAT_OPENAI",
-    "FORMAT_ANTHROPIC",
     "FORMATS",
+    "FORMAT_ANTHROPIC",
+    "FORMAT_OPENAI",
     "TranslationDrop",
     "TranslationReport",
     "TranslationResult",
@@ -150,8 +150,7 @@ def _check_payload(payload) -> dict:
     return payload
 
 
-def _parse_tool_arguments(arguments, *, where: str, direction: str,
-                          report: TranslationReport):
+def _parse_tool_arguments(arguments, *, where: str, direction: str, report: TranslationReport):
     """Parse an OpenAI tool-call ``arguments`` JSON string to a dict.
 
     Returns a dict. Unparsable or non-object arguments become an
@@ -168,8 +167,7 @@ def _parse_tool_arguments(arguments, *, where: str, direction: str,
             parsed = None
         if isinstance(parsed, dict):
             return parsed
-    report.drop(where, direction,
-                "tool arguments are not a JSON object; sent as an empty input")
+    report.drop(where, direction, "tool arguments are not a JSON object; sent as an empty input")
     return {}
 
 
@@ -178,8 +176,11 @@ def _text_of_content(content) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        parts = [item.get("text", "") for item in content
-                 if isinstance(item, dict) and item.get("type") == "text"]
+        parts = [
+            item.get("text", "")
+            for item in content
+            if isinstance(item, dict) and item.get("type") == "text"
+        ]
         return "".join(parts)
     return "" if content is None else str(content)
 
@@ -188,9 +189,10 @@ def _text_of_content(content) -> str:
 # Requests: OpenAI -> Anthropic
 # ---------------------------------------------------------------------------
 
-def _openai_content_parts_to_anthropic(content, *, where: str,
-                                       direction: str,
-                                       report: TranslationReport) -> list[dict]:
+
+def _openai_content_parts_to_anthropic(
+    content, *, where: str, direction: str, report: TranslationReport
+) -> list[dict]:
     """Convert OpenAI message content parts to Anthropic blocks."""
     if isinstance(content, str):
         return [{"type": "text", "text": content}] if content else []
@@ -205,21 +207,27 @@ def _openai_content_parts_to_anthropic(content, *, where: str,
         if kind == "text":
             blocks.append({"type": "text", "text": part.get("text", "")})
         elif kind == "image_url":
-            block = _openai_image_to_anthropic(part, where=f"{where}[{index}]",
-                                               direction=direction, report=report)
+            block = _openai_image_to_anthropic(
+                part, where=f"{where}[{index}]", direction=direction, report=report
+            )
             if block is not None:
                 blocks.append(block)
         elif kind == "input_audio":
-            report.drop(f"{where}[{index}].input_audio", direction,
-                        "Anthropic has no audio input block")
+            report.drop(
+                f"{where}[{index}].input_audio", direction, "Anthropic has no audio input block"
+            )
         else:
-            report.drop(f"{where}[{index}].type={kind!r}", direction,
-                        "no Anthropic content block equivalent")
+            report.drop(
+                f"{where}[{index}].type={kind!r}",
+                direction,
+                "no Anthropic content block equivalent",
+            )
     return blocks
 
 
-def _openai_image_to_anthropic(part: dict, *, where: str, direction: str,
-                               report: TranslationReport) -> dict | None:
+def _openai_image_to_anthropic(
+    part: dict, *, where: str, direction: str, report: TranslationReport
+) -> dict | None:
     """OpenAI ``image_url`` part -> Anthropic ``image`` block.
 
     Follows nanobot's ``AnthropicProvider._convert_image_block``:
@@ -235,12 +243,12 @@ def _openai_image_to_anthropic(part: dict, *, where: str, direction: str,
             header, data = url[5:].split(",", 1)
             media_type = header.split(";")[0] or "image/png"
         except ValueError:
-            report.drop(f"{where}.image_url.url", direction,
-                        "malformed data URL")
+            report.drop(f"{where}.image_url.url", direction, "malformed data URL")
             return None
-        return {"type": "image",
-                "source": {"type": "base64", "media_type": media_type,
-                           "data": data}}
+        return {
+            "type": "image",
+            "source": {"type": "base64", "media_type": media_type, "data": data},
+        }
     return {"type": "image", "source": {"type": "url", "url": url}}
 
 
@@ -263,32 +271,47 @@ def _openai_request_to_anthropic(payload: dict, direction: str) -> TranslationRe
             continue
         if role == "user":
             blocks = _openai_content_parts_to_anthropic(
-                message.get("content"), where=f"messages[{index}].content",
-                direction=direction, report=report)
-            anthropic_messages.append({"role": "user",
-                                       "content": blocks or [{"type": "text", "text": ""}]})
+                message.get("content"),
+                where=f"messages[{index}].content",
+                direction=direction,
+                report=report,
+            )
+            anthropic_messages.append(
+                {"role": "user", "content": blocks or [{"type": "text", "text": ""}]}
+            )
             continue
         if role == "assistant":
             blocks = _openai_content_parts_to_anthropic(
-                message.get("content"), where=f"messages[{index}].content",
-                direction=direction, report=report)
+                message.get("content"),
+                where=f"messages[{index}].content",
+                direction=direction,
+                report=report,
+            )
             for call_index, call in enumerate(message.get("tool_calls") or []):
                 if not isinstance(call, dict):
-                    report.drop(f"messages[{index}].tool_calls[{call_index}]",
-                                direction, "tool call is not an object")
+                    report.drop(
+                        f"messages[{index}].tool_calls[{call_index}]",
+                        direction,
+                        "tool call is not an object",
+                    )
                     continue
                 function = call.get("function") or {}
-                blocks.append({
-                    "type": "tool_use",
-                    "id": call.get("id") or "",
-                    "name": function.get("name", ""),
-                    "input": _parse_tool_arguments(
-                        function.get("arguments", "{}"),
-                        where=f"messages[{index}].tool_calls[{call_index}].function.arguments",
-                        direction=direction, report=report),
-                })
-            anthropic_messages.append({"role": "assistant",
-                                       "content": blocks or [{"type": "text", "text": ""}]})
+                blocks.append(
+                    {
+                        "type": "tool_use",
+                        "id": call.get("id") or "",
+                        "name": function.get("name", ""),
+                        "input": _parse_tool_arguments(
+                            function.get("arguments", "{}"),
+                            where=f"messages[{index}].tool_calls[{call_index}].function.arguments",
+                            direction=direction,
+                            report=report,
+                        ),
+                    }
+                )
+            anthropic_messages.append(
+                {"role": "assistant", "content": blocks or [{"type": "text", "text": ""}]}
+            )
             continue
         if role == "tool":
             # Anthropic carries tool results as ``tool_result`` blocks
@@ -305,21 +328,19 @@ def _openai_request_to_anthropic(payload: dict, direction: str) -> TranslationRe
                 if isinstance(last, list):
                     last.append(block)
                 else:
-                    anthropic_messages[-1]["content"] = [
-                        {"type": "text", "text": last}, block]
+                    anthropic_messages[-1]["content"] = [{"type": "text", "text": last}, block]
             else:
                 anthropic_messages.append({"role": "user", "content": [block]})
             continue
-        report.drop(f"messages[{index}].role={role!r}", direction,
-                    "no Anthropic role equivalent")
+        report.drop(f"messages[{index}].role={role!r}", direction, "no Anthropic role equivalent")
 
     if system_texts:
         joined = "\n\n".join(text for text in system_texts if text)
         out["system"] = joined
         if len(system_texts) > 1:
             report.note(
-                f"merged {len(system_texts)} system messages into one "
-                f"Anthropic system string")
+                f"merged {len(system_texts)} system messages into one Anthropic system string"
+            )
     out["messages"] = anthropic_messages
 
     # Tools: OpenAI function tools -> Anthropic tools.
@@ -328,23 +349,30 @@ def _openai_request_to_anthropic(payload: dict, direction: str) -> TranslationRe
         anthropic_tools: list[dict] = []
         for index, tool in enumerate(tools):
             if not isinstance(tool, dict) or tool.get("type") != "function":
-                report.drop(f"tools[{index}]", direction,
-                            "only function tools translate to Anthropic tools")
+                report.drop(
+                    f"tools[{index}]", direction, "only function tools translate to Anthropic tools"
+                )
                 continue
             function = tool.get("function") or {}
             if tool.get("strict") is True:
-                report.drop(f"tools[{index}].strict", direction,
-                            "Anthropic has no strict structured-output flag")
-            anthropic_tools.append({
-                "name": function.get("name", ""),
-                "description": function.get("description", ""),
-                "input_schema": function.get("parameters")
-                or {"type": "object", "properties": {}},
-            })
+                report.drop(
+                    f"tools[{index}].strict",
+                    direction,
+                    "Anthropic has no strict structured-output flag",
+                )
+            anthropic_tools.append(
+                {
+                    "name": function.get("name", ""),
+                    "description": function.get("description", ""),
+                    "input_schema": function.get("parameters")
+                    or {"type": "object", "properties": {}},
+                }
+            )
             if "parameters" not in function:
                 report.note(
                     f"tools[{index}] ({function.get('name', '')!r}) had no "
-                    f"parameters; sent an empty object schema")
+                    f"parameters; sent an empty object schema"
+                )
         out["tools"] = anthropic_tools
 
     tool_choice = payload.get("tool_choice")
@@ -359,8 +387,7 @@ def _openai_request_to_anthropic(payload: dict, direction: str) -> TranslationRe
                 "name": (tool_choice.get("function") or {}).get("name", ""),
             }
         else:
-            report.drop("tool_choice", direction,
-                        f"unsupported tool_choice value: {tool_choice!r}")
+            report.drop("tool_choice", direction, f"unsupported tool_choice value: {tool_choice!r}")
 
     for key in ("temperature", "top_p", "stream"):
         if key in payload:
@@ -371,18 +398,27 @@ def _openai_request_to_anthropic(payload: dict, direction: str) -> TranslationRe
         out["max_tokens"] = DEFAULT_ANTHROPIC_MAX_TOKENS
         report.note(
             f"max_tokens defaulted to {DEFAULT_ANTHROPIC_MAX_TOKENS}: "
-            f"Anthropic requires it and the OpenAI request had none")
+            f"Anthropic requires it and the OpenAI request had none"
+        )
     stop = payload.get("stop")
     if stop is not None:
         out["stop_sequences"] = [stop] if isinstance(stop, str) else list(stop)
 
     # Everything else on an OpenAI request has no Anthropic home.
-    known = {"model", "messages", "tools", "tool_choice", "temperature",
-             "top_p", "max_tokens", "stop", "stream"}
+    known = {
+        "model",
+        "messages",
+        "tools",
+        "tool_choice",
+        "temperature",
+        "top_p",
+        "max_tokens",
+        "stop",
+        "stream",
+    }
     for key in sorted(payload):
         if key not in known:
-            report.drop(key, direction,
-                        "no Anthropic request field equivalent")
+            report.drop(key, direction, "no Anthropic request field equivalent")
     return TranslationResult(payload=out, report=report)
 
 
@@ -390,8 +426,10 @@ def _openai_request_to_anthropic(payload: dict, direction: str) -> TranslationRe
 # Requests: Anthropic -> OpenAI
 # ---------------------------------------------------------------------------
 
-def _anthropic_image_to_openai(block: dict, *, where: str, direction: str,
-                               report: TranslationReport) -> dict | None:
+
+def _anthropic_image_to_openai(
+    block: dict, *, where: str, direction: str, report: TranslationReport
+) -> dict | None:
     """Anthropic ``image`` block -> OpenAI ``image_url`` part."""
     source = block.get("source") or {}
     if source.get("type") == "base64":
@@ -400,13 +438,12 @@ def _anthropic_image_to_openai(block: dict, *, where: str, direction: str,
         if not data:
             report.drop(f"{where}.source.data", direction, "empty image data")
             return None
-        return {"type": "image_url",
-                "image_url": {"url": f"data:{media_type};base64,{data}"}}
+        return {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{data}"}}
     if source.get("type") == "url":
-        return {"type": "image_url",
-                "image_url": {"url": source.get("url", "")}}
-    report.drop(f"{where}.source.type={source.get('type')!r}", direction,
-                "no OpenAI image_url equivalent")
+        return {"type": "image_url", "image_url": {"url": source.get("url", "")}}
+    report.drop(
+        f"{where}.source.type={source.get('type')!r}", direction, "no OpenAI image_url equivalent"
+    )
     return None
 
 
@@ -422,13 +459,20 @@ def _anthropic_request_to_openai(payload: dict, direction: str) -> TranslationRe
         if isinstance(system, str):
             openai_messages.append({"role": "system", "content": system})
         elif isinstance(system, list):
-            texts = [block.get("text", "") for block in system
-                     if isinstance(block, dict) and block.get("type") == "text"]
-            dropped = [block for block in system
-                       if isinstance(block, dict) and block.get("type") != "text"]
+            texts = [
+                block.get("text", "")
+                for block in system
+                if isinstance(block, dict) and block.get("type") == "text"
+            ]
+            dropped = [
+                block for block in system if isinstance(block, dict) and block.get("type") != "text"
+            ]
             for block in dropped:
-                report.drop(f"system block type={block.get('type')!r}",
-                            direction, "only text blocks translate to a system message")
+                report.drop(
+                    f"system block type={block.get('type')!r}",
+                    direction,
+                    "only text blocks translate to a system message",
+                )
             openai_messages.append({"role": "system", "content": "".join(texts)})
         else:
             openai_messages.append({"role": "system", "content": str(system)})
@@ -453,25 +497,34 @@ def _anthropic_request_to_openai(payload: dict, direction: str) -> TranslationRe
                     text_parts.append({"type": "text", "text": block.get("text", "")})
                 elif kind == "image":
                     part = _anthropic_image_to_openai(
-                        block, where=f"messages[{index}].content[{block_index}]",
-                        direction=direction, report=report)
+                        block,
+                        where=f"messages[{index}].content[{block_index}]",
+                        direction=direction,
+                        report=report,
+                    )
                     if part is not None:
                         text_parts.append(part)
                 elif kind == "tool_result":
                     result_content = block.get("content")
-                    openai_messages.append({
-                        "role": "tool",
-                        "tool_call_id": block.get("tool_use_id") or "",
-                        "content": _text_of_content(result_content),
-                    })
+                    openai_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": block.get("tool_use_id") or "",
+                            "content": _text_of_content(result_content),
+                        }
+                    )
                 else:
                     report.drop(
                         f"messages[{index}].content[{block_index}].type={kind!r}",
-                        direction, "no OpenAI content part equivalent")
+                        direction,
+                        "no OpenAI content part equivalent",
+                    )
                 if "cache_control" in block:
                     report.drop(
                         f"messages[{index}].content[{block_index}].cache_control",
-                        direction, "OpenAI has no per-block cache control")
+                        direction,
+                        "OpenAI has no per-block cache control",
+                    )
             if text_parts:
                 openai_messages.append({"role": "user", "content": text_parts})
             continue
@@ -489,32 +542,36 @@ def _anthropic_request_to_openai(payload: dict, direction: str) -> TranslationRe
                     if kind == "text":
                         text += block.get("text", "")
                     elif kind == "tool_use":
-                        tool_calls.append({
-                            "id": block.get("id") or "",
-                            "type": "function",
-                            "function": {
-                                "name": block.get("name", ""),
-                                "arguments": json.dumps(
-                                    block.get("input") or {},
-                                    ensure_ascii=False),
-                            },
-                        })
+                        tool_calls.append(
+                            {
+                                "id": block.get("id") or "",
+                                "type": "function",
+                                "function": {
+                                    "name": block.get("name", ""),
+                                    "arguments": json.dumps(
+                                        block.get("input") or {}, ensure_ascii=False
+                                    ),
+                                },
+                            }
+                        )
                     elif kind in ("thinking", "redacted_thinking"):
                         report.drop(
                             f"messages[{index}].content[{block_index}].type={kind!r}",
                             direction,
-                            "thinking blocks have no OpenAI message equivalent")
+                            "thinking blocks have no OpenAI message equivalent",
+                        )
                     else:
                         report.drop(
                             f"messages[{index}].content[{block_index}].type={kind!r}",
-                            direction, "no OpenAI content part equivalent")
+                            direction,
+                            "no OpenAI content part equivalent",
+                        )
             assistant: dict = {"role": "assistant", "content": text or None}
             if tool_calls:
                 assistant["tool_calls"] = tool_calls
             openai_messages.append(assistant)
             continue
-        report.drop(f"messages[{index}].role={role!r}", direction,
-                    "no OpenAI role equivalent")
+        report.drop(f"messages[{index}].role={role!r}", direction, "no OpenAI role equivalent")
 
     out["messages"] = openai_messages
 
@@ -525,18 +582,23 @@ def _anthropic_request_to_openai(payload: dict, direction: str) -> TranslationRe
             if not isinstance(tool, dict):
                 report.drop(f"tools[{index}]", direction, "tool is not an object")
                 continue
-            openai_tools.append({
-                "type": "function",
-                "function": {
-                    "name": tool.get("name", ""),
-                    "description": tool.get("description", ""),
-                    "parameters": tool.get("input_schema")
-                    or {"type": "object", "properties": {}},
-                },
-            })
+            openai_tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool.get("name", ""),
+                        "description": tool.get("description", ""),
+                        "parameters": tool.get("input_schema")
+                        or {"type": "object", "properties": {}},
+                    },
+                }
+            )
             if "cache_control" in tool:
-                report.drop(f"tools[{index}].cache_control", direction,
-                            "OpenAI has no per-tool cache control")
+                report.drop(
+                    f"tools[{index}].cache_control",
+                    direction,
+                    "OpenAI has no per-tool cache control",
+                )
         out["tools"] = openai_tools
 
     tool_choice = payload.get("tool_choice")
@@ -555,11 +617,9 @@ def _anthropic_request_to_openai(payload: dict, direction: str) -> TranslationRe
                     "function": {"name": tool_choice.get("name", "")},
                 }
             else:
-                report.drop("tool_choice", direction,
-                            f"unsupported tool_choice type: {kind!r}")
+                report.drop("tool_choice", direction, f"unsupported tool_choice type: {kind!r}")
         else:
-            report.drop("tool_choice", direction,
-                        "tool_choice must be an object for Anthropic")
+            report.drop("tool_choice", direction, "tool_choice must be an object for Anthropic")
 
     for key in ("temperature", "top_p", "max_tokens", "stream"):
         if key in payload:
@@ -572,19 +632,29 @@ def _anthropic_request_to_openai(payload: dict, direction: str) -> TranslationRe
         # Both sides accept a free-form metadata object; it crosses whole.
         out["metadata"] = metadata
 
-    known = {"model", "system", "messages", "tools", "tool_choice",
-             "temperature", "top_p", "max_tokens", "stop_sequences",
-             "stream", "metadata"}
+    known = {
+        "model",
+        "system",
+        "messages",
+        "tools",
+        "tool_choice",
+        "temperature",
+        "top_p",
+        "max_tokens",
+        "stop_sequences",
+        "stream",
+        "metadata",
+    }
     for key in sorted(payload):
         if key not in known:
-            report.drop(key, direction,
-                        "no OpenAI request field equivalent")
+            report.drop(key, direction, "no OpenAI request field equivalent")
     return TranslationResult(payload=out, report=report)
 
 
 # ---------------------------------------------------------------------------
 # Responses
 # ---------------------------------------------------------------------------
+
 
 def _openai_response_to_anthropic(payload: dict, direction: str) -> TranslationResult:
     report = TranslationReport()
@@ -598,9 +668,11 @@ def _openai_response_to_anthropic(payload: dict, direction: str) -> TranslationR
     if not choices:
         raise ValueError("OpenAI response has no choices to translate")
     if len(choices) > 1:
-        report.drop(f"choices[1:{len(choices)}]", direction,
-                    f"{len(choices) - 1} additional choice(s) dropped; "
-                    f"Anthropic returns a single message")
+        report.drop(
+            f"choices[1:{len(choices)}]",
+            direction,
+            f"{len(choices) - 1} additional choice(s) dropped; Anthropic returns a single message",
+        )
     choice = choices[0]
     message = choice.get("message") or {}
     content_blocks: list[dict] = []
@@ -612,23 +684,33 @@ def _openai_response_to_anthropic(payload: dict, direction: str) -> TranslationR
             if isinstance(part, dict) and part.get("type") == "text":
                 content_blocks.append({"type": "text", "text": part.get("text", "")})
             else:
-                report.drop(f"choices[0].message.content[{part_index}]",
-                            direction, "no Anthropic content block equivalent")
+                report.drop(
+                    f"choices[0].message.content[{part_index}]",
+                    direction,
+                    "no Anthropic content block equivalent",
+                )
     for call_index, call in enumerate(message.get("tool_calls") or []):
         if not isinstance(call, dict):
-            report.drop(f"choices[0].message.tool_calls[{call_index}]",
-                        direction, "tool call is not an object")
+            report.drop(
+                f"choices[0].message.tool_calls[{call_index}]",
+                direction,
+                "tool call is not an object",
+            )
             continue
         function = call.get("function") or {}
-        content_blocks.append({
-            "type": "tool_use",
-            "id": call.get("id") or "",
-            "name": function.get("name", ""),
-            "input": _parse_tool_arguments(
-                function.get("arguments", "{}"),
-                where=f"choices[0].message.tool_calls[{call_index}].function.arguments",
-                direction=direction, report=report),
-        })
+        content_blocks.append(
+            {
+                "type": "tool_use",
+                "id": call.get("id") or "",
+                "name": function.get("name", ""),
+                "input": _parse_tool_arguments(
+                    function.get("arguments", "{}"),
+                    where=f"choices[0].message.tool_calls[{call_index}].function.arguments",
+                    direction=direction,
+                    report=report,
+                ),
+            }
+        )
     out["content"] = content_blocks
 
     finish_reason = choice.get("finish_reason")
@@ -638,12 +720,18 @@ def _openai_response_to_anthropic(payload: dict, direction: str) -> TranslationR
     elif finish_reason in _OPENAI_FINISH_TO_STOP:
         out["stop_reason"] = _OPENAI_FINISH_TO_STOP[finish_reason]
         if finish_reason == "content_filter":
-            report.drop("choices[0].finish_reason=content_filter", direction,
-                        "Anthropic has no content-filter stop reason; "
-                        "stop_reason set to end_turn as the closest neutral value")
+            report.drop(
+                "choices[0].finish_reason=content_filter",
+                direction,
+                "Anthropic has no content-filter stop reason; "
+                "stop_reason set to end_turn as the closest neutral value",
+            )
     else:
-        report.drop(f"choices[0].finish_reason={finish_reason!r}", direction,
-                    "no Anthropic stop_reason equivalent")
+        report.drop(
+            f"choices[0].finish_reason={finish_reason!r}",
+            direction,
+            "no Anthropic stop_reason equivalent",
+        )
         out["stop_reason"] = "end_turn"
 
     usage = payload.get("usage")
@@ -658,13 +746,15 @@ def _openai_response_to_anthropic(payload: dict, direction: str) -> TranslationR
             anthropic_usage["cache_read_input_tokens"] = details["cached_tokens"]
         out["usage"] = anthropic_usage
         if "completion_tokens_details" in usage:
-            report.drop("usage.completion_tokens_details", direction,
-                        "Anthropic usage has no completion-token details field")
+            report.drop(
+                "usage.completion_tokens_details",
+                direction,
+                "Anthropic usage has no completion-token details field",
+            )
 
     for key in sorted(payload):
         if key not in {"id", "model", "choices", "usage"}:
-            report.drop(key, direction,
-                        "no Anthropic response field equivalent")
+            report.drop(key, direction, "no Anthropic response field equivalent")
     return TranslationResult(payload=out, report=report)
 
 
@@ -676,8 +766,9 @@ def _anthropic_response_to_openai(payload: dict, direction: str) -> TranslationR
     if "model" in payload:
         out["model"] = payload["model"]
     if "created_at" not in payload and "created" not in payload:
-        report.note("Anthropic responses carry no creation timestamp; "
-                    "the OpenAI 'created' field is omitted")
+        report.note(
+            "Anthropic responses carry no creation timestamp; the OpenAI 'created' field is omitted"
+        )
 
     text_parts: list[str] = []
     tool_calls: list[dict] = []
@@ -689,21 +780,28 @@ def _anthropic_response_to_openai(payload: dict, direction: str) -> TranslationR
         if kind == "text":
             text_parts.append(block.get("text", ""))
         elif kind == "tool_use":
-            tool_calls.append({
-                "id": block.get("id") or "",
-                "type": "function",
-                "function": {
-                    "name": block.get("name", ""),
-                    "arguments": json.dumps(block.get("input") or {},
-                                            ensure_ascii=False),
-                },
-            })
+            tool_calls.append(
+                {
+                    "id": block.get("id") or "",
+                    "type": "function",
+                    "function": {
+                        "name": block.get("name", ""),
+                        "arguments": json.dumps(block.get("input") or {}, ensure_ascii=False),
+                    },
+                }
+            )
         elif kind in ("thinking", "redacted_thinking"):
-            report.drop(f"content[{block_index}].type={kind!r}", direction,
-                        "thinking blocks have no OpenAI message equivalent")
+            report.drop(
+                f"content[{block_index}].type={kind!r}",
+                direction,
+                "thinking blocks have no OpenAI message equivalent",
+            )
         else:
-            report.drop(f"content[{block_index}].type={kind!r}", direction,
-                        "no OpenAI message part equivalent")
+            report.drop(
+                f"content[{block_index}].type={kind!r}",
+                direction,
+                "no OpenAI message part equivalent",
+            )
 
     stop_reason = payload.get("stop_reason")
     if stop_reason is None:
@@ -712,16 +810,13 @@ def _anthropic_response_to_openai(payload: dict, direction: str) -> TranslationR
     elif stop_reason in _ANTHROPIC_STOP_TO_FINISH:
         finish_reason = _ANTHROPIC_STOP_TO_FINISH[stop_reason]
     else:
-        report.drop(f"stop_reason={stop_reason!r}", direction,
-                    "no OpenAI finish_reason equivalent")
+        report.drop(f"stop_reason={stop_reason!r}", direction, "no OpenAI finish_reason equivalent")
         finish_reason = "stop"
 
-    message: dict = {"role": "assistant",
-                     "content": "".join(text_parts) or None}
+    message: dict = {"role": "assistant", "content": "".join(text_parts) or None}
     if tool_calls:
         message["tool_calls"] = tool_calls
-    out["choices"] = [{"index": 0, "message": message,
-                       "finish_reason": finish_reason}]
+    out["choices"] = [{"index": 0, "message": message, "finish_reason": finish_reason}]
 
     usage = payload.get("usage")
     if usage is not None:
@@ -734,23 +829,26 @@ def _anthropic_response_to_openai(payload: dict, direction: str) -> TranslationR
         }
         if "cache_read_input_tokens" in usage:
             openai_usage["prompt_tokens_details"] = {
-                "cached_tokens": usage["cache_read_input_tokens"]}
+                "cached_tokens": usage["cache_read_input_tokens"]
+            }
         out["usage"] = openai_usage
         if "cache_creation_input_tokens" in usage:
-            report.drop("usage.cache_creation_input_tokens", direction,
-                        "OpenAI usage has no cache-creation field")
+            report.drop(
+                "usage.cache_creation_input_tokens",
+                direction,
+                "OpenAI usage has no cache-creation field",
+            )
 
     for key in sorted(payload):
-        if key not in {"id", "model", "content", "stop_reason", "usage",
-                       "type", "role"}:
-            report.drop(key, direction,
-                        "no OpenAI response field equivalent")
+        if key not in {"id", "model", "content", "stop_reason", "usage", "type", "role"}:
+            report.drop(key, direction, "no OpenAI response field equivalent")
     return TranslationResult(payload=out, report=report)
 
 
 # ---------------------------------------------------------------------------
 # Entry points
 # ---------------------------------------------------------------------------
+
 
 def translate_request(payload: dict, *, source: str, target: str) -> TranslationResult:
     """Translate a chat request between OpenAI and Anthropic formats.

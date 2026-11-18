@@ -92,9 +92,7 @@ def openai_messages(surface: PromptSurface) -> list[dict]:
     return surface.as_messages()
 
 
-def openai_request(
-    surface: PromptSurface, *, model: str, tools: list | None = None
-) -> dict:
+def openai_request(surface: PromptSurface, *, model: str, tools: list | None = None) -> dict:
     """A chat-completions request dict for the OpenAI format.
 
     ``tools`` must already be OpenAI-format function tools; this
@@ -154,9 +152,7 @@ def anthropic_request(
         target="anthropic",
     )
     if converted.report.dropped:
-        dropped = ", ".join(
-            str(drop) for drop in converted.report.dropped
-        )
+        dropped = ", ".join(str(drop) for drop in converted.report.dropped)
         raise ValueError(
             "history did not survive the OpenAI -> Anthropic "
             f"conversion, refusing a truncated request: {dropped}"

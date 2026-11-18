@@ -58,8 +58,7 @@ def _dual_score(query_entities, query_concepts, query_vec, text, embedder):
         concept_overlap = len(set(query_concepts) & found) / len(query_concepts)
     vector_score = 0.0
     if query_vec is not None:
-        vector_score = max(
-            0.0, cosine_similarity(query_vec, embedder.embed(text)))
+        vector_score = max(0.0, cosine_similarity(query_vec, embedder.embed(text)))
     weight_entity, weight_concept, weight_vector = DUAL_WEIGHTS
     return (
         weight_entity * entity_overlap
@@ -89,8 +88,7 @@ def _prepare(graph, query, embedder):
     return query_entities, query_concepts, query_vec
 
 
-def local_query(graph: KnowledgeGraph, query: str, embedder=None,
-                top_k: int = 5) -> list:
+def local_query(graph: KnowledgeGraph, query: str, embedder=None, top_k: int = 5) -> list:
     """Local mode: passages directly attached to the query entities."""
     embedder = embedder or HashEmbedding()
     query_entities, query_concepts, query_vec = _prepare(graph, query, embedder)
@@ -98,18 +96,17 @@ def local_query(graph: KnowledgeGraph, query: str, embedder=None,
     results = []
     for passage_id in graph.passages_for_nodes(seeds):
         score = _dual_score(
-            query_entities, query_concepts, query_vec,
-            graph.passages[passage_id], embedder)
+            query_entities, query_concepts, query_vec, graph.passages[passage_id], embedder
+        )
         level = "entity" if seeds else "concept"
-        results.append(_result(
-            passage_id, graph, score, "local", level,
-            {"seed_nodes": seeds}))
+        results.append(_result(passage_id, graph, score, "local", level, {"seed_nodes": seeds}))
     results.sort(key=lambda r: (-r["score"], r["passage_id"]))
     return results[:top_k]
 
 
-def global_query(graph: KnowledgeGraph, query: str, embedder=None,
-                 top_k: int = 5, max_hops: int = 2) -> list:
+def global_query(
+    graph: KnowledgeGraph, query: str, embedder=None, top_k: int = 5, max_hops: int = 2
+) -> list:
     """Global mode: relationship chains, walked up to ``max_hops``.
 
     Triples are scored by concept overlap of subject plus
@@ -125,7 +122,7 @@ def global_query(graph: KnowledgeGraph, query: str, embedder=None,
     query_entities, query_concepts, query_vec = _prepare(graph, query, embedder)
     concept_set = set(query_concepts)
     scored_triples = []
-    for (subject, relation, obj) in graph.edges:
+    for subject, relation, obj in graph.edges:
         tokens = set(_TOKEN_RE.findall(subject + " " + relation + " " + obj))
         overlap = len(concept_set & tokens) / len(concept_set) if concept_set else 0.0
         scored_triples.append((overlap, subject, relation, obj))
@@ -140,7 +137,7 @@ def global_query(graph: KnowledgeGraph, query: str, embedder=None,
             hops = distances.get(node, max_hops + 1)
             if hops > max_hops:
                 continue
-            value = overlap * (0.7 ** hops)
+            value = overlap * (0.7**hops)
             if value > node_chain.get(node, 0.0):
                 node_chain[node] = value
     results = []
@@ -150,18 +147,24 @@ def global_query(graph: KnowledgeGraph, query: str, embedder=None,
         chain = max(node_chain[n] for n in on_chain)
         best_hop = min(distances.get(n, max_hops + 1) for n in on_chain)
         dual = _dual_score(
-            query_entities, query_concepts, query_vec,
-            graph.passages[passage_id], embedder)
+            query_entities, query_concepts, query_vec, graph.passages[passage_id], embedder
+        )
         score = chain + 0.3 * dual
-        results.append(_result(
-            passage_id, graph, score, "global", "concept",
-            {"hops": best_hop, "chain_score": chain}))
+        results.append(
+            _result(
+                passage_id,
+                graph,
+                score,
+                "global",
+                "concept",
+                {"hops": best_hop, "chain_score": chain},
+            )
+        )
     results.sort(key=lambda r: (-r["score"], r["passage_id"]))
     return results[:top_k]
 
 
-def naive_query(graph: KnowledgeGraph, query: str, embedder=None,
-                top_k: int = 5) -> list:
+def naive_query(graph: KnowledgeGraph, query: str, embedder=None, top_k: int = 5) -> list:
     """Naive mode: pure vector similarity over all passages, no graph."""
     embedder = embedder or HashEmbedding()
     query_vec = embedder.embed(query)
@@ -187,37 +190,41 @@ def _merge(rankings, mode):
             else:
                 entry = combined[passage_id]
                 entry["score"] = max(entry["score"], result["score"]) + (
-                    0.5 * min(entry["score"], result["score"]))
+                    0.5 * min(entry["score"], result["score"])
+                )
                 if result["mode"] not in entry["modes"]:
                     entry["modes"].append(result["mode"])
-    merged = sorted(
-        combined.values(), key=lambda r: (-r["score"], r["passage_id"]))
-    return merged
+    return sorted(combined.values(), key=lambda r: (-r["score"], r["passage_id"]))
 
 
-def hybrid_query(graph: KnowledgeGraph, query: str, embedder=None,
-                 top_k: int = 5) -> list:
+def hybrid_query(graph: KnowledgeGraph, query: str, embedder=None, top_k: int = 5) -> list:
     """Hybrid mode: local plus global merged."""
-    merged = _merge([
-        local_query(graph, query, embedder, top_k=top_k),
-        global_query(graph, query, embedder, top_k=top_k),
-    ], "hybrid")
+    merged = _merge(
+        [
+            local_query(graph, query, embedder, top_k=top_k),
+            global_query(graph, query, embedder, top_k=top_k),
+        ],
+        "hybrid",
+    )
     return merged[:top_k]
 
 
-def mix_query(graph: KnowledgeGraph, query: str, embedder=None,
-              top_k: int = 5) -> list:
+def mix_query(graph: KnowledgeGraph, query: str, embedder=None, top_k: int = 5) -> list:
     """Mix mode: local plus global plus naive merged (the default)."""
-    merged = _merge([
-        local_query(graph, query, embedder, top_k=top_k),
-        global_query(graph, query, embedder, top_k=top_k),
-        naive_query(graph, query, embedder, top_k=top_k),
-    ], "mix")
+    merged = _merge(
+        [
+            local_query(graph, query, embedder, top_k=top_k),
+            global_query(graph, query, embedder, top_k=top_k),
+            naive_query(graph, query, embedder, top_k=top_k),
+        ],
+        "mix",
+    )
     return merged[:top_k]
 
 
-def query(graph: KnowledgeGraph, query_text: str, mode: str = "mix",
-          embedder=None, top_k: int = 5) -> list:
+def query(
+    graph: KnowledgeGraph, query_text: str, mode: str = "mix", embedder=None, top_k: int = 5
+) -> list:
     """Run one query in one mode. ``mode`` is one of QUERY_MODES."""
     if not isinstance(query_text, str) or query_text == "":
         raise ValueError("query must be a non-empty string")

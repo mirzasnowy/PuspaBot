@@ -13,6 +13,7 @@ import time
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from pydantic import ValidationError
 
 from puspa.chassis.hooks import (
     HOOK_SKILL_BLOCKED,
@@ -36,10 +37,13 @@ from puspa.policy.skill_signing import load_skill, sign_skill
 # Skill hook registry
 # ---------------------------------------------------------------------------
 
+
 def test_skill_hook_registry_emits_to_all_listeners():
     registry = SkillHookRegistry()
     seen = []
-    registry.register(HOOK_SKILL_INSTALLED, lambda point, payload: seen.append((point, payload["skill"])))
+    registry.register(
+        HOOK_SKILL_INSTALLED, lambda point, payload: seen.append((point, payload["skill"]))
+    )
     registry.register(HOOK_SKILL_INSTALLED, lambda point, payload: "second")
     results = registry.emit(HOOK_SKILL_INSTALLED, {"skill": "price-compare"})
     assert seen == [(HOOK_SKILL_INSTALLED, "price-compare")]
@@ -73,6 +77,7 @@ def test_skill_hook_registry_rejects_unknown_points_and_unregisters():
 # Learned skills stay inactive until approved
 # ---------------------------------------------------------------------------
 
+
 def test_learned_skill_is_inactive_by_default():
     skill = LearnedSkill(name="pln-bill-flow")
     assert skill.status == "pending_approval"
@@ -80,12 +85,17 @@ def test_learned_skill_is_inactive_by_default():
 
 
 def test_learned_skill_store_blocks_unapproved_use_and_emits_blocked():
-    store = LearnedSkillStore([
-        {"name": "pln-bill-flow", "status": "pending_approval",
-         "tools": ["read_bill"]},
-        {"name": "price-compare", "status": "approved",
-         "tools": ["read_price"], "approved_by": "user-1"},
-    ])
+    store = LearnedSkillStore(
+        [
+            {"name": "pln-bill-flow", "status": "pending_approval", "tools": ["read_bill"]},
+            {
+                "name": "price-compare",
+                "status": "approved",
+                "tools": ["read_price"],
+                "approved_by": "user-1",
+            },
+        ]
+    )
     registry = SkillHookRegistry()
     events = []
     registry.register(HOOK_SKILL_BLOCKED, lambda p, q: events.append(("blocked", q["skill"])))
@@ -100,21 +110,31 @@ def test_learned_skill_store_blocks_unapproved_use_and_emits_blocked():
     assert check_skill_use(store, "pln-bill-flow", registry=registry) is False
     assert check_skill_use(store, "price-compare", registry=registry) is True
     assert check_skill_use(store, "unknown-skill", registry=registry) is False
-    assert events == [("blocked", "pln-bill-flow"), ("used", "price-compare"),
-                      ("blocked", "unknown-skill")]
+    assert events == [
+        ("blocked", "pln-bill-flow"),
+        ("used", "price-compare"),
+        ("blocked", "unknown-skill"),
+    ]
 
 
 def test_learned_skill_store_reads_procedure_rows_without_writing():
     rows = [
-        {"service": "pln-bill", "step": [{"tool": "read_bill"}],
-         "status": "trial", "source_event_id": None},
-        {"service": "price-compare", "step": [{"tool": "read_price"}],
-         "status": "verified", "source_event_id": None},
-        {"service": "broken-flow", "step": [], "status": "broken",
-         "source_event_id": None},
+        {
+            "service": "pln-bill",
+            "step": [{"tool": "read_bill"}],
+            "status": "trial",
+            "source_event_id": None,
+        },
+        {
+            "service": "price-compare",
+            "step": [{"tool": "read_price"}],
+            "status": "verified",
+            "source_event_id": None,
+        },
+        {"service": "broken-flow", "step": [], "status": "broken", "source_event_id": None},
     ]
     store = LearnedSkillStore.from_procedures(rows)
-    assert store.is_active("pln-bill") is False      # trial = pending approval
+    assert store.is_active("pln-bill") is False  # trial = pending approval
     assert store.is_active("price-compare") is True  # verified = approved
     assert store.is_active("broken-flow") is False
     assert store.get("pln-bill").tools == ("read_bill",)
@@ -124,12 +144,19 @@ def test_learned_skill_store_reads_procedure_rows_without_writing():
 # MCP wrapper: signed-skill gate + outbound gate, stub transport
 # ---------------------------------------------------------------------------
 
+
 def _signed_manifest(tmp_path, signing_key, public_key, tools):
     skill_dir = tmp_path / "skill-mcp"
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text("# Skill MCP\n\nTest.\n", encoding="utf-8")
-    manifest = {"name": "mcp-test", "version": "0.1.0", "tools": tools,
-                "domains": [], "connectors": {}, "author": "puspa"}
+    manifest = {
+        "name": "mcp-test",
+        "version": "0.1.0",
+        "tools": tools,
+        "domains": [],
+        "connectors": {},
+        "author": "puspa",
+    }
     (skill_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     sign_skill(skill_dir, signing_key)
     return load_skill(skill_dir, public_key)
@@ -137,11 +164,12 @@ def _signed_manifest(tmp_path, signing_key, public_key, tools):
 
 def _stub():
     transport = StubMcpTransport(server_name="stub-test")
-    transport.add_tool("read_price", {"type": "object", "properties": {
-        "query": {"type": "string"}}},
-        lambda args: {"value": 11999000, "store": "Shopee"})
-    transport.add_tool("send", {"type": "object", "properties": {}},
-                       lambda args: {"sent": True})
+    transport.add_tool(
+        "read_price",
+        {"type": "object", "properties": {"query": {"type": "string"}}},
+        lambda args: {"value": 11999000, "store": "Shopee"},
+    )
+    transport.add_tool("send", {"type": "object", "properties": {}}, lambda args: {"sent": True})
     return transport
 
 
@@ -155,22 +183,24 @@ def test_mcp_sdk_is_installed_mit_and_available():
 
 def test_mcp_tool_spec_validates_typed_tools():
     spec = McpToolSpec.from_sdk_tool(
-        {"name": "read_price", "description": "read a price",
-         "inputSchema": {"type": "object", "properties": {"query": {}}}},
-        server_name="stub")
+        {
+            "name": "read_price",
+            "description": "read a price",
+            "inputSchema": {"type": "object", "properties": {"query": {}}},
+        },
+        server_name="stub",
+    )
     assert spec.name == "read_price"
     assert spec.input_schema["type"] == "object"
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         McpToolSpec(description="no name")
 
 
 def test_mcp_wrapper_calls_signed_tool_and_lists_only_allowed(tmp_path, ephemeral_keys):
     signing_key, public_key = ephemeral_keys
-    manifest = _signed_manifest(tmp_path, signing_key, public_key,
-                                ["read_price"])
+    manifest = _signed_manifest(tmp_path, signing_key, public_key, ["read_price"])
     transport = _stub()
-    wrapper = McpClientWrapper(transport, skill_manifest=manifest,
-                               public_key=public_key)
+    wrapper = McpClientWrapper(transport, skill_manifest=manifest, public_key=public_key)
     result = wrapper.call_tool_sync("read_price", {"query": "laptop"})
     assert result["status"] == "ok"
     assert result["result"]["value"] == 11999000
@@ -182,12 +212,18 @@ def test_mcp_wrapper_calls_signed_tool_and_lists_only_allowed(tmp_path, ephemera
 
 def test_mcp_wrapper_rejects_unsigned_skill_without_calling(tmp_path):
     transport = _stub()
-    unsigned = {"name": "mcp-test", "version": "0.1.0",
-                "tools": ["read_price"], "domains": [], "connectors": {},
-                "author": "puspa"}  # no signature field at all
+    unsigned = {
+        "name": "mcp-test",
+        "version": "0.1.0",
+        "tools": ["read_price"],
+        "domains": [],
+        "connectors": {},
+        "author": "puspa",
+    }  # no signature field at all
     signing_key = Ed25519PrivateKey.generate()
-    wrapper = McpClientWrapper(transport, skill_manifest=unsigned,
-                               public_key=signing_key.public_key())
+    wrapper = McpClientWrapper(
+        transport, skill_manifest=unsigned, public_key=signing_key.public_key()
+    )
     result = wrapper.call_tool_sync("read_price", {"query": "laptop"})
     assert result["status"] == "rejected"
     assert "unsigned" in result["reason"]
@@ -196,11 +232,9 @@ def test_mcp_wrapper_rejects_unsigned_skill_without_calling(tmp_path):
 
 def test_mcp_wrapper_rejects_tool_outside_signed_manifest(tmp_path, ephemeral_keys):
     signing_key, public_key = ephemeral_keys
-    manifest = _signed_manifest(tmp_path, signing_key, public_key,
-                                ["read_price"])
+    manifest = _signed_manifest(tmp_path, signing_key, public_key, ["read_price"])
     transport = _stub()
-    wrapper = McpClientWrapper(transport, skill_manifest=manifest,
-                               public_key=public_key)
+    wrapper = McpClientWrapper(transport, skill_manifest=manifest, public_key=public_key)
     result = wrapper.call_tool_sync("send", {})
     assert result["status"] == "rejected"
     assert transport.calls == []
@@ -208,15 +242,22 @@ def test_mcp_wrapper_rejects_tool_outside_signed_manifest(tmp_path, ephemeral_ke
 
 def test_mcp_wrapper_routes_outbound_tool_through_approval_gate(tmp_path, ephemeral_keys):
     signing_key, public_key = ephemeral_keys
-    manifest = _signed_manifest(tmp_path, signing_key, public_key,
-                                ["send", "read_price"])
+    manifest = _signed_manifest(tmp_path, signing_key, public_key, ["send", "read_price"])
     transport = _stub()
     now = int(time.time())
-    payload = {"user_id": "user-1", "agent_id": "agent-1",
-               "tools": ["send"], "domains": [], "connectors": {},
-               "budget": {"rupiah_max": 2000}, "exp": now + 3600, "iat": now}
-    wrapper = McpClientWrapper(transport, gate=Gate(),
-                               skill_manifest=manifest, public_key=public_key)
+    payload = {
+        "user_id": "user-1",
+        "agent_id": "agent-1",
+        "tools": ["send"],
+        "domains": [],
+        "connectors": {},
+        "budget": {"rupiah_max": 2000},
+        "exp": now + 3600,
+        "iat": now,
+    }
+    wrapper = McpClientWrapper(
+        transport, gate=Gate(), skill_manifest=manifest, public_key=public_key
+    )
     result = wrapper.call_tool_sync("send", {}, token_payload=payload)
     assert result["status"] == "pending_approval"
     assert result["request_id"]

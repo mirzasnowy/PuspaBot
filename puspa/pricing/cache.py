@@ -13,7 +13,7 @@ Tingkat cache hit dicatat dan dilaporkan (tanpa target di MVP).
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import psycopg
 from psycopg.rows import dict_row
@@ -25,12 +25,13 @@ TTL_MINUTES = 30
 
 def _connect(dsn=None):
     return psycopg.connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
+        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
+    )
 
 
 def save(key: str, *, source: str, value: dict, evidence_id: str, dsn=None) -> None:
     """Simpan bukti ke cache bersama (TTL 30 menit)."""
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=TTL_MINUTES)
+    expires_at = datetime.now(UTC) + timedelta(minutes=TTL_MINUTES)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -38,19 +39,21 @@ def save(key: str, *, source: str, value: dict, evidence_id: str, dsn=None) -> N
                 " VALUES (%s, %s, %s, %s, %s)"
                 " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value,"
                 " evidence_id = EXCLUDED.evidence_id, expires_at = EXCLUDED.expires_at",
-                (key, source, Jsonb(value), evidence_id, expires_at))
+                (key, source, Jsonb(value), evidence_id, expires_at),
+            )
         conn.commit()
 
 
 def take(key: str, dsn=None) -> dict | None:
     """Ambil dari cache bila masih segar; hit dicatat. None bila
     tidak ada / kedaluwarsa (pemanggil wajib baca ulang sumber)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT value, evidence_id FROM evidence_cache WHERE key = %s AND expires_at > %s",
-                (key, now))
+                (key, now),
+            )
             row = cur.fetchone()
             if row is None:
                 return None
@@ -61,8 +64,7 @@ def take(key: str, dsn=None) -> dict | None:
 
 def hit_statistics(dsn=None) -> dict:
     """Tingkat cache hit (tanpa target di MVP, §3.8)."""
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT COALESCE(SUM(hit), 0) AS hit, COUNT(*) AS entri FROM evidence_cache")
-            row = cur.fetchone()
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute("SELECT COALESCE(SUM(hit), 0) AS hit, COUNT(*) AS entri FROM evidence_cache")
+        row = cur.fetchone()
     return {"total_hit": int(row["hit"]), "entri_cache": int(row["entri"])}

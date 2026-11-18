@@ -70,20 +70,14 @@ def test_echo_hook_records_events():
     record = load_plugin(ECHO_MODULE)
     hook = record.hooks[0]
     hook.handler("after_run", {"turn": 1})
-    assert record.context.shared["events"] == [
-        {"event": "after_run", "payload": {"turn": 1}}
-    ]
+    assert record.context.shared["events"] == [{"event": "after_run", "payload": {"turn": 1}}]
 
 
 def test_simple_context_tool_feeds_engine():
     record = load_plugin(CONTEXT_MODULE)
     assert record.single_select_names == [("context_engine", "simple")]
-    record.tools["remember_note"].handler(
-        text="the deploy key is on the shelf", user_id="u1"
-    )
-    record.tools["remember_note"].handler(
-        text="buy milk on the way home", user_id="u1"
-    )
+    record.tools["remember_note"].handler(text="the deploy key is on the shelf", user_id="u1")
+    record.tools["remember_note"].handler(text="buy milk on the way home", user_id="u1")
     engine = record.single_select.select("context_engine")
     assert record.single_select.active("context_engine") == "simple"
     context = engine.build_context("u1", "where is the deploy key?")
@@ -97,9 +91,7 @@ def test_memory_provider_plugin_stores_and_queries():
     record = load_plugin(MEMORY_MODULE)
     assert record.single_select_names == [("memory_provider", "inmemory")]
     provider = record.single_select.select("memory_provider")
-    stored = provider.store(
-        "u1", {"content": "loves strong coffee", "status": "active"}
-    )
+    stored = provider.store("u1", {"content": "loves strong coffee", "status": "active"})
     assert stored["id"] and stored["content"] == "loves strong coffee"
     assert stored["source"] == "inmemory"
     results = provider.query("u1", "coffee")
@@ -112,27 +104,23 @@ def test_memory_provider_plugin_stores_and_queries():
 def test_memory_provider_bridge_into_g24_registry():
     record = load_plugin(MEMORY_MODULE)
     provider_registry = ProviderRegistry()
-    installed = install_into_provider_registry(
-        record.single_select, "inmemory", provider_registry
-    )
+    installed = install_into_provider_registry(record.single_select, "inmemory", provider_registry)
     assert installed.name == "inmemory"
     from puspa.memory.provider import select_provider
 
-    provider = select_provider(
-        "inmemory", registry=provider_registry
-    )
+    provider = select_provider("inmemory", registry=provider_registry)
     provider.store("u1", {"content": "bridge works"})
     assert provider.query("u1", "bridge")[0]["content"] == "bridge works"
     with pytest.raises(UnknownPluginError):
-        install_into_provider_registry(
-            record.single_select, "nope", ProviderRegistry()
-        )
+        install_into_provider_registry(record.single_select, "nope", ProviderRegistry())
 
 
 def test_load_all_builtins_together():
     result = load_plugins(
-        [PluginSource(origin="module", location=name, module_name=name)
-         for name in (ECHO_MODULE, CONTEXT_MODULE, MEMORY_MODULE)]
+        [
+            PluginSource(origin="module", location=name, module_name=name)
+            for name in (ECHO_MODULE, CONTEXT_MODULE, MEMORY_MODULE)
+        ]
     )
     assert result.failures == []
     assert result.loaded_ids == ["echo", "simple_context", "memory_inmemory"]
@@ -144,15 +132,13 @@ def test_load_all_builtins_together():
 
 
 def test_load_rejects_module_without_register(tmp_path):
-    path = _write_plugin(tmp_path, "no_register.py", 'X = 1\n')
+    path = _write_plugin(tmp_path, "no_register.py", "X = 1\n")
     with pytest.raises(PluginStructureError, match="no register"):
         load_plugin(path)
 
 
 def test_load_rejects_register_with_wrong_arity(tmp_path):
-    path = _write_plugin(
-        tmp_path, "bad_arity.py", "def register(a, b):\n    pass\n"
-    )
+    path = _write_plugin(tmp_path, "bad_arity.py", "def register(a, b):\n    pass\n")
     with pytest.raises(PluginStructureError, match="exactly one argument"):
         load_plugin(path)
 
@@ -168,9 +154,7 @@ def test_load_rejects_register_that_raises(tmp_path):
 
 
 def test_load_rejects_import_failure(tmp_path):
-    path = _write_plugin(
-        tmp_path, "bad_import.py", "import definitely_missing_module_xyz\n"
-    )
+    path = _write_plugin(tmp_path, "bad_import.py", "import definitely_missing_module_xyz\n")
     with pytest.raises(PluginStructureError, match="failed to import"):
         load_plugin(path)
 
@@ -179,8 +163,7 @@ def test_load_rejects_unknown_hook_event(tmp_path):
     path = _write_plugin(
         tmp_path,
         "bad_hook.py",
-        "def register(ctx):\n"
-        "    ctx.register_hook('on_monday', lambda e, p: None)\n",
+        "def register(ctx):\n    ctx.register_hook('on_monday', lambda e, p: None)\n",
     )
     with pytest.raises(PluginStructureError, match="unknown hook event"):
         load_plugin(path)
@@ -258,19 +241,13 @@ def test_discover_user_before_project(tmp_path):
     project_dir = tmp_path / "project"
     user_dir.mkdir()
     project_dir.mkdir()
-    _write_plugin(
-        user_dir, "alpha.py", "def register(ctx):\n    pass\n"
-    )
-    _write_plugin(
-        project_dir, "beta.py", "def register(ctx):\n    pass\n"
-    )
+    _write_plugin(user_dir, "alpha.py", "def register(ctx):\n    pass\n")
+    _write_plugin(project_dir, "beta.py", "def register(ctx):\n    pass\n")
     (project_dir / "pkg").mkdir()
     (project_dir / "pkg" / "__init__.py").write_text(
         "def register(ctx):\n    pass\n", encoding="utf-8"
     )
-    sources = discover_plugins(
-        user_dir=user_dir, project_dir=project_dir, entry_points=False
-    )
+    sources = discover_plugins(user_dir=user_dir, project_dir=project_dir, entry_points=False)
     assert [(s.origin, Path(s.location).name) for s in sources] == [
         ("user", "alpha.py"),
         ("project", "beta.py"),
@@ -311,9 +288,7 @@ def test_discover_entry_points(monkeypatch):
 def test_discover_respects_plugin_dir_env_vars(tmp_path, monkeypatch):
     plugin_dir = tmp_path / "envplugins"
     plugin_dir.mkdir()
-    _write_plugin(
-        plugin_dir, "envplug.py", "def register(ctx):\n    pass\n"
-    )
+    _write_plugin(plugin_dir, "envplug.py", "def register(ctx):\n    pass\n")
     monkeypatch.setenv("PUSPA_PLUGIN_DIR", str(plugin_dir))
     monkeypatch.setenv("PUSPA_PROJECT_PLUGIN_DIR", "/definitely/not/a/dir")
     sources = discover_plugins(entry_points=False)

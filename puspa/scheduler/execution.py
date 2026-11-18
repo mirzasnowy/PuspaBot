@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 
 __all__ = [
     "ExecutionRequest",
-    "compose_execution_prompt",
     "build_execution",
+    "compose_execution_prompt",
 ]
 
 
@@ -46,8 +46,7 @@ class ExecutionRequest:
         }
 
 
-def compose_execution_prompt(job: dict, *, run_id: str,
-                             due_state: str = "due") -> str:
+def compose_execution_prompt(job: dict, *, run_id: str, due_state: str = "due") -> str:
     """Compose the single prompt a fresh agent executes for a run.
 
     The prompt states the run identity, the job's own prompt, the
@@ -76,14 +75,12 @@ def compose_execution_prompt(job: dict, *, run_id: str,
     return "\n".join(lines)
 
 
-def build_execution(job: dict, *, run_id: str,
-                    due_state: str = "due") -> ExecutionRequest:
+def build_execution(job: dict, *, run_id: str, due_state: str = "due") -> ExecutionRequest:
     """Build an :class:`ExecutionRequest` from a stored job dict."""
     return ExecutionRequest(
         job_id=str(job.get("id", "")),
         run_id=run_id,
-        prompt=compose_execution_prompt(job, run_id=run_id,
-                                        due_state=due_state),
+        prompt=compose_execution_prompt(job, run_id=run_id, due_state=due_state),
         skills=[str(s) for s in (job.get("skills") or []) if str(s).strip()],
         deliver_to=str(job.get("deliver_to") or ""),
         model=job.get("model"),

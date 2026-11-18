@@ -8,10 +8,10 @@ problem, so a broken plugin is reported, never silently skipped.
 from __future__ import annotations
 
 __all__ = [
-    "PluginError",
-    "PluginStructureError",
-    "PluginShadowError",
     "PluginConfigError",
+    "PluginError",
+    "PluginShadowError",
+    "PluginStructureError",
     "UnknownPluginError",
     "UnknownSingleSelectKindError",
 ]

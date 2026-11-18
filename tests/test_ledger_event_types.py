@@ -11,6 +11,7 @@
 # PUSPA_TEST_DSN atau default peer-auth). Tiap tes memakai tugas_id unik lalu
 # membersihkan barisnya sendiri.
 
+import itertools
 import os
 import uuid
 
@@ -21,9 +22,7 @@ from psycopg import errors as pg_errors
 from puspa.ledger import EVENT_TYPES, GENESIS, Ledger
 from puspa.ledger.errors import InvalidEventTypeError
 
-DSN = os.environ.get(
-    "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql"
-)
+DSN = os.environ.get("PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
 AGEN = "agen-tes"
 
 #: 9 event_type baru revisi 7 (definisi 2.3, daftar harfiah).
@@ -87,7 +86,7 @@ def test_closed_set_of_31_event_types():
     assert len(EVENT_TYPES_OLD) == 22
     assert len(EVENT_TYPES_NEW) == 9
     assert set(EVENT_TYPES_OLD).isdisjoint(EVENT_TYPES_NEW)
-    assert EVENT_TYPES == set(EVENT_TYPES_OLD) | set(EVENT_TYPES_NEW)
+    assert set(EVENT_TYPES_OLD) | set(EVENT_TYPES_NEW) == EVENT_TYPES
     assert len(EVENT_TYPES) == 31
 
 
@@ -125,12 +124,10 @@ def test_hash_chain_mixed_old_and_new_still_intact(ledger, task_id):
         "task_completed",
     ]
     created_at = [
-        ledger.append_event(
-            task_id=task_id, agent_id=AGEN, event_type=j, content={"urutan": i}
-        )
+        ledger.append_event(task_id=task_id, agent_id=AGEN, event_type=j, content={"urutan": i})
         for i, j in enumerate(urutan)
     ]
-    for before, sesudah in zip(created_at, created_at[1:]):
+    for before, sesudah in itertools.pairwise(created_at):
         assert sesudah["previous_hash"] == before["hash"]
     assert [e["type"] for e in ledger.events(task_id)] == urutan
 
@@ -142,23 +139,20 @@ def test_hash_chain_mixed_old_and_new_still_intact(ledger, task_id):
 def test_event_type_unknown_rejected_python_and_db(ledger, task_id):
     # Level Python: append dan filter events menolak event_type sembarang.
     with pytest.raises(InvalidEventTypeError):
-        ledger.append_event(
-            task_id=task_id, agent_id=AGEN, event_type="bogus_type", content={}
-        )
+        ledger.append_event(task_id=task_id, agent_id=AGEN, event_type="bogus_type", content={})
     with pytest.raises(InvalidEventTypeError):
         ledger.events(task_id, event_type="bogus_type")
     assert ledger.events(task_id) == []
 
     # Level DB: INSERT langsung via SQL dengan event_type sembarang gagal
     # karena CHECK constraint — walau melewati validasi Python.
-    with psycopg.connect(DSN, autocommit=True) as conn:
-        with pytest.raises(pg_errors.CheckViolation):
-            conn.execute(
-                "INSERT INTO events "
-                "(task_id, agent_id, type, content, previous_hash, hash) "
-                "VALUES (%s, %s, 'bogus_type', '{}'::jsonb, %s, %s)",
-                (task_id, AGEN, GENESIS, uuid.uuid4().hex),
-            )
+    with psycopg.connect(DSN, autocommit=True) as conn, pytest.raises(pg_errors.CheckViolation):
+        conn.execute(
+            "INSERT INTO events "
+            "(task_id, agent_id, type, content, previous_hash, hash) "
+            "VALUES (%s, %s, 'bogus_type', '{}'::jsonb, %s, %s)",
+            (task_id, AGEN, GENESIS, uuid.uuid4().hex),
+        )
     assert ledger.events(task_id) == []
 
 

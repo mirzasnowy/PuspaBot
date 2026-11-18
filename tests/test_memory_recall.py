@@ -5,11 +5,9 @@ thresholds deterministic instead of relying on hash collisions.
 """
 
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from puspa.memory import recall
-
-UTC = timezone.utc
 
 
 class StubEmbedder:
@@ -26,10 +24,17 @@ class StubEmbedder:
 
 def _fact(fid, key, content, when):
     return {
-        "id": fid, "user_id": "user-1", "key": key, "content": content,
-        "status": "active", "valid_from": when, "valid_until": None,
-        "superseded_by": None, "source": "user_stated",
-        "created_at": when, "updated_at": when,
+        "id": fid,
+        "user_id": "user-1",
+        "key": key,
+        "content": content,
+        "status": "active",
+        "valid_from": when,
+        "valid_until": None,
+        "superseded_by": None,
+        "source": "user_stated",
+        "created_at": when,
+        "updated_at": when,
     }
 
 
@@ -71,9 +76,9 @@ def test_hybrid_recall_keyword_hit_lowers_threshold():
     # the same cosine and no keyword hit is not.
     vectors = {
         "coffee": [1.0, 0.0, 0.0, 0.0],
-        "coffee morning ritual": [0.55, math.sqrt(1 - 0.55 ** 2), 0.0, 0.0],
-        "unrelated evening walk": [0.55, math.sqrt(1 - 0.55 ** 2), 0.0, 0.0],
-        "coffee strong brew": [0.4, math.sqrt(1 - 0.4 ** 2), 0.0, 0.0],
+        "coffee morning ritual": [0.55, math.sqrt(1 - 0.55**2), 0.0, 0.0],
+        "unrelated evening walk": [0.55, math.sqrt(1 - 0.55**2), 0.0, 0.0],
+        "coffee strong brew": [0.4, math.sqrt(1 - 0.4**2), 0.0, 0.0],
     }
     embedder = StubEmbedder(vectors)
     facts = [
@@ -91,7 +96,7 @@ def test_hybrid_recall_keyword_hit_lowers_threshold():
 def test_hybrid_recall_high_cosine_without_keyword_passes():
     vectors = {
         "coffee": [1.0, 0.0, 0.0, 0.0],
-        "dark roast beans": [0.9, math.sqrt(1 - 0.9 ** 2), 0.0, 0.0],
+        "dark roast beans": [0.9, math.sqrt(1 - 0.9**2), 0.0, 0.0],
     }
     embedder = StubEmbedder(vectors)
     facts = [_fact("a", "beans", "dark roast beans", _t(10))]
@@ -104,10 +109,7 @@ def test_hybrid_recall_fusion_order_and_max_14():
     # 20 short facts sharing the query token "coffee": each has
     # cosine 1/sqrt(2) ~= 0.707 with the hash embedder, so all pass
     # the threshold; only the best 14 fused ranks come back.
-    facts = [
-        _fact(f"f{i:02d}", f"topic{i}", f"coffee note{i}", _t(10))
-        for i in range(20)
-    ]
+    facts = [_fact(f"f{i:02d}", f"topic{i}", f"coffee note{i}", _t(10)) for i in range(20)]
     results = recall.hybrid_recall("coffee", facts)
     assert len(results) == 14
     scores = [r["score"] for r in results]

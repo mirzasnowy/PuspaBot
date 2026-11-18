@@ -38,6 +38,7 @@ def _by_id(tasks):
 # The set itself: real tasks, one per shape, two per environment
 # ---------------------------------------------------------------------------
 
+
 def test_heldout_set_has_two_tasks_per_environment():
     tasks = load_heldout_tasks()
     assert len(tasks) == 8
@@ -99,6 +100,7 @@ def test_heldout_expected_states_match_hand_computed_values():
 # Disjointness from the dev cassettes, proved by code
 # ---------------------------------------------------------------------------
 
+
 def test_heldout_disjoint_from_dev_cassettes():
     check = check_disjoint()
     assert check.disjoint is True
@@ -116,21 +118,36 @@ def test_heldout_ids_and_tools_do_not_overlap_dev_explicitly():
     dev = load_reference_tasks()
     assert {t.task_id for t in heldout} & {t.task_id for t in dev} == set()
     assert {t.cassette_name for t in heldout} & set(TASK_REFERENCE) == set()
-    heldout_tools = {rec["tool"] for t in heldout
-                     for rec in t.cassette["recording"]}
-    dev_tools = {"read_price", "read_bill", "prepare_payment",
-                 "gmail_search", "gmail_read", "gmail_create_draft",
-                 "calendar_create_event", "create_trigger", "drive_search",
-                 "drive_read", "search_artikel", "read_artikel",
-                 "read_memory"}
+    heldout_tools = {rec["tool"] for t in heldout for rec in t.cassette["recording"]}
+    dev_tools = {
+        "read_price",
+        "read_bill",
+        "prepare_payment",
+        "gmail_search",
+        "gmail_read",
+        "gmail_create_draft",
+        "calendar_create_event",
+        "create_trigger",
+        "drive_search",
+        "drive_read",
+        "search_artikel",
+        "read_artikel",
+        "read_memory",
+    }
     assert heldout_tools & dev_tools == set()
-    assert heldout_tools == {"db_query", "kg_lookup", "os_list",
-                             "webshop_search", "webshop_checkout"}
+    assert heldout_tools == {
+        "db_query",
+        "kg_lookup",
+        "os_list",
+        "webshop_search",
+        "webshop_checkout",
+    }
 
 
 # ---------------------------------------------------------------------------
 # End to end through the harness, per environment, scored separately
 # ---------------------------------------------------------------------------
+
 
 def test_heldout_runs_end_to_end_through_harness():
     report = run_heldout_eval()
@@ -165,8 +182,11 @@ def test_heldout_scores_reported_separately_from_dev():
 
 def test_inline_cassette_needs_no_cassette_files():
     """Held-out tasks run even when the cassette directory is empty."""
-    harness = EvalHarness(cassette_dir=Path("/tmp/no-such-cassette-dir"),
-                          solver=heldout_solver, scorer=score_agentbench)
+    harness = EvalHarness(
+        cassette_dir=Path("/tmp/no-such-cassette-dir"),
+        solver=heldout_solver,
+        scorer=score_agentbench,
+    )
     report = harness.run(load_heldout_tasks())
     assert report.total == 8
     assert report.passed == 8
@@ -175,6 +195,7 @@ def test_inline_cassette_needs_no_cassette_files():
 # ---------------------------------------------------------------------------
 # Scoring discriminates: a correct run scores high, a corrupted one low
 # ---------------------------------------------------------------------------
+
 
 def _corrupt(task):
     """Tamper one answer-determining value in a copy of the cassette."""
@@ -188,9 +209,13 @@ def _corrupt(task):
             top["revenue"] += 1
         else:
             max_price = recording[0]["output"].get("max_price")
-            in_stock = [row for row in rows
-                        if row.get("stock", 0) > 0 and "price" in row
-                        and (max_price is None or row["price"] <= max_price)]
+            in_stock = [
+                row
+                for row in rows
+                if row.get("stock", 0) > 0
+                and "price" in row
+                and (max_price is None or row["price"] <= max_price)
+            ]
             cheapest = min(in_stock, key=lambda row: row["price"])
             cheapest["price"] += 1
     elif task.environment == "kg":
@@ -200,8 +225,7 @@ def _corrupt(task):
         largest = max(files, key=lambda item: item["size_bytes"])
         largest["size_bytes"] = 1
     elif task.environment == "webshop":
-        checkout = [rec for rec in recording
-                    if rec["tool"] == "webshop_checkout"][0]
+        checkout = next(rec for rec in recording if rec["tool"] == "webshop_checkout")
         checkout["output"]["total"] = 1
     else:  # pragma: no cover - every environment is handled above
         raise AssertionError(f"unknown environment {task.environment}")
@@ -209,16 +233,19 @@ def _corrupt(task):
     return replace(task, cassette=cassette)
 
 
-@pytest.mark.parametrize("task_id", [
-    "agentbench-db-cheapest-headphones",
-    "agentbench-db-top-revenue-category",
-    "agentbench-kg-supplier-two-hop",
-    "agentbench-kg-warranty-provider",
-    "agentbench-os-largest-log-file",
-    "agentbench-os-stale-cache-total",
-    "agentbench-webshop-cheapest-rated-cable",
-    "agentbench-webshop-keyboard-order",
-])
+@pytest.mark.parametrize(
+    "task_id",
+    [
+        "agentbench-db-cheapest-headphones",
+        "agentbench-db-top-revenue-category",
+        "agentbench-kg-supplier-two-hop",
+        "agentbench-kg-warranty-provider",
+        "agentbench-os-largest-log-file",
+        "agentbench-os-stale-cache-total",
+        "agentbench-webshop-cheapest-rated-cable",
+        "agentbench-webshop-keyboard-order",
+    ],
+)
 def test_corrupted_run_scores_low(task_id):
     task = _by_id(load_heldout_tasks())[task_id]
     harness = EvalHarness(solver=heldout_solver, scorer=score_agentbench)
@@ -227,8 +254,9 @@ def test_corrupted_run_scores_low(task_id):
     assert result.passed is False
     assert result.score < 1.0
     assert result.score >= 0.0
-    failed = [key for key, check in result.details.items()
-              if key != "score" and not check["matched"]]
+    failed = [
+        key for key, check in result.details.items() if key != "score" and not check["matched"]
+    ]
     assert failed, "corruption changed no scored key"
 
 

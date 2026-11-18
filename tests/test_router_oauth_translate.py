@@ -35,15 +35,15 @@ from __future__ import annotations
 import json
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from puspa.router.oauth import (
     DEFAULT_REFRESH_LEEWAY_SECONDS,
     OAuthProviderConfig,
-    TokenRefreshError,
     TokenRefresher,
+    TokenRefreshError,
     TokenSet,
     TokenStore,
 )
@@ -56,7 +56,7 @@ from puspa.router.translate import (
 
 PROVIDER = "xai"
 
-BASE_TIME = datetime(2026, 11, 18, 12, 0, 0, tzinfo=timezone.utc)
+BASE_TIME = datetime(2026, 11, 18, 12, 0, 0, tzinfo=UTC)
 
 # Deliberately fake token values, so a leak test can search for them.
 OLD_ACCESS = "access-token-FAKE-OLD-7f3a"
@@ -74,6 +74,7 @@ def _reset_tables():
 # ---------------------------------------------------------------------------
 # Helpers: fake clock + fake OAuth token endpoint
 # ---------------------------------------------------------------------------
+
 
 class FakeClock:
     """Mutable clock: the refresher reads the current fake time."""
@@ -126,33 +127,57 @@ class FakeTokenEndpoint:
             call_number = len(self.posts)
         answer = self.script.get(call_number, self.script.get("default"))
         if answer is None:
-            answer = (200, {"access_token": NEW_ACCESS,
-                            "refresh_token": NEW_REFRESH,
-                            "expires_in": 3600, "token_type": "Bearer"})
+            answer = (
+                200,
+                {
+                    "access_token": NEW_ACCESS,
+                    "refresh_token": NEW_REFRESH,
+                    "expires_in": 3600,
+                    "token_type": "Bearer",
+                },
+            )
         status, payload = answer
         if callable(payload):
             payload = payload(dict(data or {}))
         return FakeResponse(status, payload)
 
 
-def make_refresher(clock: FakeClock, *, leeway: int = DEFAULT_REFRESH_LEEWAY_SECONDS,
-                   token_url: str | None = "https://auth.example.test/oauth2/token",
-                   client_id: str | None = "fake-client-id") -> TokenRefresher:
+def make_refresher(
+    clock: FakeClock,
+    *,
+    leeway: int = DEFAULT_REFRESH_LEEWAY_SECONDS,
+    token_url: str | None = "https://auth.example.test/oauth2/token",
+    client_id: str | None = "fake-client-id",
+) -> TokenRefresher:
     refresher = TokenRefresher(now_fn=clock.now)
-    refresher.register(OAuthProviderConfig(
-        provider=PROVIDER, token_url=token_url, client_id=client_id,
-        scope=("openid", "profile"), refresh_leeway_seconds=leeway,
-        simulated=True))
+    refresher.register(
+        OAuthProviderConfig(
+            provider=PROVIDER,
+            token_url=token_url,
+            client_id=client_id,
+            scope=("openid", "profile"),
+            refresh_leeway_seconds=leeway,
+            simulated=True,
+        )
+    )
     return refresher
 
 
-def token_set(clock: FakeClock, *, access: str = OLD_ACCESS,
-              refresh: str | None = OLD_REFRESH,
-              expires_in_seconds: int | None = 3600) -> TokenSet:
+def token_set(
+    clock: FakeClock,
+    *,
+    access: str = OLD_ACCESS,
+    refresh: str | None = OLD_REFRESH,
+    expires_in_seconds: int | None = 3600,
+) -> TokenSet:
     return TokenSet(
-        access_token=access, refresh_token=refresh,
-        expires_at=(clock.now() + timedelta(seconds=expires_in_seconds)
-                    if expires_in_seconds is not None else None),
+        access_token=access,
+        refresh_token=refresh,
+        expires_at=(
+            clock.now() + timedelta(seconds=expires_in_seconds)
+            if expires_in_seconds is not None
+            else None
+        ),
         obtained_at=clock.now(),
     )
 
@@ -160,6 +185,7 @@ def token_set(clock: FakeClock, *, access: str = OLD_ACCESS,
 # ---------------------------------------------------------------------------
 # Proactive refresh: before expiry, exactly once, new token used
 # ---------------------------------------------------------------------------
+
 
 def test_near_expiry_token_is_refreshed_once_and_new_token_used():
     clock = FakeClock()
@@ -231,25 +257,27 @@ def test_refresh_without_new_refresh_token_keeps_old_one():
     clock = FakeClock()
     refresher = make_refresher(clock)
     refresher.store.put(PROVIDER, token_set(clock, expires_in_seconds=60))
-    endpoint = FakeTokenEndpoint({
-        "default": (200, {"access_token": NEW_ACCESS, "expires_in": 1800}),
-    })
+    endpoint = FakeTokenEndpoint(
+        {
+            "default": (200, {"access_token": NEW_ACCESS, "expires_in": 1800}),
+        }
+    )
     assert refresher.get_valid_token(PROVIDER, endpoint) == NEW_ACCESS
     assert refresher.store.get(PROVIDER).refresh_token == OLD_REFRESH
-    assert refresher.store.get(PROVIDER).expires_at == \
-        BASE_TIME + timedelta(seconds=1800)
+    assert refresher.store.get(PROVIDER).expires_at == BASE_TIME + timedelta(seconds=1800)
 
 
 def test_refresh_without_expires_in_assumes_one_hour():
     clock = FakeClock()
     refresher = make_refresher(clock)
     refresher.store.put(PROVIDER, token_set(clock, expires_in_seconds=60))
-    endpoint = FakeTokenEndpoint({
-        "default": (200, {"access_token": NEW_ACCESS}),
-    })
+    endpoint = FakeTokenEndpoint(
+        {
+            "default": (200, {"access_token": NEW_ACCESS}),
+        }
+    )
     assert refresher.get_valid_token(PROVIDER, endpoint) == NEW_ACCESS
-    assert refresher.store.get(PROVIDER).expires_at == \
-        BASE_TIME + timedelta(seconds=3600)
+    assert refresher.store.get(PROVIDER).expires_at == BASE_TIME + timedelta(seconds=3600)
 
 
 def test_second_call_after_refresh_makes_no_second_refresh():
@@ -266,14 +294,19 @@ def test_second_call_after_refresh_makes_no_second_refresh():
 # Refresh failure: clear error, dead token never used silently
 # ---------------------------------------------------------------------------
 
+
 def test_invalid_grant_failure_names_provider_and_needs_relogin():
     clock = FakeClock()
     refresher = make_refresher(clock)
     refresher.store.put(PROVIDER, token_set(clock, expires_in_seconds=60))
-    endpoint = FakeTokenEndpoint({
-        "default": (400, {"error": "invalid_grant",
-                          "error_description": "refresh token expired"}),
-    })
+    endpoint = FakeTokenEndpoint(
+        {
+            "default": (
+                400,
+                {"error": "invalid_grant", "error_description": "refresh token expired"},
+            ),
+        }
+    )
     with pytest.raises(TokenRefreshError) as excinfo:
         refresher.get_valid_token(PROVIDER, endpoint)
     error = excinfo.value
@@ -294,9 +327,11 @@ def test_server_error_failure_is_not_a_relogin():
     clock = FakeClock()
     refresher = make_refresher(clock)
     refresher.store.put(PROVIDER, token_set(clock, expires_in_seconds=60))
-    endpoint = FakeTokenEndpoint({
-        "default": (500, {"error": "server_error"}),
-    })
+    endpoint = FakeTokenEndpoint(
+        {
+            "default": (500, {"error": "server_error"}),
+        }
+    )
     with pytest.raises(TokenRefreshError) as excinfo:
         refresher.get_valid_token(PROVIDER, endpoint)
     assert excinfo.value.status == 500
@@ -307,9 +342,11 @@ def test_refresh_answer_without_access_token_is_an_error():
     clock = FakeClock()
     refresher = make_refresher(clock)
     refresher.store.put(PROVIDER, token_set(clock, expires_in_seconds=60))
-    endpoint = FakeTokenEndpoint({
-        "default": (200, {"token_type": "Bearer", "expires_in": 3600}),
-    })
+    endpoint = FakeTokenEndpoint(
+        {
+            "default": (200, {"token_type": "Bearer", "expires_in": 3600}),
+        }
+    )
     with pytest.raises(TokenRefreshError) as excinfo:
         refresher.get_valid_token(PROVIDER, endpoint)
     assert "no access_token" in str(excinfo.value)
@@ -342,8 +379,7 @@ def test_no_stored_token_means_login_required():
 def test_no_refresh_token_means_login_required():
     clock = FakeClock()
     refresher = make_refresher(clock)
-    refresher.store.put(
-        PROVIDER, token_set(clock, refresh=None, expires_in_seconds=60))
+    refresher.store.put(PROVIDER, token_set(clock, refresh=None, expires_in_seconds=60))
     with pytest.raises(TokenRefreshError) as excinfo:
         refresher.get_valid_token(PROVIDER, FakeTokenEndpoint())
     assert excinfo.value.reauth_required is True
@@ -361,11 +397,10 @@ def test_unregistered_provider_is_rejected_by_name():
 def test_refresh_without_token_url_or_client_id_names_the_gap():
     clock = FakeClock()
     refresher = TokenRefresher(now_fn=clock.now)
-    refresher.register_simulated("openai_codex", token_url=None,
-                                 client_id=None,
-                                 notes="token endpoint not verified")
-    refresher.store.put("openai_codex",
-                        token_set(clock, expires_in_seconds=60))
+    refresher.register_simulated(
+        "openai_codex", token_url=None, client_id=None, notes="token endpoint not verified"
+    )
+    refresher.store.put("openai_codex", token_set(clock, expires_in_seconds=60))
     with pytest.raises(TokenRefreshError) as excinfo:
         refresher.get_valid_token("openai_codex", FakeTokenEndpoint())
     assert "no token URL" in str(excinfo.value)
@@ -375,9 +410,10 @@ def test_refresh_without_token_url_or_client_id_names_the_gap():
     refresher2.register_simulated(
         "github_copilot",
         token_url="https://github.com/login/oauth/access_token",
-        client_id=None, notes="no client id wired yet")
-    refresher2.store.put("github_copilot",
-                         token_set(clock, expires_in_seconds=60))
+        client_id=None,
+        notes="no client id wired yet",
+    )
+    refresher2.store.put("github_copilot", token_set(clock, expires_in_seconds=60))
     with pytest.raises(TokenRefreshError) as excinfo:
         refresher2.get_valid_token("github_copilot", FakeTokenEndpoint())
     assert "no client id" in str(excinfo.value)
@@ -386,14 +422,17 @@ def test_refresh_without_token_url_or_client_id_names_the_gap():
 def test_non_https_token_url_is_rejected_at_registration():
     refresher = TokenRefresher(now_fn=FakeClock().now)
     with pytest.raises(ValueError):
-        refresher.register(OAuthProviderConfig(
-            provider="x", token_url="http://plain.example/token",
-            client_id="id"))
+        refresher.register(
+            OAuthProviderConfig(
+                provider="x", token_url="http://plain.example/token", client_id="id"
+            )
+        )
 
 
 # ---------------------------------------------------------------------------
 # Single-flight: two parallel uses, one refresh
 # ---------------------------------------------------------------------------
+
 
 def test_parallel_uses_share_a_single_refresh():
     clock = FakeClock()
@@ -410,7 +449,7 @@ def test_parallel_uses_share_a_single_refresh():
         try:
             barrier.wait(timeout=5)
             results.append(refresher.get_valid_token(PROVIDER, endpoint))
-        except BaseException as exc:  # noqa: BLE001 - collected, asserted below
+        except BaseException as exc:
             errors.append(exc)
 
     threads = [threading.Thread(target=use_token) for _ in range(2)]
@@ -428,14 +467,17 @@ def test_parallel_uses_share_a_single_refresh():
 # Token values never appear in module output
 # ---------------------------------------------------------------------------
 
+
 def test_refresh_token_never_appears_in_module_output():
     clock = FakeClock()
     refresher = make_refresher(clock)
     tokens = token_set(clock, expires_in_seconds=60)
     refresher.store.put(PROVIDER, tokens)
-    endpoint = FakeTokenEndpoint({
-        "default": (400, {"error": "invalid_grant"}),
-    })
+    endpoint = FakeTokenEndpoint(
+        {
+            "default": (400, {"error": "invalid_grant"}),
+        }
+    )
     try:
         refresher.get_valid_token(PROVIDER, endpoint)
     except TokenRefreshError as exc:
@@ -448,8 +490,12 @@ def test_refresh_token_never_appears_in_module_output():
         repr(refresher.config(PROVIDER)),
         repr(refresher.events),
         error_text,
-        json.dumps([{"provider": e.provider, "outcome": e.outcome,
-                     "reason": e.reason} for e in refresher.events]),
+        json.dumps(
+            [
+                {"provider": e.provider, "outcome": e.outcome, "reason": e.reason}
+                for e in refresher.events
+            ]
+        ),
     ]
     for output in outputs:
         assert OLD_REFRESH not in output
@@ -461,8 +507,11 @@ def test_refresh_token_never_appears_in_module_output():
 
 
 def test_token_set_repr_and_store_repr_hide_values():
-    tokens = TokenSet(access_token="sekrit-access", refresh_token="sekrit-refresh",
-                      expires_at=BASE_TIME + timedelta(seconds=3600))
+    tokens = TokenSet(
+        access_token="sekrit-access",
+        refresh_token="sekrit-refresh",
+        expires_at=BASE_TIME + timedelta(seconds=3600),
+    )
     assert "sekrit-access" not in repr(tokens)
     assert "sekrit-refresh" not in repr(tokens)
     assert "present" in repr(tokens)
@@ -475,6 +524,7 @@ def test_token_set_repr_and_store_repr_hide_values():
 # ---------------------------------------------------------------------------
 # Registry: the three named OAuth providers, simulated
 # ---------------------------------------------------------------------------
+
 
 def test_known_oauth_providers_register_as_simulated():
     from puspa.router.router import register_known_oauth_providers
@@ -503,9 +553,14 @@ def test_router_wiring_get_valid_oauth_token_delegates():
         clock = FakeClock()
         fresh = TokenRefresher(now_fn=clock.now)
         router_module._oauth_refresher = fresh
-        fresh.register(OAuthProviderConfig(
-            provider=PROVIDER, token_url="https://auth.example.test/oauth2/token",
-            client_id="fake-client-id", simulated=True))
+        fresh.register(
+            OAuthProviderConfig(
+                provider=PROVIDER,
+                token_url="https://auth.example.test/oauth2/token",
+                client_id="fake-client-id",
+                simulated=True,
+            )
+        )
         fresh.store.put(PROVIDER, token_set(clock, expires_in_seconds=60))
         endpoint = FakeTokenEndpoint()
         assert get_valid_oauth_token(PROVIDER, endpoint) == NEW_ACCESS
@@ -523,21 +578,31 @@ OPENAI_REQUEST = {
     "messages": [
         {"role": "system", "content": "You are Puspa, a helpful agent."},
         {"role": "user", "content": "What is the price of this phone?"},
-        {"role": "assistant", "content": "Let me check.",
-         "tool_calls": [
-             {"id": "call_1", "type": "function",
-              "function": {"name": "search_price",
-                           "arguments": json.dumps({"query": "phone X"})}},
-         ]},
-        {"role": "tool", "tool_call_id": "call_1",
-         "content": "Rp11.999.000 at Tokopedia"},
+        {
+            "role": "assistant",
+            "content": "Let me check.",
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {
+                        "name": "search_price",
+                        "arguments": json.dumps({"query": "phone X"}),
+                    },
+                },
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_1", "content": "Rp11.999.000 at Tokopedia"},
     ],
     "tools": [
-        {"type": "function",
-         "function": {"name": "search_price",
-                      "description": "Search a price",
-                      "parameters": {"type": "object",
-                                     "properties": {"query": {"type": "string"}}}}},
+        {
+            "type": "function",
+            "function": {
+                "name": "search_price",
+                "description": "Search a price",
+                "parameters": {"type": "object", "properties": {"query": {"type": "string"}}},
+            },
+        },
     ],
     "tool_choice": "auto",
     "temperature": 0.2,
@@ -547,8 +612,7 @@ OPENAI_REQUEST = {
 
 
 def test_openai_request_translates_to_anthropic_structure():
-    result = translate_request(OPENAI_REQUEST, source=FORMAT_OPENAI,
-                               target=FORMAT_ANTHROPIC)
+    result = translate_request(OPENAI_REQUEST, source=FORMAT_OPENAI, target=FORMAT_ANTHROPIC)
     out = result.payload
     assert out["model"] == "gpt-4o-mini"
     assert out["system"] == "You are Puspa, a helpful agent."
@@ -557,30 +621,32 @@ def test_openai_request_translates_to_anthropic_structure():
     assert out["stop_sequences"] == ["END"]
     assert out["tool_choice"] == {"type": "auto"}
     assert out["tools"] == [
-        {"name": "search_price", "description": "Search a price",
-         "input_schema": {"type": "object",
-                          "properties": {"query": {"type": "string"}}}},
+        {
+            "name": "search_price",
+            "description": "Search a price",
+            "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}},
+        },
     ]
     messages = out["messages"]
     assert [m["role"] for m in messages] == ["user", "assistant", "user"]
-    assert messages[0]["content"] == [
-        {"type": "text", "text": "What is the price of this phone?"}]
+    assert messages[0]["content"] == [{"type": "text", "text": "What is the price of this phone?"}]
     assistant_blocks = messages[1]["content"]
     assert assistant_blocks[0] == {"type": "text", "text": "Let me check."}
     assert assistant_blocks[1] == {
-        "type": "tool_use", "id": "call_1", "name": "search_price",
-        "input": {"query": "phone X"}}
+        "type": "tool_use",
+        "id": "call_1",
+        "name": "search_price",
+        "input": {"query": "phone X"},
+    }
     assert messages[2]["content"] == [
-        {"type": "tool_result", "tool_use_id": "call_1",
-         "content": "Rp11.999.000 at Tokopedia"}]
+        {"type": "tool_result", "tool_use_id": "call_1", "content": "Rp11.999.000 at Tokopedia"}
+    ]
     assert result.report.dropped == []
 
 
 def test_openai_request_without_max_tokens_defaults_and_notes_it():
-    request = {"model": "gpt-4o-mini",
-               "messages": [{"role": "user", "content": "hi"}]}
-    result = translate_request(request, source=FORMAT_OPENAI,
-                               target=FORMAT_ANTHROPIC)
+    request = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]}
+    result = translate_request(request, source=FORMAT_OPENAI, target=FORMAT_ANTHROPIC)
     assert result.payload["max_tokens"] == 4096
     assert any("max_tokens defaulted" in note for note in result.report.notes)
 
@@ -589,23 +655,27 @@ def test_openai_image_url_becomes_anthropic_image_block():
     request = {
         "model": "gpt-4o-mini",
         "messages": [
-            {"role": "user", "content": [
-                {"type": "text", "text": "What is this?"},
-                {"type": "image_url",
-                 "image_url": {"url": "data:image/png;base64,AAAABBBB"}},
-                {"type": "image_url",
-                 "image_url": {"url": "https://example.test/photo.jpg"}},
-            ]},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "What is this?"},
+                    {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAABBBB"}},
+                    {"type": "image_url", "image_url": {"url": "https://example.test/photo.jpg"}},
+                ],
+            },
         ],
         "max_tokens": 100,
     }
-    result = translate_request(request, source=FORMAT_OPENAI,
-                               target=FORMAT_ANTHROPIC)
+    result = translate_request(request, source=FORMAT_OPENAI, target=FORMAT_ANTHROPIC)
     blocks = result.payload["messages"][0]["content"]
-    assert blocks[1] == {"type": "image", "source": {
-        "type": "base64", "media_type": "image/png", "data": "AAAABBBB"}}
-    assert blocks[2] == {"type": "image", "source": {
-        "type": "url", "url": "https://example.test/photo.jpg"}}
+    assert blocks[1] == {
+        "type": "image",
+        "source": {"type": "base64", "media_type": "image/png", "data": "AAAABBBB"},
+    }
+    assert blocks[2] == {
+        "type": "image",
+        "source": {"type": "url", "url": "https://example.test/photo.jpg"},
+    }
     assert result.report.dropped == []
 
 
@@ -617,26 +687,41 @@ ANTHROPIC_REQUEST = {
     "model": "claude-haiku-4-5",
     "system": "You are Puspa, a helpful agent.",
     "messages": [
-        {"role": "user", "content": [
-            {"type": "text", "text": "Check the price."},
-            {"type": "image", "source": {
-                "type": "base64", "media_type": "image/jpeg",
-                "data": "CCCCDDDD"}},
-        ]},
-        {"role": "assistant", "content": [
-            {"type": "text", "text": "Checking."},
-            {"type": "tool_use", "id": "toolu_1", "name": "search_price",
-             "input": {"query": "phone X"}},
-        ]},
-        {"role": "user", "content": [
-            {"type": "tool_result", "tool_use_id": "toolu_1",
-             "content": "Rp11.999.000"},
-        ]},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Check the price."},
+                {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": "image/jpeg", "data": "CCCCDDDD"},
+                },
+            ],
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "Checking."},
+                {
+                    "type": "tool_use",
+                    "id": "toolu_1",
+                    "name": "search_price",
+                    "input": {"query": "phone X"},
+                },
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "tool_result", "tool_use_id": "toolu_1", "content": "Rp11.999.000"},
+            ],
+        },
     ],
     "tools": [
-        {"name": "search_price", "description": "Search a price",
-         "input_schema": {"type": "object",
-                          "properties": {"query": {"type": "string"}}}},
+        {
+            "name": "search_price",
+            "description": "Search a price",
+            "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}},
+        },
     ],
     "tool_choice": {"type": "auto"},
     "temperature": 0.2,
@@ -646,30 +731,40 @@ ANTHROPIC_REQUEST = {
 
 
 def test_anthropic_request_translates_to_openai_structure():
-    result = translate_request(ANTHROPIC_REQUEST, source=FORMAT_ANTHROPIC,
-                               target=FORMAT_OPENAI)
+    result = translate_request(ANTHROPIC_REQUEST, source=FORMAT_ANTHROPIC, target=FORMAT_OPENAI)
     out = result.payload
     assert out["model"] == "claude-haiku-4-5"
-    assert out["messages"][0] == {
-        "role": "system", "content": "You are Puspa, a helpful agent."}
+    assert out["messages"][0] == {"role": "system", "content": "You are Puspa, a helpful agent."}
     user_parts = out["messages"][1]["content"]
     assert user_parts[0] == {"type": "text", "text": "Check the price."}
-    assert user_parts[1] == {"type": "image_url", "image_url": {
-        "url": "data:image/jpeg;base64,CCCCDDDD"}}
+    assert user_parts[1] == {
+        "type": "image_url",
+        "image_url": {"url": "data:image/jpeg;base64,CCCCDDDD"},
+    }
     assistant = out["messages"][2]
     assert assistant["content"] == "Checking."
     assert assistant["tool_calls"] == [
-        {"id": "toolu_1", "type": "function",
-         "function": {"name": "search_price",
-                      "arguments": json.dumps({"query": "phone X"})}}]
+        {
+            "id": "toolu_1",
+            "type": "function",
+            "function": {"name": "search_price", "arguments": json.dumps({"query": "phone X"})},
+        }
+    ]
     assert out["messages"][3] == {
-        "role": "tool", "tool_call_id": "toolu_1",
-        "content": "Rp11.999.000"}
+        "role": "tool",
+        "tool_call_id": "toolu_1",
+        "content": "Rp11.999.000",
+    }
     assert out["tools"] == [
-        {"type": "function",
-         "function": {"name": "search_price", "description": "Search a price",
-                      "parameters": {"type": "object",
-                                     "properties": {"query": {"type": "string"}}}}}]
+        {
+            "type": "function",
+            "function": {
+                "name": "search_price",
+                "description": "Search a price",
+                "parameters": {"type": "object", "properties": {"query": {"type": "string"}}},
+            },
+        }
+    ]
     assert out["tool_choice"] == "auto"
     assert out["stop"] == ["END"]
     assert out["max_tokens"] == 1024
@@ -680,16 +775,17 @@ def test_anthropic_thinking_block_is_reported_not_silently_dropped():
     request = {
         "model": "claude-haiku-4-5",
         "messages": [
-            {"role": "assistant", "content": [
-                {"type": "thinking", "thinking": "Let me think.",
-                 "signature": "sig"},
-                {"type": "text", "text": "Answer."},
-            ]},
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "Let me think.", "signature": "sig"},
+                    {"type": "text", "text": "Answer."},
+                ],
+            },
         ],
         "max_tokens": 100,
     }
-    result = translate_request(request, source=FORMAT_ANTHROPIC,
-                               target=FORMAT_OPENAI)
+    result = translate_request(request, source=FORMAT_ANTHROPIC, target=FORMAT_OPENAI)
     assert result.payload["messages"][0]["content"] == "Answer."
     assert "messages[0].content[0].type='thinking'" in result.report.dropped_fields
 
@@ -698,12 +794,11 @@ def test_anthropic_thinking_block_is_reported_not_silently_dropped():
 # Round-trips: fields with an equivalent survive both ways
 # ---------------------------------------------------------------------------
 
+
 def test_request_round_trip_openai_to_anthropic_and_back():
-    first = translate_request(OPENAI_REQUEST, source=FORMAT_OPENAI,
-                              target=FORMAT_ANTHROPIC)
+    first = translate_request(OPENAI_REQUEST, source=FORMAT_OPENAI, target=FORMAT_ANTHROPIC)
     assert first.report.dropped == []
-    back = translate_request(first.payload, source=FORMAT_ANTHROPIC,
-                             target=FORMAT_OPENAI)
+    back = translate_request(first.payload, source=FORMAT_ANTHROPIC, target=FORMAT_OPENAI)
     out = back.payload
     assert out["model"] == OPENAI_REQUEST["model"]
     assert out["temperature"] == 0.2
@@ -711,23 +806,19 @@ def test_request_round_trip_openai_to_anthropic_and_back():
     assert out["stop"] == ["END"]
     assert out["tool_choice"] == "auto"
     assert out["messages"][0] == OPENAI_REQUEST["messages"][0]
-    assert out["messages"][1]["content"][0]["text"] == \
-        "What is the price of this phone?"
+    assert out["messages"][1]["content"][0]["text"] == "What is the price of this phone?"
     assistant = out["messages"][2]
     assert assistant["content"] == "Let me check."
-    assert json.loads(assistant["tool_calls"][0]["function"]["arguments"]) == \
-        {"query": "phone X"}
+    assert json.loads(assistant["tool_calls"][0]["function"]["arguments"]) == {"query": "phone X"}
     assert out["messages"][3] == OPENAI_REQUEST["messages"][3]
     assert out["tools"] == OPENAI_REQUEST["tools"]
     assert back.report.dropped == []
 
 
 def test_request_round_trip_anthropic_to_openai_and_back():
-    first = translate_request(ANTHROPIC_REQUEST, source=FORMAT_ANTHROPIC,
-                              target=FORMAT_OPENAI)
+    first = translate_request(ANTHROPIC_REQUEST, source=FORMAT_ANTHROPIC, target=FORMAT_OPENAI)
     assert first.report.dropped == []
-    back = translate_request(first.payload, source=FORMAT_OPENAI,
-                             target=FORMAT_ANTHROPIC)
+    back = translate_request(first.payload, source=FORMAT_OPENAI, target=FORMAT_ANTHROPIC)
     out = back.payload
     assert out["model"] == ANTHROPIC_REQUEST["model"]
     assert out["system"] == ANTHROPIC_REQUEST["system"]
@@ -739,14 +830,22 @@ def test_request_round_trip_anthropic_to_openai_and_back():
     user_blocks = out["messages"][0]["content"]
     assert user_blocks[0] == {"type": "text", "text": "Check the price."}
     assert user_blocks[1]["source"] == {
-        "type": "base64", "media_type": "image/jpeg", "data": "CCCCDDDD"}
+        "type": "base64",
+        "media_type": "image/jpeg",
+        "data": "CCCCDDDD",
+    }
     assistant_blocks = out["messages"][1]["content"]
     assert assistant_blocks[1] == {
-        "type": "tool_use", "id": "toolu_1", "name": "search_price",
-        "input": {"query": "phone X"}}
+        "type": "tool_use",
+        "id": "toolu_1",
+        "name": "search_price",
+        "input": {"query": "phone X"},
+    }
     assert out["messages"][2]["content"][0] == {
-        "type": "tool_result", "tool_use_id": "toolu_1",
-        "content": "Rp11.999.000"}
+        "type": "tool_result",
+        "tool_use_id": "toolu_1",
+        "content": "Rp11.999.000",
+    }
     assert back.report.dropped == []
 
 
@@ -763,15 +862,26 @@ def test_openai_fields_without_anthropic_equivalent_are_reported():
         "n": 2,
         "seed": 42,
     }
-    result = translate_request(request, source=FORMAT_OPENAI,
-                               target=FORMAT_ANTHROPIC)
+    result = translate_request(request, source=FORMAT_OPENAI, target=FORMAT_ANTHROPIC)
     dropped = result.report.dropped_fields
-    for field_name in ("frequency_penalty", "presence_penalty", "logit_bias",
-                       "response_format", "n", "seed"):
+    for field_name in (
+        "frequency_penalty",
+        "presence_penalty",
+        "logit_bias",
+        "response_format",
+        "n",
+        "seed",
+    ):
         assert field_name in dropped
     # None of them leaked into the Anthropic payload.
-    for field_name in ("frequency_penalty", "presence_penalty", "logit_bias",
-                       "response_format", "n", "seed"):
+    for field_name in (
+        "frequency_penalty",
+        "presence_penalty",
+        "logit_bias",
+        "response_format",
+        "n",
+        "seed",
+    ):
         assert field_name not in result.payload
     assert result.payload["temperature"] == 0.5
 
@@ -780,17 +890,17 @@ def test_anthropic_cache_control_is_reported_not_silently_dropped():
     request = {
         "model": "claude-haiku-4-5",
         "messages": [
-            {"role": "user", "content": [
-                {"type": "text", "text": "hi",
-                 "cache_control": {"type": "ephemeral"}},
-            ]},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "hi", "cache_control": {"type": "ephemeral"}},
+                ],
+            },
         ],
         "max_tokens": 100,
     }
-    result = translate_request(request, source=FORMAT_ANTHROPIC,
-                               target=FORMAT_OPENAI)
-    assert any("cache_control" in field_name
-               for field_name in result.report.dropped_fields)
+    result = translate_request(request, source=FORMAT_ANTHROPIC, target=FORMAT_OPENAI)
+    assert any("cache_control" in field_name for field_name in result.report.dropped_fields)
     assert result.payload["messages"][0]["content"][0]["text"] == "hi"
 
 
@@ -804,40 +914,50 @@ OPENAI_RESPONSE = {
     "created": 1793000000,
     "model": "gpt-4o-mini",
     "choices": [
-        {"index": 0,
-         "message": {
-             "role": "assistant",
-             "content": "The price is Rp11.999.000.",
-             "tool_calls": [
-                 {"id": "call_9", "type": "function",
-                  "function": {"name": "search_price",
-                               "arguments": json.dumps({"query": "phone X"})}},
-             ],
-         },
-         "finish_reason": "tool_calls"},
+        {
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "The price is Rp11.999.000.",
+                "tool_calls": [
+                    {
+                        "id": "call_9",
+                        "type": "function",
+                        "function": {
+                            "name": "search_price",
+                            "arguments": json.dumps({"query": "phone X"}),
+                        },
+                    },
+                ],
+            },
+            "finish_reason": "tool_calls",
+        },
     ],
-    "usage": {"prompt_tokens": 120, "completion_tokens": 30,
-              "total_tokens": 150,
-              "prompt_tokens_details": {"cached_tokens": 40}},
+    "usage": {
+        "prompt_tokens": 120,
+        "completion_tokens": 30,
+        "total_tokens": 150,
+        "prompt_tokens_details": {"cached_tokens": 40},
+    },
 }
 
 
 def test_openai_response_translates_to_anthropic():
-    result = translate_response(OPENAI_RESPONSE, source=FORMAT_OPENAI,
-                                target=FORMAT_ANTHROPIC)
+    result = translate_response(OPENAI_RESPONSE, source=FORMAT_OPENAI, target=FORMAT_ANTHROPIC)
     out = result.payload
     assert out["type"] == "message"
     assert out["role"] == "assistant"
     assert out["id"] == "chatcmpl-123"
     assert out["model"] == "gpt-4o-mini"
-    assert out["content"][0] == {"type": "text",
-                                 "text": "The price is Rp11.999.000."}
+    assert out["content"][0] == {"type": "text", "text": "The price is Rp11.999.000."}
     assert out["content"][1] == {
-        "type": "tool_use", "id": "call_9", "name": "search_price",
-        "input": {"query": "phone X"}}
+        "type": "tool_use",
+        "id": "call_9",
+        "name": "search_price",
+        "input": {"query": "phone X"},
+    }
     assert out["stop_reason"] == "tool_use"
-    assert out["usage"] == {"input_tokens": 120, "output_tokens": 30,
-                            "cache_read_input_tokens": 40}
+    assert out["usage"] == {"input_tokens": 120, "output_tokens": 30, "cache_read_input_tokens": 40}
     # OpenAI-only fields are reported, not silently dropped.
     assert "created" in result.report.dropped_fields
     assert "object" in result.report.dropped_fields
@@ -845,13 +965,15 @@ def test_openai_response_translates_to_anthropic():
 
 def test_openai_response_extra_choices_are_reported():
     response = dict(OPENAI_RESPONSE)
-    response["choices"] = list(OPENAI_RESPONSE["choices"]) + [
-        {"index": 1,
-         "message": {"role": "assistant", "content": "Second choice."},
-         "finish_reason": "stop"},
+    response["choices"] = [
+        *list(OPENAI_RESPONSE["choices"]),
+        {
+            "index": 1,
+            "message": {"role": "assistant", "content": "Second choice."},
+            "finish_reason": "stop",
+        },
     ]
-    result = translate_response(response, source=FORMAT_OPENAI,
-                                target=FORMAT_ANTHROPIC)
+    result = translate_response(response, source=FORMAT_OPENAI, target=FORMAT_ANTHROPIC)
     assert result.payload["content"][0]["text"] == "The price is Rp11.999.000."
     assert "choices[1:2]" in result.report.dropped_fields
 
@@ -863,19 +985,25 @@ ANTHROPIC_RESPONSE = {
     "model": "claude-haiku-4-5",
     "content": [
         {"type": "text", "text": "The price is Rp11.999.000."},
-        {"type": "tool_use", "id": "toolu_9", "name": "search_price",
-         "input": {"query": "phone X"}},
+        {
+            "type": "tool_use",
+            "id": "toolu_9",
+            "name": "search_price",
+            "input": {"query": "phone X"},
+        },
     ],
     "stop_reason": "tool_use",
-    "usage": {"input_tokens": 120, "output_tokens": 30,
-              "cache_creation_input_tokens": 50,
-              "cache_read_input_tokens": 40},
+    "usage": {
+        "input_tokens": 120,
+        "output_tokens": 30,
+        "cache_creation_input_tokens": 50,
+        "cache_read_input_tokens": 40,
+    },
 }
 
 
 def test_anthropic_response_translates_to_openai():
-    result = translate_response(ANTHROPIC_RESPONSE, source=FORMAT_ANTHROPIC,
-                                target=FORMAT_OPENAI)
+    result = translate_response(ANTHROPIC_RESPONSE, source=FORMAT_ANTHROPIC, target=FORMAT_OPENAI)
     out = result.payload
     assert out["object"] == "chat.completion"
     assert out["id"] == "msg_123"
@@ -883,9 +1011,12 @@ def test_anthropic_response_translates_to_openai():
     choice = out["choices"][0]
     assert choice["message"]["content"] == "The price is Rp11.999.000."
     assert choice["message"]["tool_calls"] == [
-        {"id": "toolu_9", "type": "function",
-         "function": {"name": "search_price",
-                      "arguments": json.dumps({"query": "phone X"})}}]
+        {
+            "id": "toolu_9",
+            "type": "function",
+            "function": {"name": "search_price", "arguments": json.dumps({"query": "phone X"})},
+        }
+    ]
     assert choice["finish_reason"] == "tool_calls"
     assert out["usage"]["prompt_tokens"] == 120
     assert out["usage"]["completion_tokens"] == 30
@@ -896,15 +1027,14 @@ def test_anthropic_response_translates_to_openai():
 
 
 def test_response_round_trip_openai_to_anthropic_and_back():
-    first = translate_response(OPENAI_RESPONSE, source=FORMAT_OPENAI,
-                               target=FORMAT_ANTHROPIC)
-    back = translate_response(first.payload, source=FORMAT_ANTHROPIC,
-                              target=FORMAT_OPENAI)
+    first = translate_response(OPENAI_RESPONSE, source=FORMAT_OPENAI, target=FORMAT_ANTHROPIC)
+    back = translate_response(first.payload, source=FORMAT_ANTHROPIC, target=FORMAT_OPENAI)
     out = back.payload
     choice = out["choices"][0]
     assert choice["message"]["content"] == "The price is Rp11.999.000."
-    assert json.loads(choice["message"]["tool_calls"][0]["function"]["arguments"]) == \
-        {"query": "phone X"}
+    assert json.loads(choice["message"]["tool_calls"][0]["function"]["arguments"]) == {
+        "query": "phone X"
+    }
     assert choice["finish_reason"] == "tool_calls"
     assert out["usage"]["prompt_tokens"] == 120
     assert out["usage"]["completion_tokens"] == 30
@@ -912,16 +1042,16 @@ def test_response_round_trip_openai_to_anthropic_and_back():
 
 
 def test_response_round_trip_anthropic_to_openai_and_back():
-    first = translate_response(ANTHROPIC_RESPONSE, source=FORMAT_ANTHROPIC,
-                               target=FORMAT_OPENAI)
-    back = translate_response(first.payload, source=FORMAT_OPENAI,
-                              target=FORMAT_ANTHROPIC)
+    first = translate_response(ANTHROPIC_RESPONSE, source=FORMAT_ANTHROPIC, target=FORMAT_OPENAI)
+    back = translate_response(first.payload, source=FORMAT_OPENAI, target=FORMAT_ANTHROPIC)
     out = back.payload
-    assert out["content"][0] == {"type": "text",
-                                 "text": "The price is Rp11.999.000."}
+    assert out["content"][0] == {"type": "text", "text": "The price is Rp11.999.000."}
     assert out["content"][1] == {
-        "type": "tool_use", "id": "toolu_9", "name": "search_price",
-        "input": {"query": "phone X"}}
+        "type": "tool_use",
+        "id": "toolu_9",
+        "name": "search_price",
+        "input": {"query": "phone X"},
+    }
     assert out["stop_reason"] == "tool_use"
     assert out["usage"]["input_tokens"] == 120
     assert out["usage"]["output_tokens"] == 30
@@ -930,23 +1060,30 @@ def test_response_round_trip_anthropic_to_openai_and_back():
 
 def test_finish_reason_mapping_table():
     for openai_reason, anthropic_reason in (
-            ("stop", "end_turn"), ("tool_calls", "tool_use"),
-            ("length", "max_tokens")):
-        response = {"model": "gpt-4o-mini",
-                    "choices": [{"message": {"role": "assistant",
-                                             "content": "x"},
-                                 "finish_reason": openai_reason}]}
-        result = translate_response(response, source=FORMAT_OPENAI,
-                                    target=FORMAT_ANTHROPIC)
+        ("stop", "end_turn"),
+        ("tool_calls", "tool_use"),
+        ("length", "max_tokens"),
+    ):
+        response = {
+            "model": "gpt-4o-mini",
+            "choices": [
+                {"message": {"role": "assistant", "content": "x"}, "finish_reason": openai_reason}
+            ],
+        }
+        result = translate_response(response, source=FORMAT_OPENAI, target=FORMAT_ANTHROPIC)
         assert result.payload["stop_reason"] == anthropic_reason
     for anthropic_reason, openai_reason in (
-            ("end_turn", "stop"), ("tool_use", "tool_calls"),
-            ("max_tokens", "length"), ("stop_sequence", "stop")):
-        response = {"model": "claude-haiku-4-5",
-                    "content": [{"type": "text", "text": "x"}],
-                    "stop_reason": anthropic_reason}
-        result = translate_response(response, source=FORMAT_ANTHROPIC,
-                                    target=FORMAT_OPENAI)
+        ("end_turn", "stop"),
+        ("tool_use", "tool_calls"),
+        ("max_tokens", "length"),
+        ("stop_sequence", "stop"),
+    ):
+        response = {
+            "model": "claude-haiku-4-5",
+            "content": [{"type": "text", "text": "x"}],
+            "stop_reason": anthropic_reason,
+        }
+        result = translate_response(response, source=FORMAT_ANTHROPIC, target=FORMAT_OPENAI)
         assert result.payload["choices"][0]["finish_reason"] == openai_reason
 
 
@@ -956,11 +1093,9 @@ def test_translate_rejects_unknown_formats_and_bad_payloads():
     with pytest.raises(ValueError):
         translate_request({}, source=FORMAT_OPENAI, target=FORMAT_OPENAI)
     with pytest.raises(ValueError):
-        translate_request("not-a-dict", source=FORMAT_OPENAI,
-                          target=FORMAT_ANTHROPIC)
+        translate_request("not-a-dict", source=FORMAT_OPENAI, target=FORMAT_ANTHROPIC)
     with pytest.raises(ValueError):
-        translate_response({"choices": []}, source=FORMAT_OPENAI,
-                           target=FORMAT_ANTHROPIC)
+        translate_response({"choices": []}, source=FORMAT_OPENAI, target=FORMAT_ANTHROPIC)
 
 
 def test_router_wiring_translate_delegates():
@@ -970,14 +1105,19 @@ def test_router_wiring_translate_delegates():
     )
 
     result = translate_chat_request(
-        {"model": "gpt-4o-mini",
-         "messages": [{"role": "user", "content": "hi"}],
-         "max_tokens": 10},
-        source=FORMAT_OPENAI, target=FORMAT_ANTHROPIC)
+        {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}], "max_tokens": 10},
+        source=FORMAT_OPENAI,
+        target=FORMAT_ANTHROPIC,
+    )
     assert result.payload["messages"][0]["content"][0]["text"] == "hi"
     response = translate_chat_response(
-        {"model": "gpt-4o-mini",
-         "choices": [{"message": {"role": "assistant", "content": "hi"},
-                      "finish_reason": "stop"}]},
-        source=FORMAT_OPENAI, target=FORMAT_ANTHROPIC)
+        {
+            "model": "gpt-4o-mini",
+            "choices": [
+                {"message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}
+            ],
+        },
+        source=FORMAT_OPENAI,
+        target=FORMAT_ANTHROPIC,
+    )
     assert response.payload["stop_reason"] == "end_turn"

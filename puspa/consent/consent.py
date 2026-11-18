@@ -63,7 +63,9 @@ def record_consent(user_id, dsn=None, ledger=None, agent_id=None, task_id=None):
         if agent_id is None or task_id is None:
             raise ValueError("ledger butuh agent_id + task_id")
         ev = ledger.append_event(
-            task_id=task_id, agent_id=agent_id, event_type="data_consent",
+            task_id=task_id,
+            agent_id=agent_id,
+            event_type="data_consent",
             content={"text_version": TEKS_VERSI, "user_id": str(user_id)},
         )
         event_id = str(ev["id"])
@@ -85,32 +87,30 @@ def record_consent(user_id, dsn=None, ledger=None, agent_id=None, task_id=None):
 
 def has_consented(user_id, dsn=None):
     """True kalau user pernah menyetujui (versi apa pun)."""
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT 1 FROM data_consents WHERE user_id = %s LIMIT 1",
-                (user_id,),
-            )
-            return cur.fetchone() is not None
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM data_consents WHERE user_id = %s LIMIT 1",
+            (user_id,),
+        )
+        return cur.fetchone() is not None
 
 
 def list_consents(user_id, dsn=None):
     """Riwayat persetujuan user, terbaru dulu."""
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, user_id, text_version, approved_at, event_id "
-                "FROM data_consents WHERE user_id = %s "
-                "ORDER BY approved_at DESC",
-                (user_id,),
-            )
-            return [
-                {
-                    "id": str(r["id"]),
-                    "user_id": str(r["user_id"]),
-                    "text_version": r["text_version"],
-                    "approved_at": r["approved_at"],
-                    "event_id": str(r["event_id"]) if r["event_id"] else None,
-                }
-                for r in cur.fetchall()
-            ]
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, user_id, text_version, approved_at, event_id "
+            "FROM data_consents WHERE user_id = %s "
+            "ORDER BY approved_at DESC",
+            (user_id,),
+        )
+        return [
+            {
+                "id": str(r["id"]),
+                "user_id": str(r["user_id"]),
+                "text_version": r["text_version"],
+                "approved_at": r["approved_at"],
+                "event_id": str(r["event_id"]) if r["event_id"] else None,
+            }
+            for r in cur.fetchall()
+        ]

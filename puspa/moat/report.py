@@ -22,13 +22,22 @@ DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 def _connect(dsn=None):
     return psycopg.connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
+        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
+    )
 
 
-def report_wrong(*, evidence_id: str, user_id: str, reason: str = "",
-                source: str = "", category: str = "",
-                task_id: str, agent_id: str, dsn=None,
-                ledger=None) -> dict:
+def report_wrong(
+    *,
+    evidence_id: str,
+    user_id: str,
+    reason: str = "",
+    source: str = "",
+    category: str = "",
+    task_id: str,
+    agent_id: str,
+    dsn=None,
+    ledger=None,
+) -> dict:
     """Catat laporan salah atas satu angka (bukti_id).
 
     Kembalikan {"laporan_id", "baca_ulang_diminta": True}. `ledger`
@@ -41,30 +50,41 @@ def report_wrong(*, evidence_id: str, user_id: str, reason: str = "",
             cur.execute(
                 "INSERT INTO false_reports (evidence_id, user_id, reason)"
                 " VALUES (%s, %s, %s) RETURNING id",
-                (evidence_id, user_id, reason))
+                (evidence_id, user_id, reason),
+            )
             report_id = str(cur.fetchone()["id"])
             if source:
                 cur.execute(
                     "INSERT INTO source_readings (user_id, sumber, category, vonis)"
                     " VALUES (%s, %s, %s, 'Cannot be determined')",
-                    (user_id, source, category))
+                    (user_id, source, category),
+                )
         conn.commit()
     if ledger is not None:
-        ledger.append_event(task_id=task_id, agent_id=agent_id,
-                            event_type="false_report",
-                            content={"evidence_id": evidence_id, "reason": reason})
+        ledger.append_event(
+            task_id=task_id,
+            agent_id=agent_id,
+            event_type="false_report",
+            content={"evidence_id": evidence_id, "reason": reason},
+        )
     return {"laporan_id": report_id, "reread_requested": True}
 
 
 def list_reports(evidence_id: str, dsn=None) -> list[dict]:
     """Daftar laporan salah untuk satu bukti."""
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, user_id, reason, reread_requested, created_at"
-                " FROM false_reports WHERE evidence_id = %s ORDER BY created_at",
-                (evidence_id,))
-            return [{"id": str(r["id"]), "user_id": str(r["user_id"]),
-                     "reason": r["reason"],
-                     "reread_requested": r["reread_requested"],
-                     "created_at": r["created_at"]} for r in cur.fetchall()]
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, user_id, reason, reread_requested, created_at"
+            " FROM false_reports WHERE evidence_id = %s ORDER BY created_at",
+            (evidence_id,),
+        )
+        return [
+            {
+                "id": str(r["id"]),
+                "user_id": str(r["user_id"]),
+                "reason": r["reason"],
+                "reread_requested": r["reread_requested"],
+                "created_at": r["created_at"],
+            }
+            for r in cur.fetchall()
+        ]

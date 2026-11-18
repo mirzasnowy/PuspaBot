@@ -28,10 +28,58 @@ _ENTITY_PHRASE_RE = re.compile(r"\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b")
 _TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
 
 STOPWORDS = frozenset(
-    "yang dan atau di ke dari untuk dengan pada adalah ini itu saya kamu "
-    "aku dia mereka kita kalian apa siapa mana kapan berapa bagaimana "
-    "the a an and or of to in for on with is are was were be been "
-    "this that it its as at by from".split()
+    [
+        "yang",
+        "dan",
+        "atau",
+        "di",
+        "ke",
+        "dari",
+        "untuk",
+        "dengan",
+        "pada",
+        "adalah",
+        "ini",
+        "itu",
+        "saya",
+        "kamu",
+        "aku",
+        "dia",
+        "mereka",
+        "kita",
+        "kalian",
+        "apa",
+        "siapa",
+        "mana",
+        "kapan",
+        "berapa",
+        "bagaimana",
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "of",
+        "to",
+        "in",
+        "for",
+        "on",
+        "with",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "this",
+        "that",
+        "it",
+        "its",
+        "as",
+        "at",
+        "by",
+        "from",
+    ]
 )
 
 #: Dual-level weights: entity, concept, vector.
@@ -121,21 +169,22 @@ def dual_level_search(episodes, query, *, embedder=None, limit=5):
         else:
             level = "vector"
         result = dict(ep)
-        result.update({
-            "score": score,
-            "level": level,
-            "entity_overlap": entity_overlap,
-            "concept_overlap": concept_overlap,
-            "similarity": vector_sim,
-            "evidence_id": str(ep.get("id")) if ep.get("id") is not None else None,
-        })
+        result.update(
+            {
+                "score": score,
+                "level": level,
+                "entity_overlap": entity_overlap,
+                "concept_overlap": concept_overlap,
+                "similarity": vector_sim,
+                "evidence_id": str(ep.get("id")) if ep.get("id") is not None else None,
+            }
+        )
         ranked.append(result)
     ranked.sort(key=lambda r: (-r["score"], str(r.get("id"))))
     return ranked[:limit]
 
 
-def search_episodes_dual(user_id, query, limit=5, agent_id=None,
-                         embedder=None, dsn=None):
+def search_episodes_dual(user_id, query, limit=5, agent_id=None, embedder=None, dsn=None):
     """Dual-level episode search on Postgres + pgvector.
 
     Candidate episodes come from vector search (limit * 4) plus
@@ -149,8 +198,12 @@ def search_episodes_dual(user_id, query, limit=5, agent_id=None,
         raise ValueError("limit must be at least 1")
     embedder = embedder or HashEmbedding()
     candidates = search_episodes(
-        user_id, query, limit=limit * 4, agent_id=agent_id,
-        embedder=embedder, dsn=dsn,
+        user_id,
+        query,
+        limit=limit * 4,
+        agent_id=agent_id,
+        embedder=embedder,
+        dsn=dsn,
     )
     seen = {c["id"] for c in candidates}
     for ep in list_episodes(user_id, limit=limit * 4, dsn=dsn):
@@ -180,9 +233,9 @@ def episodes_to_graph(episodes, extractor=None):
     return graph
 
 
-def search_episodes_pipeline(user_id, query, mode="mix", limit=5,
-                             agent_id=None, embedder=None, dsn=None,
-                             reranker=None):
+def search_episodes_pipeline(
+    user_id, query, mode="mix", limit=5, agent_id=None, embedder=None, dsn=None, reranker=None
+):
     """Episodic recall through the retrieval pipeline.
 
     Same candidates as `search_episodes_dual` (vector search plus
@@ -202,8 +255,12 @@ def search_episodes_pipeline(user_id, query, mode="mix", limit=5,
 
     embedder = embedder or HashEmbedding()
     candidates = search_episodes(
-        user_id, query, limit=limit * 4, agent_id=agent_id,
-        embedder=embedder, dsn=dsn,
+        user_id,
+        query,
+        limit=limit * 4,
+        agent_id=agent_id,
+        embedder=embedder,
+        dsn=dsn,
     )
     seen = {c["id"] for c in candidates}
     for ep in list_episodes(user_id, limit=limit * 4, dsn=dsn):
@@ -211,8 +268,7 @@ def search_episodes_pipeline(user_id, query, mode="mix", limit=5,
             candidates.append(ep)
             seen.add(ep["id"])
     graph = episodes_to_graph(candidates)
-    ranked = mode_query(
-        graph, query, mode=mode, embedder=embedder, top_k=limit)
+    ranked = mode_query(graph, query, mode=mode, embedder=embedder, top_k=limit)
     if reranker is not None:
         ranked = reranker.rerank(query, ranked, top_n=limit)
         for result in ranked:
@@ -225,12 +281,14 @@ def search_episodes_pipeline(user_id, query, mode="mix", limit=5,
         if episode is None:
             continue
         entry = dict(episode)
-        entry.update({
-            "score": result["score"],
-            "mode": result.get("mode", mode),
-            "level": result.get("level", "concept"),
-            "evidence_id": episode_id,
-        })
+        entry.update(
+            {
+                "score": result["score"],
+                "mode": result.get("mode", mode),
+                "level": result.get("level", "concept"),
+                "evidence_id": episode_id,
+            }
+        )
         out.append(entry)
     return out
 
@@ -243,8 +301,16 @@ def _vector_literal(vector):
     return "[" + ",".join(f"{v:.6f}" for v in vector) + "]"
 
 
-def record_episode(user_id, content, event_type, agent_id=None, task_id=None,
-                   event_id=None, embedder=None, dsn=None):
+def record_episode(
+    user_id,
+    content,
+    event_type,
+    agent_id=None,
+    task_id=None,
+    event_id=None,
+    embedder=None,
+    dsn=None,
+):
     """Tulis satu episode; kembalikan dict episode (tanpa vektor)."""
     if not isinstance(content, str) or content == "":
         raise ValueError("isi harus string tak kosong")
@@ -259,8 +325,15 @@ def record_episode(user_id, content, event_type, agent_id=None, task_id=None,
                 "embedding, event_id) VALUES (%s, %s, %s, %s, %s, %s::vector, %s) "
                 "RETURNING id, user_id, agent_id, task_id, type, content, "
                 "event_id, created_at",
-                (user_id, agent_id, task_id, event_type, content,
-                 _vector_literal(vector), event_id),
+                (
+                    user_id,
+                    agent_id,
+                    task_id,
+                    event_type,
+                    content,
+                    _vector_literal(vector),
+                    event_id,
+                ),
             )
             row = cur.fetchone()
         conn.commit()
@@ -276,8 +349,7 @@ def record_episode(user_id, content, event_type, agent_id=None, task_id=None,
     }
 
 
-def search_episodes(user_id, query, limit=5, agent_id=None,
-                    embedder=None, dsn=None):
+def search_episodes(user_id, query, limit=5, agent_id=None, embedder=None, dsn=None):
     """Cari episode paling mirip (cosine distance pgvector).
 
     Kembalikan list dict episode + `jarak` (0 = identik) + `kemiripan`
@@ -289,28 +361,28 @@ def search_episodes(user_id, query, limit=5, agent_id=None,
         raise ValueError("limit minimal 1")
     embedder = embedder or HashEmbedding()
     vector = _vector_literal(embedder.embed(query))
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            if agent_id is None:
-                cur.execute(
-                    "SELECT id, user_id, agent_id, task_id, type, content, "
-                    "event_id, created_at, "
-                    "embedding <=> %s::vector AS distance FROM episodic "
-                    "WHERE user_id = %s ORDER BY distance ASC LIMIT %s",
-                    (vector, user_id, limit),
-                )
-            else:
-                cur.execute(
-                    "SELECT id, user_id, agent_id, task_id, type, content, "
-                    "event_id, created_at, "
-                    "embedding <=> %s::vector AS distance FROM episodic "
-                    "WHERE user_id = %s AND (agent_id IS NULL OR agent_id = %s) "
-                    "ORDER BY distance ASC LIMIT %s",
-                    (vector, user_id, agent_id, limit),
-                )
-            out = []
-            for r in cur.fetchall():
-                out.append({
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        if agent_id is None:
+            cur.execute(
+                "SELECT id, user_id, agent_id, task_id, type, content, "
+                "event_id, created_at, "
+                "embedding <=> %s::vector AS distance FROM episodic "
+                "WHERE user_id = %s ORDER BY distance ASC LIMIT %s",
+                (vector, user_id, limit),
+            )
+        else:
+            cur.execute(
+                "SELECT id, user_id, agent_id, task_id, type, content, "
+                "event_id, created_at, "
+                "embedding <=> %s::vector AS distance FROM episodic "
+                "WHERE user_id = %s AND (agent_id IS NULL OR agent_id = %s) "
+                "ORDER BY distance ASC LIMIT %s",
+                (vector, user_id, agent_id, limit),
+            )
+        out = []
+        for r in cur.fetchall():
+            out.append(
+                {
                     "id": str(r["id"]),
                     "user_id": str(r["user_id"]),
                     "agent_id": str(r["agent_id"]) if r["agent_id"] else None,
@@ -321,30 +393,30 @@ def search_episodes(user_id, query, limit=5, agent_id=None,
                     "created_at": r["created_at"],
                     "distance": float(r["distance"]),
                     "similarity": 1.0 - float(r["distance"]),
-                })
-            return out
+                }
+            )
+        return out
 
 
 def list_episodes(user_id, limit=50, dsn=None):
     """Episode terbaru milik user, urut waktu menurun."""
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, user_id, agent_id, task_id, type, content, "
-                "event_id, created_at FROM episodic WHERE user_id = %s "
-                "ORDER BY created_at DESC LIMIT %s",
-                (user_id, limit),
-            )
-            return [
-                {
-                    "id": str(r["id"]),
-                    "user_id": str(r["user_id"]),
-                    "agent_id": str(r["agent_id"]) if r["agent_id"] else None,
-                    "task_id": str(r["task_id"]) if r["task_id"] else None,
-                    "type": r["type"],
-                    "content": r["content"],
-                    "event_id": str(r["event_id"]) if r["event_id"] else None,
-                    "created_at": r["created_at"],
-                }
-                for r in cur.fetchall()
-            ]
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, user_id, agent_id, task_id, type, content, "
+            "event_id, created_at FROM episodic WHERE user_id = %s "
+            "ORDER BY created_at DESC LIMIT %s",
+            (user_id, limit),
+        )
+        return [
+            {
+                "id": str(r["id"]),
+                "user_id": str(r["user_id"]),
+                "agent_id": str(r["agent_id"]) if r["agent_id"] else None,
+                "task_id": str(r["task_id"]) if r["task_id"] else None,
+                "type": r["type"],
+                "content": r["content"],
+                "event_id": str(r["event_id"]) if r["event_id"] else None,
+                "created_at": r["created_at"],
+            }
+            for r in cur.fetchall()
+        ]

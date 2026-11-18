@@ -52,8 +52,7 @@ def test_description_exactly_60_chars_passes():
 @pytest.mark.parametrize("util", ["grep", "cat", "ls", "sed", "awk", "curl"])
 def test_shell_util_in_prose_fails(util):
     text, frontmatter = _clean_skill()
-    text = text.replace("Uses search_files and read_file.",
-                        f"Run {util} to find it.")
+    text = text.replace("Uses search_files and read_file.", f"Run {util} to find it.")
     assert "shell_util_reference" in _codes(check_authoring(text, frontmatter))
 
 
@@ -71,17 +70,13 @@ def test_native_tool_reference_passes():
 def test_platform_gating_without_audit_flag_fails():
     text, frontmatter = _clean_skill()
     text += "\nOnly run this when sys.platform == 'linux'.\n"
-    assert "platform_gating_unaudited" in _codes(
-        check_authoring(text, frontmatter)
-    )
+    assert "platform_gating_unaudited" in _codes(check_authoring(text, frontmatter))
 
 
 def test_platform_gating_with_audit_flag_passes():
     text, frontmatter = _clean_skill(platform_gating_audited=True)
     text += "\nOnly run this when sys.platform == 'linux'.\n"
-    assert "platform_gating_unaudited" not in _codes(
-        check_authoring(text, frontmatter)
-    )
+    assert "platform_gating_unaudited" not in _codes(check_authoring(text, frontmatter))
 
 
 def test_missing_author_fails():
@@ -122,9 +117,7 @@ def test_long_inline_code_block_fails():
 def test_short_inline_code_block_passes():
     text, frontmatter = _clean_skill()
     text += "\n```python\nprint('hi')\n```\n"
-    assert "inline_logic_too_long" not in _codes(
-        check_authoring(text, frontmatter)
-    )
+    assert "inline_logic_too_long" not in _codes(check_authoring(text, frontmatter))
 
 
 def test_undeclared_config_placeholder_fails():
@@ -152,9 +145,7 @@ def test_resolve_config_from_answers_and_defaults():
 
 def test_resolve_config_asks_via_asker():
     declared = [{"name": "api_key", "prompt": "API key?", "required": True}]
-    resolved = resolve_config(
-        declared, asker=lambda name, prompt, default: "asked-key"
-    )
+    resolved = resolve_config(declared, asker=lambda name, prompt, default: "asked-key")
     assert resolved == {"api_key": "asked-key"}
 
 
@@ -166,9 +157,7 @@ def test_resolve_config_missing_required_raises():
 
 def test_inject_config_substitutes_placeholders():
     text = "Call with {{config.api_key}} in {{config.region}}."
-    assert inject_config(text, {"api_key": "k", "region": "id"}) == (
-        "Call with k in id."
-    )
+    assert inject_config(text, {"api_key": "k", "region": "id"}) == ("Call with k in id.")
 
 
 def test_inject_config_leaves_unknown_placeholders():

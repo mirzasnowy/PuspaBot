@@ -93,9 +93,7 @@ class PuspaRegistry(ToolRegistry):
             return []
         allowed = set(payload.get("tools", []) or [])
         return [
-            schema
-            for schema in super().get_definitions()
-            if self._schema_name(schema) in allowed
+            schema for schema in super().get_definitions() if self._schema_name(schema) in allowed
         ]
 
     def prepare_call(
@@ -133,11 +131,7 @@ class PuspaRegistry(ToolRegistry):
         if self._log is None:
             return
         try:
-            self._log(
-                "tool_called", {"tool": name, "status": "rejected", "reason": reason}
-            )
-            self._log(
-                "tool_completed", {"tool": name, "status": "rejected", "reason": reason}
-            )
+            self._log("tool_called", {"tool": name, "status": "rejected", "reason": reason})
+            self._log("tool_completed", {"tool": name, "status": "rejected", "reason": reason})
         except Exception:
             pass

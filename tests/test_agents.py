@@ -2,8 +2,13 @@
 
 import pytest
 
-from puspa.runtime.agents import (create_agent, list_agents, ensure_puspa_agent,
-                                  delete_agent, AgentError)
+from puspa.runtime.agents import (
+    AgentError,
+    create_agent,
+    delete_agent,
+    ensure_puspa_agent,
+    list_agents,
+)
 
 
 def test_puspa_automatic_and_idempotent(make_user):
@@ -33,10 +38,9 @@ def test_delete_puspa_rejected(make_user, test_dsn):
     # Penolakan di level DATABASE (bukan hanya API): DELETE langsung ditolak.
     import psycopg
 
-    with pytest.raises(psycopg.errors.RaiseException):
-        with psycopg.connect(test_dsn) as conn:
-            conn.execute("DELETE FROM agent_meta WHERE agent_id = %s", (u["agent_id"],))
-            conn.commit()
+    with pytest.raises(psycopg.errors.RaiseException), psycopg.connect(test_dsn) as conn:
+        conn.execute("DELETE FROM agent_meta WHERE agent_id = %s", (u["agent_id"],))
+        conn.commit()
     assert len(list_agents(u["user_id"])) == 1
 
 
@@ -57,4 +61,7 @@ def test_agent_new_start_without_connector(make_user):
     assert list_connectors(u["user_id"], agent["agent_id"]) == []
     # Puspa mulai dengan ketiganya.
     assert {k["connector"] for k in list_connectors(u["user_id"], u["agent_id"])} == {
-        "gmail", "drive", "calendar"}
+        "gmail",
+        "drive",
+        "calendar",
+    }

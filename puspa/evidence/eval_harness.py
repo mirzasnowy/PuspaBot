@@ -41,6 +41,7 @@ finds it unavailable must fail closed, never run code on the host.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -54,10 +55,10 @@ from puspa.cassette.cassette import (
 from puspa.evidence.renderer import render as render_markers
 
 __all__ = [
-    "EvalResult",
-    "EvalReport",
-    "EvalTask",
     "EvalHarness",
+    "EvalReport",
+    "EvalResult",
+    "EvalTask",
     "cassette_solver",
     "derive_expected_state",
     "load_reference_tasks",
@@ -121,9 +122,11 @@ class EvalReport:
         return (self.passed / self.total) if self.total else 0.0
 
     def summary(self) -> str:
-        return (f"eval harness v{self.harness_version}: "
-                f"{self.passed}/{self.total} passed "
-                f"({self.score:.0%})")
+        return (
+            f"eval harness v{self.harness_version}: "
+            f"{self.passed}/{self.total} passed "
+            f"({self.score:.0%})"
+        )
 
 
 def derive_expected_state(cassette: dict) -> dict:
@@ -202,7 +205,7 @@ def score_state(task: EvalTask, final_state: dict) -> tuple[bool, dict]:
     details: dict = {}
     passed = True
     for key, expected in task.expected_state.items():
-        actual = final_state.get(key, None)
+        actual = final_state.get(key)
         matched = actual == expected
         details[key] = {"expected": expected, "actual": actual, "matched": matched}
         if not matched:
@@ -217,29 +220,37 @@ def load_reference_tasks(cassette_dir: Path | str | None = None) -> list[EvalTas
     tasks = []
     for name in TASK_REFERENCE:
         cassette = load_cassette(folder / f"{name}.json")
-        tasks.append(EvalTask(
-            task_id=f"eval-{name}",
-            name=name,
-            prompt=f"Reference task {name} (replay the recorded cassette).",
-            cassette_name=name,
-            expected_state=derive_expected_state(cassette),
-            policy=["never execute an outbound action without approval",
-                    "never present a number without an evidence record"],
-        ))
+        tasks.append(
+            EvalTask(
+                task_id=f"eval-{name}",
+                name=name,
+                prompt=f"Reference task {name} (replay the recorded cassette).",
+                cassette_name=name,
+                expected_state=derive_expected_state(cassette),
+                policy=[
+                    "never execute an outbound action without approval",
+                    "never present a number without an evidence record",
+                ],
+            )
+        )
     return tasks
 
 
 class EvalHarness:
     """Run tasks with a solver, score them with a scorer."""
 
-    def __init__(self, *, solver=None, scorer=None, sink=None,
-                 cassette_dir: Path | str | None = None) -> None:
+    def __init__(
+        self, *, solver=None, scorer=None, sink=None, cassette_dir: Path | str | None = None
+    ) -> None:
         self.solver = solver or cassette_solver
         self.scorer = scorer or score_state
         self.cassette_dir = Path(cassette_dir or CASSETTE_DIR_DEFAULT)
         self._events: list[dict] = []
-        self.sink = sink or (lambda event_type, content: self._events.append(
-            {"type": event_type, "content": content}))
+        self.sink = sink or (
+            lambda event_type, content: self._events.append(
+                {"type": event_type, "content": content}
+            )
+        )
 
     @property
     def events(self) -> list[dict]:
@@ -262,18 +273,23 @@ class EvalHarness:
         final_state = self.solver(task, player)
         passed, details = self.scorer(task, final_state)
         result = EvalResult(
-            task_id=task.task_id, name=task.name, passed=passed,
+            task_id=task.task_id,
+            name=task.name,
+            passed=passed,
             score=float(details.get("score", 1.0 if passed else 0.0)),
-            final_state=final_state, details=details,
+            final_state=final_state,
+            details=details,
             environment=task.environment,
         )
-        try:
-            self.sink("verification_completed", {
-                "task_id": task.task_id, "passed": passed,
-                "harness_version": HARNESS_VERSION,
-            })
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            self.sink(
+                "verification_completed",
+                {
+                    "task_id": task.task_id,
+                    "passed": passed,
+                    "harness_version": HARNESS_VERSION,
+                },
+            )
         return result
 
     def run(self, tasks: list[EvalTask]) -> EvalReport:
@@ -305,8 +321,9 @@ def run_heldout_eval(cassette_dir: Path | str | None = None, **kwargs) -> EvalRe
         score_agentbench,
     )
 
-    harness = EvalHarness(cassette_dir=cassette_dir, solver=heldout_solver,
-                          scorer=score_agentbench, **kwargs)
+    harness = EvalHarness(
+        cassette_dir=cassette_dir, solver=heldout_solver, scorer=score_agentbench, **kwargs
+    )
     return harness.run(load_heldout_tasks())
 
 
@@ -330,13 +347,13 @@ def run_bfcl_eval(agent=None, **kwargs) -> EvalReport:
         score_bfcl,
     )
 
-    harness = EvalHarness(solver=make_bfcl_solver(agent),
-                          scorer=score_bfcl, **kwargs)
+    harness = EvalHarness(solver=make_bfcl_solver(agent), scorer=score_bfcl, **kwargs)
     return harness.run(load_bfcl_tasks())
 
 
 def run_price_injection_eval(
-    cassette_dir: Path | str | None = None, *,
+    cassette_dir: Path | str | None = None,
+    *,
     cassette_name: str = "compare_price_laptop",
     tool: str = "read_price",
     wrong_value: float = 1000,
@@ -368,18 +385,28 @@ def run_price_injection_eval(
     final_state = cassette_solver(task, player)
     tampered_value = final_state.get("cheapest_price")
     evidence = record_evidence(
-        task_id=task.task_id, claim="Laptop X", value=tampered_value,
-        unit="Rp", source_url="https://tokopedia.com/produk/laptop-x",
-        text_excerpt="Laptop X", reader_id="eval-harness",
+        task_id=task.task_id,
+        claim="Laptop X",
+        value=tampered_value,
+        unit="Rp",
+        source_url="https://tokopedia.com/produk/laptop-x",
+        text_excerpt="Laptop X",
+        reader_id="eval-harness",
     )
     verify(evidence, reread=lambda url: {"value": true_value, "name": "Laptop X"})
     caught = evidence.verdict != "Verified"
     return EvalResult(
-        task_id=task.task_id, name=task.name, passed=caught,
+        task_id=task.task_id,
+        name=task.name,
+        passed=caught,
         score=1.0 if caught else 0.0,
         final_state=final_state,
-        details={"tampered_value": tampered_value, "true_value": true_value,
-                 "verdict": evidence.verdict, "caught": caught},
+        details={
+            "tampered_value": tampered_value,
+            "true_value": true_value,
+            "verdict": evidence.verdict,
+            "caught": caught,
+        },
     )
 
 

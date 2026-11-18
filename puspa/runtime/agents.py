@@ -57,8 +57,13 @@ def ensure_puspa_agent(user_id: str, dsn=None) -> str:
                 "INSERT INTO agent_meta (agent_id, user_id, name, peran, purpose, required)"
                 " VALUES (%s, %s, %s, %s, %s, TRUE)"
                 " ON CONFLICT (agent_id) DO NOTHING",
-                (agent_id, user_id, NAME_PUSPA, "agen utama",
-                 "Agen wajib Puspa: memegang profil inti user dan menjadi fallback."),
+                (
+                    agent_id,
+                    user_id,
+                    NAME_PUSPA,
+                    "agen utama",
+                    "Agen wajib Puspa: memegang profil inti user dan menjadi fallback.",
+                ),
             )
             for connector, scope in (
                 ("gmail", ["read", "create_draft", "send"]),
@@ -79,11 +84,10 @@ def create_agent(user_id: str, name: str, role: str = "", purpose: str = "", dsn
     """Buat agen baru milik pengguna. Agen ke-4 ditolak (maks 3)."""
     if not name or not name.strip():
         raise AgentError("nama agen tidak boleh kosong")
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM agent_meta WHERE user_id = %s", (user_id,))
-            if cur.fetchone()[0] >= MAX_AGENT:
-                raise AgentError(f"maks {MAX_AGENT} agen per pengguna")
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM agent_meta WHERE user_id = %s", (user_id,))
+        if cur.fetchone()[0] >= MAX_AGENT:
+            raise AgentError(f"maks {MAX_AGENT} agen per pengguna")
     agent_id = f"agen-{uuid.uuid4().hex[:12]}"
     register_agent(agent_id, str(user_id), dsn=dsn)
     with _connect(dsn) as conn:
@@ -94,29 +98,31 @@ def create_agent(user_id: str, name: str, role: str = "", purpose: str = "", dsn
                 (agent_id, user_id, name.strip(), role, purpose),
             )
         conn.commit()
-    return {"agent_id": agent_id, "name": name.strip(), "role": role,
-            "purpose": purpose, "required": False}
+    return {
+        "agent_id": agent_id,
+        "name": name.strip(),
+        "role": role,
+        "purpose": purpose,
+        "required": False,
+    }
 
 
 def list_agents(user_id: str, dsn=None) -> list[dict]:
     """Semua agen milik pengguna, Puspa wajib selalu pertama."""
-    with _connect(dsn) as conn:
-        with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
-            cur.execute(
-                "SELECT agent_id, name, peran AS role, purpose, required FROM agent_meta"
-                " WHERE user_id = %s ORDER BY required DESC, created_at ASC",
-                (user_id,),
-            )
-            return [dict(r) for r in cur.fetchall()]
+    with _connect(dsn) as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+        cur.execute(
+            "SELECT agent_id, name, peran AS role, purpose, required FROM agent_meta"
+            " WHERE user_id = %s ORDER BY required DESC, created_at ASC",
+            (user_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
 
 
 def delete_agent(user_id: str, agent_id: str, dsn=None) -> None:
     """Hapus agen. Puspa (wajib) DITOLAK; agen orang lain DITOLAK."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT required, user_id FROM agent_meta WHERE agent_id = %s", (agent_id,)
-            )
+            cur.execute("SELECT required, user_id FROM agent_meta WHERE agent_id = %s", (agent_id,))
             row = cur.fetchone()
             if row is None:
                 raise AgentError(f"agen tidak dikenal: {agent_id!r}")

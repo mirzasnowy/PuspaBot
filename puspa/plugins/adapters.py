@@ -67,10 +67,8 @@ class PluginTool(Tool):
             result = handler(**kwargs)
             if inspect.isawaitable(result):
                 result = await result
-        except Exception as exc:  # noqa: BLE001 - tool errors are results
-            return ToolResult.error(
-                f"plugin tool {self._definition.name!r} failed: {exc}"
-            )
+        except Exception as exc:
+            return ToolResult.error(f"plugin tool {self._definition.name!r} failed: {exc}")
         if isinstance(result, ToolResult):
             return result
         if isinstance(result, dict):
@@ -94,11 +92,7 @@ class PluginHook(AgentHook):
         self._definitions = list(definitions)
 
     def _handlers(self, event):
-        return [
-            definition.handler
-            for definition in self._definitions
-            if definition.event == event
-        ]
+        return [definition.handler for definition in self._definitions if definition.event == event]
 
     async def _dispatch(self, event, payload):
         for handler in self._handlers(event):
@@ -106,7 +100,7 @@ class PluginHook(AgentHook):
                 result = handler(event, payload)
                 if inspect.isawaitable(result):
                     await result
-            except Exception:  # noqa: BLE001 - a plugin hook never breaks a turn
+            except Exception:
                 continue
 
     async def before_run(self, context):
@@ -124,9 +118,7 @@ class PluginHook(AgentHook):
             {"tool": getattr(tool, "name", None), "args": params},
         )
 
-    async def after_execute_tool(
-        self, context, tool_call, tool, params, result
-    ):
+    async def after_execute_tool(self, context, tool_call, tool, params, result):
         await self._dispatch(
             "after_execute_tool",
             {"tool": getattr(tool, "name", None), "result": result},
@@ -136,7 +128,7 @@ class PluginHook(AgentHook):
         for handler in self._handlers("finalize_content"):
             try:
                 result = handler("finalize_content", content)
-            except Exception:  # noqa: BLE001 - never break the turn answer
+            except Exception:
                 continue
             if isinstance(result, str) and result:
                 return result
@@ -169,10 +161,8 @@ def _registry_names(registry) -> set[str]:
     if isinstance(tools, dict):
         return set(tools)
     try:
-        return {
-            schema["function"]["name"] for schema in registry.get_definitions()
-        }
-    except Exception:  # noqa: BLE001 - give up, treat as empty
+        return {schema["function"]["name"] for schema in registry.get_definitions()}
+    except Exception:
         return set()
 
 

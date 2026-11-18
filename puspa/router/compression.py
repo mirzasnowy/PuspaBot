@@ -53,6 +53,7 @@ an exact count when it is an estimate.
 
 from __future__ import annotations
 
+import itertools
 import re
 from dataclasses import dataclass
 
@@ -177,6 +178,7 @@ class CompressionResult:
 # Kind detection (first 1KB)
 # ---------------------------------------------------------------------------
 
+
 def _sample_lines(head: str, limit: int = 40) -> list[str]:
     return [ln for ln in head.splitlines() if ln.strip()][:limit]
 
@@ -211,7 +213,7 @@ def _is_numbered_read(lines: list[str]) -> bool:
     if len(numbers) < 5:
         return False
     first_five = numbers[:5]
-    return all(b - a == 1 for a, b in zip(first_five, first_five[1:]))
+    return all(b - a == 1 for a, b in itertools.pairwise(first_five))
 
 
 def detect_kind(text: str) -> str:
@@ -226,9 +228,7 @@ def detect_kind(text: str) -> str:
         return "generic"
     head = text[:DETECT_WINDOW]
     lines = _sample_lines(head)
-    if "diff --git " in head or (
-        "@@ " in head and ("--- " in head or "+++ " in head)
-    ):
+    if "diff --git " in head or ("@@ " in head and ("--- " in head or "+++ " in head)):
         return "diff"
     if head.startswith("On branch ") or (
         "Changes to be committed" in head
@@ -241,10 +241,7 @@ def detect_kind(text: str) -> str:
     # ls -l: "total N" first, or permission-bit rows; with several
     # directories ls prints a "dir:" header first, so check the
     # first few lines, not only the first one.
-    if any(
-        ln.startswith("total ") or _LS_LINE_RE.match(ln) is not None
-        for ln in lines[:5]
-    ):
+    if any(ln.startswith("total ") or _LS_LINE_RE.match(ln) is not None for ln in lines[:5]):
         return "ls"
     if _is_numbered_read(lines):
         return "read"
@@ -254,8 +251,7 @@ def detect_kind(text: str) -> str:
         return "grep"
     if _majority(
         lines,
-        lambda ln: (ln.startswith(("./", "/", "../")) or "/" in ln)
-        and " " not in ln.strip(),
+        lambda ln: (ln.startswith(("./", "/", "../")) or "/" in ln) and " " not in ln.strip(),
     ):
         return "find"
     if head.count("http://") + head.count("https://") >= 2:
@@ -278,6 +274,7 @@ def detect_kind(text: str) -> str:
 # ---------------------------------------------------------------------------
 # Filters (each is pure text -> text; any failure falls back to original)
 # ---------------------------------------------------------------------------
+
 
 def _collapse_identical_runs(lines: list[str], *, run: int = DEDUP_RUN) -> list[str]:
     """Collapse runs of identical consecutive lines to first + count.
@@ -338,12 +335,9 @@ def _filter_diff(text: str) -> str:
 
     for line in text.splitlines():
         stripped = line.rstrip()
-        if (
-            stripped.startswith(("diff --git ", "index ", "--- ", "+++ "))
-            or _DIFF_HUNK_RE.match(stripped)
-            or stripped.startswith(("+", "-"))
-            or stripped.startswith("\\ ")
-        ):
+        if stripped.startswith(
+            ("diff --git ", "index ", "--- ", "+++ ", "+", "-", "\\ ")
+        ) or _DIFF_HUNK_RE.match(stripped):
             flush_context()
             out.append(stripped)
         else:
@@ -361,7 +355,7 @@ def _filter_status(text: str) -> str:
     blank = False
     for line in text.splitlines():
         stripped = line.strip()
-        if stripped.startswith("(use ") or stripped.startswith("(Untracked"):
+        if stripped.startswith(("(use ", "(Untracked")):
             continue
         if not stripped:
             if blank:
@@ -408,11 +402,11 @@ def _filter_grep(text: str) -> str:
         first_colon = line.find(":")
         second_colon = line.find(":", first_colon + 1)
         if second_colon != -1:
-            entry = line[first_colon + 1: second_colon + 1] + _cut_long_line(
-                line[second_colon + 1:]
+            entry = line[first_colon + 1 : second_colon + 1] + _cut_long_line(
+                line[second_colon + 1 :]
             )
         else:
-            entry = _cut_long_line(line[first_colon + 1:])
+            entry = _cut_long_line(line[first_colon + 1 :])
         path = line[:first_colon]
         if path not in by_file:
             by_file[path] = []
@@ -449,7 +443,7 @@ def _factor_common_prefix(lines: list[str]) -> list[str]:
         prefix = prefix[: prefix.rfind("/") + 1]
     if len(prefix) < 4:
         return lines
-    return [f"base: {prefix}"] + [ln[len(prefix):] for ln in lines]
+    return [f"base: {prefix}"] + [ln[len(prefix) :] for ln in lines]
 
 
 def _filter_find(text: str) -> str:
@@ -479,9 +473,7 @@ def _filter_ls(text: str) -> str:
     lines = [ln.rstrip() for ln in text.splitlines() if ln.strip()]
     rows = [ln for ln in lines if _LS_LINE_RE.match(ln)]
     others = [ln for ln in lines if not _LS_LINE_RE.match(ln)]
-    if not rows or any(
-        not (ln.startswith("total ") or ln.endswith(":")) for ln in others
-    ):
+    if not rows or any(not (ln.startswith("total ") or ln.endswith(":")) for ln in others):
         seen: set[str] = set()
         out: list[str] = []
         for ln in lines:
@@ -499,7 +491,7 @@ def _filter_ls(text: str) -> str:
         owners.add(f"{parts[2]}:{parts[3]}")
     if len(owners) != 1:
         return "\n".join(lines)
-    owner = list(owners)[0]
+    owner = next(iter(owners))
     # Rebuild in original order: section headers ("dir:", "total N")
     # stay where they were, rows lose only the owner/group columns,
     # and the owner is recorded once after the first "total" line.
@@ -599,9 +591,7 @@ def _filter_search(text: str) -> str:
     seen_urls: set[str] = set()
     out: list[str] = []
     for entry in entries:
-        url = next(
-            (ln for ln in entry if "http://" in ln or "https://" in ln), None
-        )
+        url = next((ln for ln in entry if "http://" in ln or "https://" in ln), None)
         if url is not None:
             if url in seen_urls:
                 continue
@@ -630,8 +620,11 @@ def _filter_generic(text: str) -> str:
     lines = text.splitlines()
     head = lines[:GENERIC_HEAD_LINES]
     tail = lines[-GENERIC_TAIL_LINES:] if len(lines) > GENERIC_HEAD_LINES else []
-    middle = lines[GENERIC_HEAD_LINES: len(lines) - GENERIC_TAIL_LINES] \
-        if len(lines) > GENERIC_HEAD_LINES + GENERIC_TAIL_LINES else []
+    middle = (
+        lines[GENERIC_HEAD_LINES : len(lines) - GENERIC_TAIL_LINES]
+        if len(lines) > GENERIC_HEAD_LINES + GENERIC_TAIL_LINES
+        else []
+    )
     kept_numbers: list[str] = []
     seen: set[str] = set()
     dropped = 0
@@ -670,6 +663,7 @@ _FILTERS = {
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def compress_tool_result(text: str, *, tool_name: str | None = None) -> CompressionResult:
     """Compress one tool result before it is sent to the model.
 
@@ -685,52 +679,76 @@ def compress_tool_result(text: str, *, tool_name: str | None = None) -> Compress
     if not isinstance(text, str):
         text = "" if text is None else str(text)
     original_tokens, counter = count_tokens(text)
-    base = CompressionResult(
-        text=text, kind="generic", compressed=False,
-        original_chars=len(text), compressed_chars=len(text),
-        original_tokens=original_tokens, compressed_tokens=original_tokens,
+    CompressionResult(
+        text=text,
+        kind="generic",
+        compressed=False,
+        original_chars=len(text),
+        compressed_chars=len(text),
+        original_tokens=original_tokens,
+        compressed_tokens=original_tokens,
         counter=counter,
     )
     if len(text) < MIN_COMPRESS_CHARS:
         kind = detect_kind(text)
         return CompressionResult(
-            text=text, kind=kind, compressed=False,
-            original_chars=len(text), compressed_chars=len(text),
+            text=text,
+            kind=kind,
+            compressed=False,
+            original_chars=len(text),
+            compressed_chars=len(text),
             original_tokens=original_tokens,
-            compressed_tokens=original_tokens, counter=counter,
+            compressed_tokens=original_tokens,
+            counter=counter,
             fallback_reason="too_short",
         )
     kind = detect_kind(text)
     if kind == "generic" and len(text) < GENERIC_MIN_CHARS:
         return CompressionResult(
-            text=text, kind=kind, compressed=False,
-            original_chars=len(text), compressed_chars=len(text),
+            text=text,
+            kind=kind,
+            compressed=False,
+            original_chars=len(text),
+            compressed_chars=len(text),
             original_tokens=original_tokens,
-            compressed_tokens=original_tokens, counter=counter,
+            compressed_tokens=original_tokens,
+            counter=counter,
             fallback_reason="generic_below_threshold",
         )
     try:
         compressed_text = _FILTERS[kind](text)
     except Exception as exc:  # fail-safe: filter failed
         return CompressionResult(
-            text=text, kind=kind, compressed=False,
-            original_chars=len(text), compressed_chars=len(text),
+            text=text,
+            kind=kind,
+            compressed=False,
+            original_chars=len(text),
+            compressed_chars=len(text),
             original_tokens=original_tokens,
-            compressed_tokens=original_tokens, counter=counter,
+            compressed_tokens=original_tokens,
+            counter=counter,
             fallback_reason=f"filter_error: {type(exc).__name__}",
         )
     if not isinstance(compressed_text, str) or len(compressed_text) >= len(text):
         return CompressionResult(
-            text=text, kind=kind, compressed=False,
-            original_chars=len(text), compressed_chars=len(text),
+            text=text,
+            kind=kind,
+            compressed=False,
+            original_chars=len(text),
+            compressed_chars=len(text),
             original_tokens=original_tokens,
-            compressed_tokens=original_tokens, counter=counter,
+            compressed_tokens=original_tokens,
+            counter=counter,
             fallback_reason="no_savings",
         )
     new_tokens, _ = count_tokens(compressed_text)
     return CompressionResult(
-        text=compressed_text, kind=kind, compressed=True,
-        original_chars=len(text), compressed_chars=len(compressed_text),
-        original_tokens=original_tokens, compressed_tokens=new_tokens,
+        text=compressed_text,
+        kind=kind,
+        compressed=True,
+        original_chars=len(text),
+        compressed_chars=len(compressed_text),
+        original_tokens=original_tokens,
+        compressed_tokens=new_tokens,
         counter=counter,
     )

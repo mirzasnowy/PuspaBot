@@ -85,9 +85,7 @@ def validate_mcp_definition(definition) -> list[str]:
     if not isinstance(mcp_id, str) or not _ID_RE.match(mcp_id):
         problems.append(f"id {mcp_id!r} must be a lowercase slug")
     for field_name in ("name", "description"):
-        if not isinstance(definition[field_name], str) or not definition[
-            field_name
-        ].strip():
+        if not isinstance(definition[field_name], str) or not definition[field_name].strip():
             problems.append(f"{field_name} must be a non-empty string")
     version = definition["version"]
     if not isinstance(version, str) or not _VERSION_RE.match(version):
@@ -100,21 +98,16 @@ def validate_mcp_definition(definition) -> list[str]:
         if not isinstance(command, str) or not command.strip():
             problems.append("server.command must be a non-empty string")
         args = server.get("args", [])
-        if not isinstance(args, list) or not all(
-            isinstance(item, str) for item in args
-        ):
+        if not isinstance(args, list) or not all(isinstance(item, str) for item in args):
             problems.append("server.args must be a list of strings")
         env = server.get("env", {})
         if not isinstance(env, dict) or not all(
-            isinstance(key, str) and isinstance(value, str)
-            for key, value in env.items()
+            isinstance(key, str) and isinstance(value, str) for key, value in env.items()
         ):
             problems.append("server.env must be an object of string values")
         transport = server.get("transport", "stdio")
         if transport not in ("stdio", "http", "sse"):
-            problems.append(
-                f"server.transport {transport!r} must be stdio, http, or sse"
-            )
+            problems.append(f"server.transport {transport!r} must be stdio, http, or sse")
     tools = definition["tools"]
     if not isinstance(tools, list) or not tools:
         problems.append("tools must be a non-empty list")
@@ -131,14 +124,11 @@ def validate_mcp_definition(definition) -> list[str]:
             if tool_name in seen:
                 problems.append(f"duplicate tool name: {tool_name!r}")
             seen.add(tool_name)
-            if not isinstance(tool.get("description"), str) or not tool[
-                "description"
-            ].strip():
+            if not isinstance(tool.get("description"), str) or not tool["description"].strip():
                 problems.append(f"tool {tool_name!r} needs a description")
     dependencies = definition.get("dependencies", [])
     if not isinstance(dependencies, list) or not all(
-        isinstance(item, str) and _REQUIREMENT_RE.match(item.strip())
-        for item in dependencies
+        isinstance(item, str) and _REQUIREMENT_RE.match(item.strip()) for item in dependencies
     ):
         problems.append("dependencies must be a list of pip requirement strings")
     return problems
@@ -153,18 +143,12 @@ def load_mcp_definition(path) -> dict:
     try:
         definition = json.loads(path.read_text(encoding="utf-8"))
     except OSError as exc:
-        raise PluginStructureError(
-            f"cannot read MCP definition {path}: {exc}"
-        ) from exc
+        raise PluginStructureError(f"cannot read MCP definition {path}: {exc}") from exc
     except json.JSONDecodeError as exc:
-        raise PluginStructureError(
-            f"MCP definition {path} is not valid JSON: {exc}"
-        ) from exc
+        raise PluginStructureError(f"MCP definition {path} is not valid JSON: {exc}") from exc
     problems = validate_mcp_definition(definition)
     if problems:
-        raise PluginStructureError(
-            f"MCP definition {path} is invalid: " + "; ".join(problems)
-        )
+        raise PluginStructureError(f"MCP definition {path} is invalid: " + "; ".join(problems))
     return definition
 
 
@@ -210,9 +194,7 @@ def check_readiness(dependencies, *, server_command=None) -> dict:
                 "kind": "server_command",
                 "ready": resolved is not None,
                 "detail": (
-                    f"resolves to {resolved}"
-                    if resolved
-                    else f"{command!r} not found on PATH"
+                    f"resolves to {resolved}" if resolved else f"{command!r} not found on PATH"
                 ),
             }
         )

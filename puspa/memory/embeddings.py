@@ -109,14 +109,12 @@ class FastEmbedEmbedding:
     name = "fastembed"
     dim = EMBEDDING_DIM
 
-    def __init__(self, model_name: str = DEFAULT_FASTEMBED_MODEL,
-                 model=None, cache_dir: str | None = None):
+    def __init__(
+        self, model_name: str = DEFAULT_FASTEMBED_MODEL, model=None, cache_dir: str | None = None
+    ):
         self.model_name = model_name
         self._model = model
-        self._cache_dir = (
-            cache_dir if cache_dir is not None
-            else _default_fastembed_cache_dir()
-        )
+        self._cache_dir = cache_dir if cache_dir is not None else _default_fastembed_cache_dir()
 
     @property
     def model(self):
@@ -131,11 +129,10 @@ class FastEmbedEmbedding:
                 ) from exc
             try:
                 if self._cache_dir:
-                    self._model = TextEmbedding(
-                        self.model_name, cache_dir=self._cache_dir)
+                    self._model = TextEmbedding(self.model_name, cache_dir=self._cache_dir)
                 else:
                     self._model = TextEmbedding(self.model_name)
-            except Exception as exc:  # noqa: BLE001 - any load failure
+            except Exception as exc:
                 raise EmbeddingUnavailable(
                     f"could not load embedding model {self.model_name!r}: {exc}"
                 ) from exc
@@ -151,8 +148,7 @@ class FastEmbedEmbedding:
         vec = [float(v) for v in vectors[0]]
         if len(vec) != self.dim:
             raise EmbeddingUnavailable(
-                f"model {self.model_name!r} returned dim {len(vec)}, "
-                f"expected {self.dim}"
+                f"model {self.model_name!r} returned dim {len(vec)}, expected {self.dim}"
             )
         return _l2_normalize(vec)
 
@@ -160,14 +156,10 @@ class FastEmbedEmbedding:
         """Embed several texts in one model call, L2 normalized."""
         if not all(isinstance(t, str) for t in texts):
             raise ValueError("all texts must be strings")
-        return [
-            _l2_normalize([float(v) for v in vec])
-            for vec in self.model.embed(list(texts))
-        ]
+        return [_l2_normalize([float(v) for v in vec]) for vec in self.model.embed(list(texts))]
 
 
-def make_embedder(kind: str = "auto", model=None,
-                  model_name: str = DEFAULT_FASTEMBED_MODEL):
+def make_embedder(kind: str = "auto", model=None, model_name: str = DEFAULT_FASTEMBED_MODEL):
     """Build an embedder by kind: "auto", "fastembed" or "hash".
 
     - "fastembed": the real model; raises EmbeddingUnavailable

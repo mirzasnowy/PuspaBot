@@ -18,18 +18,26 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import psycopg
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 HEARTBEAT_STALE_SECONDS = 120
-TRIGGER_TYPES = ("schedule", "due_date_bill", "price_drop", "manual",
-                "backup_daily", "consolidation", "trust_root_refresh",
-                "dream")
+TRIGGER_TYPES = (
+    "schedule",
+    "due_date_bill",
+    "price_drop",
+    "manual",
+    "backup_daily",
+    "consolidation",
+    "trust_root_refresh",
+    "dream",
+)
 
 
 class SchedulerError(Exception):
@@ -37,7 +45,7 @@ class SchedulerError(Exception):
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @dataclass
@@ -57,21 +65,38 @@ def _connect(dsn=None):
     return psycopg.connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN))
 
 
-def create_trigger(user_id: str, event_type: str, next_trigger_at: datetime,
-                schedule: str = "", workflow: str = "", dsn=None) -> Trigger:
+def create_trigger(
+    user_id: str,
+    event_type: str,
+    next_trigger_at: datetime,
+    schedule: str = "",
+    workflow: str = "",
+    dsn=None,
+) -> Trigger:
     """Buat pemicu baru (idempotent per id yang dibuat di sini)."""
     if event_type not in TRIGGER_TYPES:
         raise SchedulerError(f"jenis pemicu tidak dikenal: {event_type!r}")
-    trigger = Trigger(id=f"pemicu-{uuid.uuid4().hex[:12]}", user_id=str(user_id),
-                    event_type=event_type, schedule=schedule, workflow=workflow,
-                    next_trigger_at=next_trigger_at)
+    trigger = Trigger(
+        id=f"pemicu-{uuid.uuid4().hex[:12]}",
+        user_id=str(user_id),
+        event_type=event_type,
+        schedule=schedule,
+        workflow=workflow,
+        next_trigger_at=next_trigger_at,
+    )
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO triggers (id, user_id, type, schedule, workflow, next_trigger_at, active)"
                 " VALUES (%s, %s, %s, %s, %s, %s, TRUE)",
-                (trigger.id, trigger.user_id, trigger.event_type, trigger.schedule,
-                 trigger.workflow, trigger.next_trigger_at),
+                (
+                    trigger.id,
+                    trigger.user_id,
+                    trigger.event_type,
+                    trigger.schedule,
+                    trigger.workflow,
+                    trigger.next_trigger_at,
+                ),
             )
         conn.commit()
     return trigger
@@ -90,14 +115,23 @@ def list_due_triggers(dsn=None, now: datetime | None = None) -> list[Trigger]:
             )
             rows = cur.fetchall()
         conn.commit()
-    return [Trigger(id=r["id"], user_id=str(r["user_id"]), event_type=r["type"],
-                   schedule=r["schedule"] or "", workflow=r["workflow"] or "",
-                   next_trigger_at=r["next_trigger_at"], active=r["active"])
-            for r in rows]
+    return [
+        Trigger(
+            id=r["id"],
+            user_id=str(r["user_id"]),
+            event_type=r["type"],
+            schedule=r["schedule"] or "",
+            workflow=r["workflow"] or "",
+            next_trigger_at=r["next_trigger_at"],
+            active=r["active"],
+        )
+        for r in rows
+    ]
 
 
-def run_trigger(trigger: Trigger, *, sink=None, missed: bool = False,
-                 dsn=None, now: datetime | None = None) -> dict | None:
+def run_trigger(
+    trigger: Trigger, *, sink=None, missed: bool = False, dsn=None, now: datetime | None = None
+) -> dict | None:
     """Jalankan satu pemicu (sekali, idempotent).
 
     Kembalikan dict jalan (dengan `tugas_id`) atau None bila kunci
@@ -122,21 +156,25 @@ def run_trigger(trigger: Trigger, *, sink=None, missed: bool = False,
             # cron penuh adalah peningkatan Fase 4 — dicatat di STATUS).
             cur.execute(
                 "UPDATE triggers SET next_trigger_at = next_trigger_at + INTERVAL '1 day'"
-                " WHERE id = %s", (trigger.id,),
+                " WHERE id = %s",
+                (trigger.id,),
             )
         conn.commit()
     if sink is not None:
-        try:
-            sink("trigger_missed" if missed else "trigger_fired",
-                 {"trigger_id": trigger.id, "task_id": task_id,
-                  "type": trigger.event_type, "missed": missed})
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            sink(
+                "trigger_missed" if missed else "trigger_fired",
+                {
+                    "trigger_id": trigger.id,
+                    "task_id": task_id,
+                    "type": trigger.event_type,
+                    "missed": missed,
+                },
+            )
     return {"trigger_id": trigger.id, "task_id": task_id, "missed": missed}
 
 
-def run_missed(*, sink=None, dsn=None,
-                           now: datetime | None = None) -> list[dict]:
+def run_missed(*, sink=None, dsn=None, now: datetime | None = None) -> list[dict]:
     """Saat bangun: jalankan sekali tiap pemicu terlewat + laporkan.
 
     Pemicu dianggap terlewat bila `pemicu_berikutnya` sudah lewat
@@ -145,20 +183,25 @@ def run_missed(*, sink=None, dsn=None,
     """
     now = now or _now()
     cutoff = now - timedelta(hours=1)
-    with _connect(dsn) as conn:
-        with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
-            cur.execute(
-                "SELECT id, user_id, type, schedule, workflow, next_trigger_at, active"
-                " FROM triggers WHERE active AND next_trigger_at <= %s"
-                " ORDER BY next_trigger_at ASC",
-                (cutoff,),
-            )
-            rows = cur.fetchall()
+    with _connect(dsn) as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+        cur.execute(
+            "SELECT id, user_id, type, schedule, workflow, next_trigger_at, active"
+            " FROM triggers WHERE active AND next_trigger_at <= %s"
+            " ORDER BY next_trigger_at ASC",
+            (cutoff,),
+        )
+        rows = cur.fetchall()
     result = []
     for r in rows:
-        trigger = Trigger(id=r["id"], user_id=str(r["user_id"]), event_type=r["type"],
-                        schedule=r["schedule"] or "", workflow=r["workflow"] or "",
-                        next_trigger_at=r["next_trigger_at"], active=r["active"])
+        trigger = Trigger(
+            id=r["id"],
+            user_id=str(r["user_id"]),
+            event_type=r["type"],
+            schedule=r["schedule"] or "",
+            workflow=r["workflow"] or "",
+            next_trigger_at=r["next_trigger_at"],
+            active=r["active"],
+        )
         run = run_trigger(trigger, sink=sink, missed=True, dsn=dsn, now=now)
         if run is not None:
             result.append(run)
@@ -180,17 +223,15 @@ def heartbeat(dsn=None, now: datetime | None = None) -> None:
 def is_healthy(dsn=None, now: datetime | None = None) -> bool:
     """True bila detak penjadwal terakhir < 2 menit lalu."""
     now = now or _now()
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT created_at FROM system_heartbeats WHERE komponen = 'penjadwal'")
-            row = cur.fetchone()
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute("SELECT created_at FROM system_heartbeats WHERE komponen = 'penjadwal'")
+        row = cur.fetchone()
     if row is None:
         return False
     return (now - row[0]).total_seconds() < HEARTBEAT_STALE_SECONDS
 
 
-def tick(*, sink=None, dsn=None, now: datetime | None = None,
-         curriculum=None) -> list[dict]:
+def tick(*, sink=None, dsn=None, now: datetime | None = None, curriculum=None) -> list[dict]:
     """Satu putaran penjadwal: detak + jalankan pemicu jatuh tempo.
 
     When ``curriculum`` is given (a ``CurriculumRunner`` instance
@@ -223,7 +264,9 @@ def schedule_backup_daily(user_id: str, *, hour: int = 3, dsn=None) -> Trigger:
     yang menjalankan job memakai `jalankan_job_terjadwal` di bawah.
     """
     tomorrow = (_now() + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
-    return create_trigger(user_id, "backup_daily", tomorrow, schedule=f"harian {hour:02d}:00", dsn=dsn)
+    return create_trigger(
+        user_id, "backup_daily", tomorrow, schedule=f"harian {hour:02d}:00", dsn=dsn
+    )
 
 
 def schedule_trust_root_refresh(user_id: str, *, hour: int = 3, dsn=None) -> Trigger:
@@ -235,7 +278,9 @@ def schedule_trust_root_refresh(user_id: str, *, hour: int = 3, dsn=None) -> Tri
     (or the bundled root when no cache exists yet).
     """
     tomorrow = (_now() + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
-    return create_trigger(user_id, "trust_root_refresh", tomorrow, schedule=f"daily {hour:02d}:00", dsn=dsn)
+    return create_trigger(
+        user_id, "trust_root_refresh", tomorrow, schedule=f"daily {hour:02d}:00", dsn=dsn
+    )
 
 
 def schedule_dream(user_id: str, *, hour: int = 3, dsn=None) -> Trigger:
@@ -257,10 +302,9 @@ def run_scheduled_job(run: dict, *, dsn=None) -> dict:
     dikembalikan sebagai tugas biasa (alur pengguna) tanpa eksekusi
     sistem — pemanggil (runtime tugas) yang menanganinya.
     """
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT type, user_id FROM triggers WHERE id = %s", (run["trigger_id"],))
-            row = cur.fetchone()
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute("SELECT type, user_id FROM triggers WHERE id = %s", (run["trigger_id"],))
+        row = cur.fetchone()
     if row is None:
         return {"job": "unknown", "result": None}
     event_type, user_id = row

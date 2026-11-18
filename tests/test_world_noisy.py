@@ -34,8 +34,9 @@ def test_noisy_world_is_deterministic_for_a_seed():
     for day in range(15, 30):
         first.day = day
         other.day = day
-        if any(first.price(PRODUCT_ID, store) != other.price(PRODUCT_ID, store)
-               for store in STORES):
+        if any(
+            first.price(PRODUCT_ID, store) != other.price(PRODUCT_ID, store) for store in STORES
+        ):
             paths_differ = True
     assert paths_differ
 
@@ -64,14 +65,25 @@ def test_noisy_world_has_the_same_interface():
     world = NoisySimulatedWorld()
     assert world.observe_price(PRODUCT_ID, "Shopee")["price"] == 5100000
     assert world.observe_bill()["status"] == "not_due"
-    assert world.act({"type": "check_price", "product_id": PRODUCT_ID,
-                      "store": "Shopee"})["price"] == 5100000
+    assert (
+        world.act({"type": "check_price", "product_id": PRODUCT_ID, "store": "Shopee"})["price"]
+        == 5100000
+    )
     assert world.act({"type": "wait_day"}) == {"day": 16}
     paid = world.act({"type": "pay_bill", "bill_id": "bill-pln-001"})
-    assert paid == {"success": True, "status": "paid", "amount_due": 0,
-                    "bill_id": "bill-pln-001", "day": 16}
-    assert world.act({"type": "buy_from_store", "product_id": PRODUCT_ID,
-                      "store": "Shopee"})["success"] is True
+    assert paid == {
+        "success": True,
+        "status": "paid",
+        "amount_due": 0,
+        "bill_id": "bill-pln-001",
+        "day": 16,
+    }
+    assert (
+        world.act({"type": "buy_from_store", "product_id": PRODUCT_ID, "store": "Shopee"})[
+            "success"
+        ]
+        is True
+    )
 
 
 def test_noisy_accuracy_reported_honestly_below_one():
@@ -79,9 +91,11 @@ def test_noisy_accuracy_reported_honestly_below_one():
     summary = run_noisy_episodes(model, count=3, days=5)
     accuracies = [episode["accuracy"] for episode in summary["episodes"]]
     # Key evidence, printed so the run log carries the numbers.
-    print(f"noisy episode accuracies: {accuracies} "
-          f"(first={summary['first_accuracy']:.3f}, "
-          f"last={summary['last_accuracy']:.3f})")
+    print(
+        f"noisy episode accuracies: {accuracies} "
+        f"(first={summary['first_accuracy']:.3f}, "
+        f"last={summary['last_accuracy']:.3f})"
+    )
     assert all(episode["total"] == 17 for episode in summary["episodes"])
     assert all(0.0 <= accuracy <= 1.0 for accuracy in accuracies)
     # Noise makes exact price prediction impossible: no episode is 1.0.
@@ -105,5 +119,6 @@ def test_noisy_model_corrects_to_observed_price():
     world.day = 19
     for store in STORES:
         prediction = model.predict(
-            {"type": "check_price", "product_id": PRODUCT_ID, "store": store})
+            {"type": "check_price", "product_id": PRODUCT_ID, "store": store}
+        )
         assert prediction.outcome["price"] == world.price(PRODUCT_ID, store)

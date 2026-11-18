@@ -53,10 +53,11 @@ verify path never imports this module: verification stays offline.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 __all__ = [
@@ -109,7 +110,7 @@ class TrustRootError(Exception):
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def default_cache_path() -> Path:
@@ -134,10 +135,8 @@ def _emit(sink, event_type, content) -> None:
     """Record an event through ``sink``; a broken sink never fails a refresh."""
     if sink is None:
         return
-    try:
+    with contextlib.suppress(Exception):
         sink(event_type, content)
-    except Exception:
-        pass
 
 
 def cached_root_age_days(cache_path=None, *, now: datetime | None = None) -> float | None:
@@ -151,8 +150,13 @@ def cached_root_age_days(cache_path=None, *, now: datetime | None = None) -> flo
     return (now.timestamp() - mtime) / _SECONDS_PER_DAY
 
 
-def check_staleness(cache_path=None, *, max_age_days: float = DEFAULT_STALE_AFTER_DAYS,
-                    sink=None, now: datetime | None = None) -> dict:
+def check_staleness(
+    cache_path=None,
+    *,
+    max_age_days: float = DEFAULT_STALE_AFTER_DAYS,
+    sink=None,
+    now: datetime | None = None,
+) -> dict:
     """Check whether the cached trust root is stale.
 
     Returns ``{"stale": bool, "age_days": float | None, "path": str,
@@ -164,20 +168,39 @@ def check_staleness(cache_path=None, *, max_age_days: float = DEFAULT_STALE_AFTE
     """
     path = _resolve_cache_path(cache_path)
     age = cached_root_age_days(path, now=now)
+    result: dict[str, str | bool | float | None]
     if age is None:
-        result = {"stale": True, "age_days": None, "path": str(path),
-                  "reason": "no cached trust root"}
+        result = {
+            "stale": True,
+            "age_days": None,
+            "path": str(path),
+            "reason": "no cached trust root",
+        }
     elif age > max_age_days:
-        result = {"stale": True, "age_days": age, "path": str(path),
-                  "reason": f"cached trust root is {age:.1f} days old"
-                            f" (stale after {max_age_days} days)"}
+        result = {
+            "stale": True,
+            "age_days": age,
+            "path": str(path),
+            "reason": f"cached trust root is {age:.1f} days old (stale after {max_age_days} days)",
+        }
     else:
-        result = {"stale": False, "age_days": age, "path": str(path),
-                  "reason": "cached trust root is fresh"}
+        result = {
+            "stale": False,
+            "age_days": age,
+            "path": str(path),
+            "reason": "cached trust root is fresh",
+        }
     if result["stale"]:
-        _emit(sink, "trust_root_stale",
-              {"path": str(path), "age_days": age,
-               "max_age_days": max_age_days, "reason": result["reason"]})
+        _emit(
+            sink,
+            "trust_root_stale",
+            {
+                "path": str(path),
+                "age_days": age,
+                "max_age_days": max_age_days,
+                "reason": result["reason"],
+            },
+        )
     return result
 
 
@@ -194,7 +217,8 @@ def _validate_trusted_root_bytes(data: bytes) -> None:
     if len(data) > MAX_TRUSTED_ROOT_BYTES:
         raise TrustRootError(
             f"downloaded trust root is {len(data)} bytes, over the"
-            f" {MAX_TRUSTED_ROOT_BYTES} byte cap")
+            f" {MAX_TRUSTED_ROOT_BYTES} byte cap"
+        )
     try:
         parsed = json.loads(data)
     except Exception as exc:
@@ -233,8 +257,7 @@ def _default_updater_factory(tuf_url: str):
     try:
         from sigstore._internal.tuf import TrustUpdater
     except Exception as exc:
-        raise TrustRootError(
-            f"sigstore TUF client is not available: {exc}") from exc
+        raise TrustRootError(f"sigstore TUF client is not available: {exc}") from exc
     return TrustUpdater(tuf_url)
 
 
@@ -259,18 +282,21 @@ def _install_cached_root(data: bytes, path: Path, now: datetime | None = None) -
             stamp = now.timestamp()
             os.utime(path, (stamp, stamp))
     except Exception:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp_name)
-        except OSError:
-            pass
         raise
 
 
-def refresh_trust_root(cache_path=None, *, tuf_url: str = DEFAULT_TUF_URL,
-                       max_age_days: float = DEFAULT_MAX_AGE_DAYS,
-                       force: bool = False, sink=None,
-                       now: datetime | None = None,
-                       updater_factory=None) -> dict:
+def refresh_trust_root(
+    cache_path=None,
+    *,
+    tuf_url: str = DEFAULT_TUF_URL,
+    max_age_days: float = DEFAULT_MAX_AGE_DAYS,
+    force: bool = False,
+    sink=None,
+    now: datetime | None = None,
+    updater_factory=None,
+) -> dict:
     """Refresh the cached trust root from the Sigstore TUF repository.
 
     Returns an outcome dict ``{"status": ..., "path": str | None,
@@ -297,58 +323,85 @@ def refresh_trust_root(cache_path=None, *, tuf_url: str = DEFAULT_TUF_URL,
     now = now or _now()
     age = cached_root_age_days(path, now=now)
     if not force and age is not None and age <= max_age_days:
-        return {"status": "fresh", "path": str(path), "age_days": age,
-                "reason": f"cached trust root is {age:.1f} days old"
-                          f" (refresh after {max_age_days} days)"}
+        return {
+            "status": "fresh",
+            "path": str(path),
+            "age_days": age,
+            "reason": f"cached trust root is {age:.1f} days old"
+            f" (refresh after {max_age_days} days)",
+        }
     factory = updater_factory or _default_updater_factory
     try:
         updater = factory(tuf_url)
         downloaded_path = updater.get_trusted_root_path()
         data = Path(downloaded_path).read_bytes()
     except TrustRootError as exc:
-        _emit(sink, "trust_root_refresh_failed",
-              {"path": str(path), "reason": str(exc)})
-        return {"status": "unavailable" if "not available" in str(exc) else "failed",
-                "path": str(path) if path.exists() else None,
-                "age_days": age, "reason": str(exc)}
+        _emit(sink, "trust_root_refresh_failed", {"path": str(path), "reason": str(exc)})
+        return {
+            "status": "unavailable" if "not available" in str(exc) else "failed",
+            "path": str(path) if path.exists() else None,
+            "age_days": age,
+            "reason": str(exc),
+        }
     except Exception as exc:
         reason = f"trust root download failed: {exc}"
-        _emit(sink, "trust_root_refresh_failed",
-              {"path": str(path), "reason": reason})
-        return {"status": "failed",
-                "path": str(path) if path.exists() else None,
-                "age_days": age, "reason": reason}
+        _emit(sink, "trust_root_refresh_failed", {"path": str(path), "reason": reason})
+        return {
+            "status": "failed",
+            "path": str(path) if path.exists() else None,
+            "age_days": age,
+            "reason": reason,
+        }
     try:
         _validate_trusted_root_bytes(data)
     except TrustRootError as exc:
         reason = f"downloaded trust root rejected: {exc}"
-        _emit(sink, "trust_root_refresh_failed",
-              {"path": str(path), "reason": reason})
-        return {"status": "failed",
-                "path": str(path) if path.exists() else None,
-                "age_days": age, "reason": reason}
+        _emit(sink, "trust_root_refresh_failed", {"path": str(path), "reason": reason})
+        return {
+            "status": "failed",
+            "path": str(path) if path.exists() else None,
+            "age_days": age,
+            "reason": reason,
+        }
     try:
         if path.is_file() and path.read_bytes() == data:
-            return {"status": "unchanged", "path": str(path), "age_days": age,
-                    "reason": "cached trust root is already current"}
+            return {
+                "status": "unchanged",
+                "path": str(path),
+                "age_days": age,
+                "reason": "cached trust root is already current",
+            }
         _install_cached_root(data, path, now=now)
     except Exception as exc:
         reason = f"could not install refreshed trust root: {exc}"
-        _emit(sink, "trust_root_refresh_failed",
-              {"path": str(path), "reason": reason})
-        return {"status": "failed",
-                "path": str(path) if path.exists() else None,
-                "age_days": age, "reason": reason}
+        _emit(sink, "trust_root_refresh_failed", {"path": str(path), "reason": reason})
+        return {
+            "status": "failed",
+            "path": str(path) if path.exists() else None,
+            "age_days": age,
+            "reason": reason,
+        }
     new_age = cached_root_age_days(path, now=now)
-    _emit(sink, "trust_root_refreshed",
-          {"path": str(path), "previous_age_days": age, "age_days": new_age})
-    return {"status": "refreshed", "path": str(path), "age_days": new_age,
-            "reason": "cached trust root refreshed from the TUF repository"}
+    _emit(
+        sink,
+        "trust_root_refreshed",
+        {"path": str(path), "previous_age_days": age, "age_days": new_age},
+    )
+    return {
+        "status": "refreshed",
+        "path": str(path),
+        "age_days": new_age,
+        "reason": "cached trust root refreshed from the TUF repository",
+    }
 
 
-def resolve_trust_root_for_verify(cache_path=None, *,
-                                  max_age_days: float = DEFAULT_STALE_AFTER_DAYS,
-                                  sink=None, now: datetime | None = None) -> tuple[str | None, dict]:
+def resolve_trust_root_for_verify(
+    cache_path=None,
+    *,
+    max_age_days: float = DEFAULT_STALE_AFTER_DAYS,
+    sink=None,
+    now: datetime | None = None,
+) -> tuple[str | None, dict]:
     """Pick the trust root a verification should use.
 
     Returns ``(path_or_None, status)`` where ``status`` is the
@@ -360,20 +413,23 @@ def resolve_trust_root_for_verify(cache_path=None, *,
     bundled ``"production"`` root in ``verify_sigstore_bundle``.
     Performs no network access.
     """
-    status = check_staleness(cache_path, max_age_days=max_age_days,
-                             sink=sink, now=now)
+    status = check_staleness(cache_path, max_age_days=max_age_days, sink=sink, now=now)
     if status["age_days"] is None:
         return None, status
     return status["path"], status
 
 
-def run_trust_root_refresh_job(*, sink=None, cache_path=None,
-                               tuf_url: str = DEFAULT_TUF_URL,
-                               max_age_days: float = DEFAULT_MAX_AGE_DAYS,
-                               stale_after_days: float = DEFAULT_STALE_AFTER_DAYS,
-                               force: bool = False,
-                               now: datetime | None = None,
-                               updater_factory=None) -> dict:
+def run_trust_root_refresh_job(
+    *,
+    sink=None,
+    cache_path=None,
+    tuf_url: str = DEFAULT_TUF_URL,
+    max_age_days: float = DEFAULT_MAX_AGE_DAYS,
+    stale_after_days: float = DEFAULT_STALE_AFTER_DAYS,
+    force: bool = False,
+    now: datetime | None = None,
+    updater_factory=None,
+) -> dict:
     """One run of the scheduled trust-root refresh job.
 
     Checks staleness first (recorded through ``sink``), then
@@ -385,10 +441,15 @@ def run_trust_root_refresh_job(*, sink=None, cache_path=None,
     verify path.
     """
     now = now or _now()
-    staleness = check_staleness(cache_path, max_age_days=stale_after_days,
-                                sink=sink, now=now)
+    staleness = check_staleness(cache_path, max_age_days=stale_after_days, sink=sink, now=now)
     outcome = refresh_trust_root(
-        cache_path, tuf_url=tuf_url, max_age_days=max_age_days,
-        force=force, sink=sink, now=now, updater_factory=updater_factory)
+        cache_path,
+        tuf_url=tuf_url,
+        max_age_days=max_age_days,
+        force=force,
+        sink=sink,
+        now=now,
+        updater_factory=updater_factory,
+    )
     outcome["staleness"] = staleness
     return outcome

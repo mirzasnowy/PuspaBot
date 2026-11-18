@@ -39,37 +39,37 @@ TOS_CHECK_RESULTS = {
     "Tokopedia": {
         "result": "forbids_automation",
         "clause": "Syarat & Ketentuan B.12-13: dilarang memakai robot, macro, crawler "
-                 "dan/atau perangkat otomatis untuk crawling/scraping tanpa izin Tokopedia.",
+        "dan/atau perangkat otomatis untuk crawling/scraping tanpa izin Tokopedia.",
         "source_url": "https://www.tokopedia.com/help/article/terms-conditions",
     },
     "Shopee": {
         "result": "forbids_automation",
         "clause": "Ketentuan Layanan bag. 3: dilarang mengakses dengan bot/emulator dan "
-                 "memantau/menyalin otomatis tanpa izin tertulis; jalur resmi: Shopee Open Platform.",
+        "memantau/menyalin otomatis tanpa izin tertulis; jalur resmi: Shopee Open Platform.",
         "source_url": "https://shopee.co.id/",
     },
     "Blibli": {
         "result": "forbids_automation",
         "clause": "Syarat & Ketentuan 2.2: dilarang mengambil isi secara sistematis untuk "
-                 "membuat/menyusun koleksi, kompilasi, database atau direktori tanpa izin tertulis.",
+        "membuat/menyusun koleksi, kompilasi, database atau direktori tanpa izin tertulis.",
         "source_url": "https://www.blibli.com/faq/tentang-blibli/syarat-ketentuan/",
     },
     "PLN": {
         "result": "limited_official_service",
         "clause": "Cek tagihan layanan resmi pelanggan sendiri di layanan.pln.co.id; "
-                 "butuh login + captcha — jalur otomatis tidak dijamin, bukan larangan eksplisit.",
+        "butuh login + captcha — jalur otomatis tidak dijamin, bukan larangan eksplisit.",
         "source_url": "https://layanan.pln.co.id/informasi-tagihan-listrik-pembelian-token-pln",
     },
     "PDAM": {
         "result": "limited_official_service",
         "clause": "Tiap daerah punya situs sendiri; cek tagihan layanan resmi pelanggan sendiri. "
-                 "MVP hanya PDAM milik Nero + pengguna uji (§4.2).",
+        "MVP hanya PDAM milik Nero + pengguna uji (§4.2).",
         "source_url": "",
     },
     "airtime": {
         "result": "limited_official_service",
         "clause": "Cek pulsa/paket data lewat kanal resmi operator (aplikasi/UMB); "
-                 "tidak ada API publik umum. Jalur otomatis menunggu prosedur per operator.",
+        "tidak ada API publik umum. Jalur otomatis menunggu prosedur per operator.",
         "source_url": "",
     },
     "paket data": {
@@ -87,7 +87,8 @@ LIVE_READ_ALLOWED = {"PLN", "PDAM", "airtime", "paket data"}
 
 def _connect(dsn=None):
     return psycopg.connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
+        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
+    )
 
 
 def may_read(source: str, *, mode: str = "live") -> bool:
@@ -116,16 +117,30 @@ def record_result_check(dsn=None, checked_on: date | None = None) -> list[dict]:
                     " ON CONFLICT (sumber) DO UPDATE SET result = EXCLUDED.result,"
                     " pasal = EXCLUDED.pasal, source_url = EXCLUDED.source_url,"
                     " checked_on = EXCLUDED.checked_on",
-                    (source, content["result"], content["clause"], content["source_url"], checked_on))
+                    (
+                        source,
+                        content["result"],
+                        content["clause"],
+                        content["source_url"],
+                        checked_on,
+                    ),
+                )
         conn.commit()
     return list_check_results(dsn=dsn)
 
 
 def list_check_results(dsn=None) -> list[dict]:
     """Baca hasil cek syarat layanan yang tercatat."""
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM tos_checks ORDER BY sumber")
-            return [{"source": r["sumber"], "result": r["result"], "clause": r["pasal"],
-                     "source_url": r["source_url"], "checked_on": r["checked_on"],
-                     "decision": r["keputusan"]} for r in cur.fetchall()]
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute("SELECT * FROM tos_checks ORDER BY sumber")
+        return [
+            {
+                "source": r["sumber"],
+                "result": r["result"],
+                "clause": r["pasal"],
+                "source_url": r["source_url"],
+                "checked_on": r["checked_on"],
+                "decision": r["keputusan"],
+            }
+            for r in cur.fetchall()
+        ]

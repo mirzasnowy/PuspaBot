@@ -42,8 +42,7 @@ def _secret():
     return secret.encode()
 
 
-def create_email_link(email, base_url, secret=None, ttl_seconds=LINK_TTL_SECONDS,
-                      now=None):
+def create_email_link(email, base_url, secret=None, ttl_seconds=LINK_TTL_SECONDS, now=None):
     """Buat URL tautan login sekali pakai untuk `email`.
 
     Kembalikan URL lengkap. Token TIDAK disimpan (hanya hash-nya yang

@@ -9,13 +9,13 @@ stops consuming work and says so.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 __all__ = [
     "MAX_REQUEUE",
     "FailureRecord",
-    "should_requeue",
     "handle_failure",
+    "should_requeue",
 ]
 
 #: A failed run is requeued this many times at most (once).
@@ -32,8 +32,7 @@ class FailureRecord:
     attempts: int
     requeued: bool
     owner_notified: bool
-    recorded_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc))
+    recorded_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict:
         return {
@@ -52,9 +51,16 @@ def should_requeue(attempts: int) -> bool:
     return attempts < MAX_REQUEUE
 
 
-def handle_failure(*, job_id: str, run_id: str, error: str,
-                   attempts: int, sink=None, notify_owner=None,
-                   requeue=None) -> FailureRecord:
+def handle_failure(
+    *,
+    job_id: str,
+    run_id: str,
+    error: str,
+    attempts: int,
+    sink=None,
+    notify_owner=None,
+    requeue=None,
+) -> FailureRecord:
     """Handle one failed run: requeue once, else record + notify.
 
     ``requeue`` is an optional callable ``(job_id, run_id) -> None``
@@ -69,17 +75,20 @@ def handle_failure(*, job_id: str, run_id: str, error: str,
     requeued = should_requeue(attempts)
     terminal = not requeued
     record = FailureRecord(
-        job_id=job_id, run_id=run_id, error=str(error),
-        attempts=attempts, requeued=requeued,
-        owner_notified=False)
+        job_id=job_id,
+        run_id=run_id,
+        error=str(error),
+        attempts=attempts,
+        requeued=requeued,
+        owner_notified=False,
+    )
     if requeued and requeue is not None:
         requeue(job_id, run_id)
     if sink is not None:
         try:
             sink("run_failed", record.to_dict())
             if requeued:
-                sink("run_requeued", {"job_id": job_id, "run_id": run_id,
-                                      "attempts": attempts})
+                sink("run_requeued", {"job_id": job_id, "run_id": run_id, "attempts": attempts})
         except Exception:
             pass
     if terminal and notify_owner is not None:

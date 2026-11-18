@@ -72,9 +72,7 @@ def test_directory_rejects_duplicates_bad_slugs_and_bad_operations():
         )
     with pytest.raises(DirectoryError, match="at least one operation"):
         directory.register(
-            ConnectorDefinition(
-                connector_id="no-ops", display_name="No Ops", auth_kind="none"
-            )
+            ConnectorDefinition(connector_id="no-ops", display_name="No Ops", auth_kind="none")
         )
 
 
@@ -182,6 +180,8 @@ def test_fake_bill_provider_needs_approval_to_pay():
         provider.pay_bill("12345678901", 132500, approved=False)
     receipt = provider.pay_bill("12345678901", 132500, approved=True)
     assert receipt["receipt_id"].startswith("fake-pln-")
-    assert FakeBillProvider("pulsa").top_up("081200000000", 50000, approved=True)[
-        "status"
-    ].startswith("topped up (fake)")
+    assert (
+        FakeBillProvider("pulsa")
+        .top_up("081200000000", 50000, approved=True)["status"]
+        .startswith("topped up (fake)")
+    )

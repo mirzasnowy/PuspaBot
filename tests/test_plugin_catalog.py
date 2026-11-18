@@ -100,9 +100,7 @@ def test_manifest_invalid_fields(field, value):
 
 
 def test_manifest_non_dict():
-    assert validate_manifest(["not", "a", "dict"]) == [
-        "manifest must be a YAML mapping"
-    ]
+    assert validate_manifest(["not", "a", "dict"]) == ["manifest must be a YAML mapping"]
 
 
 def test_load_manifest_rejects_invalid_yaml(tmp_path):
@@ -167,8 +165,7 @@ def test_check_repository_alive_never_raises():
     # Unroutable / non-existent hosts fail closed to False.
     assert (
         check_repository_alive(
-            "https://github.com/definitely-not-a-real-owner-xyz/"
-            "definitely-not-a-repo-xyz",
+            "https://github.com/definitely-not-a-real-owner-xyz/definitely-not-a-repo-xyz",
             timeout_s=3,
         )
         is False

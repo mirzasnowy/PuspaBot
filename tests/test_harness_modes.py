@@ -119,9 +119,7 @@ def _repo_with_add(root) -> None:
     """A tiny real repo for the Architect repo map."""
     src = root / "src"
     src.mkdir(parents=True)
-    (src / "add.py").write_text(
-        "def add(a, b):\n    return a + b\n", encoding="utf-8"
-    )
+    (src / "add.py").write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
     (src / "main.py").write_text(
         "from src.add import add\n\n\ndef main():\n    print(add(2, 3))\n",
         encoding="utf-8",
@@ -282,7 +280,7 @@ def test_architect_write_and_run_denied_even_with_permissive_token(tmp_path):
 
     # And the executor refuses a write under that profile too.
     local = LocalTestExecutor(tmp_path / "work")
-    with pytest.raises(ProfileDenied, match="read_only.*denies writes"):
+    with pytest.raises(ProfileDenied, match=r"read_only.*denies writes"):
         local.write_file("src/add.py", FIXED_IMPL, profile=PROFILE_READ_ONLY)
 
 
@@ -407,12 +405,8 @@ def test_debug_reproduces_before_fixing(tmp_path):
     """Debug mode: the starter probe fails (the reproduction),
     the first diff attempt fails again, the second diff fixes it;
     the fix is certified by the reproduction pair."""
-    diff_to_buggy_program = generate_diff(
-        BUGGY_IMPL, _program(BUGGY_IMPL), filename="attempt.py"
-    )
-    diff_to_fix = generate_diff(
-        _program(BUGGY_IMPL), _program(FIXED_IMPL), filename="attempt.py"
-    )
+    diff_to_buggy_program = generate_diff(BUGGY_IMPL, _program(BUGGY_IMPL), filename="attempt.py")
+    diff_to_fix = generate_diff(_program(BUGGY_IMPL), _program(FIXED_IMPL), filename="attempt.py")
 
     def generator(task, attempts):
         if not attempts:
@@ -475,12 +469,8 @@ class _PhaseGenerator:
             return generate_diff(task.starter_code, _program(FIXED_IMPL), filename="attempt.py")
         if self.mode == MODE_DEBUG:
             if not attempts:
-                return generate_diff(
-                    task.starter_code, _program(BUGGY_IMPL), filename="attempt.py"
-                )
-            return generate_diff(
-                _program(BUGGY_IMPL), _program(FIXED_IMPL), filename="attempt.py"
-            )
+                return generate_diff(task.starter_code, _program(BUGGY_IMPL), filename="attempt.py")
+            return generate_diff(_program(BUGGY_IMPL), _program(FIXED_IMPL), filename="attempt.py")
         raise AssertionError(f"unexpected phase {self.mode!r}")
 
 
@@ -555,6 +545,7 @@ def test_default_diff_mode_still_accepts_full_program(tmp_path):
     """Legacy ``diff_mode=True`` without a mode still falls back
     to full-program text when the generator returns no diff; only
     Code/Debug modes enforce the diff."""
+
     def generator(task, attempts):
         if not attempts:
             return _program(BUGGY_IMPL)

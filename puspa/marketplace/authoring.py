@@ -43,7 +43,7 @@ at load time:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 __all__ = [
     "CANONICAL_SECTIONS",
@@ -80,9 +80,7 @@ CANONICAL_SECTIONS = (
     "examples",
 )
 
-_PLATFORM_GATING = re.compile(
-    r"sys\.platform|platform\.system\(\)|os\.name"
-)
+_PLATFORM_GATING = re.compile(r"sys\.platform|platform\.system\(\)|os\.name")
 _CONFIG_PLACEHOLDER = re.compile(r"\{\{\s*config\.([A-Za-z0-9_]+)\s*\}\}")
 _CREDIT_LINE = re.compile(r"^(author|credit|by)\s*:", re.IGNORECASE | re.MULTILINE)
 _HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*$", re.MULTILINE)
@@ -98,8 +96,7 @@ class AuthoringViolation:
     detail: str = ""
 
     def to_dict(self) -> dict:
-        return {"code": self.code, "message": self.message,
-                "detail": self.detail}
+        return {"code": self.code, "message": self.message, "detail": self.detail}
 
 
 def _strip_code_fences(text: str) -> str:
@@ -145,49 +142,59 @@ def check_authoring(skill_text: str, frontmatter: dict | None = None):
     # Description length (frontmatter).
     description = frontmatter.get("description", "")
     if isinstance(description, str) and len(description) > MAX_DESCRIPTION_CHARS:
-        violations.append(AuthoringViolation(
-            code="description_too_long",
-            message=f"description is {len(description)} characters "
-                    f"(max {MAX_DESCRIPTION_CHARS})",
-            detail=description,
-        ))
+        violations.append(
+            AuthoringViolation(
+                code="description_too_long",
+                message=f"description is {len(description)} characters "
+                f"(max {MAX_DESCRIPTION_CHARS})",
+                detail=description,
+            )
+        )
 
     # Shell utilities in prose -> native tools.
     for util, native in SHELL_UTIL_TO_NATIVE_TOOL.items():
         if re.search(rf"\b{re.escape(util)}\b", prose):
-            violations.append(AuthoringViolation(
-                code="shell_util_reference",
-                message=f"refers to shell utility {util!r}; "
-                        f"use the native tool {native!r} instead",
-                detail=util,
-            ))
+            violations.append(
+                AuthoringViolation(
+                    code="shell_util_reference",
+                    message=f"refers to shell utility {util!r}; "
+                    f"use the native tool {native!r} instead",
+                    detail=util,
+                )
+            )
 
     # Platform gating without an audit flag.
-    if _PLATFORM_GATING.search(skill_text):
-        if frontmatter.get("platform_gating_audited") is not True:
-            violations.append(AuthoringViolation(
+    if (
+        _PLATFORM_GATING.search(skill_text)
+        and frontmatter.get("platform_gating_audited") is not True
+    ):
+        violations.append(
+            AuthoringViolation(
                 code="platform_gating_unaudited",
                 message="platform gating is present but not marked audited "
-                        "(set frontmatter platform_gating_audited: true "
-                        "after review)",
-            ))
+                "(set frontmatter platform_gating_audited: true "
+                "after review)",
+            )
+        )
 
     # Human credit first: author in frontmatter + a credit line.
     if not frontmatter.get("author"):
-        violations.append(AuthoringViolation(
-            code="human_credit_missing",
-            message="frontmatter 'author' is missing; credit the human author",
-        ))
+        violations.append(
+            AuthoringViolation(
+                code="human_credit_missing",
+                message="frontmatter 'author' is missing; credit the human author",
+            )
+        )
     elif not _CREDIT_LINE.search(prose):
-        violations.append(AuthoringViolation(
-            code="human_credit_missing",
-            message="no credit line (Author:/Credit:/By:) in the skill body",
-        ))
+        violations.append(
+            AuthoringViolation(
+                code="human_credit_missing",
+                message="no credit line (Author:/Credit:/By:) in the skill body",
+            )
+        )
 
     # Canonical section order.
-    headings = [
-        h.strip().lower() for h in _HEADING.findall(prose)
-    ]
+    headings = [h.strip().lower() for h in _HEADING.findall(prose)]
     positions = []
     for section in CANONICAL_SECTIONS:
         for i, heading in enumerate(headings):
@@ -195,45 +202,48 @@ def check_authoring(skill_text: str, frontmatter: dict | None = None):
                 positions.append(i)
                 break
     if positions != sorted(positions):
-        violations.append(AuthoringViolation(
-            code="section_order",
-            message="sections are out of the canonical order: "
-                    + " > ".join(CANONICAL_SECTIONS),
-            detail=str(headings),
-        ))
+        violations.append(
+            AuthoringViolation(
+                code="section_order",
+                message="sections are out of the canonical order: "
+                + " > ".join(CANONICAL_SECTIONS),
+                detail=str(headings),
+            )
+        )
 
     # Non-trivial logic inline instead of in a script.
     for block in _code_blocks(skill_text):
         if len(block) > MAX_INLINE_CODE_LINES:
-            violations.append(AuthoringViolation(
-                code="inline_logic_too_long",
-                message=f"inline code block has {len(block)} lines "
-                        f"(max {MAX_INLINE_CODE_LINES}); move non-trivial "
-                        "logic to a script file",
-                detail=f"{len(block)} lines",
-            ))
+            violations.append(
+                AuthoringViolation(
+                    code="inline_logic_too_long",
+                    message=f"inline code block has {len(block)} lines "
+                    f"(max {MAX_INLINE_CODE_LINES}); move non-trivial "
+                    "logic to a script file",
+                    detail=f"{len(block)} lines",
+                )
+            )
             break
 
     # Config placeholders must be declared in frontmatter.
     declared = {
-        entry.get("name")
-        for entry in frontmatter.get("config") or []
-        if isinstance(entry, dict)
+        entry.get("name") for entry in frontmatter.get("config") or [] if isinstance(entry, dict)
     }
     for name in sorted(set(_CONFIG_PLACEHOLDER.findall(skill_text))):
         if name not in declared:
-            violations.append(AuthoringViolation(
-                code="config_undeclared",
-                message=f"placeholder {{{{config.{name}}}}} is used but "
-                        "not declared in frontmatter 'config'",
-                detail=name,
-            ))
+            violations.append(
+                AuthoringViolation(
+                    code="config_undeclared",
+                    message=f"placeholder {{{{config.{name}}}}} is used but "
+                    "not declared in frontmatter 'config'",
+                    detail=name,
+                )
+            )
 
     return violations
 
 
-def resolve_config(declared: list | None, *, answers: dict | None = None,
-                   asker=None) -> dict:
+def resolve_config(declared: list | None, *, answers: dict | None = None, asker=None) -> dict:
     """Resolve setup-time config for a skill.
 
     ``declared`` is the frontmatter ``config`` list of
@@ -252,8 +262,7 @@ def resolve_config(declared: list | None, *, answers: dict | None = None,
             resolved[name] = answers[name]
             continue
         if asker is not None:
-            value = asker(name, entry.get("prompt", name),
-                          entry.get("default"))
+            value = asker(name, entry.get("prompt", name), entry.get("default"))
             if value not in (None, ""):
                 resolved[name] = value
                 continue
@@ -261,9 +270,7 @@ def resolve_config(declared: list | None, *, answers: dict | None = None,
             resolved[name] = entry["default"]
             continue
         if entry.get("required"):
-            raise ValueError(
-                f"required config {name!r} was not provided at setup"
-            )
+            raise ValueError(f"required config {name!r} was not provided at setup")
     return resolved
 
 
@@ -274,6 +281,7 @@ def inject_config(skill_text: str, config: dict) -> str:
     authoring check flags them as undeclared instead of this
     function failing the load).
     """
+
     def _replace(match):
         name = match.group(1)
         return str(config[name]) if name in config else match.group(0)

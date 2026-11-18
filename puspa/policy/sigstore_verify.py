@@ -170,8 +170,9 @@ def _check_dsse_binding(payload_type, payload, artifact_bytes) -> tuple[bool, st
     return False, "artifact digest does not match dsse statement subject digest"
 
 
-def verify_sigstore_bundle(bundle_bytes, artifact_bytes, identity, issuer, *,
-                           trust_root="production") -> tuple[bool, str]:
+def verify_sigstore_bundle(
+    bundle_bytes, artifact_bytes, identity, issuer, *, trust_root="production"
+) -> tuple[bool, str]:
     """Verify a Sigstore bundle for ``artifact_bytes``. Returns
     ``(ok, reason)`` and never raises for bad input.
 
@@ -222,9 +223,7 @@ def verify_sigstore_bundle(bundle_bytes, artifact_bytes, identity, issuer, *,
             # falls through to ``verify_artifact``, which rejects a
             # DSSE bundle, instead of ever verifying it unchecked.
             payload_type, payload = verifier.verify_dsse(bundle, policy)
-            ok, reason = _check_dsse_binding(
-                payload_type, payload, bytes(artifact_bytes)
-            )
+            ok, reason = _check_dsse_binding(payload_type, payload, bytes(artifact_bytes))
             if not ok:
                 return _fail(reason)
             return True, "ok"

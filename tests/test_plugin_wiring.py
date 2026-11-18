@@ -21,19 +21,19 @@ _NANOBOT_LOCAL = Path(__file__).resolve().parent.parent / "nanobot"
 if _NANOBOT_LOCAL.exists():
     sys.path.insert(0, str(_NANOBOT_LOCAL))
 
-from puspa.chassis.factory import (  # noqa: E402
+from puspa.chassis.factory import (
     PuspaChassis,
     assemble,
     build_registry,
     load_chassis_plugins,
 )
-from puspa.plugins.adapters import (  # noqa: E402
+from puspa.plugins.adapters import (
     PluginHook,
     PluginTool,
     attach_plugin_tools,
     build_plugin_hook,
 )
-from puspa.plugins.loader import load_plugin  # noqa: E402
+from puspa.plugins.loader import load_plugin
 
 ECHO_MODULE = "puspa.plugins.builtin.echo"
 
@@ -148,9 +148,7 @@ def test_assemble_adds_plugin_hook_only_when_plugins_exist(monkeypatch):
         captured.update(extra)
         return object()
 
-    monkeypatch.setattr(
-        loop_module.AgentLoop, "from_config", classmethod(from_config)
-    )
+    monkeypatch.setattr(loop_module.AgentLoop, "from_config", classmethod(from_config))
     # No plugins configured: exactly one hook, as before.
     assemble(PuspaChassis(), config="fake-config")
     assert len(captured["hooks"]) == 1

@@ -133,12 +133,14 @@ def diagnose_skill_failure(loop, skill_id):
             passed += 1
             continue
         case = dict(detail.get("case") or {})
-        failures.append({
-            "case": case,
-            "expected": case.get("expected"),
-            "observed": detail.get("result"),
-            "kind": _failure_kind(detail),
-        })
+        failures.append(
+            {
+                "case": case,
+                "expected": case.get("expected"),
+                "observed": detail.get("result"),
+                "kind": _failure_kind(detail),
+            }
+        )
     correction = loop.correction_for(skill["task"])
     if not details:
         suggested = "never_verified"
@@ -214,8 +216,7 @@ class SkillRepairer:
         self.max_attempts = max_attempts
         self.history = []
 
-    def repair(self, skill_id, test_cases=None, *, rewriter=None,
-               executor=None):
+    def repair(self, skill_id, test_cases=None, *, rewriter=None, executor=None):
         """Diagnose, rewrite, and re-verify one skill.
 
         `test_cases` defaults to the cases stored in the skill's
@@ -275,13 +276,18 @@ class SkillRepairer:
                     }
                     self.history.append(result)
                     return result
-            except Exception as exc:  # noqa: BLE001 - a failed rewrite
-                attempts.append({
-                    "attempt": attempt, "ok": False, "error": str(exc),
-                })
+            except Exception as exc:
+                attempts.append(
+                    {
+                        "attempt": attempt,
+                        "ok": False,
+                        "error": str(exc),
+                    }
+                )
                 continue
             draft = self.loop.draft_skill(
-                skill["task"], code=new_code,
+                skill["task"],
+                code=new_code,
                 name=f"{skill['name']}_repair{attempt}",
                 source_experience_ids=list(skill["source_experience_ids"]),
             )
@@ -289,8 +295,7 @@ class SkillRepairer:
             internal["repaired_from"] = skill_id
             internal["repair_attempt"] = attempt
             internal["repair_strategy"] = strategy
-            verification = self.loop.verify_skill(
-                draft["id"], cases, executor=executor)
+            verification = self.loop.verify_skill(draft["id"], cases, executor=executor)
             record = {
                 "attempt": attempt,
                 "ok": bool(verification["verified"]),
@@ -328,8 +333,7 @@ class SkillRepairer:
         self.history.append(result)
         return result
 
-    def repair_suspect_skills(self, test_cases_by_task=None, *,
-                              rewriter=None, executor=None):
+    def repair_suspect_skills(self, test_cases_by_task=None, *, rewriter=None, executor=None):
         """Repair every skill the loop marked suspect.
 
         A skill becomes suspect when a misprediction or a wrong
@@ -345,8 +349,7 @@ class SkillRepairer:
             cases = None
             if test_cases_by_task is not None:
                 cases = test_cases_by_task.get(skill["task"])
-            results.append(self.repair(
-                skill["id"], cases, rewriter=rewriter, executor=executor))
+            results.append(self.repair(skill["id"], cases, rewriter=rewriter, executor=executor))
         return results
 
     def list_repairs(self):
@@ -357,6 +360,7 @@ class SkillRepairer:
 # ---------------------------------------------------------------------------
 # Procedure change (letta-code): repeated outcomes change procedures.
 # ---------------------------------------------------------------------------
+
 
 def _step_hash(step):
     return json.dumps(step, sort_keys=True, ensure_ascii=False, default=str)
@@ -381,9 +385,17 @@ class InMemoryProcedureStore:
     def __init__(self):
         self._procedures = {}
 
-    def record_successful_task(self, user_id, service, step, agent_id=None,
-                               output_schema=None, required_checks=None,
-                               source_event_id=None, dsn=None):
+    def record_successful_task(
+        self,
+        user_id,
+        service,
+        step,
+        agent_id=None,
+        output_schema=None,
+        required_checks=None,
+        source_event_id=None,
+        dsn=None,
+    ):
         if not service or not isinstance(step, list) or not step:
             raise ValueError("service and non-empty steps are required")
         for proc in self._procedures.values():
@@ -392,10 +404,10 @@ class InMemoryProcedureStore:
                 and proc["service"] == service
                 and _step_hash(proc["step"]) == _step_hash(step)
             ):
-                return self.mark_run(
-                    proc["id"], user_id, True, agent_id=agent_id)
+                return self.mark_run(proc["id"], user_id, True, agent_id=agent_id)
         siblings = [
-            p for p in self._procedures.values()
+            p
+            for p in self._procedures.values()
             if p["user_id"] == str(user_id) and p["service"] == service
         ]
         version = (output_schema or {}).get("version")
@@ -429,17 +441,13 @@ class InMemoryProcedureStore:
         return dict(proc)
 
     def list_procedures(self, user_id, status=None, dsn=None):
-        rows = [
-            p for p in self._procedures.values()
-            if p["user_id"] == str(user_id)
-        ]
+        rows = [p for p in self._procedures.values() if p["user_id"] == str(user_id)]
         if status is not None:
             rows = [p for p in rows if p["status"] == status]
         rows.sort(key=lambda p: p["version"])
         return [dict(p) for p in rows]
 
-    def mark_run(self, procedure_id, user_id, success, agent_id=None,
-                 dsn=None):
+    def mark_run(self, procedure_id, user_id, success, agent_id=None, dsn=None):
         proc = self._procedures.get(procedure_id)
         if proc is None or proc["user_id"] != str(user_id):
             raise KeyError(f"procedure not found: {procedure_id}")
@@ -457,8 +465,7 @@ class InMemoryProcedureStore:
         """
         decayed = []
         for proc in list(self._procedures.values()):
-            updated = apply_decay(proc, now=now,
-                                  older_than_days=older_than_days)
+            updated = apply_decay(proc, now=now, older_than_days=older_than_days)
             if updated.get("decayed"):
                 self._procedures[proc["id"]] = updated
                 decayed.append(dict(updated))
@@ -491,7 +498,8 @@ class ProcedureUpdater:
     def _current_procedure(self, service):
         """Latest non-broken procedure for a service, or None."""
         rows = [
-            p for p in self.store.list_procedures(self.user_id)
+            p
+            for p in self.store.list_procedures(self.user_id)
             if p["service"] == service and p["status"] != "broken"
         ]
         if not rows:
@@ -505,10 +513,7 @@ class ProcedureUpdater:
 
     def list_versions(self, service):
         """Every version of a service's procedure, oldest first."""
-        rows = [
-            p for p in self.store.list_procedures(self.user_id)
-            if p["service"] == service
-        ]
+        rows = [p for p in self.store.list_procedures(self.user_id) if p["service"] == service]
         rows.sort(key=lambda p: p.get("version", 0))
         return [dict(p) for p in rows]
 
@@ -528,36 +533,47 @@ class ProcedureUpdater:
             raise ValueError("service and non-empty steps are required")
         current = self._current_procedure(service)
         if current is not None and _step_hash(current["step"]) == _step_hash(step):
-            proc = self.store.mark_run(
-                current["id"], self.user_id, success, agent_id=agent_id)
+            proc = self.store.mark_run(current["id"], self.user_id, success, agent_id=agent_id)
             return {
-                "task": str(task), "service": service,
-                "status": "recorded", "procedure": proc,
-                "conflicts_with": None, "repeat_count": 0,
+                "task": str(task),
+                "service": service,
+                "status": "recorded",
+                "procedure": proc,
+                "conflicts_with": None,
+                "repeat_count": 0,
             }
         if current is None and success:
             # No stored procedure yet: the first success births
             # version 1 right away; repetition only matters once
             # a procedure exists to change.
             proc = self.store.record_successful_task(
-                self.user_id, service, step, agent_id=agent_id,
+                self.user_id,
+                service,
+                step,
+                agent_id=agent_id,
                 output_schema={
-                    "version": 1, "supersedes": None,
+                    "version": 1,
+                    "supersedes": None,
                     "source_task": str(task),
                 },
                 source_event_id=None,
             )
             return {
-                "task": str(task), "service": service,
-                "status": "recorded", "procedure": proc,
-                "conflicts_with": None, "repeat_count": 0,
+                "task": str(task),
+                "service": service,
+                "status": "recorded",
+                "procedure": proc,
+                "conflicts_with": None,
+                "repeat_count": 0,
             }
         if not success:
             return {
-                "task": str(task), "service": service,
+                "task": str(task),
+                "service": service,
                 "status": "ignored",
                 "reason": "failure with an unstored step creates nothing",
-                "procedure": None, "conflicts_with": None,
+                "procedure": None,
+                "conflicts_with": None,
                 "repeat_count": 0,
             }
         key = (service, _step_hash(step))
@@ -565,9 +581,12 @@ class ProcedureUpdater:
         self._repeat_counts[key] = count
         if count < self.repeat_threshold:
             return {
-                "task": str(task), "service": service,
-                "status": "counted", "procedure": None,
-                "conflicts_with": None, "repeat_count": count,
+                "task": str(task),
+                "service": service,
+                "status": "counted",
+                "procedure": None,
+                "conflicts_with": None,
+                "repeat_count": count,
             }
         self._repeat_counts[key] = 0
         siblings = self.list_versions(service)
@@ -575,30 +594,35 @@ class ProcedureUpdater:
         # on that version) instead of minting a duplicate version.
         for old in siblings:
             if _step_hash(old["step"]) == _step_hash(step):
-                proc = self.store.mark_run(
-                    old["id"], self.user_id, True, agent_id=agent_id)
+                proc = self.store.mark_run(old["id"], self.user_id, True, agent_id=agent_id)
                 return {
-                    "task": str(task), "service": service,
-                    "status": "recorded", "procedure": proc,
-                    "conflicts_with": None, "repeat_count": count,
+                    "task": str(task),
+                    "service": service,
+                    "status": "recorded",
+                    "procedure": proc,
+                    "conflicts_with": None,
+                    "repeat_count": count,
                 }
         conflict = None
         if current is not None:
             conflict = detect_contradiction([current], service, step)
-        version = max(
-            (p.get("version", 0) for p in siblings), default=0) + 1
+        version = max((p.get("version", 0) for p in siblings), default=0) + 1
         output_schema = {
             "version": version,
             "supersedes": current["id"] if current else None,
             "source_task": str(task),
         }
         proc = self.store.record_successful_task(
-            self.user_id, service, step, agent_id=agent_id,
+            self.user_id,
+            service,
+            step,
+            agent_id=agent_id,
             output_schema=output_schema,
             source_event_id=None,
         )
         return {
-            "task": str(task), "service": service,
+            "task": str(task),
+            "service": service,
             "status": "proposed" if conflict else "changed",
             "procedure": proc,
             "conflicts_with": conflict["id"] if conflict else None,
@@ -608,13 +632,13 @@ class ProcedureUpdater:
     def decay_stale(self, now=None, older_than_days=90):
         """Decay stale verified procedures; returns the decayed ones."""
         if hasattr(self.store, "apply_decay_all"):
-            return self.store.apply_decay_all(
-                now=now, older_than_days=older_than_days)
+            return self.store.apply_decay_all(now=now, older_than_days=older_than_days)
         if hasattr(self.store, "decay_stale_procedures"):
             from . import procedural
 
             return procedural.decay_stale_procedures(
-                self.user_id, older_than_days=older_than_days, now=now)
+                self.user_id, older_than_days=older_than_days, now=now
+            )
         return []
 
     def repeat_counts(self):

@@ -21,8 +21,12 @@ def test_task_successful_becomes_procedure_trial(make_user, test_dsn):
 
 def test_same_task_does_not_duplicate_procedure(make_user, test_dsn):
     u = make_user()
-    procedural.record_successful_task(u["user_id"], "check_pln", LANGKAH, agent_id=u["agent_id"], dsn=test_dsn)
-    proc = procedural.record_successful_task(u["user_id"], "check_pln", LANGKAH, agent_id=u["agent_id"], dsn=test_dsn)
+    procedural.record_successful_task(
+        u["user_id"], "check_pln", LANGKAH, agent_id=u["agent_id"], dsn=test_dsn
+    )
+    proc = procedural.record_successful_task(
+        u["user_id"], "check_pln", LANGKAH, agent_id=u["agent_id"], dsn=test_dsn
+    )
     assert proc["successful_runs"] == 2
     assert len(procedural.list_procedures(u["user_id"], dsn=test_dsn)) == 1
 
@@ -53,9 +57,7 @@ def test_procedure_broken_after_2_consecutive_failures(make_user, test_dsn):
 def test_procedure_without_private_data(make_user, test_dsn):
     """Prosedur adalah templat: nomor pelanggan tidak boleh masuk."""
     u = make_user()
-    proc = procedural.record_successful_task(
-        u["user_id"], "check_pln", LANGKAH, dsn=test_dsn
-    )
+    proc = procedural.record_successful_task(u["user_id"], "check_pln", LANGKAH, dsn=test_dsn)
     assert "1234567890" not in str(proc["step"])
     assert proc["user_id"] == u["user_id"]
 

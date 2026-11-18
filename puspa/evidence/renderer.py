@@ -79,8 +79,7 @@ def find_orphan_numbers(draft_text: str) -> list[str]:
     return [m.group(0) for m in ORPHAN_NUMBER_RE.finditer(without_markers(draft_text))]
 
 
-def present(draft_text: str, evidence_by_id: dict[str, EvidenceRecord],
-            fix=None) -> dict:
+def present(draft_text: str, evidence_by_id: dict[str, EvidenceRecord], fix=None) -> dict:
     """Sajikan pesan lewat renderer dengan aturan angka yatim.
 
     - Render penanda dari bukti.

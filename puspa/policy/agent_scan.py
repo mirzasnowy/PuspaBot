@@ -139,8 +139,7 @@ class ScanResult:
             lines.append(f"scan error: {self.error}")
         for finding in self.findings:
             lines.append(
-                f"{finding.severity} {finding.rule} at {finding.location}: "
-                f"{finding.message}"
+                f"{finding.severity} {finding.rule} at {finding.location}: {finding.message}"
             )
         return "\n".join(lines)
 
@@ -284,8 +283,10 @@ _LINE_RULES: list[tuple[str, str, str, str]] = [
     (
         RULE_CREDENTIAL,
         "critical",
-        r"(?:~/\.ssh|/\.ssh/|id_rsa|id_ed25519|\.pem\b|~/\.aws|\.aws/credentials"
-        r"|AWS_SHARED_CREDENTIALS|keychain|gpg\s+--export-secret)",
+        (
+            r"(?:~/\.ssh|/\.ssh/|id_rsa|id_ed25519|\.pem\b|~/\.aws|\.aws/credentials"
+            r"|AWS_SHARED_CREDENTIALS|keychain|gpg\s+--export-secret)"
+        ),
         "credential material is accessed (private key, credential file, keychain)",
     ),
     (
@@ -303,16 +304,20 @@ _LINE_RULES: list[tuple[str, str, str, str]] = [
     (
         RULE_CREDENTIAL,
         "critical",
-        r"(?:os\.environ\[|getenv\(\s*[\"'])[^\"']*(?:AWS_SECRET_ACCESS_KEY|"
-        r"(?:SECRET|PASSWORD|PRIVATE_KEY))",
+        (
+            r"(?:os\.environ\[|getenv\(\s*[\"'])[^\"']*(?:AWS_SECRET_ACCESS_KEY|"
+            r"(?:SECRET|PASSWORD|PRIVATE_KEY))"
+        ),
         "a secret environment variable is read",
     ),
     # --- injection: override instructions ---
     (
         RULE_INJECTION_OVERRIDE,
         "critical",
-        r"(?:ignore|disregard)\s+(?:all\s+)?(?:previous|prior|above|earlier|"
-        r"system|these|your)\s+instructions?",
+        (
+            r"(?:ignore|disregard)\s+(?:all\s+)?(?:previous|prior|above|earlier|"
+            r"system|these|your)\s+instructions?"
+        ),
         "instruction to ignore or disregard previous instructions",
     ),
     (
@@ -349,8 +354,10 @@ _LINE_RULES: list[tuple[str, str, str, str]] = [
     (
         RULE_INJECTION_ROLE,
         "high",
-        r"you\s+are\s+now\b|from\s+now\s+on[,.]?\s+you\b|pretend\s+you\s+are\b|"
-        r"you\s+are\s+no\s+longer\b",
+        (
+            r"you\s+are\s+now\b|from\s+now\s+on[,.]?\s+you\b|pretend\s+you\s+are\b|"
+            r"you\s+are\s+no\s+longer\b"
+        ),
         "role reassignment (you are now / from now on you)",
     ),
     (
@@ -363,36 +370,46 @@ _LINE_RULES: list[tuple[str, str, str, str]] = [
     (
         RULE_GATE_BYPASS,
         "critical",
-        r"bypass\s+(?:the\s+)?(?:gate|approval|guardrails?|verification|signing|"
-        r"signature|policy)",
+        (
+            r"bypass\s+(?:the\s+)?(?:gate|approval|guardrails?|verification|signing|"
+            r"signature|policy)"
+        ),
         "instruction to bypass the gate, approval, or verification",
     ),
     (
         RULE_GATE_BYPASS,
         "critical",
-        r"skip\s+(?:the\s+)?approval|do\s+not\s+(?:ask|request|wait)\s+(?:for\s+)?"
-        r"approval|proceed\s+without\s+(?:asking|approval|confirmation)",
+        (
+            r"skip\s+(?:the\s+)?approval|do\s+not\s+(?:ask|request|wait)\s+(?:for\s+)?"
+            r"approval|proceed\s+without\s+(?:asking|approval|confirmation)"
+        ),
         "instruction to skip approval",
     ),
     (
         RULE_GATE_BYPASS,
         "critical",
-        r"without\s+approval\b|no\s+approval\s+(?:needed|required)|approval\s+is\s+"
-        r"not\s+(?:needed|required)",
+        (
+            r"without\s+approval\b|no\s+approval\s+(?:needed|required)|approval\s+is\s+"
+            r"not\s+(?:needed|required)"
+        ),
         "claim that approval is not needed",
     ),
     (
         RULE_GATE_BYPASS,
         "critical",
-        r"disable\s+(?:the\s+)?(?:gate|guardrails?|approval|verification|safety|"
-        r"checks?)|ignore\s+(?:the\s+)?gate",
+        (
+            r"disable\s+(?:the\s+)?(?:gate|guardrails?|approval|verification|safety|"
+            r"checks?)|ignore\s+(?:the\s+)?gate"
+        ),
         "instruction to disable the gate or guardrails",
     ),
     (
         RULE_GATE_BYPASS,
         "critical",
-        r"circumvent\s+(?:the\s+)?(?:gate|approval|guardrails?)|evade\s+(?:the\s+)?"
-        r"(?:gate|approval|guardrails?)",
+        (
+            r"circumvent\s+(?:the\s+)?(?:gate|approval|guardrails?)|evade\s+(?:the\s+)?"
+            r"(?:gate|approval|guardrails?)"
+        ),
         "instruction to circumvent the gate or guardrails",
     ),
     # --- rug-pull: remote code fetched and executed ---
@@ -441,39 +458,49 @@ _LINE_RULES: list[tuple[str, str, str, str]] = [
     (
         RULE_RUGPULL_CODE,
         "critical",
-        r"execute\s+(?:the\s+)?(?:downloaded|fetched|remote)\s+(?:script|code)|"
-        r"run\s+(?:the\s+)?(?:downloaded|remote)\s+script|"
-        r"load\s+(?:a\s+)?(?:remote|external)\s+script",
+        (
+            r"execute\s+(?:the\s+)?(?:downloaded|fetched|remote)\s+(?:script|code)|"
+            r"run\s+(?:the\s+)?(?:downloaded|remote)\s+script|"
+            r"load\s+(?:a\s+)?(?:remote|external)\s+script"
+        ),
         "a downloaded or remote script is executed",
     ),
     # --- rug-pull: live instructions fetched at run time ---
     (
         RULE_RUGPULL_LIVE,
         "high",
-        r"(?:fetch|download|load|check)\b[^.\n]{0,80}\b(?:latest|updated|current|"
-        r"newer)\s+(?:instructions?|prompts?|rules)\b",
+        (
+            r"(?:fetch|download|load|check)\b[^.\n]{0,80}\b(?:latest|updated|current|"
+            r"newer)\s+(?:instructions?|prompts?|rules)\b"
+        ),
         "live instructions are fetched from outside the skill",
     ),
     (
         RULE_RUGPULL_LIVE,
         "high",
-        r"(?:latest|updated|current)\s+instructions?\s+(?:at|from)\b|"
-        r"instructions?\s+(?:at|from)\s+https?://|"
-        r"follow\s+(?:the\s+)?(?:latest|remote|updated)\s+instructions?\b",
+        (
+            r"(?:latest|updated|current)\s+instructions?\s+(?:at|from)\b|"
+            r"instructions?\s+(?:at|from)\s+https?://|"
+            r"follow\s+(?:the\s+)?(?:latest|remote|updated)\s+instructions?\b"
+        ),
         "instructions are loaded from a URL at run time",
     ),
     (
         RULE_RUGPULL_LIVE,
         "high",
-        r"before\s+(?:starting|acting|doing|running)[^.\n]{0,60}\b(?:fetch|download|"
-        r"check)\b[^.\n]{0,40}https?://",
+        (
+            r"before\s+(?:starting|acting|doing|running)[^.\n]{0,60}\b(?:fetch|download|"
+            r"check)\b[^.\n]{0,40}https?://"
+        ),
         "a URL is fetched for instructions before acting",
     ),
     (
         RULE_RUGPULL_LIVE,
         "high",
-        r"\bself-?update\b|\bauto-?update\b[^.\n]{0,60}https?://|"
-        r"update\s+(?:yourself|this\s+skill)\s+from\b",
+        (
+            r"\bself-?update\b|\bauto-?update\b[^.\n]{0,60}https?://|"
+            r"update\s+(?:yourself|this\s+skill)\s+from\b"
+        ),
         "the skill updates itself from outside",
     ),
     # --- toxic flow: destructive commands ---
@@ -486,11 +513,13 @@ _LINE_RULES: list[tuple[str, str, str, str]] = [
     (
         RULE_TOXIC_DESTRUCTIVE,
         "critical",
-        r"\bmkfs\b|\bformat\s+(?:the\s+)?(?:disk|drive|volume)\b|"
-        r"\bdd\b[^.\n]*\bof=/dev/|"
-        r"\bdrop\s+(?:table|database)\b|"
-        r"\bwipe\s+(?:the\s+)?(?:disk|drive|database)\b|"
-        r"\bchmod\s+-R\s+777\s+/|>\s*/dev/sd[a-z]\b",
+        (
+            r"\bmkfs\b|\bformat\s+(?:the\s+)?(?:disk|drive|volume)\b|"
+            r"\bdd\b[^.\n]*\bof=/dev/|"
+            r"\bdrop\s+(?:table|database)\b|"
+            r"\bwipe\s+(?:the\s+)?(?:disk|drive|database)\b|"
+            r"\bchmod\s+-R\s+777\s+/|>\s*/dev/sd[a-z]\b"
+        ),
         "destructive command (format, wipe, drop, or raw disk write)",
     ),
     # --- hidden instruction: zero-width characters ---
@@ -514,8 +543,10 @@ _COMPILED_LINE_RULES: list[tuple[str, str, re.Pattern[str], str]] = [
 _SAFE_SECRET_PATTERNS: list[re.Pattern[str]] = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
-        r"\b(?:never|do not|don't|dont|must not|must never)\s+"
-        r"(?:read|access|open|cat|use|send|share|upload|expose|post|paste)\b",
+        (
+            r"\b(?:never|do not|don't|dont|must not|must never)\s+"
+            r"(?:read|access|open|cat|use|send|share|upload|expose|post|paste)\b"
+        ),
     )
 ]
 
@@ -544,9 +575,7 @@ _NETWORK_URL_PATTERNS: list[re.Pattern[str]] = [
         r"(?:Invoke-WebRequest|Invoke-RestMethod)\b[^\n]*?(https?://[^\s\"')]+)",
     )
 ]
-_NETWORK_HOST_PATTERN = re.compile(
-    r"(?:nc|netcat|ncat)\s+([A-Za-z0-9.-]+)\s+\d+", re.IGNORECASE
-)
+_NETWORK_HOST_PATTERN = re.compile(r"(?:nc|netcat|ncat)\s+([A-Za-z0-9.-]+)\s+\d+", re.IGNORECASE)
 
 #: Send verbs carrying a URL: the domain-overreach check.
 _SEND_URL_PATTERN = re.compile(
@@ -560,12 +589,8 @@ _SEND_URL_PATTERN = re.compile(
 _DOTTED_TOOL_PATTERN = re.compile(r"`([a-z][a-z0-9_-]*\.[a-z0-9_.-]+)`")
 _JSON_TOOL_PATTERN = re.compile(r'"name"\s*:\s*"([a-z][a-z0-9_.-]+)"')
 _TOOL_MENTION_PATTERN = re.compile(r"\btool\s*:\s*([a-z][a-z0-9_.-]+)", re.IGNORECASE)
-_CALL_CONTEXT_PATTERN = re.compile(
-    r"\b(?:tool|call|invoke|using|use|run|execute)\b", re.IGNORECASE
-)
-_CONNECTOR_CONTEXT_PATTERN = re.compile(
-    r"\b(?:use|call|via|through|with|send)\b", re.IGNORECASE
-)
+_CALL_CONTEXT_PATTERN = re.compile(r"\b(?:tool|call|invoke|using|use|run|execute)\b", re.IGNORECASE)
+_CONNECTOR_CONTEXT_PATTERN = re.compile(r"\b(?:use|call|via|through|with|send)\b", re.IGNORECASE)
 
 #: Instruction verbs that make an HTML comment (or a hidden span) a
 #: hidden instruction rather than a harmless note.
@@ -623,11 +648,11 @@ def _host_is_declared(host: str, declared_domains, allowed_hosts) -> bool:
     domain or an allowed host. ``api.example.com`` is covered by a
     declaration of ``example.com``."""
     for declared in list(declared_domains) + list(allowed_hosts):
-        declared = declared.strip().lower()
-        if not declared:
+        candidate = declared.strip().lower()
+        if not candidate:
             continue
-        declared = re.sub(r"^https?://", "", declared).split("/")[0]
-        if host == declared or host.endswith("." + declared):
+        candidate = re.sub(r"^https?://", "", candidate).split("/")[0]
+        if host == candidate or host.endswith("." + candidate):
             return True
     return False
 
@@ -650,9 +675,7 @@ def _is_exempt_tool_name(name: str) -> bool:
         return True
     if lowered.endswith(_EXEMPT_SUFFIXES):
         return True
-    if lowered.split(".")[0] in _BINARY_NAMES:
-        return True
-    return False
+    return lowered.split(".")[0] in _BINARY_NAMES
 
 
 def _is_safe_approval_line(line: str) -> bool:
@@ -792,9 +815,7 @@ def _scan_connector_calls(line, location, ctx, add) -> None:
             continue
         # No dot before the name: "github.io" is a domain, not the
         # github connector.
-        if re.search(
-            r"(?<![A-Za-z0-9_.])" + re.escape(name) + r"(?![A-Za-z0-9_])", lowered
-        ):
+        if re.search(r"(?<![A-Za-z0-9_.])" + re.escape(name) + r"(?![A-Za-z0-9_])", lowered):
             add(
                 RULE_OVERREACH_CONNECTOR,
                 "high",
@@ -891,11 +912,10 @@ def scan_text(
     deduped: dict[tuple[str, str], Finding] = {}
     for finding in findings:
         deduped.setdefault((finding.rule, finding.location), finding)
-    ordered = sorted(
+    return sorted(
         deduped.values(),
         key=lambda f: (int(f.location.rsplit(":", 1)[1]), f.rule),
     )
-    return ordered
 
 
 # ---------------------------------------------------------------------------
@@ -947,9 +967,7 @@ def scan_skill(skill_dir, *, allowed_hosts=None) -> ScanResult:
         return _scan_failed(name, str(path), "skill directory does not exist", str(path))
     manifest_path = path / "manifest.json"
     if not manifest_path.is_file():
-        return _scan_failed(
-            name, str(path), "manifest.json is missing", "manifest.json:1"
-        )
+        return _scan_failed(name, str(path), "manifest.json is missing", "manifest.json:1")
     try:
         manifest = json.loads(_read_text_file(manifest_path))
     except (OSError, ValueError, UnicodeDecodeError) as exc:
@@ -974,9 +992,7 @@ def scan_skill(skill_dir, *, allowed_hosts=None) -> ScanResult:
     try:
         skill_text = _read_text_file(skill_path)
     except (OSError, ValueError, UnicodeDecodeError) as exc:
-        return _scan_failed(
-            name, str(path), f"SKILL.md cannot be read: {exc}", "SKILL.md:1"
-        )
+        return _scan_failed(name, str(path), f"SKILL.md cannot be read: {exc}", "SKILL.md:1")
     if not skill_text.strip():
         return _scan_failed(name, str(path), "SKILL.md is empty", "SKILL.md:1")
 
@@ -1032,7 +1048,9 @@ def scan_skill(skill_dir, *, allowed_hosts=None) -> ScanResult:
         )
         files_scanned.append(rel)
 
-    findings.sort(key=lambda f: (f.location.rsplit(":", 1)[0], int(f.location.rsplit(":", 1)[1]), f.rule))
+    findings.sort(
+        key=lambda f: (f.location.rsplit(":", 1)[0], int(f.location.rsplit(":", 1)[1]), f.rule)
+    )
     return ScanResult(
         skill_name=name,
         skill_dir=str(path),

@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 __all__ = [
-    "MarketplaceError",
-    "ManifestError",
-    "TrustError",
     "EntitlementError",
-    "ToolLimitError",
+    "ManifestError",
+    "MarketplaceError",
     "ShareError",
+    "ToolLimitError",
+    "TrustError",
 ]
 
 

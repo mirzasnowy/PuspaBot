@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 
 KLASS_PERMISSION = ("Pembaca", "Pelaksana", "Pemeriksa")
 STATUS_START = "proposed"
@@ -36,7 +36,7 @@ class HandoffError(Exception):
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @dataclass
@@ -49,7 +49,9 @@ class HandoffContract:
     inputs: dict
     expected_output: dict
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
-    budget: dict = field(default_factory=lambda: {"step_max": 15, "token_max": 20000, "rupiah_max": 2000})
+    budget: dict = field(
+        default_factory=lambda: {"step_max": 15, "token_max": 20000, "rupiah_max": 2000}
+    )
     permission_class: str = "Pembaca"
     completion_definition: str = ""
     idempotency_key: str = ""
@@ -115,7 +117,10 @@ class Handoff:
         """
         self._must_status("running")
         self.result = result
-        if not isinstance(result, dict) or result.get("type") != self.contract.expected_output["type"]:
+        if (
+            not isinstance(result, dict)
+            or result.get("type") != self.contract.expected_output["type"]
+        ):
             self.status = "rejected"
             self.reason = "keluaran tidak lolos skema"
             return "rejected"

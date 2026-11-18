@@ -77,6 +77,7 @@ def test_project_session_rejects_bad_inputs():
 def test_broker_is_an_interface_not_a_live_connection():
     assert issubclass(FakeBroker, Broker)
     assert Broker.name == "base"
+
     # A bare Broker subclass without the three methods cannot run.
     class BrokenBroker(Broker):
         pass

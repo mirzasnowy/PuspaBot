@@ -24,7 +24,7 @@ di fase 2; lihat STATUS.md).
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from contextvars import ContextVar, Token
 
 __all__ = [
@@ -101,14 +101,12 @@ def make_ledger_sink(ledger, *, task_id: str, agent_id: str):
     """
 
     def log(event_type, content=None):
-        try:
+        with suppress(Exception):
             ledger.append_event(
                 task_id=task_id,
                 agent_id=agent_id,
                 event_type=event_type,
                 content=dict(content or {}),
             )
-        except Exception:
-            pass
 
     return log

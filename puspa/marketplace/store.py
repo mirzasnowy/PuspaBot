@@ -25,7 +25,7 @@ from __future__ import annotations
 import copy
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 __all__ = [
     "DEFAULT_DSN",
@@ -82,12 +82,7 @@ CREATE TABLE IF NOT EXISTS marketplace_audit (
 
 def resolve_dsn(dsn=None):
     """Postgres DSN: argument, then env, then the local test default."""
-    return (
-        dsn
-        or os.environ.get("PUSPA_DSN")
-        or os.environ.get("PUSPA_TEST_DSN")
-        or DEFAULT_DSN
-    )
+    return dsn or os.environ.get("PUSPA_DSN") or os.environ.get("PUSPA_TEST_DSN") or DEFAULT_DSN
 
 
 def create_schema(dsn=None):
@@ -99,7 +94,7 @@ def create_schema(dsn=None):
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class MemoryStore:
@@ -124,18 +119,13 @@ class MemoryStore:
         return copy.deepcopy(found) if found else None
 
     def list_installs(self, user_id: str) -> list[dict]:
-        return [
-            copy.deepcopy(v) for (s, u), v in sorted(self.installs.items())
-            if u == user_id
-        ]
+        return [copy.deepcopy(v) for (s, u), v in sorted(self.installs.items()) if u == user_id]
 
     # -- versions ------------------------------------------------------
     def record_version(self, record: dict) -> dict:
         stored = copy.deepcopy(record)
         stored.setdefault("created_at", _now_iso())
-        self.versions[
-            (stored["skill_id"], stored["user_id"], stored["version"])
-        ] = stored
+        self.versions[(stored["skill_id"], stored["user_id"], stored["version"])] = stored
         return copy.deepcopy(stored)
 
     def get_version(self, skill_id: str, user_id: str, version: str) -> dict | None:
@@ -143,12 +133,11 @@ class MemoryStore:
         return copy.deepcopy(found) if found else None
 
     def list_versions(self, skill_id: str, user_id: str) -> list[dict]:
-        rows = [
+        return [
             copy.deepcopy(v)
             for (s, u, _ver), v in sorted(self.versions.items())
             if s == skill_id and u == user_id
         ]
-        return rows
 
     # -- audit ----------------------------------------------------------
     def record_audit(self, event: dict) -> dict:
@@ -158,8 +147,7 @@ class MemoryStore:
         self.audit.append(stored)
         return copy.deepcopy(stored)
 
-    def list_audit(self, *, skill_id: str | None = None,
-                   user_id: str | None = None) -> list[dict]:
+    def list_audit(self, *, skill_id: str | None = None, user_id: str | None = None) -> list[dict]:
         rows = self.audit
         if skill_id is not None:
             rows = [r for r in rows if r.get("skill_id") == skill_id]
@@ -201,34 +189,37 @@ class PostgresStore:
                     "  price_credits = EXCLUDED.price_credits,"
                     "  status = EXCLUDED.status, updated_at = now()"
                     " RETURNING *",
-                    (record["skill_id"], record["user_id"], record["version"],
-                     record["sha256"], record["source"], record.get("license", ""),
-                     record.get("price_credits", 0), record.get("status", "disabled")),
+                    (
+                        record["skill_id"],
+                        record["user_id"],
+                        record["version"],
+                        record["sha256"],
+                        record["source"],
+                        record.get("license", ""),
+                        record.get("price_credits", 0),
+                        record.get("status", "disabled"),
+                    ),
                 )
                 row = dict(cur.fetchone())
             conn.commit()
         return _serialise(row)
 
     def get_install(self, skill_id: str, user_id: str) -> dict | None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT * FROM marketplace_installs"
-                    " WHERE skill_id = %s AND user_id = %s",
-                    (skill_id, user_id),
-                )
-                row = cur.fetchone()
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM marketplace_installs WHERE skill_id = %s AND user_id = %s",
+                (skill_id, user_id),
+            )
+            row = cur.fetchone()
         return _serialise(dict(row)) if row else None
 
     def list_installs(self, user_id: str) -> list[dict]:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT * FROM marketplace_installs WHERE user_id = %s"
-                    " ORDER BY skill_id",
-                    (user_id,),
-                )
-                return [_serialise(dict(r)) for r in cur.fetchall()]
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM marketplace_installs WHERE user_id = %s ORDER BY skill_id",
+                (user_id,),
+            )
+            return [_serialise(dict(r)) for r in cur.fetchall()]
 
     # -- versions ------------------------------------------------------
     def record_version(self, record: dict) -> dict:
@@ -244,35 +235,39 @@ class PostgresStore:
                     "  price_credits = EXCLUDED.price_credits,"
                     "  manifest = EXCLUDED.manifest"
                     " RETURNING *",
-                    (record["skill_id"], record["user_id"], record["version"],
-                     record["sha256"], record["source"], record.get("license", ""),
-                     record.get("price_credits", 0),
-                     json.dumps(record.get("manifest", {}))),
+                    (
+                        record["skill_id"],
+                        record["user_id"],
+                        record["version"],
+                        record["sha256"],
+                        record["source"],
+                        record.get("license", ""),
+                        record.get("price_credits", 0),
+                        json.dumps(record.get("manifest", {})),
+                    ),
                 )
                 row = dict(cur.fetchone())
             conn.commit()
         return _serialise(row)
 
     def get_version(self, skill_id: str, user_id: str, version: str) -> dict | None:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT * FROM marketplace_versions"
-                    " WHERE skill_id = %s AND user_id = %s AND version = %s",
-                    (skill_id, user_id, version),
-                )
-                row = cur.fetchone()
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM marketplace_versions"
+                " WHERE skill_id = %s AND user_id = %s AND version = %s",
+                (skill_id, user_id, version),
+            )
+            row = cur.fetchone()
         return _serialise(dict(row)) if row else None
 
     def list_versions(self, skill_id: str, user_id: str) -> list[dict]:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT * FROM marketplace_versions"
-                    " WHERE skill_id = %s AND user_id = %s ORDER BY created_at",
-                    (skill_id, user_id),
-                )
-                return [_serialise(dict(r)) for r in cur.fetchall()]
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM marketplace_versions"
+                " WHERE skill_id = %s AND user_id = %s ORDER BY created_at",
+                (skill_id, user_id),
+            )
+            return [_serialise(dict(r)) for r in cur.fetchall()]
 
     # -- audit ----------------------------------------------------------
     def record_audit(self, event: dict) -> dict:
@@ -283,17 +278,22 @@ class PostgresStore:
                     " (event, skill_id, user_id, sha256, source, license,"
                     "  price_credits, detail) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
                     " RETURNING *",
-                    (event["event"], event["skill_id"], event["user_id"],
-                     event.get("sha256", ""), event.get("source", ""),
-                     event.get("license", ""), event.get("price_credits", 0),
-                     json.dumps(event.get("detail", {}))),
+                    (
+                        event["event"],
+                        event["skill_id"],
+                        event["user_id"],
+                        event.get("sha256", ""),
+                        event.get("source", ""),
+                        event.get("license", ""),
+                        event.get("price_credits", 0),
+                        json.dumps(event.get("detail", {})),
+                    ),
                 )
                 row = dict(cur.fetchone())
             conn.commit()
         return _serialise(row)
 
-    def list_audit(self, *, skill_id: str | None = None,
-                   user_id: str | None = None) -> list[dict]:
+    def list_audit(self, *, skill_id: str | None = None, user_id: str | None = None) -> list[dict]:
         query = "SELECT * FROM marketplace_audit WHERE 1 = 1"
         params: list = []
         if skill_id is not None:
@@ -303,10 +303,9 @@ class PostgresStore:
             query += " AND user_id = %s"
             params.append(user_id)
         query += " ORDER BY id"
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(query, params)
-                return [_serialise(dict(r)) for r in cur.fetchall()]
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(query, params)
+            return [_serialise(dict(r)) for r in cur.fetchall()]
 
     # -- skill texts ----------------------------------------------------
     # Skill text is not stored in Postgres: the registry keeps the

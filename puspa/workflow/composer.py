@@ -43,12 +43,9 @@ MISSING_BLOCK_PATTERNS = [
 
 # Kata kerja yang menunjuk blok yang ADA.
 BLOCK_PATTERNS = [
-    (r"\bcek\b.*\btagihan\b|\bcek\b.*\b(pln|pdam|pulsa|paket data|listrik)\b",
-     "check_bill"),
-    (r"\bbandingkan\b.*\bharga\b|\bcek\b.*\bharga\b.*\b(barang|hp|laptop|tv)\b",
-     "compare_prices"),
-    (r"\bpantau\b.*\bharga\b|\bharga turun\b|\bturun di bawah\b",
-     "watch_prices"),
+    (r"\bcek\b.*\btagihan\b|\bcek\b.*\b(pln|pdam|pulsa|paket data|listrik)\b", "check_bill"),
+    (r"\bbandingkan\b.*\bharga\b|\bcek\b.*\bharga\b.*\b(barang|hp|laptop|tv)\b", "compare_prices"),
+    (r"\bpantau\b.*\bharga\b|\bharga turun\b|\bturun di bawah\b", "watch_prices"),
     (r"\bcari\b.*\bemail\b", "search_email"),
     (r"\bbaca\b.*\bemail\b", "read_email"),
     (r"\bdraf\b", "create_draft"),
@@ -114,79 +111,119 @@ def compose_draft(user_text: str, *, user_id: str, dsn=None) -> dict:
     date = _mentioned_date(text)
     day = _mentioned_day(text)
     if date is not None:
-        trigger = {"type": "schedule", "mode": "date", "date": date,
-                  "start_time": "07:00"}
+        trigger = {"type": "schedule", "mode": "date", "date": date, "start_time": "07:00"}
     elif day is not None:
-        trigger = {"type": "schedule", "mode": "day", "day": day,
-                  "start_time": "07:00"}
+        trigger = {"type": "schedule", "mode": "day", "day": day, "start_time": "07:00"}
     elif "tiap minggu" in low or "weekly" in low or "seminggu" in low:
-        trigger = {"type": "schedule", "mode": "day", "day": "senin",
-                  "start_time": "07:00"}
+        trigger = {"type": "schedule", "mode": "day", "day": "senin", "start_time": "07:00"}
 
     # Pemicu jatuh tempo: "N hari sebelum jatuh tempo" / "ingatkan ... jatuh tempo".
     if "jatuh tempo" in low:
         provider = _mentioned_providers(text)
-        trigger = {"type": "due_date",
-                  "days_before": _days_before(text),
-                  "provider": provider[0] if provider else "PLN"}
+        trigger = {
+            "type": "due_date",
+            "days_before": _days_before(text),
+            "provider": provider[0] if provider else "PLN",
+        }
 
     # Pemicu harga turun.
     if "harga turun" in low or "turun di bawah" in low:
         match = re.search(r"(?:di bawah|turun(?: ke)?)\s*rp?\s?([\d.]+)", low)
         threshold = int(match.group(1).replace(".", "")) if match else 0
-        trigger = {"type": "price_drop", "product_id": _product_name(text) or "product",
-                  "price_threshold": threshold}
+        trigger = {
+            "type": "price_drop",
+            "product_id": _product_name(text) or "product",
+            "price_threshold": threshold,
+        }
 
     # Langkah: cek tagihan per provider yang disebut.
     provider = _mentioned_providers(text)
-    if provider and ("cek" in low or "check" in low or "tagihan" in low or "bill" in low or "jatuh tempo" in low or "due" in low):
+    if provider and (
+        "cek" in low
+        or "check" in low
+        or "tagihan" in low
+        or "bill" in low
+        or "jatuh tempo" in low
+        or "due" in low
+    ):
         for p in provider:
-            step.append({"block": "check_bill",
-                            "inputs": {"provider": p, "customer_number": ""},
-                            "title": f"Cek tagihan {p}"})
+            step.append(
+                {
+                    "block": "check_bill",
+                    "inputs": {"provider": p, "customer_number": ""},
+                    "title": f"Cek tagihan {p}",
+                }
+            )
     # Rekap: untuk_tiap atas daftar provider (tugas acuan 9).
-    if "semua tagihan" in low or "rekap" in low:
-        if not step:
-            for p in ("PLN", "PDAM", "airtime", "paket data"):
-                step.append({"block": "check_bill",
-                                "inputs": {"provider": p, "customer_number": ""},
-                                "title": f"Cek tagihan {p}"})
+    if ("semua tagihan" in low or "rekap" in low) and not step:
+        for p in ("PLN", "PDAM", "airtime", "paket data"):
+            step.append(
+                {
+                    "block": "check_bill",
+                    "inputs": {"provider": p, "customer_number": ""},
+                    "title": f"Cek tagihan {p}",
+                }
+            )
     # Bandingkan / pantau harga.
     if ("bandingkan" in low or "compare" in low) and ("harga" in low or "price" in low):
-        step.append({"block": "compare_prices",
-                        "inputs": {"name_product": _product_name(text) or ""},
-                        "title": "Bandingkan harga"})
+        step.append(
+            {
+                "block": "compare_prices",
+                "inputs": {"name_product": _product_name(text) or ""},
+                "title": "Bandingkan harga",
+            }
+        )
     if ("pantau" in low or "watch" in low) and ("harga" in low or "price" in low):
-        step.append({"block": "watch_prices",
-                        "inputs": {"product_id": _product_name(text) or "",
-                                    "price_threshold": 0},
-                        "title": "Pantau harga"})
+        step.append(
+            {
+                "block": "watch_prices",
+                "inputs": {"product_id": _product_name(text) or "", "price_threshold": 0},
+                "title": "Pantau harga",
+            }
+        )
     # Cari/baca email + draf.
     if re.search(r"\bcari\b.*\bemail\b", low):
-        step.append({"block": "search_email",
-                        "inputs": {"keywords": ""}, "title": "Cari email"})
+        step.append({"block": "search_email", "inputs": {"keywords": ""}, "title": "Cari email"})
     if re.search(r"\bbaca\b.*\bemail\b", low):
-        step.append({"block": "read_email",
-                        "inputs": {"email_id": ""}, "title": "Baca email"})
+        step.append({"block": "read_email", "inputs": {"email_id": ""}, "title": "Baca email"})
     if "draft" in low:
-        step.append({"block": "create_draft",
-                        "inputs": {"recipient": "", "subject": "", "content": ""},
-                        "title": "Buat draf balasan"})
+        step.append(
+            {
+                "block": "create_draft",
+                "inputs": {"recipient": "", "subject": "", "content": ""},
+                "title": "Buat draf balasan",
+            }
+        )
     if re.search(r"\bbuat\b.*\bevent\b|\bjadwalkan\b", low):
-        step.append({"block": "create_event",
-                        "inputs": {"title": "", "created_at": "", "attendees": []},
-                        "title": "Buat event"})
+        step.append(
+            {
+                "block": "create_event",
+                "inputs": {"title": "", "created_at": "", "attendees": []},
+                "title": "Buat event",
+            }
+        )
     # Ingatkan (notif) — setelah cek tagihan.
     if "ingatkan" in low or "ingatin" in low or "remind" in low:
-        step.append({"block": "send_notification",
-                        "inputs": {"message": "Tagihanmu sudah dicek — lihat rinciannya."},
-                        "title": "Ingatkan aku"})
+        step.append(
+            {
+                "block": "send_notification",
+                "inputs": {"message": "Tagihanmu sudah dicek — lihat rinciannya."},
+                "title": "Ingatkan aku",
+            }
+        )
     # Siapkan bayar — selalu di akhir, setelah cek.
     if "siapkan bayar" in low or "siapkan pembayaran" in low:
-        step.append({"block": "prepare_payment",
-                        "inputs": {"provider": provider[0] if provider else "PLN",
-                                    "amount": 0, "purpose": ""},
-                        "title": "Siapkan bayar (mode aman)"})
+        step.append(
+            {
+                "block": "prepare_payment",
+                "inputs": {
+                    "provider": provider[0] if provider else "PLN",
+                    "amount": 0,
+                    "purpose": "",
+                },
+                "title": "Siapkan bayar (mode aman)",
+            }
+        )
 
     # Kemampuan yang diminta tapi belum ada bloknya → Permintaan Blok.
     for pattern, block_name in MISSING_BLOCK_PATTERNS:
@@ -197,16 +234,23 @@ def compose_draft(user_text: str, *, user_id: str, dsn=None) -> dict:
 
         for block_name in requests:
             record_block_request(
-                user_id=user_id, block=block_name,
+                user_id=user_id,
+                block=block_name,
                 reason=f"diminta lewat chat saat menyusun alur: {text[:120]!r}",
-                dsn=dsn)
+                dsn=dsn,
+            )
 
     if not step and not requests:
         return {
-            "name": "", "triggers": trigger, "step": [], "block_requests": [],
-            "message": ("Aku belum paham alur yang kamu maksud. Coba contoh: "
-                      "'tiap tanggal 25 cek PLN dan PDAM, ingatkan aku, "
-                      "siapkan bayar'."),
+            "name": "",
+            "triggers": trigger,
+            "step": [],
+            "block_requests": [],
+            "message": (
+                "Aku belum paham alur yang kamu maksud. Coba contoh: "
+                "'tiap tanggal 25 cek PLN dan PDAM, ingatkan aku, "
+                "siapkan bayar'."
+            ),
             "card": [],
         }
 
@@ -214,16 +258,18 @@ def compose_draft(user_text: str, *, user_id: str, dsn=None) -> dict:
     message = ""
     if requests:
         items = ", ".join(requests)
-        message = (f"Blok ini belum ada di Puspa, jadi tidak bisa kusertakan: {items}. "
-                 "Aku sudah mencatatnya sebagai Permintaan Blok — blok baru berisi "
-                 "kode tetap fase 6. Alur di bawah ini hanya memakai blok yang sudah ada.")
+        message = (
+            f"Blok ini belum ada di Puspa, jadi tidak bisa kusertakan: {items}. "
+            "Aku sudah mencatatnya sebagai Permintaan Blok — blok baru berisi "
+            "kode tetap fase 6. Alur di bawah ini hanya memakai blok yang sudah ada."
+        )
     return {
         "name": name,
         "triggers": trigger,
         "step": step,
         "block_requests": requests,
         "message": message,
-        "card": [card_step(l) for l in step],
+        "card": [card_step(step_entry) for step_entry in step],
     }
 
 

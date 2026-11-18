@@ -35,8 +35,9 @@ def give_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> dic
         raise GrantError(f"konektor tidak dikenal: {connector!r}")
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM agent_meta WHERE agent_id = %s AND user_id = %s",
-                        (agent_id, user_id))
+            cur.execute(
+                "SELECT 1 FROM agent_meta WHERE agent_id = %s AND user_id = %s", (agent_id, user_id)
+            )
             if cur.fetchone() is None:
                 raise GrantError("agen tidak dikenal / bukan milik pengguna")
             cur.execute(
@@ -47,8 +48,12 @@ def give_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> dic
                 (user_id, agent_id, connector, SCOPE_PER_CONNECTOR[connector]),
             )
         conn.commit()
-    return {"agent_id": agent_id, "connectors": connector,
-            "scope": SCOPE_PER_CONNECTOR[connector], "connected": True}
+    return {
+        "agent_id": agent_id,
+        "connectors": connector,
+        "scope": SCOPE_PER_CONNECTOR[connector],
+        "connected": True,
+    }
 
 
 def revoke_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> None:
@@ -64,17 +69,18 @@ def revoke_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> N
 
 def list_connectors(user_id: str, agent_id: str, dsn=None) -> list[dict]:
     """Konektor + scope + status terhubung untuk satu agen."""
-    with _connect(dsn) as conn:
-        with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
-            cur.execute(
-                "SELECT connector, scope, terhubung AS connected FROM agent_connectors"
-                " WHERE user_id = %s AND agent_id = %s ORDER BY connector",
-                (user_id, agent_id),
-            )
-            return [dict(r) for r in cur.fetchall()]
+    with _connect(dsn) as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+        cur.execute(
+            "SELECT connector, scope, terhubung AS connected FROM agent_connectors"
+            " WHERE user_id = %s AND agent_id = %s ORDER BY connector",
+            (user_id, agent_id),
+        )
+        return [dict(r) for r in cur.fetchall()]
 
 
 def has_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> bool:
     """True bila agen ini terhubung ke konektor itu."""
-    return any(k["connector"] == connector and k["connected"]
-               for k in list_connectors(user_id, agent_id, dsn=dsn))
+    return any(
+        k["connector"] == connector and k["connected"]
+        for k in list_connectors(user_id, agent_id, dsn=dsn)
+    )

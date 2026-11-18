@@ -23,6 +23,7 @@ def _wrong_feedback(task="check_pln", correction="bill 75000"):
 
 # --- wrong feedback corrects the next prediction ------------------------
 
+
 def test_wrong_feedback_with_correction_changes_predict():
     """Behaviour change: after wrong feedback with a correction,
     the same predict call returns the corrected value."""
@@ -70,6 +71,7 @@ def test_wrong_feedback_marks_active_skill_suspect():
 
 # --- correct feedback reinforces without changing anything ---------------
 
+
 def test_correct_feedback_keeps_learned_prediction():
     loop = LearningLoop()
     loop.record_feedback("check_pln", "wrong", correction="bill 75000")
@@ -93,6 +95,7 @@ def test_correct_feedback_on_fresh_task_creates_no_correction():
 
 # --- every feedback entry carries its source -----------------------------
 
+
 def test_feedback_entries_carry_user_feedback_source():
     loop = LearningLoop()
     loop.record_feedback("check_pln", "wrong", correction="bill 75000")
@@ -108,15 +111,14 @@ def test_feedback_entries_carry_user_feedback_source():
 
 def test_feedback_source_actor_is_kept():
     loop = LearningLoop()
-    result = loop.record_feedback(
-        "check_pln", "wrong", correction="bill 75000", source="pwa"
-    )
+    result = loop.record_feedback("check_pln", "wrong", correction="bill 75000", source="pwa")
     assert result["source"] == FEEDBACK_SOURCE
     assert result["feedback_source"] == "pwa"
     assert loop.experiences[0]["feedback_source"] == "pwa"
 
 
 # --- feedback never overwrites a manual user edit -------------------------
+
 
 def test_feedback_correction_becomes_proposal_when_manual_edit_exists():
     loop = LearningLoop()
@@ -152,6 +154,7 @@ def test_manual_edit_after_feedback_does_not_revoke_applied_correction():
 
 
 # --- validation and module-level seam --------------------------------------
+
 
 def test_record_feedback_rejects_bad_verdict_and_empty_task():
     loop = LearningLoop()

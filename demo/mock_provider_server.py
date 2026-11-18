@@ -53,7 +53,9 @@ _NANOBOT_LOCAL = _FASE0 / "nanobot"
 if str(_NANOBOT_LOCAL) not in sys.path and (_NANOBOT_LOCAL / "nanobot" / "__init__.py").exists():
     sys.path.insert(0, str(_NANOBOT_LOCAL))
 
-from byok_provider import MOCK_KEY, build_byok_provider  # noqa: E402
+import contextlib
+
+from byok_provider import MOCK_KEY, build_byok_provider
 
 #: Tool kalengan yang dipakai di semua format protokol.
 TOOL_NAME = "read_file"
@@ -62,18 +64,20 @@ TOOL_ARGS_JSON = json.dumps(TOOL_ARGS, ensure_ascii=False)
 
 #: Pesan + tool standar untuk setiap panggilan mock.
 MOCK_MESSAGES = [{"role": "users", "content": "Baca /tmp/contoh.txt dengan tool read_file."}]
-MOCK_TOOLS = [{
-    "type": "function",
-    "function": {
-        "name": TOOL_NAME,
-        "description": "Baca isi file.",
-        "parameters": {
-            "type": "object",
-            "properties": {"path": {"type": "string"}},
-            "required": ["path"],
+MOCK_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": TOOL_NAME,
+            "description": "Baca isi file.",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+            },
         },
-    },
-}]
+    }
+]
 
 
 def canned_openai_chat(model: str) -> dict:
@@ -83,19 +87,23 @@ def canned_openai_chat(model: str) -> dict:
         "object": "chat.completion",
         "created": 1700000000,
         "model": model,
-        "choices": [{
-            "index": 0,
-            "message": {
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [{
-                    "id": "call_mock_1",
-                    "type": "function",
-                    "function": {"name": TOOL_NAME, "arguments": TOOL_ARGS_JSON},
-                }],
-            },
-            "finish_reason": "tool_calls",
-        }],
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call_mock_1",
+                            "type": "function",
+                            "function": {"name": TOOL_NAME, "arguments": TOOL_ARGS_JSON},
+                        }
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ],
         "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
     }
 
@@ -107,12 +115,14 @@ def canned_anthropic(model: str) -> dict:
         "type": "message",
         "role": "assistant",
         "model": model,
-        "content": [{
-            "type": "tool_use",
-            "id": "toolu_mock_1",
-            "name": TOOL_NAME,
-            "input": dict(TOOL_ARGS),
-        }],
+        "content": [
+            {
+                "type": "tool_use",
+                "id": "toolu_mock_1",
+                "name": TOOL_NAME,
+                "input": dict(TOOL_ARGS),
+            }
+        ],
         "stop_reason": "tool_use",
         "stop_sequence": None,
         "usage": {"input_tokens": 10, "output_tokens": 20},
@@ -127,14 +137,16 @@ def canned_responses(model: str) -> dict:
         "created_at": 1700000000,
         "status": "completed",
         "model": model,
-        "output": [{
-            "type": "function_call",
-            "id": "fc_mock_1",
-            "call_id": "call_mock_1",
-            "name": TOOL_NAME,
-            "arguments": TOOL_ARGS_JSON,
-            "status": "completed",
-        }],
+        "output": [
+            {
+                "type": "function_call",
+                "id": "fc_mock_1",
+                "call_id": "call_mock_1",
+                "name": TOOL_NAME,
+                "arguments": TOOL_ARGS_JSON,
+                "status": "completed",
+            }
+        ],
         "usage": {"input_tokens": 10, "output_tokens": 20, "total_tokens": 30},
     }
 
@@ -199,7 +211,7 @@ class MockProviderServer:
             return canned_responses(model)
         return canned_openai_chat(model)
 
-    def __enter__(self) -> "MockProviderServer":
+    def __enter__(self) -> MockProviderServer:
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
         return self
@@ -234,16 +246,20 @@ class FakeBedrockClient:
     def converse(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(dict(kwargs))
         return {
-            "output": {"message": {
-                "role": "assistant",
-                "content": [{
-                    "toolUse": {
-                        "toolUseId": "toolu_mock_bedrock",
-                        "name": TOOL_NAME,
-                        "input": dict(TOOL_ARGS),
-                    },
-                }],
-            }},
+            "output": {
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "toolUse": {
+                                "toolUseId": "toolu_mock_bedrock",
+                                "name": TOOL_NAME,
+                                "input": dict(TOOL_ARGS),
+                            },
+                        }
+                    ],
+                }
+            },
             "stopReason": "tool_use",
             "usage": {"inputTokens": 10, "outputTokens": 20, "totalTokens": 30},
             "metrics": {"latencyMs": 1},
@@ -267,27 +283,34 @@ def assert_tool_call(resp: Any, *, provider_label: str) -> None:
     assert args == TOOL_ARGS, f"{provider_label}: arguments={args!r}"
 
 
-async def check_openai_compat(provider: str, model: str, server: MockProviderServer,
-                              *, key: str = MOCK_KEY) -> dict[str, Any]:
+async def check_openai_compat(
+    provider: str, model: str, server: MockProviderServer, *, key: str = MOCK_KEY
+) -> dict[str, Any]:
     """Satu cek mock OpenAI-compatible: bangun provider via factory, chat, assert."""
     prov = build_byok_provider(provider, model, key=key, base_url=f"{server.url}/v1")
     resp = await prov.chat(MOCK_MESSAGES, tools=MOCK_TOOLS, max_tokens=200, temperature=0.0)
-    try:
+    with contextlib.suppress(Exception):
         await prov.aclose()
-    except Exception:
-        pass
     assert_tool_call(resp, provider_label=provider)
     req = server.last_request()
-    assert req["path"].rstrip("/").endswith("/chat/completions"), f"{provider}: path={req['path']!r}"
+    assert req["path"].rstrip("/").endswith("/chat/completions"), (
+        f"{provider}: path={req['path']!r}"
+    )
     assert req["headers"].get("authorization") == f"Bearer {key}", (
-        f"{provider}: header auth={req['headers'].get('authorization')!r}")
+        f"{provider}: header auth={req['headers'].get('authorization')!r}"
+    )
     body = req["body"] or {}
     assert body.get("model"), f"{provider}: body tanpa model"
     assert body.get("messages"), f"{provider}: body tanpa messages"
     assert body.get("tools"), f"{provider}: body tanpa tools"
-    return {"provider": provider, "model": model, "endpoint": req["path"],
-            "auth_header": "Authorization: Bearer <mock-key>",
-            "message_format": "openai chat-completions", "result": "mock passed"}
+    return {
+        "provider": provider,
+        "model": model,
+        "endpoint": req["path"],
+        "auth_header": "Authorization: Bearer <mock-key>",
+        "message_format": "openai chat-completions",
+        "result": "mock passed",
+    }
 
 
 async def check_anthropic(server: MockProviderServer, *, key: str = MOCK_KEY) -> dict[str, Any]:
@@ -295,22 +318,26 @@ async def check_anthropic(server: MockProviderServer, *, key: str = MOCK_KEY) ->
     model = "claude-sonnet-4-6"
     prov = build_byok_provider("anthropic", model, key=key, base_url=server.url)
     resp = await prov.chat(MOCK_MESSAGES, tools=MOCK_TOOLS, max_tokens=200, temperature=0.0)
-    try:
+    with contextlib.suppress(Exception):
         await prov.aclose()
-    except Exception:
-        pass
     assert_tool_call(resp, provider_label="anthropic")
     req = server.last_request()
     assert req["path"].rstrip("/").endswith("/v1/messages"), f"anthropic: path={req['path']!r}"
     assert req["headers"].get("x-api-key") == key, (
-        f"anthropic: header x-api-key={req['headers'].get('x-api-key')!r}")
+        f"anthropic: header x-api-key={req['headers'].get('x-api-key')!r}"
+    )
     assert "anthropic-version" in req["headers"], "anthropic: header anthropic-version hilang"
     body = req["body"] or {}
     assert body.get("model") == model, f"anthropic: body model={body.get('model')!r}"
     assert isinstance(body.get("messages"), list), "anthropic: body tanpa messages"
-    return {"provider": "anthropic", "model": model, "endpoint": req["path"],
-            "auth_header": "x-api-key: <mock-key> (+ anthropic-version)",
-            "message_format": "anthropic messages", "result": "mock passed"}
+    return {
+        "provider": "anthropic",
+        "model": model,
+        "endpoint": req["path"],
+        "auth_header": "x-api-key: <mock-key> (+ anthropic-version)",
+        "message_format": "anthropic messages",
+        "result": "mock passed",
+    }
 
 
 async def check_azure(server: MockProviderServer, *, key: str = MOCK_KEY) -> dict[str, Any]:
@@ -318,20 +345,24 @@ async def check_azure(server: MockProviderServer, *, key: str = MOCK_KEY) -> dic
     model = "gpt-4o-deployment-mock"
     prov = build_byok_provider("azure_openai", model, key=key, base_url=server.url)
     resp = await prov.chat(MOCK_MESSAGES, tools=MOCK_TOOLS, max_tokens=200, temperature=0.0)
-    try:
+    with contextlib.suppress(Exception):
         await prov.aclose()
-    except Exception:
-        pass
     assert_tool_call(resp, provider_label="azure_openai")
     req = server.last_request()
     assert req["path"].rstrip("/").endswith("/responses"), f"azure: path={req['path']!r}"
     assert req["headers"].get("authorization") == f"Bearer {key}", (
-        f"azure: header auth={req['headers'].get('authorization')!r}")
+        f"azure: header auth={req['headers'].get('authorization')!r}"
+    )
     body = req["body"] or {}
     assert body.get("model") == model, f"azure: body model={body.get('model')!r}"
-    return {"provider": "azure_openai", "model": model, "endpoint": req["path"],
-            "auth_header": "Authorization: Bearer <mock-key>",
-            "message_format": "openai responses", "result": "mock passed"}
+    return {
+        "provider": "azure_openai",
+        "model": model,
+        "endpoint": req["path"],
+        "auth_header": "Authorization: Bearer <mock-key>",
+        "message_format": "openai responses",
+        "result": "mock passed",
+    }
 
 
 async def check_bedrock_fake_client() -> dict[str, Any]:
@@ -340,19 +371,22 @@ async def check_bedrock_fake_client() -> dict[str, Any]:
     model = "anthropic.claude-sonnet-4-6"
     prov = build_byok_provider("bedrock", model, region="us-east-1", client=fake)
     resp = await prov.chat(MOCK_MESSAGES, tools=MOCK_TOOLS, max_tokens=200, temperature=0.0)
-    try:
+    with contextlib.suppress(Exception):
         await prov.aclose()
-    except Exception:
-        pass
     assert_tool_call(resp, provider_label="bedrock")
     assert len(fake.calls) == 1, f"bedrock: converse dipanggil {len(fake.calls)}x"
     kwargs = fake.calls[0]
     assert kwargs.get("modelId") == model, f"bedrock: modelId={kwargs.get('modelId')!r}"
     assert kwargs.get("messages"), "bedrock: kwargs tanpa messages"
     assert kwargs.get("toolConfig", {}).get("tools"), "bedrock: kwargs tanpa toolConfig.tools"
-    return {"provider": "bedrock", "model": model, "endpoint": "converse (fake client, bukan HTTP)",
-            "auth_header": "kredensial AWS (SigV4) — tidak lewat HTTP mock",
-            "message_format": "bedrock converse", "result": "mock passed (fake client)"}
+    return {
+        "provider": "bedrock",
+        "model": model,
+        "endpoint": "converse (fake client, bukan HTTP)",
+        "auth_header": "kredensial AWS (SigV4) — tidak lewat HTTP mock",
+        "message_format": "bedrock converse",
+        "result": "mock passed (fake client)",
+    }
 
 
 async def run_mock_checks(out_dir: str | Path | None = None) -> list[dict[str, Any]]:
@@ -378,19 +412,22 @@ async def run_mock_checks(out_dir: str | Path | None = None) -> list[dict[str, A
             result.append(summarize)
             # Simpan HANYA request milik cek ini.
             (out / f"{name}.json").write_text(
-                json.dumps(server.requests[before:], indent=2, ensure_ascii=False), encoding="utf-8")
+                json.dumps(server.requests[before:], indent=2, ensure_ascii=False), encoding="utf-8"
+            )
         before = len(server.requests)
         summarize = await check_anthropic(server)
         summarize["request_log"] = str(out / "anthropic.json")
         result.append(summarize)
         (out / "anthropic.json").write_text(
-            json.dumps(server.requests[before:], indent=2, ensure_ascii=False), encoding="utf-8")
+            json.dumps(server.requests[before:], indent=2, ensure_ascii=False), encoding="utf-8"
+        )
         before = len(server.requests)
         summarize = await check_azure(server)
         summarize["request_log"] = str(out / "azure_openai.json")
         result.append(summarize)
         (out / "azure_openai.json").write_text(
-            json.dumps(server.requests[before:], indent=2, ensure_ascii=False), encoding="utf-8")
+            json.dumps(server.requests[before:], indent=2, ensure_ascii=False), encoding="utf-8"
+        )
     summarize = await check_bedrock_fake_client()
     summarize["request_log"] = "(fake client boto3 — kwargs converse, bukan HTTP; lihat tes)"
     result.append(summarize)

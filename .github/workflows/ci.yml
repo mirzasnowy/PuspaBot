@@ -1,27 +1,37 @@
-# CI (G15) — first workflow for this repo.
+# CI — one workflow, per-area lanes, one aggregate gate.
 #
-# Design (hermes-agent orchestrator pattern, in miniature): one workflow,
-# per-area lanes, and a single aggregate gate job (`all-checks-pass`) that
-# is the only required check for branch protection. The lanes have no
-# triggers of their own; everything flows through this workflow.
+# Design (hermes-agent orchestrator pattern, in miniature): detect-changes
+# runs once up front, the lanes have no triggers of their own, and a
+# single aggregate gate job (`all-checks-pass`) is the only required check
+# for branch protection. A lane is skipped when nothing changed in its
+# area (the gate treats a skipped lane as fine); a push that changes
+# Python code, dependencies, or the workflow itself runs every lane.
 #
 # Lanes:
-#   test   — the full suite, SOLO (one pytest process, no parallel
-#            runner), against Postgres 16 + pgvector, with
-#            infra/schema_core.sql applied first.
-#   checks — dependency-light checks that need no database: the
-#            file-size ratchet and the docs-drift test, plus a parse
-#            check of this workflow file itself.
+#   changes  — detect-changes: which areas the push/PR touched
+#              (python code/deps/workflow vs docs). Every other lane
+#              waits for it.
+#   test     — the full suite, SOLO (one pytest process, no parallel
+#              runner), against Postgres 16 + pgvector, with
+#              infra/schema_core.sql applied first.
+#   checks   — dependency-light checks that need no database: the
+#              file-size ratchet and the docs-drift test, plus a parse
+#              check of this workflow file itself.
+#   lint     — ruff check (lint rules in pyproject.toml [tool.ruff.lint]).
+#   format   — ruff format --check (width and style in pyproject.toml
+#              [tool.ruff]).
+#   typecheck — mypy over puspa, tests, and demo (config in
+#              pyproject.toml [tool.mypy]).
 #
-# Lint and typecheck are deliberately NOT here yet: neither ruff nor
-# mypy is installed or pinned in this repo (see requirements.txt), and
-# a CI step for a tool the repo does not use would fail on its first
-# run. Follow-up: pin the tool, then add the step.
+# The lint and format lanes install only requirements-dev.txt (fast: no
+# torch). The typecheck lane installs requirements.txt too, because mypy
+# needs the runtime dependencies to resolve imports.
 #
 # Honest limit: this workflow cannot be executed end-to-end on the
 # development VM (no Docker, no GitHub runner there). It is correct by
-# construction — YAML validated, every referenced command checked —
-# and its first real run happens on GitHub.
+# construction — YAML validated, every referenced command checked
+# (including the checks lane, which installs the pytest and PyYAML it
+# actually runs) — and its first real run happens on GitHub.
 
 name: CI
 
@@ -38,8 +48,55 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  # Detect-changes, hermes style: one job up front, every lane reads it.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-24.04
+    outputs:
+      python: ${{ steps.detect.outputs.python }}
+      docs: ${{ steps.detect.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed areas
+        id: detect
+        run: |
+          # Base for the diff: the PR base for pull requests, the
+          # previous commit for pushes. When the base is unknown or
+          # not in this clone (new branch, workflow_dispatch,
+          # multi-commit push), assume everything changed so all
+          # lanes run.
+          BASE=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            git fetch --depth 1 origin "$BASE" 2>/dev/null || BASE=""
+          else
+            BASE="${{ github.event.before }}"
+          fi
+          FILES="__ALL__"
+          if [ -n "$BASE" ] && [ "$BASE" != "0000000000000000000000000000000000000000" ]; then
+            DIFF=$(git diff --name-only "$BASE" "${{ github.sha }}" 2>/dev/null) && FILES="$DIFF"
+          fi
+          PYTHON=false
+          DOCS=false
+          if [ "$FILES" = "__ALL__" ]; then
+            PYTHON=true
+            DOCS=true
+          else
+            echo "$FILES" | grep -qE '\.py$|requirements.*\.txt$|pyproject\.toml$|^infra/|^.github/' && PYTHON=true
+            echo "$FILES" | grep -qE '\.md$|^docs/' && DOCS=true
+          fi
+          echo "python=$PYTHON" >> "$GITHUB_OUTPUT"
+          echo "docs=$DOCS" >> "$GITHUB_OUTPUT"
+          echo "changed files:"
+          echo "$FILES"
+
   test:
     name: Full suite (SOLO)
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -90,6 +147,8 @@ jobs:
 
   checks:
     name: Ratchet + docs drift (no database)
+    needs: changes
+    if: needs.changes.outputs.python == 'true' || needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -99,11 +158,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install the one dependency the drift test needs
+      - name: Install what this lane actually runs
         # test_docs_drift.py imports puspa.ledger, which needs psycopg
         # installed but opens no connection. The ratchet test needs only
-        # the standard library.
-        run: python -m pip install "psycopg[binary]==3.3.9"
+        # the standard library. pytest runs both, and PyYAML parses this
+        # workflow file below. (Before 18 Nov 2026 this step installed
+        # only psycopg, so the lane would have failed on GitHub with
+        # "No module named pytest" / "No module named yaml".)
+        run: python -m pip install "pytest==9.2.0" "psycopg[binary]==3.3.9" "pyyaml==6.0.3"
 
       - name: Run the ratchet and drift tests
         run: python -m pytest tests/test_file_size_ratchet.py tests/test_docs_drift.py --noconftest -q
@@ -111,14 +173,86 @@ jobs:
       - name: Check this workflow file parses
         run: python -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml')); print('ci.yml parses')"
 
+  lint:
+    name: Lint (ruff check)
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dev tools only (no torch, fast)
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run ruff check (rules in pyproject.toml)
+        run: ruff check puspa tests demo
+
+  format:
+    name: Format check (ruff format)
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dev tools only (no torch, fast)
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Check formatting (style in pyproject.toml)
+        run: ruff format --check puspa tests demo
+
+  typecheck:
+    name: Typecheck (mypy)
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install runtime + dev dependencies
+        # mypy needs the runtime dependencies installed to resolve
+        # imports (nanobot, psycopg, fastembed, ...), plus the dev
+        # tools themselves. Same install as the test lane, plus the
+        # dev file; the torch install makes this lane slow on its
+        # first run, like the test lane.
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run mypy (config in pyproject.toml)
+        run: python -m mypy puspa tests demo
+
   # Single aggregate gate: the only check branch protection needs.
+  # A skipped lane is fine (nothing changed in its area); only a
+  # failure or a cancellation fails the gate.
   all-checks-pass:
     name: All checks pass
-    needs: [test, checks]
+    needs: [changes, test, checks, lint, format, typecheck]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Verify every lane passed
         run: |
-          test "${{ needs.test.result }}" = "success"
-          test "${{ needs.checks.result }}" = "success"
+          for result in "${{ needs.changes.result }}" "${{ needs.test.result }}" "${{ needs.checks.result }}" "${{ needs.lint.result }}" "${{ needs.format.result }}" "${{ needs.typecheck.result }}"; do
+            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+              echo "a lane failed or was cancelled: $result"
+              exit 1
+            fi
+          done
+          echo "all lanes passed (skipped lanes are fine: nothing changed in their area)"

@@ -20,8 +20,11 @@ def test_onboarding_4_step_end_to_end(make_user, test_dsn, ledger):
     status = start_onboarding(u["user_id"], dsn=test_dsn)
     assert status["current_step"] == 0
     s1 = complete_step1(
-        u["user_id"], "Nero", "santai",
-        example_message=[f"pesan contoh {i}" for i in range(10)], dsn=test_dsn,
+        u["user_id"],
+        "Nero",
+        "santai",
+        example_message=[f"pesan contoh {i}" for i in range(10)],
+        dsn=test_dsn,
     )
     assert s1["current_step"] == 1 and s1["name"] == "Nero"
     notifier = StubNotifier()
@@ -33,14 +36,20 @@ def test_onboarding_4_step_end_to_end(make_user, test_dsn, ledger):
     s3 = complete_step3(u["user_id"], connector="nanti", dsn=test_dsn)
     assert s3["current_step"] == 3 and s3["connector"] == "nanti"
     result = run_first_task(
-        u["user_id"], "compare_prices", "Asus Vivobook 14",
-        dsn=test_dsn, ledger=ledger, agent_id=u["agent_id"],
+        u["user_id"],
+        "compare_prices",
+        "Asus Vivobook 14",
+        dsn=test_dsn,
+        ledger=ledger,
+        agent_id=u["agent_id"],
     )
     assert result["verified"] is False  # stub jujur: wedge Fase 3
     assert "Fase 3" in result["reason"]
     assert result["status"]["current_step"] == 4
     assert result["offered_workflow_templates"] == [
-        "Tagihan bulanan", "Pantau harga barang", "Rekap tagihan minggu ini",
+        "Tagihan bulanan",
+        "Pantau harga barang",
+        "Rekap tagihan minggu ini",
     ]
     # Buku Kerja mencatat tugas stub; episodik mencatat tugas pertama.
     assert len(ledger.events(result["task_id"])) == 2

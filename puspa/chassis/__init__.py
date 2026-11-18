@@ -14,6 +14,13 @@ nanobot (parameter konstruktor ``AgentLoop`` / ``Nanobot.run``,
 - ``factory`` — ``PuspaChassis`` + ``assemble``: composition root.
 """
 
+from .agent_session import (
+    AgentBrain,
+    bind_turn,
+    get_session_brain,
+    payload_from_token,
+    reset_session_brains,
+)
 from .context import (
     bind_token,
     current_token_payload,
@@ -33,13 +40,6 @@ from .factory import (
 from .hooks import PuspaHook, make_puspa_hook_factory
 from .registry import PuspaRegistry
 from .sandbox_tool import SandboxTool
-from .agent_session import (
-    AgentBrain,
-    bind_turn,
-    get_session_brain,
-    payload_from_token,
-    reset_session_brains,
-)
 from .skill_loader import PuspaSkillsLoader
 from .tools import PuspaTool, kind_for_tool
 

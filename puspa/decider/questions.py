@@ -71,13 +71,10 @@ class ChoiceOption:
             raise ValueError("option id must be a non-empty string")
         if not isinstance(self.label, str):
             raise ValueError("option label must be a string")
-        object.__setattr__(
-            self, "keywords",
-            tuple(str(k) for k in self.keywords))
+        object.__setattr__(self, "keywords", tuple(str(k) for k in self.keywords))
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "label": self.label,
-                "keywords": list(self.keywords)}
+        return {"id": self.id, "label": self.label, "keywords": list(self.keywords)}
 
 
 @dataclass(frozen=True)
@@ -96,9 +93,13 @@ class ChoiceQuestion:
         object.__setattr__(self, "context", dict(self.context))
 
     def to_dict(self) -> dict:
-        return {"kind": self.kind, "id": self.id, "text": self.text,
-                "options": [o.to_dict() for o in self.options],
-                "context": dict(self.context)}
+        return {
+            "kind": self.kind,
+            "id": self.id,
+            "text": self.text,
+            "options": [o.to_dict() for o in self.options],
+            "context": dict(self.context),
+        }
 
 
 @dataclass(frozen=True)
@@ -117,9 +118,13 @@ class ScoreQuestion:
         object.__setattr__(self, "context", dict(self.context))
 
     def to_dict(self) -> dict:
-        return {"kind": self.kind, "id": self.id, "text": self.text,
-                "options": [o.to_dict() for o in self.options],
-                "context": dict(self.context)}
+        return {
+            "kind": self.kind,
+            "id": self.id,
+            "text": self.text,
+            "options": [o.to_dict() for o in self.options],
+            "context": dict(self.context),
+        }
 
 
 @dataclass(frozen=True)
@@ -140,8 +145,7 @@ class YesNoQuestion:
         object.__setattr__(self, "context", dict(self.context))
 
     def to_dict(self) -> dict:
-        return {"kind": self.kind, "id": self.id, "text": self.text,
-                "context": dict(self.context)}
+        return {"kind": self.kind, "id": self.id, "text": self.text, "context": dict(self.context)}
 
 
 def _check_question(text, options, question_id) -> None:
@@ -154,8 +158,7 @@ def _check_question(text, options, question_id) -> None:
     seen = set()
     for option in options:
         if not isinstance(option, ChoiceOption):
-            raise ValueError(
-                f"options must be ChoiceOption, not {option!r}")
+            raise ValueError(f"options must be ChoiceOption, not {option!r}")
         if option.id in seen:
             raise ValueError(f"duplicated option id: {option.id!r}")
         seen.add(option.id)
@@ -171,12 +174,10 @@ class ChoiceAnswer:
     def __post_init__(self) -> None:
         if not isinstance(self.choice, str) or not self.choice:
             raise ValueError("choice must be a non-empty option id")
-        object.__setattr__(self, "confidence",
-                           _check_confidence(self.confidence, "confidence"))
+        object.__setattr__(self, "confidence", _check_confidence(self.confidence, "confidence"))
 
     def to_dict(self) -> dict:
-        return {"kind": "choice", "choice": self.choice,
-                "confidence": self.confidence}
+        return {"kind": "choice", "choice": self.choice, "confidence": self.confidence}
 
 
 @dataclass(frozen=True)
@@ -209,12 +210,10 @@ class YesNoAnswer:
     def __post_init__(self) -> None:
         if not isinstance(self.value, bool):
             raise ValueError(f"value must be a bool, not {self.value!r}")
-        object.__setattr__(self, "confidence",
-                           _check_confidence(self.confidence, "confidence"))
+        object.__setattr__(self, "confidence", _check_confidence(self.confidence, "confidence"))
 
     def to_dict(self) -> dict:
-        return {"kind": "yes_no", "value": self.value,
-                "confidence": self.confidence}
+        return {"kind": "yes_no", "value": self.value, "confidence": self.confidence}
 
 
 def build_prompt(question) -> str:
@@ -225,22 +224,20 @@ def build_prompt(question) -> str:
     is not the asked-for JSON object is an unparseable answer.
     """
     if isinstance(question, ChoiceQuestion):
-        options = [{"id": o.id, "label": o.label or o.id}
-                   for o in question.options]
+        options = [{"id": o.id, "label": o.label or o.id} for o in question.options]
         return (
             "Choose exactly one option for this question. "
             "Reply with JSON only: "
-            "{\"choice\": \"<option id>\", \"confidence\": 0.0-1.0}.\n"
+            '{"choice": "<option id>", "confidence": 0.0-1.0}.\n'
             f"Question: {question.text}\n"
             f"Options: {json.dumps(options, ensure_ascii=False)}"
         )
     if isinstance(question, ScoreQuestion):
-        options = [{"id": o.id, "label": o.label or o.id}
-                   for o in question.options]
+        options = [{"id": o.id, "label": o.label or o.id} for o in question.options]
         return (
             "Score every option from 0 to 1 for this question. "
             "Reply with JSON only: "
-            "{\"scores\": {\"<option id>\": 0.0-1.0, ...}}.\n"
+            '{"scores": {"<option id>": 0.0-1.0, ...}}.\n'
             f"Question: {question.text}\n"
             f"Options: {json.dumps(options, ensure_ascii=False)}"
         )
@@ -248,7 +245,7 @@ def build_prompt(question) -> str:
         return (
             "Answer yes or no for this question. "
             "Reply with JSON only: "
-            "{\"answer\": true/false, \"confidence\": 0.0-1.0}.\n"
+            '{"answer": true/false, "confidence": 0.0-1.0}.\n'
             f"Question: {question.text}"
         )
     raise ValueError(f"unknown question type: {type(question).__name__}")

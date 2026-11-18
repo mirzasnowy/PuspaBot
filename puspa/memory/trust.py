@@ -32,10 +32,18 @@ REDACTED = "«redacted»"
 
 #: Origins whose content is external and must never become permanent
 #: memory on its own.
-EXTERNAL_ORIGINS = frozenset({
-    "web", "tool", "email", "webhook", "other_bot", "browser", "file",
-    "search",
-})
+EXTERNAL_ORIGINS = frozenset(
+    {
+        "web",
+        "tool",
+        "email",
+        "webhook",
+        "other_bot",
+        "browser",
+        "file",
+        "search",
+    }
+)
 
 #: Origins treated as the user's own words.
 USER_ORIGINS = frozenset({"user", "user_confirmed", "user_stated"})
@@ -43,55 +51,62 @@ USER_ORIGINS = frozenset({"user", "user_confirmed", "user_stated"})
 #: Tools that belong to Puspa itself (their output may still be
 #: external content when it relays a third party; the origin, not
 #: the tool name, decides quarantine).
-OWN_TOOLS = frozenset({
-    "puspa_search", "puspa_billing", "puspa_calendar", "puspa_tasks",
-    "puspa_memory", "puspa_router",
-})
+OWN_TOOLS = frozenset(
+    {
+        "puspa_search",
+        "puspa_billing",
+        "puspa_calendar",
+        "puspa_tasks",
+        "puspa_memory",
+        "puspa_router",
+    }
+)
 
 #: Known external tools. Any tool not in :data:`OWN_TOOLS` is treated
 #: as external by :func:`is_external_tool`.
-EXTERNAL_TOOLS = frozenset({
-    "web_fetch", "web_search", "email_reader", "webhook_receiver",
-    "slack_reader", "telegram_reader", "rss_reader", "file_reader",
-})
+EXTERNAL_TOOLS = frozenset(
+    {
+        "web_fetch",
+        "web_search",
+        "email_reader",
+        "webhook_receiver",
+        "slack_reader",
+        "telegram_reader",
+        "rss_reader",
+        "file_reader",
+    }
+)
 
 #: (name, regex) pairs for text that reads like an instruction.
 #: Written fresh for Puspa from the described attack shapes
 #: (instruction override, role hijack, prompt extraction, covert
 #: orders, jailbreak framing); none of the patterns is copied.
 INSTRUCTION_PATTERNS = (
-    ("ignore_previous_instructions",
-     r"ignore\s+(all\s+)?(previous|prior|above|earlier)\s+instructions?"),
-    ("disregard_instructions",
-     r"disregard\s+(all\s+)?(previous|prior|above|earlier)\s+instructions?"),
-    ("forget_instructions",
-     r"forget\s+(your|all|the|these)\s+instructions?"),
-    ("you_are_now",
-     r"you\s+are\s+now\s+(a|an|the)\b"),
-    ("act_as",
-     r"\bact\s+as\s+(a|an|the)\b"),
-    ("pretend_to_be",
-     r"\bpretend\s+(you\s+are|to\s+be)\b"),
-    ("reveal_system_prompt",
-     r"reveal\s+(your\s+)?(system\s+prompt|instructions?|prompt|rules)"),
-    ("show_system_prompt",
-     r"(show|print|output|dump)\s+(me\s+)?(your\s+)?(system\s+prompt|instructions?|prompt)"),
-    ("do_not_tell_user",
-     r"do\s+not\s+(tell|reveal|mention|show)\s+(the\s+)?user\b"),
-    ("new_instructions",
-     r"\bnew\s+instructions?\s*:"),
-    ("override_instructions",
-     r"\boverride\s+(your\s+)?(instructions?|rules|safety|guardrails?)\b"),
-    ("execute_following",
-     r"\bexecute\s+(the\s+following|this)\b"),
-    ("jailbreak",
-     r"\b(jailbreak|jailbroken|dan\s+mode|developer\s+mode|do\s+anything\s+now)\b"),
-    ("remember_you_must",
-     r"\bremember\s+(that\s+)?you\s+must\b"),
-    ("system_role_line",
-     r"^\s*system\s*:\s*\S"),
-    ("instruction_header",
-     r"^\s*(instruction|directive|command)\s*:\s*\S"),
+    (
+        "ignore_previous_instructions",
+        r"ignore\s+(all\s+)?(previous|prior|above|earlier)\s+instructions?",
+    ),
+    (
+        "disregard_instructions",
+        r"disregard\s+(all\s+)?(previous|prior|above|earlier)\s+instructions?",
+    ),
+    ("forget_instructions", r"forget\s+(your|all|the|these)\s+instructions?"),
+    ("you_are_now", r"you\s+are\s+now\s+(a|an|the)\b"),
+    ("act_as", r"\bact\s+as\s+(a|an|the)\b"),
+    ("pretend_to_be", r"\bpretend\s+(you\s+are|to\s+be)\b"),
+    ("reveal_system_prompt", r"reveal\s+(your\s+)?(system\s+prompt|instructions?|prompt|rules)"),
+    (
+        "show_system_prompt",
+        r"(show|print|output|dump)\s+(me\s+)?(your\s+)?(system\s+prompt|instructions?|prompt)",
+    ),
+    ("do_not_tell_user", r"do\s+not\s+(tell|reveal|mention|show)\s+(the\s+)?user\b"),
+    ("new_instructions", r"\bnew\s+instructions?\s*:"),
+    ("override_instructions", r"\boverride\s+(your\s+)?(instructions?|rules|safety|guardrails?)\b"),
+    ("execute_following", r"\bexecute\s+(the\s+following|this)\b"),
+    ("jailbreak", r"\b(jailbreak|jailbroken|dan\s+mode|developer\s+mode|do\s+anything\s+now)\b"),
+    ("remember_you_must", r"\bremember\s+(that\s+)?you\s+must\b"),
+    ("system_role_line", r"^\s*system\s*:\s*\S"),
+    ("instruction_header", r"^\s*(instruction|directive|command)\s*:\s*\S"),
 )
 
 _COMPILED_PATTERNS = tuple(
@@ -107,17 +122,15 @@ SECRET_PATTERNS = (
     ("aws_access_key", r"AKIA[0-9A-Z]{16}"),
     ("bearer_token", r"Bearer\s+[A-Za-z0-9\-_.~+/=]{20,}"),
     ("jwt", r"eyJ[A-Za-z0-9\-_]+\.eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+"),
-    ("private_key_block",
-     r"-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----"),
-    ("password_assignment",
-     r"(?i)(password|passwd|pwd)\s*[:=]\s*\S+"),
-    ("api_key_assignment",
-     r"(?i)(api[_-]?key|secret[_-]?key|access[_-]?token)\s*[:=]\s*\S+"),
+    (
+        "private_key_block",
+        r"-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----",
+    ),
+    ("password_assignment", r"(?i)(password|passwd|pwd)\s*[:=]\s*\S+"),
+    ("api_key_assignment", r"(?i)(api[_-]?key|secret[_-]?key|access[_-]?token)\s*[:=]\s*\S+"),
 )
 
-_COMPILED_SECRETS = tuple(
-    (name, re.compile(pattern)) for name, pattern in SECRET_PATTERNS
-)
+_COMPILED_SECRETS = tuple((name, re.compile(pattern)) for name, pattern in SECRET_PATTERNS)
 
 
 def is_external_tool(tool_name: str) -> bool:
@@ -129,8 +142,7 @@ def find_instruction_matches(text: str) -> list[str]:
     """Names of the instruction patterns that match ``text``."""
     if not isinstance(text, str):
         raise ValueError("text must be a string")
-    return [name for name, pattern in _COMPILED_PATTERNS
-            if pattern.search(text)]
+    return [name for name, pattern in _COMPILED_PATTERNS if pattern.search(text)]
 
 
 def redact_secrets(text: str) -> str:

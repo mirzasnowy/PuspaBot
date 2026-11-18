@@ -22,12 +22,16 @@ from __future__ import annotations
 import httpx
 
 SCOPES = {
-    "gmail": ["https://www.googleapis.com/auth/gmail.readonly",
-              "https://www.googleapis.com/auth/gmail.send",
-              "https://www.googleapis.com/auth/gmail.compose"],
+    "gmail": [
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.send",
+        "https://www.googleapis.com/auth/gmail.compose",
+    ],
     "drive": ["https://www.googleapis.com/auth/drive.readonly"],
-    "calendar": ["https://www.googleapis.com/auth/calendar.readonly",
-                 "https://www.googleapis.com/auth/calendar.events"],
+    "calendar": [
+        "https://www.googleapis.com/auth/calendar.readonly",
+        "https://www.googleapis.com/auth/calendar.events",
+    ],
 }
 # Scope minimal per operasi (bukan semua scope sekaligus di tiap call).
 SCOPE_READ_GMAIL = ["https://www.googleapis.com/auth/gmail.readonly"]
@@ -41,8 +45,9 @@ class ConnectorError(Exception):
 class GoogleConnector:
     """Klien Gmail/Drive/Calendar untuk satu pengguna + satu agen."""
 
-    def __init__(self, user_id: str, agent_id: str, *, http_client=None,
-                 dsn=None, token_loader=None) -> None:
+    def __init__(
+        self, user_id: str, agent_id: str, *, http_client=None, dsn=None, token_loader=None
+    ) -> None:
         self.user_id = str(user_id)
         self.agent_id = agent_id
         self.dsn = dsn
@@ -56,7 +61,7 @@ class GoogleConnector:
             if not token:
                 raise ConnectorError("konektor belum terhubung (tidak ada token)")
             return token
-        from puspa.auth.google_oauth import load_tokens, refresh_tokens
+        from puspa.auth.google_oauth import load_tokens
 
         tokens = load_tokens(self.user_id, dsn=self.dsn) or {}
         access = tokens.get("access_token")
@@ -65,8 +70,9 @@ class GoogleConnector:
         return access
 
     def _get(self, url: str, params: dict | None = None) -> dict:
-        resp = self.http.get(url, params=params,
-                             headers={"Authorization": f"Bearer {self._access_token()}"})
+        resp = self.http.get(
+            url, params=params, headers={"Authorization": f"Bearer {self._access_token()}"}
+        )
         if resp.status_code == 401:
             raise ConnectorError("token ditolak (401); sambungkan ulang konektor")
         if resp.status_code >= 400:
@@ -74,8 +80,9 @@ class GoogleConnector:
         return resp.json()
 
     def _post(self, url: str, payload: dict) -> dict:
-        resp = self.http.post(url, json=payload,
-                              headers={"Authorization": f"Bearer {self._access_token()}"})
+        resp = self.http.post(
+            url, json=payload, headers={"Authorization": f"Bearer {self._access_token()}"}
+        )
         if resp.status_code >= 400:
             raise ConnectorError(f"Google API gagal: {resp.status_code}")
         return resp.json()
@@ -83,14 +90,18 @@ class GoogleConnector:
     # -- Gmail ----------------------------------------------------------
     def gmail_search(self, query: str, max_results: int = 10) -> list[dict]:
         """Cari email (metadata saja; isi dibaca lewat Pembaca)."""
-        data = self._get("https://gmail.googleapis.com/gmail/v1/users/me/messages",
-                         params={"q": query, "maxResults": max_results})
+        data = self._get(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+            params={"q": query, "maxResults": max_results},
+        )
         return data.get("messages", [])
 
     def gmail_read(self, message_id: str, *, reader=None) -> dict:
         """Baca satu email. Isi mentah selalu lewat Pembaca terkarantina."""
-        data = self._get(f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}",
-                         params={"format": "full"})
+        data = self._get(
+            f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}",
+            params={"format": "full"},
+        )
         if reader is not None:
             text = _extract_email_text(data)
             return reader.read_text(f"https://mail.google.com/mail/u/0/#inbox/{message_id}", text)
@@ -102,32 +113,50 @@ class GoogleConnector:
         import base64
 
         raw = base64.urlsafe_b64encode(
-            f"To: {recipient}\r\nSubject: {subject}\r\n\r\n{content}".encode("utf-8")).decode()
-        return self._post("https://gmail.googleapis.com/gmail/v1/users/me/drafts",
-                          {"message": {"raw": raw}})
+            f"To: {recipient}\r\nSubject: {subject}\r\n\r\n{content}".encode()
+        ).decode()
+        return self._post(
+            "https://gmail.googleapis.com/gmail/v1/users/me/drafts", {"message": {"raw": raw}}
+        )
 
-    def gmail_send(self, *, recipient: str, subject: str, content: str,
-                    approved: bool = False, request_id: str = "") -> dict:
+    def gmail_send(
+        self,
+        *,
+        recipient: str,
+        subject: str,
+        content: str,
+        approved: bool = False,
+        request_id: str = "",
+    ) -> dict:
         """Kirim email — HANYA setelah persetujuan (gerbang tunggal)."""
         if not approved:
             raise ConnectorError("sending email needs user approval (single gate)")
         import base64
 
         raw = base64.urlsafe_b64encode(
-            f"To: {recipient}\r\nSubject: {subject}\r\n\r\n{content}".encode("utf-8")).decode()
-        return self._post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
-                          {"raw": raw, "request_id": request_id})
+            f"To: {recipient}\r\nSubject: {subject}\r\n\r\n{content}".encode()
+        ).decode()
+        return self._post(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+            {"raw": raw, "request_id": request_id},
+        )
 
     # -- Drive ----------------------------------------------------------
     def drive_search(self, query: str, max_results: int = 10) -> list[dict]:
-        data = self._get("https://www.googleapis.com/drive/v3/files",
-                         params={"q": f"name contains '{query}'", "pageSize": max_results,
-                                 "fields": "files(id,name,mimeType)"})
+        data = self._get(
+            "https://www.googleapis.com/drive/v3/files",
+            params={
+                "q": f"name contains '{query}'",
+                "pageSize": max_results,
+                "fields": "files(id,name,mimeType)",
+            },
+        )
         return data.get("files", [])
 
     def drive_read(self, file_id: str, *, reader=None) -> dict:
-        data = self._get(f"https://www.googleapis.com/drive/v3/files/{file_id}",
-                         params={"alt": "media"})
+        data = self._get(
+            f"https://www.googleapis.com/drive/v3/files/{file_id}", params={"alt": "media"}
+        )
         if reader is not None:
             text = data.get("text", "") if isinstance(data, dict) else str(data)
             return reader.read_text(f"https://drive.google.com/file/d/{file_id}", text)
@@ -135,21 +164,38 @@ class GoogleConnector:
 
     # -- Calendar -------------------------------------------------------
     def calendar_read(self, *, time_min: str, time_max: str) -> list[dict]:
-        data = self._get("https://www.googleapis.com/calendar/v3/calendars/primary/events",
-                         params={"timeMin": time_min, "timeMax": time_max,
-                                 "singleEvents": True, "orderBy": "startTime"})
+        data = self._get(
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            params={
+                "timeMin": time_min,
+                "timeMax": time_max,
+                "singleEvents": True,
+                "orderBy": "startTime",
+            },
+        )
         return data.get("items", [])
 
-    def calendar_create_event(self, *, summary: str, start: str, completed_at: str,
-                            attendees: list[str] | None = None,
-                            approved: bool = False) -> dict:
+    def calendar_create_event(
+        self,
+        *,
+        summary: str,
+        start: str,
+        completed_at: str,
+        attendees: list[str] | None = None,
+        approved: bool = False,
+    ) -> dict:
         """Buat event — HANYA setelah persetujuan."""
         if not approved:
             raise ConnectorError("creating an event needs user approval (single gate)")
-        return self._post("https://www.googleapis.com/calendar/v3/calendars/primary/events",
-                          {"summaries": summary,
-                           "start": {"dateTime": start}, "end": {"dateTime": completed_at},
-                           "attendees": [{"email": p} for p in (attendees or [])]})
+        return self._post(
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            {
+                "summaries": summary,
+                "start": {"dateTime": start},
+                "end": {"dateTime": completed_at},
+                "attendees": [{"email": p} for p in (attendees or [])],
+            },
+        )
 
 
 def _extract_email_text(data: dict) -> str:

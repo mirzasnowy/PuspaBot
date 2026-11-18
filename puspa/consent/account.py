@@ -34,21 +34,15 @@ def export_account(user_id, dsn=None):
     """Ekspor penuh data pengguna sebagai dict (siap JSON)."""
     from puspa.accounts.user_sessions import list_sessions
 
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT text FROM style_examples WHERE user_id = %s ORDER BY created_at ASC",
-                (user_id,),
-            )
-            example = [r["text"] for r in cur.fetchall()]
-            cur.execute(
-                "SELECT * FROM onboarding WHERE user_id = %s", (user_id,)
-            )
-            onb = cur.fetchone()
-    sesi = [
-        {k: v for k, v in s.items() if k != "id"}
-        for s in list_sessions(user_id, dsn=dsn)
-    ]
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT text FROM style_examples WHERE user_id = %s ORDER BY created_at ASC",
+            (user_id,),
+        )
+        example = [r["text"] for r in cur.fetchall()]
+        cur.execute("SELECT * FROM onboarding WHERE user_id = %s", (user_id,))
+        onb = cur.fetchone()
+    sesi = [{k: v for k, v in s.items() if k != "id"} for s in list_sessions(user_id, dsn=dsn)]
     return {
         "user_id": str(user_id),
         "profile": profile.get_profile(user_id, dsn=dsn),
@@ -68,9 +62,12 @@ def export_account(user_id, dsn=None):
                 "first_task": onb["first_task"],
                 "started_at": str(onb["started_at"]),
                 "completed_at": str(onb["completed_at"]) if onb["completed_at"] else None,
-                "duration_seconds": float(onb["duration_seconds"]) if onb["duration_seconds"] is not None else None,
+                "duration_seconds": float(onb["duration_seconds"])
+                if onb["duration_seconds"] is not None
+                else None,
             }
-            if onb else None
+            if onb
+            else None
         ),
         "sessions": sesi,
     }
@@ -85,8 +82,14 @@ def delete_account(user_id, dsn=None):
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             for table in (
-                "profile_facts", "episodic", "procedures", "slice_grants",
-                "summaries", "style_examples", "onboarding", "data_consents",
+                "profile_facts",
+                "episodic",
+                "procedures",
+                "slice_grants",
+                "summaries",
+                "style_examples",
+                "onboarding",
+                "data_consents",
             ):
                 cur.execute(f"DELETE FROM {table} WHERE user_id = %s", (user_id,))
                 counts[table] = cur.rowcount

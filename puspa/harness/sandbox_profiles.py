@@ -52,10 +52,10 @@ from puspa.policy import GateDenied
 from puspa.policy.tokens import TOOL_PERMISSION_RANK, tool_permission
 
 __all__ = [
+    "PROFILES",
     "PROFILE_FULL",
     "PROFILE_READ_ONLY",
     "PROFILE_WORKSPACE_WRITE",
-    "PROFILES",
     "ProfileDenied",
     "SandboxProfile",
     "check_tool",
@@ -133,19 +133,22 @@ PROFILES: dict[str, SandboxProfile] = {
     )
     for name, (description, levels) in {
         PROFILE_READ_ONLY: (
-            "Inspect files only; no edits and no command execution "
-            "without approval.",
+            ("Inspect files only; no edits and no command execution without approval."),
             _TOOL_LEVELS[PROFILE_READ_ONLY],
         ),
         PROFILE_WORKSPACE_WRITE: (
-            "Read anywhere, edit inside the workspace, run routine "
-            "local commands through the sandbox; no network.",
+            (
+                "Read anywhere, edit inside the workspace, run routine "
+                "local commands through the sandbox; no network."
+            ),
             _TOOL_LEVELS[PROFILE_WORKSPACE_WRITE],
         ),
         PROFILE_FULL: (
-            "Everything the token allows, still only through the "
-            "sandbox and still with gate approval for deploy; "
-            "no network.",
+            (
+                "Everything the token allows, still only through the "
+                "sandbox and still with gate approval for deploy; "
+                "no network."
+            ),
             _TOOL_LEVELS[PROFILE_FULL],
         ),
     }.items()
@@ -158,8 +161,7 @@ def get_profile(name: str) -> SandboxProfile:
         return PROFILES[name]
     except KeyError:
         raise ProfileDenied(
-            f"unknown sandbox profile {name!r}; known profiles: "
-            f"{sorted(PROFILES)}"
+            f"unknown sandbox profile {name!r}; known profiles: {sorted(PROFILES)}"
         ) from None
 
 
@@ -219,7 +221,13 @@ def check_tool(
     return gate_level
 
 
-def requires_approval(profile_name: str, tool: str, *, path: str | None = None, workspace_root: str | Path | None = None) -> bool:
+def requires_approval(
+    profile_name: str,
+    tool: str,
+    *,
+    path: str | None = None,
+    workspace_root: str | Path | None = None,
+) -> bool:
     """True when ``tool`` needs user approval before it runs.
 
     - ``read_only``: every write or execution needs approval.
@@ -233,7 +241,12 @@ def requires_approval(profile_name: str, tool: str, *, path: str | None = None, 
         return True
     if level == "deny":
         return True
-    if profile_name == PROFILE_WORKSPACE_WRITE and tool == "write_code" and path is not None and workspace_root is not None:
+    if (
+        profile_name == PROFILE_WORKSPACE_WRITE
+        and tool == "write_code"
+        and path is not None
+        and workspace_root is not None
+    ):
         try:
             return not _is_under_workspace(path, workspace_root)
         except ProfileDenied:

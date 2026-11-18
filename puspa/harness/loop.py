@@ -115,12 +115,13 @@ No network calls are made from this module. Events go to ``sink``
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import inspect
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from puspa.policy import Gate, GateDenied
+from puspa.policy import Gate
 from puspa.policy.tokens import tool_permission
 from puspa.runtime.budget import CEILING_RP_PER_TASK, BudgetExhausted, BudgetTracker
 from puspa.sandbox import SandboxUnavailable
@@ -135,8 +136,8 @@ from .modes import (
     enforce_read_only_tools,
     get_mode,
 )
-from .reproduce import ReproduceFirst, build_reproduction
 from .repo_map import build_repo_map, render_repo_map
+from .reproduce import ReproduceFirst, build_reproduction
 from .sandbox_profiles import PROFILE_WORKSPACE_WRITE, check_tool, get_profile
 
 __all__ = [
@@ -325,7 +326,9 @@ class CodingHarness:
         self.mode_spec = mode_spec
         self.workspace_root = workspace_root
         self._event: list[dict] = []
-        self.sink = sink or (lambda event_type, content: self._event.append({"type": event_type, "content": content}))
+        self.sink = sink or (
+            lambda event_type, content: self._event.append({"type": event_type, "content": content})
+        )
         # verifier(result) -> (passed: bool, reason: str).
         self.verifier = verifier or default_verdict
         self.max_attempts = max_attempts
@@ -337,18 +340,16 @@ class CodingHarness:
 
     # -- events ---------------------------------------------------------
     def _record(self, event_type: str, content: dict) -> None:
-        try:
+        # Ledger writes are best-effort (Fase 0 decision no. 9):
+        # a dead sink must not kill the run.
+        with contextlib.suppress(Exception):
             self.sink(event_type, content)
-        except Exception:
-            # Ledger writes are best-effort (Fase 0 decision no. 9):
-            # a dead sink must not kill the run.
-            pass
 
     def event_log(self) -> list[dict]:
         """Events recorded by the default sink (for tests)."""
         return list(self._event)
 
-    def with_mode(self, mode: str) -> "CodingHarness":
+    def with_mode(self, mode: str) -> CodingHarness:
         """The same harness in another working mode.
 
         One task moves through phases (plan, then code, then
@@ -432,7 +433,9 @@ class CodingHarness:
         # reproduction_missing instead of ever claiming a fix.
         tracker: ReproduceFirst | None = None
         if self.reproduce_first:
-            tracker = ReproduceFirst(build_reproduction(task.task_id, task.description, task.test_code))
+            tracker = ReproduceFirst(
+                build_reproduction(task.task_id, task.description, task.test_code)
+            )
             if task.starter_code:
                 report = tracker.record_reproduction(
                     lambda program: self.executor.run(program, timeout_s=self.timeout_s),
@@ -449,7 +452,9 @@ class CodingHarness:
                         "starter code already passes the acceptance tests; "
                         "no failing reproduction was observed before any fix"
                     )
-                    self._record("harness_failed", {"task_id": task.task_id, "status": outcome.status})
+                    self._record(
+                        "harness_failed", {"task_id": task.task_id, "status": outcome.status}
+                    )
                     return outcome
 
         # Current full program text. A diff attempt applies against
@@ -467,7 +472,11 @@ class CodingHarness:
                 return outcome
             self._record("attempt_started", {"task_id": task.task_id, "attempt": attempt_no})
             generated = self.generator(task, list(outcome.attempts))
-            if self.mode_spec is not None and self.mode_spec.requires_diff and not is_diff(generated):
+            if (
+                self.mode_spec is not None
+                and self.mode_spec.requires_diff
+                and not is_diff(generated)
+            ):
                 # Code and Debug modes implement through surgical
                 # diffs only: a full-program answer fails this
                 # attempt with the reason recorded, and the program
@@ -486,7 +495,12 @@ class CodingHarness:
                 outcome.attempts.append(record)
                 self._record(
                     "attempt_finished",
-                    {"task_id": task.task_id, "attempt": attempt_no, "passed": False, "reason": record.reason},
+                    {
+                        "task_id": task.task_id,
+                        "attempt": attempt_no,
+                        "passed": False,
+                        "reason": record.reason,
+                    },
                 )
                 continue
             code = generated
@@ -500,7 +514,9 @@ class CodingHarness:
                     record = AttemptRecord(
                         attempt=attempt_no,
                         code=current_code,
-                        result=ExecutionResult(ok=False, stdout="", stderr=str(exc), exit_code=None),
+                        result=ExecutionResult(
+                            ok=False, stdout="", stderr=str(exc), exit_code=None
+                        ),
                         passed=False,
                         cost_rp=self.cost_per_attempt_rp,
                         reason=f"diff did not apply: {exc}",
@@ -508,7 +524,12 @@ class CodingHarness:
                     outcome.attempts.append(record)
                     self._record(
                         "attempt_finished",
-                        {"task_id": task.task_id, "attempt": attempt_no, "passed": False, "reason": record.reason},
+                        {
+                            "task_id": task.task_id,
+                            "attempt": attempt_no,
+                            "passed": False,
+                            "reason": record.reason,
+                        },
                     )
                     continue
             current_code = code
@@ -534,7 +555,12 @@ class CodingHarness:
             outcome.attempts.append(record)
             self._record(
                 "attempt_finished",
-                {"task_id": task.task_id, "attempt": attempt_no, "passed": passed, "reason": reason},
+                {
+                    "task_id": task.task_id,
+                    "attempt": attempt_no,
+                    "passed": passed,
+                    "reason": reason,
+                },
             )
             if passed:
                 if self.reproduce_first and tracker is not None:
@@ -559,7 +585,9 @@ class CodingHarness:
                             "first attempt passed without a failing "
                             "reproduction; the fix is not proven"
                         )
-                        self._record("harness_failed", {"task_id": task.task_id, "status": outcome.status})
+                        self._record(
+                            "harness_failed", {"task_id": task.task_id, "status": outcome.status}
+                        )
                         return outcome
                 outcome.status = STATUS_PASSED
                 outcome.final_code = code
@@ -568,7 +596,9 @@ class CodingHarness:
                 return outcome
         outcome.status = STATUS_ATTEMPT_LIMIT
         outcome.reason = f"still failing after {self.max_attempts} attempts"
-        self._record("attempt_limit_reached", {"task_id": task.task_id, "max_attempts": self.max_attempts})
+        self._record(
+            "attempt_limit_reached", {"task_id": task.task_id, "max_attempts": self.max_attempts}
+        )
         self._record("harness_failed", {"task_id": task.task_id, "status": outcome.status})
         return outcome
 
@@ -667,10 +697,14 @@ class CodingHarness:
         # Raises GateDenied for a denied tool; "ask" is fine here
         # because requesting approval IS the ask flow.
         self.gate.authorize_tool(self.token_payload, TOOL_DEPLOY)
-        deploy_content = content if content is not None else {
-            "task_id": outcome.task_id,
-            "code_sha256": hashlib.sha256(outcome.final_code.encode("utf-8")).hexdigest(),
-        }
+        deploy_content = (
+            content
+            if content is not None
+            else {
+                "task_id": outcome.task_id,
+                "code_sha256": hashlib.sha256(outcome.final_code.encode("utf-8")).hexdigest(),
+            }
+        )
         request = self.gate.request_approval(
             user_id=outcome.user_id,
             agent_id=outcome.agent_id,
@@ -678,7 +712,9 @@ class CodingHarness:
             kind="deploy",
             content=deploy_content,
         )
-        self._record("deploy_requested", {"task_id": outcome.task_id, "request_id": request.request_id})
+        self._record(
+            "deploy_requested", {"task_id": outcome.task_id, "request_id": request.request_id}
+        )
         return request
 
     def deploy(self, request_id: str, *, executor):
