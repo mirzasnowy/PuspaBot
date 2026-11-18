@@ -138,6 +138,14 @@ class TaskRunner:
     session loop is given here it is also set as the model's
     ``learning_loop`` so the report goes to that loop instead of
     the module-level default.
+
+    A step that aborts the run also teaches the model, through
+    ``WorldModel.ingest_step_failure`` (see ``_fold_step_failure``):
+    a gate/policy refusal (handoff rejected, budget exhausted)
+    teaches capability only and discards the pending prediction
+    unscored, while a world failure (the executor raised) scores
+    a pending prediction against the failure, so a miss becomes
+    a misprediction in the learning loop.
     """
 
     def __init__(self, *, sink=None, executor=None, verifier=None,
@@ -235,6 +243,47 @@ class TaskRunner:
         except Exception:
             pass
 
+    def _fold_step_failure(self, task: Task, step: Step, action: dict | None,
+                           *, failure_kind: str, reason: str) -> None:
+        """Fold a step that aborted the run into the world model.
+
+        Two separate paths, and the difference is deliberate (see
+        ``WorldModel.ingest_step_failure``):
+        - ``"gate_rejected"`` (handoff refused by the schema,
+          budget exhausted): capability learns, the pending
+          prediction is discarded unscored, and no price/bill
+          belief and no learning-loop correction is touched. A
+          refusal is policy evidence, not world evidence.
+        - ``"world_failed"`` (the executor raised): a pending
+          prediction is scored against the failure, so a miss
+          is recorded as a ``world_misprediction`` event and
+          reported to the learning loop, and capability learns.
+        The failure itself is recorded by the caller as the
+        existing ``task_failed`` ledger event (with
+        ``failure_kind`` and the step in its content). Never
+        raises: a failed fold must not fail the task twice.
+        """
+        if self.world_model is None:
+            return
+        try:
+            summary = self.world_model.ingest_step_failure(
+                task_kind=step.name, action=action,
+                failure_kind=failure_kind, reason=reason)
+        except Exception:
+            return
+        scored = summary.get("scored") if isinstance(summary, dict) else None
+        if isinstance(scored, dict) and scored.get("correct") is False:
+            self._record(WORLD_MISPREDICTION_EVENT, {
+                "task_id": task.task_id, "step": step.name,
+                "task_name": step.name,
+                "predicted": scored.get("predicted"),
+                "observed": scored.get("observed"),
+                "error": scored.get("error"),
+                "context": {"action": dict(action) if action else None},
+                "failure_kind": failure_kind,
+                "advisory": True,
+            })
+
     def _record(self, event_type: str, content: dict) -> None:
         try:
             self.sink(event_type, content)
@@ -266,8 +315,17 @@ class TaskRunner:
             return task
         # 3. Jalankan.
         task.stage = "run"
+        # The step being attempted, for the failure handlers below:
+        # a step that aborts the run still teaches the model, and
+        # the fold needs to know which step and world action it was.
+        current_step: Step | None = None
+        current_action: dict | None = None
+        failed_step: Step | None = None
+        failure_kind: str | None = None
         try:
             for step in task.plan:
+                current_step = step
+                current_action = None
                 self.budget.record_step(1)
                 contract = HandoffContract(
                     from_id=task.agent_id, to_id=f"{task.agent_id}:pelaksana",
@@ -285,6 +343,7 @@ class TaskRunner:
                 prediction = None
                 if self.world_model is not None:
                     action = _world_action_for_step(step)
+                    current_action = action
                     if action is not None:
                         prediction = self._predict_step(task, step, action)
                 proposed = {"task_id": task.task_id, "handoff_id": handoff.id, "purpose": step.name}
@@ -301,11 +360,43 @@ class TaskRunner:
                 self._record("handoff_proposed", proposed)
                 handoff.accept()
                 handoff.start()
-                result = self.executor(step.name, step.inputs)
+                try:
+                    result = self.executor(step.name, step.inputs)
+                except BudgetExhausted:
+                    # The budget policy refused the step (for
+                    # example a charging executor whose cost would
+                    # pass the ceiling): let it reach the outer
+                    # BudgetExhausted handler, which records
+                    # `budget_exhausted` and folds it as a
+                    # gate refusal. Catching it here would
+                    # misclassify the refusal as a world failure
+                    # and lose the budget event.
+                    raise
+                except Exception as exc:
+                    # The action ran and the world said no: score a
+                    # pending prediction against the failure (a miss
+                    # becomes a misprediction in the learning loop),
+                    # teach capability, and fail the task instead
+                    # of crashing the run.
+                    failed_step = step
+                    failure_kind = "world_failed"
+                    self._fold_step_failure(
+                        task, step, action, failure_kind=failure_kind,
+                        reason=f"{type(exc).__name__}: {exc}")
+                    raise TaskError(f"langkah {step.name!r} gagal: {exc}") from exc
                 hand_over_status = handoff.hand_over(result)
                 if hand_over_status == "rejected":
                     # serahkan() sudah menandai status 'ditolak' + alasan.
                     self._record("handoff_rejected", {"task_id": task.task_id, "handoff_id": handoff.id})
+                    # Refused by policy (schema), not by the world:
+                    # capability learns, the pending prediction is
+                    # discarded unscored, price/bill beliefs are
+                    # never touched, no misprediction is reported.
+                    failed_step = step
+                    failure_kind = "gate_rejected"
+                    self._fold_step_failure(
+                        task, step, action, failure_kind=failure_kind,
+                        reason="keluaran tidak lolos skema")
                     raise TaskError(f"langkah {step.name!r} ditolak: keluaran tidak lolos skema")
                 handoff.mark_passed()
                 handed_over = {"task_id": task.task_id, "handoff_id": handoff.id}
@@ -320,13 +411,31 @@ class TaskRunner:
                 if action is None and self.world_model is not None:
                     self._ingest_step(task, step, result)
         except BudgetExhausted as exc:
+            # The step never ran: refused by the budget policy.
+            # Capability learns, the pending prediction (none yet
+            # for this step) is discarded unscored, price/bill
+            # beliefs are never touched, no misprediction.
+            if current_step is not None:
+                failed_step = current_step
+                failure_kind = "gate_rejected"
+                self._fold_step_failure(
+                    task, current_step, current_action,
+                    failure_kind=failure_kind, reason=str(exc))
             task.status = "failed"
             self._record("budget_exhausted", {"task_id": task.task_id, "reason": str(exc)})
-            self._record("task_failed", {"task_id": task.task_id, "reason": str(exc)})
+            self._record("task_failed", {
+                "task_id": task.task_id, "reason": str(exc),
+                "failure_kind": failure_kind,
+                "step": failed_step.name if failed_step is not None else None,
+            })
             return task
         except TaskError as exc:
             task.status = "failed"
-            self._record("task_failed", {"task_id": task.task_id, "reason": str(exc)})
+            self._record("task_failed", {
+                "task_id": task.task_id, "reason": str(exc),
+                "failure_kind": failure_kind,
+                "step": failed_step.name if failed_step is not None else None,
+            })
             return task
         # 4. Periksa.
         task.stage = "verify"
