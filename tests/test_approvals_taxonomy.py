@@ -394,20 +394,20 @@ def test_gate_24h_expiry_still_denies(ephemeral_keys):
 
 
 def test_policy_request_executes_payment_through_gate(ephemeral_keys):
-    spending = SpendingLimit("user-1")
+    spending = SpendingLimit("user-g4-payment")
     spending.set_limit(100000)
     gate = _gate(ephemeral_keys, spending=spending)
     policy = ApprovalPolicy(gate=gate)
-    token = issue_token(_payload(), ephemeral_keys[0])
+    token = issue_token(_payload(user_id="user-g4-payment"), ephemeral_keys[0])
     request = policy.request(
-        user_id="user-1",
+        user_id="user-g4-payment",
         agent_id="agen-puspa",
         token=token,
         tool_name="transfer",
         content={"nominal": 5000},
     )
     assert request.kind == "prepare_payment"
-    gate.approve(request.request_id, "user-1")
+    gate.approve(request.request_id, "user-g4-payment")
     calls = []
     result = gate.execute(request.request_id, executor=calls.append)
     assert result is None
