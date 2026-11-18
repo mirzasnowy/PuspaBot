@@ -1427,3 +1427,71 @@ rule. Note the K8 fold: K8 (independent verifier) lands here —
 the sentinel's detectors are the verifier's eyes; keep the
 verifier module separate from the detectors so the two can evolve
 independently.
+
+## Wave 10: G11+G12 (multi-tenant auth/relay + Sentinel, in progress 18 Nov 2026)
+
+Coordinator handover mid-wave: the first maturity coordinator
+(1af6c4c4) stopped after Wave 9; continuation coordinator
+(754e424c) verified Wave 9 itself (central SOLO suite re-run:
+2,308 passed, 9 skipped, 1 warning, 14m35s — same counts as the
+old coordinator claimed; Postgres had been wiped by a VM
+replacement and was recovered first: apt install postgresql-16 +
+postgresql-16-pgvector, cluster start, infra/schema_core.sql).
+Wave 9 needed no re-push: G25 (d162dcc7) + G26 (3ff50906) + docs
+(9a8e5267) were already on main and the pushed tree matches disk
+(35 files, 0 size mismatches).
+
+### G11 Hosting auth/relay/pairing (commit 25cc465a)
+
+New package `puspa/hosting/` (11 modules, 1,575 lines) + 4 test
+files (968 lines), 100 passed (verified by the coordinator, with
+conftest AND with `--noconftest`), ruff check + format clean,
+mypy clean (11 source files). `loopback.py` (Host + Origin both
+loopback; browsers never get trust — `Sec-Fetch-Mode`/UA heuristic,
+fail-closed); `service_allow.py` (explicit method + path-regex
+allowlist, default 3 read-only endpoints); `gateway.py`
+(`authorize_request`: Google session → pairing session →
+loopback (`single_user` outright, `service` only via allowlist) →
+deny; Google validator injected, a raising validator means "no
+session", never a crash); `pairing.py` (6-digit code, 5-min TTL,
+hash-only storage, 30-day session, 5 wrong → 10-min address
+lock); `identity.py` (Ed25519 long-term key, file `0600`,
+over-open file refused fail-closed, fingerprint = SHA-256 of raw
+pubkey); `seal.py` (HPKE `DHKEM(X25519)` + `HKDF-SHA256` +
+`AES-256-GCM` — available in `cryptography==50.0.2`, no fallback
+needed; per-start sealing key memory-only, each seal signed by
+the identity key over `sealing_pubkey ‖ ciphertext`, 64 KiB cap);
+`link.py` (7-char code, alphabet without l/o/0/1, 10-min TTL,
+32-byte relay key held only by app + server, rate limit 30/hour
+per address + 2,000/hour global); `relay.py` (AES-256-GCM frames,
+in-memory FIFO hub, never opens a frame); `fallback.py` (direct →
+tunnel → relay, attempts recorded). `docs/hosting-auth.md`
+documents all six mechanisms. Coordinator fixes during
+verification (worker code, not worker report): the pairing test
+was flaky two ways — the issued code can be "000000" (1 in a
+million; the test used it as the canonical wrong code) and the
+test claimed a code survives a 10-minute lockout while its own
+TTL is 5 minutes (the lockout never burns a code, but the TTL
+still runs — the test now proves non-consumption via the stored
+hash and expects expiry after the lock); `clock: object` failed
+mypy in `pairing.py`/`link.py` (now `Callable[[], float]`);
+`__init__.py` missed 6 error names in `__all__` (now all 46
+exports listed and sorted); `loopback.py` SIM102/SIM103; 9 ruff
+auto-fixes. Honest limits: no HTTP route yet
+(`authorize_request` is a pure function; natural call site
+`puspa/pwa/app.py`); stores are in-memory (pairing/link/relay
+state dies on restart — follow-up: Postgres store with the same
+interface); no live Cloudflare tunnel / relay network yet
+(`connect_with_fallback` uses injected probes); no new ledger
+event types for pairing/link audit (needs a ledger-owner type);
+browser detection is a heuristic (real trust rides on loopback
+interface + session/allowlist, not headers). Note: the G11
+REUSE.md/NOTICE.md attribution lines are on disk but were NOT
+in this commit — the G12 worker edited the same files
+concurrently, so they ride with the G12 commit instead.
+
+### G12 Sentinel + decision log (in progress)
+
+Worker finished its code + tests; coordinator verification
+pending at docs time (report awaited). Fills in here with the
+G12 push.
