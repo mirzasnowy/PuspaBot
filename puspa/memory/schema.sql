@@ -32,13 +32,37 @@ CREATE TABLE IF NOT EXISTS profile_facts (
     value          TEXT NOT NULL,
     source           TEXT NOT NULL CHECK (source IN ('user_stated', 'user_confirmed', 'inferred')),
     status         TEXT NOT NULL DEFAULT 'active'
-                   CHECK (status IN ('proposed', 'active', 'rejected', 'replaced')),
+                   CHECK (status IN ('proposed', 'active', 'rejected', 'replaced',
+                                      'superseded', 'expired')),
     valid_from   TIMESTAMPTZ NOT NULL DEFAULT now(),
     valid_until TIMESTAMPTZ,
+    superseded_by UUID,
     event_id    UUID,
-    created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_fact_user_key ON profile_facts(user_id, key, status);
+
+-- G7: versioned facts. Existing tables gain the new columns and
+-- the widened status set (idempotent migration for databases
+-- created before G7).
+ALTER TABLE profile_facts ADD COLUMN IF NOT EXISTS superseded_by UUID;
+ALTER TABLE profile_facts ADD COLUMN IF NOT EXISTS updated_at
+    TIMESTAMPTZ NOT NULL DEFAULT now();
+DO $$
+DECLARE cname TEXT;
+BEGIN
+    SELECT conname INTO cname FROM pg_constraint
+        WHERE conrelid = 'profile_facts'::regclass AND contype = 'c'
+        AND pg_get_constraintdef(oid) LIKE '%proposed%'
+        AND pg_get_constraintdef(oid) NOT LIKE '%superseded%';
+    IF cname IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE profile_facts DROP CONSTRAINT %I', cname);
+        ALTER TABLE profile_facts ADD CONSTRAINT profile_facts_status_check
+            CHECK (status IN ('proposed', 'active', 'rejected', 'replaced',
+                              'superseded', 'expired'));
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS episodic (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
