@@ -1,5 +1,24 @@
 """Buku Kerja — `puspa.ledger` (definisi 2.3)."""
 
+from .audit import (
+    AUDIT_RETENTION_ENV,
+    INITIATOR_KINDS,
+    MAX_EXPORT_ROWS,
+    NOBODY_WATCHING_KINDS,
+    AuditExportLog,
+    ControlRejected,
+    ControlState,
+    ExportResult,
+    Initiator,
+    attach_initiator,
+    audit_retention_days,
+    export_events_csv,
+    file_audit_entry,
+    filter_nobody_watching,
+    initiator_of,
+    is_nobody_watching,
+    sanitize_cell,
+)
 from .errors import InvalidEventTypeError, LedgerError
 from .ledger import (
     APP_ROLE,
@@ -13,12 +32,29 @@ from .ledger import (
 
 __all__ = [
     "APP_ROLE",
+    "AUDIT_RETENTION_ENV",
     "DEFAULT_DSN",
     "EVENT_TYPES",
     "GENESIS",
+    "INITIATOR_KINDS",
+    "MAX_EXPORT_ROWS",
+    "NOBODY_WATCHING_KINDS",
+    "AuditExportLog",
+    "ControlRejected",
+    "ControlState",
+    "ExportResult",
+    "Initiator",
     "InvalidEventTypeError",
     "Ledger",
     "LedgerError",
+    "attach_initiator",
+    "audit_retention_days",
     "canonical_json",
     "compute_event_hash",
+    "export_events_csv",
+    "file_audit_entry",
+    "filter_nobody_watching",
+    "initiator_of",
+    "is_nobody_watching",
+    "sanitize_cell",
 ]

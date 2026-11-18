@@ -534,3 +534,63 @@ library.
 No new dependency was added for G21. No hermes-agent code was
 copied, vendored, or depended on; only the documented patterns
 above were followed, rewritten as Puspa's own code.
+# NOTICE - Puspa maturity phase, G4 + G5 + G6 (18 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **OpenBot** (MIT License for the repo; the Intelligence
+  component is separately licensed and the enforcement server
+  image is closed — neither was used) - patterns only, rewritten
+  as Puspa Python code (nothing copied verbatim): the approval
+  taxonomy (action kinds that always ask, tiered answers Allow
+  once / for this conversation / always, admin closure per kind,
+  strictest-wins rules, auto-review, extra vigilant switch,
+  check-in tasks asking before every change, action recognition
+  from the tool name's first verb and the button label, payment
+  recognition from the word `payment` / payment tool names /
+  payment button labels, credential changes never approvable,
+  anti-double-approval via the `ASKING_GUIDANCE` marker,
+  destructive tools marked in their description) from
+  `docs/approvals.md` + `app/src/lib/approval-rules/`; the
+  fail-closed gateway (single action boundary: resolve target
+  from the server snapshot, evaluate the action policy, audit
+  the decision, call the computer only when forwarded, audit a
+  second line when a forwarded action fails; CEL-style rules
+  with case-insensitive `contains()` / `matches()` over
+  `tool.name`, `intent`, `bot.id`, `actor.id`, `page.url`,
+  `page.host`, `element.ref/role/name/type`, `key`, `command`,
+  `file.path/name/extension`, `mcp.server/tool/effect`,
+  `initiator.kind/id`; deny before allow; missing/empty policy
+  allows nothing; broken deny rule denies; broken allow rule
+  does not allow; malformed policy halts startup; dry-run
+  decides + records but still forwards; snapshot kept fresh via
+  Postgres `LISTEN`/`NOTIFY`; never-loaded snapshot refuses
+  everything; rule templates carrying their cost; cloud metadata
+  address refused in all modes; egress filtering does not stop
+  raw sockets) from `docs/architecture.md` +
+  `app/src/lib/boundaries/rules.ts` — the enforcing CEL code is
+  not in the OpenBot repo, so the evaluator is Puspa's own,
+  written from the documented semantics; the audit trail with
+  initiator (`person`, `deployment`, `routine`, `responsibility`,
+  `memory`, `handoff`; "Nobody watching" = routine + handoff +
+  responsibility + memory; handover `help_requested` /
+  `control_taken` / `control_released` audited as control events;
+  bot actions rejected, not queued, while a human controls the
+  browser; CSV export capped at 5,000 rows with a truncation
+  marker, `'` prefix on cells starting with `= + - @`, every
+  export itself recorded with who / how many rows / which
+  filters; retention via env var, unset = forever; secrets
+  redacted; saved files contribute path + size, never content)
+  from `app/src/lib/audit/` + `api/openapi/audit-events.yaml` +
+  `shared/audit-words.ts`. Used as patterns in
+  `puspa/policy/approvals.py`, `puspa/policy/gateway.py`,
+  `puspa/policy/rules.py`, `puspa/ledger/audit.py`,
+  `docs/approvals.md`, `docs/gateway.md`, `docs/audit-trail.md`.
+
+## New dependency: none
+
+No new dependency was added for G4+G5+G6. No OpenBot code was
+copied, vendored, or depended on; only the documented patterns
+above were followed, rewritten as Puspa's own code. The rule
+language evaluator, the approval taxonomy, and the audit export
+log are Puspa's own implementations.

@@ -153,6 +153,7 @@ class Ledger:
         event_type: str,
         content: dict,
         parent_id: str | None = None,
+        initiator: dict | None = None,
     ) -> dict:
         """Menambah satu kejadian; kembalikan baris yang dibaca kembali dari DB.
 
@@ -160,6 +161,12 @@ class Ledger:
         jadi nilai yang masuk hash sama persis dengan yang tersimpan.
         `hash_sebelumnya` = hash kejadian sebelumnya dalam tugas yang sama
         (urut penyisipan), atau "GENESIS" untuk kejadian pertama.
+
+        `initiator` (G6, audit trail): optional attribute
+        ``{"kind", "id"}`` — who or what started the run (person,
+        deployment, routine, responsibility, memory, handoff).
+        Stored inside `content`, NOT a new event type: the closed
+        set of 31 types is untouched.
         """
         if not isinstance(task_id, str) or not task_id:
             raise LedgerError("task_id harus string tak kosong")
@@ -173,6 +180,18 @@ class Ledger:
             canonical_json(content)
         except (TypeError, ValueError) as exc:
             raise LedgerError(f"isi tidak bisa dijadikan JSON: {exc}") from exc
+        if initiator is not None:
+            # Validated here (lazy import: audit.py lives in this
+            # same package, but ledger.py must not import it at
+            # module level — audit.py imports from ledger).
+            from .audit import INITIATOR_KINDS, attach_initiator
+
+            if not isinstance(initiator, dict) or initiator.get("kind") not in INITIATOR_KINDS:
+                raise LedgerError(
+                    f"unknown initiator kind: {initiator!r} "
+                    f"(must be one of {sorted(INITIATOR_KINDS)})"
+                )
+            content = attach_initiator(content, initiator)
         if parent_id is not None:
             try:
                 UUID(str(parent_id))
