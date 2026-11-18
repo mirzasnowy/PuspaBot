@@ -27,11 +27,18 @@ from .factory import PuspaChassis, assemble, build_hook_factory, build_registry
 from .hooks import PuspaHook, make_puspa_hook_factory
 from .registry import PuspaRegistry
 from .sandbox_tool import SandboxTool
-from .agent_session import bind_turn, payload_from_token
+from .agent_session import (
+    AgentBrain,
+    bind_turn,
+    get_session_brain,
+    payload_from_token,
+    reset_session_brains,
+)
 from .skill_loader import PuspaSkillsLoader
 from .tools import PuspaTool, kind_for_tool
 
 __all__ = [
+    "AgentBrain",
     "PuspaChassis",
     "PuspaHook",
     "PuspaRegistry",
@@ -44,10 +51,12 @@ __all__ = [
     "build_hook_factory",
     "build_registry",
     "current_token_payload",
+    "get_session_brain",
     "kind_for_tool",
     "make_ledger_sink",
     "make_puspa_hook_factory",
     "payload_from_token",
+    "reset_session_brains",
     "reset_token",
     "resolve_token_payload",
     "token_context",

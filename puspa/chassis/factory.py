@@ -49,6 +49,23 @@ class PuspaChassis:
     sandbox: Any = None  # puspa.sandbox.Sandbox atau None (dibuat default di tool)
     skill_manifests: dict = field(default_factory=dict)  # nama tool -> manifes
     log: Any = None  # callable log(jenis, isi); kalau None dan ledger ada, dibuat dari ledger
+    world_model: Any = None  # puspa.world.WorldModel atau None (tanpa otak)
+    learning_loop: Any = None  # puspa.memory.learning_loop.LearningLoop atau None
+
+    def brain(self):
+        """The session brain for this chassis, or None.
+
+        When both a world model and a learning loop were given,
+        they are the same instances the session registered through
+        ``bind_turn`` / ``get_session_brain``: one brain shared
+        across turns, never a fresh instance per turn. Callers
+        that run tasks (``TaskRunner``, ``Planner``,
+        ``CurriculumRunner``) take ``world_model`` and
+        ``learning_loop`` from here.
+        """
+        if self.world_model is None and self.learning_loop is None:
+            return None
+        return (self.world_model, self.learning_loop)
 
     def sink(self):
         """Callable log(jenis, isi) untuk hook/registry/wrapper."""

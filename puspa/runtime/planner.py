@@ -189,10 +189,14 @@ class Planner:
     ``sink`` is the ledger sink callable ``(event_type, content)``;
     the default keeps events in memory (``planner.events``).
     ``executor`` / ``verifier`` are passed through to ``TaskRunner``.
+    ``world_model`` / ``learning_loop`` are passed through to
+    ``TaskRunner`` as well (brain wiring, advisory only); when they
+    are None the planner behaves exactly as before.
     """
 
     def __init__(self, *, sink=None, executor=None, verifier=None,
-                 max_replans: int = DEFAULT_MAX_REPLANS) -> None:
+                 max_replans: int = DEFAULT_MAX_REPLANS,
+                 world_model=None, learning_loop=None) -> None:
         if max_replans < 0:
             raise PlannerError("max_replans must be 0 or more")
         self.max_replans = max_replans
@@ -201,6 +205,8 @@ class Planner:
             {"type": event_type, "content": content}))
         self.executor = executor
         self.verifier = verifier
+        self.world_model = world_model
+        self.learning_loop = learning_loop
         self.attempts = 0
         self.replans = 0
         self.last_failure_reason = ""
@@ -221,7 +227,9 @@ class Planner:
             agent_id=task.agent_id, purpose=task.purpose, plan=list(plan),
         )
         runner = TaskRunner(sink=self.sink, executor=self.executor,
-                            verifier=self.verifier)
+                            verifier=self.verifier,
+                            world_model=self.world_model,
+                            learning_loop=self.learning_loop)
         return runner.run(attempt_task)
 
     def _replan(self, plan: list[Step], failed_step: str | None,

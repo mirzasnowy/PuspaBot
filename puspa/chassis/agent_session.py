@@ -17,16 +17,88 @@ Token agen: ``sub_agen_id`` null (token agen, bukan sub-agen),
 saat tugas selesai/dihentikan). Anggaran default: 25 langkah,
 100.000 token, Rp0 (batas belanja default definisi 2.6 — pembayaran
 apa pun tetap butuh persetujuan + limit yang dinaikkan user).
+
+Otak sesi (``AgentBrain``): satu WorldModel + satu learning loop
+yang SAMA lintas turn untuk satu pasangan (user, agen), supaya otak
+yang belajar tidak lupa antar turn. ``bind_turn`` mendaftarkan otak
+yang diberikan pemanggil, atau memakai (dan bila belum ada,
+membuat) otak yang sudah terdaftar untuk pasangan itu;
+``get_session_brain`` mengambilnya kembali tanpa memvalidasi sesi.
+Registry ini in-memory dan per proses: keyakinan yang harus selamat
+dari restart disimpan lewat ``puspa.world.store`` (Postgres), bukan
+di sini. ``reset_session_brains`` hanya untuk tes.
 """
 
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass, field
+from typing import Any
 
 from puspa.accounts.user_sessions import validate_session
 from puspa.policy.tokens import issue_token, verify_token
 
-__all__ = ["bind_turn", "payload_from_token"]
+__all__ = [
+    "AgentBrain",
+    "bind_turn",
+    "get_session_brain",
+    "payload_from_token",
+    "reset_session_brains",
+]
+
+
+@dataclass
+class AgentBrain:
+    """One agent's brain: the world model plus its learning loop.
+
+    Created once per (user_id, agent_id) and shared across turns.
+    Both objects are plain in-memory state; see ``puspa.world.store``
+    for the Postgres persistence of the world model.
+    """
+
+    user_id: str
+    agent_id: str
+    world_model: Any = field(default=None)
+    learning_loop: Any = field(default=None)
+
+    def __post_init__(self) -> None:
+        if self.world_model is None:
+            from puspa.world.model import WorldModel
+
+            self.world_model = WorldModel()
+        if self.learning_loop is None:
+            from puspa.memory.learning_loop import LearningLoop
+
+            self.learning_loop = LearningLoop()
+        # Route the model's misprediction reports to this session's
+        # loop instead of the module-level default loop.
+        try:
+            self.world_model.learning_loop = self.learning_loop
+        except Exception:
+            pass
+
+
+#: Session brains, keyed by (user_id, agent_id). In-memory only.
+_SESSION_BRAINS: dict[tuple[str, str], AgentBrain] = {}
+
+
+def get_session_brain(user_id: str, agent_id: str) -> AgentBrain:
+    """The shared brain for one (user, agent) pair, creating it first.
+
+    The same instances come back on every call for the same pair,
+    across turns, until ``reset_session_brains`` clears them.
+    """
+    key = (str(user_id), str(agent_id))
+    brain = _SESSION_BRAINS.get(key)
+    if brain is None:
+        brain = AgentBrain(user_id=key[0], agent_id=key[1])
+        _SESSION_BRAINS[key] = brain
+    return brain
+
+
+def reset_session_brains() -> None:
+    """Drop every registered session brain (tests only)."""
+    _SESSION_BRAINS.clear()
 
 
 def bind_turn(
@@ -42,6 +114,8 @@ def bind_turn(
     exp_seconds: int = 3600,
     task_id: str | None = None,
     dsn=None,
+    world_model=None,
+    learning_loop=None,
 ) -> tuple[str, str, dict]:
     """Validasi sesi login lalu terbitkan token izin agen.
 
@@ -50,8 +124,34 @@ def bind_turn(
     siap ditaruh di ``RequestContext.attributes`` / ContextVar.
     Raise ``SessionError`` kalau sesi tidak valid, ``TokenError`` kalau
     payload tidak bisa diterbitkan.
+
+    Brain: when ``world_model`` / ``learning_loop`` are given they
+    become this (user, agent) pair's session brain (replacing any
+    brain registered before); when they are not given, the pair's
+    existing brain is reused, or a fresh one is created. Either
+    way, ``get_session_brain(user_id, agent_id)`` afterwards
+    returns the same WorldModel + LearningLoop instances across
+    turns, so the learning brain never forgets between turns.
     """
     user_id = validate_session(session_token, dsn=dsn)
+    if world_model is not None or learning_loop is not None:
+        brain = _SESSION_BRAINS.get((str(user_id), str(agent_id)))
+        if brain is None:
+            brain = AgentBrain(user_id=str(user_id), agent_id=str(agent_id),
+                              world_model=world_model,
+                              learning_loop=learning_loop)
+            _SESSION_BRAINS[(str(user_id), str(agent_id))] = brain
+        else:
+            if world_model is not None:
+                brain.world_model = world_model
+            if learning_loop is not None:
+                brain.learning_loop = learning_loop
+            try:
+                brain.world_model.learning_loop = brain.learning_loop
+            except Exception:
+                pass
+    else:
+        get_session_brain(user_id, agent_id)
     now = int(time.time())
     payload = {
         "user_id": user_id,

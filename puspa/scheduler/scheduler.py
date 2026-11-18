@@ -188,14 +188,30 @@ def is_healthy(dsn=None, now: datetime | None = None) -> bool:
     return (now - row[0]).total_seconds() < HEARTBEAT_STALE_SECONDS
 
 
-def tick(*, sink=None, dsn=None, now: datetime | None = None) -> list[dict]:
-    """Satu putaran penjadwal: detak + jalankan pemicu jatuh tempo."""
+def tick(*, sink=None, dsn=None, now: datetime | None = None,
+         curriculum=None) -> list[dict]:
+    """Satu putaran penjadwal: detak + jalankan pemicu jatuh tempo.
+
+    When ``curriculum`` is given (a ``CurriculumRunner`` instance
+    from ``puspa.scheduler.curriculum``), one idle-time learning
+    task runs after the triggers through ``run_curriculum_tick``.
+    The default (``curriculum=None``) runs no curriculum work, so
+    trigger behaviour is unchanged. Curriculum work never changes
+    the returned trigger runs and never raises into the tick.
+    """
     heartbeat(dsn=dsn, now=now)
     result = []
     for trigger in list_due_triggers(dsn=dsn, now=now):
         run = run_trigger(trigger, sink=sink, dsn=dsn, now=now)
         if run is not None:
             result.append(run)
+    if curriculum is not None:
+        try:
+            from puspa.scheduler.curriculum import run_curriculum_tick
+
+            run_curriculum_tick(runner=curriculum, sink=sink, now=now)
+        except Exception:
+            pass
     return result
 
 
