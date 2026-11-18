@@ -189,8 +189,12 @@ class HippoRAGRetriever:
     injected, the deterministic rule otherwise. ``llm_complete``
     is a shortcut for the judge: pass a ``complete(prompt)``
     callable and the retriever builds an ``LLMTripleJudge`` from
-    it, with the deterministic filter as its fallback. With
-    neither, the deterministic filter runs and every decision
+    it, with the deterministic filter as its fallback. The string
+    ``"default"`` is the explicit opt-in to the router's live
+    completion (``puspa.router.complete.default_llm_complete``):
+    it is resolved here, and the first retrieval then calls the
+    live model (a missing key raises there, it is never faked).
+    With neither, the deterministic filter runs and every decision
     records ``source="deterministic"``. The decisions of the
     last retrieval are kept on ``last_filter_decisions``.
     """
@@ -209,6 +213,13 @@ class HippoRAGRetriever:
         if llm_complete is not None and triple_filter is not None:
             raise ValueError(
                 "pass only one of triple_filter and llm_complete")
+        if isinstance(llm_complete, str):
+            # "default": explicit opt-in to the router's live
+            # completion; resolved lazily so importing this module
+            # never needs a key or the network.
+            from puspa.router.complete import resolve_llm_complete
+
+            llm_complete = resolve_llm_complete(llm_complete)
         if llm_complete is not None:
             self.triple_filter = LLMTripleJudge(llm_complete)
         elif triple_filter is not None:
