@@ -1082,3 +1082,178 @@ credential check defaults to a lazy import of
 `puspa.credentials.scope.check_credential(profile_id, provider,
 model=None) -> bool` (exact name, defined in both briefs; G22
 defines it, G23 consumes it via an injected callable).
+
+## Wave 8: G22+G23 (credential pool + tool registry, done 18 Nov 2026)
+
+Two parallel workers, disjoint files. Central SOLO suite after the
+wave (run on the final tree, including the CI lint fixes below):
+**2,224 passed, 9 skipped, 1 warning, 13m39s** (baseline 2,022
++ 202 new: G22 83 + G23 119). Postgres stayed online (no VM
+replacement this wave).
+
+### G22 Credential pool + secret scope (commit 6d6f4fc6)
+
+New package `puspa/credentials/` (6 modules, 1,866 lines) + 5 test
+files (1,012 lines), 83 passed (verified by the coordinator).
+`resolver.py` (unified BYOK resolver: `ProviderRegistry` with
+shadowing rejected, `PROVIDER_REGISTRY` with 13 providers from the
+router catalog + OpenAI/Anthropic/Gemini/Groq/DeepSeek/Mistral/
+Together/xAI/github_copilot/openai_codex/openai_compatible/Ollama;
+`ResolvedCredential` repr shows only a SHA-256 fingerprint, never
+the key; `resolve()` + `resolve_for_complete()`; default key source
+is the existing BYOK path, no duplicated lookup). `pool.py`
+(per-(provider, model) `CredentialPool`: cooldown keyed by
+(provider, model, key fingerprint) — the area of Nero's PR
+#146450, proven by test (same key, model A cooldown does NOT block
+model B); `acquire()` skips cooldown keys; `mark_rate_limited()`
+honours Retry-After, default 60 s; `mark_auth_failed()` 600 s;
+`AuxiliaryClient` shares the pool, rotates on rate limit/auth
+failure). `scope.py` (`CredentialScope`: per-(profile, provider)
+source callable; `vault_source()` / `pool_source()` /
+`scoped_env_source()`; `get()` never falls back to another profile;
+`check_credential(profile_id, provider, model=None) -> bool` with
+the exact agreed name/signature — the seam G23 consumes).
+`redact.py` (8 secret types: API keys/tokens, command segments,
+DB URLs, headers, Indonesian phone numbers, registered vault
+values, home paths, partial-key tails; marker `«redacted»` matching
+`puspa/memory/trust.py`). `auth.py` (PKCE verified against the RFC
+7636 vector, device flow with injectable sleep, refresh, anon auth
+with no token). No new deps, no new ledger event types. Honest
+limits: `complete.py` does NOT use the resolver yet
+(`resolve_for_complete()` is ready, the call-site swap is a
+coordinator follow-up, then one small live call to prove it);
+OAuth token storage is still in-memory (same as
+`puspa/router/oauth.py`); 0 live LLM calls.
+
+### G23 Tool registry + toolset + check_fn (commit 7d5b0d31)
+
+New package `puspa/tools/` (7 modules, 1,641 lines) + 5 test files
+(1,121 lines), 119 passed (verified by the coordinator).
+`registry.py` (dependency-free: `register()` import-time + decorator,
+`discover()` package scan, schema collection, sync + async dispatch
+`handle_function_call()` / `handle_function_call_async()`, JSON
+error wrapping, multimodal envelope; string JSON from a handler
+passes through as-is, dict merges into the envelope).
+`toolsets.py` (registration/exposure split: `_PUSPA_CORE_TOOLS`
+only `plugin_echo`, presets `default` + `coding` (core +
+`run_code`), per-tenant `register_custom()`, exposure honours
+`ToolAllowlist.is_advertised` + availability check).
+`check.py` (`AvailabilityChecker`: per-(profile, provider, model)
+TTL cache, default 300 s, injectable clock; stale cache = re-check,
+not fail; raising check = fail-soft; credential seam calls G22's
+`check_credential` directly, verified live by the coordinator
+(unknown profile → `credential_missing`)). `approval.py`
+(`classify_command()` with separate POSIX/Windows patterns,
+`ApprovalGate` with callback, yolo mode, approval floor — DANGEROUS
+can never be yolo — `ensure_allowed()` raises `ApprovalDenied`).
+`footprint.py` (`recommend_layer()` → cli/skill/plugin/core_tool as
+a decision function, not a doc). `builtin.py` (thin adapter:
+`run_code` from chassis `SandboxTool`, `plugin_echo` from the
+builtin echo plugin). No new deps. One bug found and fixed by the
+worker: the same empty-registry falsiness as G27 (`registry or
+_DEFAULT_REGISTRY` silently swapped a given empty registry;
+fixed to `is not None` in registry/toolsets/builtin + 1 regression
+test). Honest limits: approval is NOT wired (no clean seam yet —
+the production harness runs no shell command; call site
+documented in `approval.py`, wire it when the first shell seam
+lands); `run_code` success in the sandbox is untested here
+(Docker unavailable — only the fail-closed path was proven live);
+the `coding` toolset holds only 1 extra tool so far.
+
+**Coordinator fix inside the G23 commit:** `builtin.py`
+originally imported the builtin plugin module directly (`from
+puspa.plugins.builtin import echo`), which the G27 boundary lint
+(rule B1) forbids — core must load builtin plugins by module path
+through the loader. Rewritten to
+`load_plugin("puspa.plugins.builtin.echo")` and the record's
+public `.tools` accessor (no more reading the private `_tools`
+dict). The G23 tests still pass unchanged (119).
+
+## CI lint + typecheck lanes (Nero's order, done 18 Nov 2026)
+
+Direct order from Nero (18 Nov ~17:19 WIB): add lint + typecheck +
+big-repo CI practice to `.github/workflows/ci.yml`, pin ruff and
+mypy first, then add the lanes. One iteration, commit e20e40d8
+(359 files — the adoption touches almost every Python file).
+
+- **Pins:** ruff 0.17.5, mypy 2.4.1, types-PyYAML 6.0.12.20261113
+  in new `requirements-dev.txt` (dev tools only, never imported by
+  Puspa code; separate file so the lint lanes stay fast and never
+  install torch). `requirements.txt` points at it.
+- **Config:** new `pyproject.toml` — ruff (line-length 100,
+  target py312, explicit select + documented ignores) and mypy
+  (non-strict, `explicit_package_bases`, `warn_unused_ignores`,
+  overrides for `nanobot.*` / `FlagEmbedding` / runtime-injected
+  top-level demo names). The ruff select is explicit because
+  ruff's implicit default grows between versions (proven here:
+  bare `ruff check` on 0.17.5 already enables I/UP/S/BLE/SIM).
+  Not enabled, with reasons in the config: BLE (blind-except —
+  deliberate fail-soft in fallback paths), TRY (raises inside try
+  blocks are the error-translation pattern), S (bandit —
+  silent except-pass guards + exec in the sandbox), E501 (width
+  is the formatter's job). Ignored members of selected families:
+  E402/PLC0415 (lazy imports are deliberate), PLR2004 (749 magic
+  values — naming constants is a refactor), PLR0911/0912/0913/
+  0915/0917 (complexity caps are design metrics), B905 (zip
+  truncation is relied on), PLW0603 (module-level state).
+- **Workflow:** `changes` job (detect-changes, hermes style —
+  diff against the PR base or the previous commit, fallback to
+  "everything changed") + `lint` (`ruff check`), `format` (`ruff
+  format --check`), `typecheck` (`mypy puspa tests demo`) lanes;
+  `all-checks-pass` stays the only required check and tolerates
+  skipped lanes. The `checks` lane was also fixed: it ran `pytest`
+  and `import yaml` without installing either (latent G15 bug —
+  it would have failed on its first real GitHub run).
+  `docs/verification.md` documents the lanes + the local commands.
+- **Ruff:** 869 errors → 0 (worker: 605 auto-fix, 178 unsafe-fix,
+  ~100 manual, no new `# noqa`). **Mypy:** 101 errors in 42 files
+  → 0 (worker: no new `# type: ignore`, 2 stale ones removed;
+  real fixes, including `_recent_run_statuses` return type int →
+  list[str] and `next_trigger_at` → `datetime | None`).
+  **Format:** 348 files reformatted, line-length 100.
+- **Ratchet re-baselines** (recorded with reasons in the test):
+  `agent_scan.py` 1052→1070 (+18, format), `test_sigstore_verify.py`
+  1101→1124 (+23, format), `model.py` 1460→1605 (+145, mypy belief
+  restructuring + format — read by the coordinator, clean, no
+  duplication), new entries `test_router_oauth_translate.py` 1123
+  and this doc 1084 (append-only logs / test matrix).
+- **Boundary incident (found by the central suite, fixed by the
+  coordinator):** the ruff worker's SIM117 fix in
+  `puspa/plugins/boundary.py` broke B2 detection (the check ended
+  up nested inside the B3 branch, dead), and G23's `builtin.py`
+  violated B1. First suite run: 5 failed, all
+  `test_plugin_boundary.py`. Fixed: B2 restored as its own branch
+  in `lint_tree`, `builtin.py` loads echo via the loader (above).
+  Second suite run: **2,224 passed, 0 failed.**
+- **Honest limits:** CI cannot run end-to-end on this VM (no
+  Docker, no GitHub runner) — first real run on GitHub; mypy is
+  non-strict (most of the codebase is unannotated); the typecheck
+  lane installs the full requirements (torch ~2.5 GB, slow first
+  run, like the test lane); pre-existing Indonesian comments
+  remain across the repo (only the 3 new ones from the mypy worker
+  were translated — the English-only rule is enforced on new
+  code, a repo-wide comment sweep is a separate job).
+
+## Next: G25+G26 (subagent lifecycle + single-writer session)
+
+Two parallel workers, disjoint files. G25 (hermes subagent
+lifecycle): public lifecycle API wrapping the harness spawn —
+serializable capability handle (fake handle → `UNKNOWN_HANDLE`),
+operations `launch`/`status`/`wait`/`cancel` (cooperative — ask
+for an interrupt at the next safe boundary, never claim done
+until `wait`/`result` sees a terminal state), `steer` (queued text
+for the next iteration boundary), `result` (immutable, idempotent,
+32k cap, no hidden transcript/reasoning, stable result hash),
+`reconnect` (after a process restart → `RECONNECT_UNAVAILABLE`,
+never start a replacement child). Stable states: PENDING,
+STARTING, RUNNING, SUCCEEDED, FAILED, INTERRUPTED,
+CANCEL_REQUESTED, CANCELLED, UNKNOWN. Fail-closed: bounded
+goal/context/metadata sizes, unknown or parent-expanding toolsets
+rejected, per-launch working-directory override and per-tool
+timeout explicitly refused until they can be supported without
+weakening isolation. G26 (hermes persistence): single-writer
+session authority (one writer for the ledger/session, through an
+API, never direct DB access from workers) + compression lineage
+(parent/child sessions across compressions) + FTS5 beside pgvector
++ DB recovery documentation. Note the G7 finding: the FTS5 home
+is the SQLite sidecar (`state.db`), not Postgres tsvector.
