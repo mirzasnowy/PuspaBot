@@ -45,9 +45,13 @@ from __future__ import annotations
 import contextlib
 import threading
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from puspa.router.fallback import AllTiersFailed, ProviderFailure
 from puspa.runtime.budget import BudgetExhausted
+
+if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime import
+    from puspa.intent.act_ask import ActAskDecision
 
 from .budget import IterationBudget, SubagentIterationBudget, TurnBudgetExceeded
 from .config import TurnConfig
@@ -94,6 +98,12 @@ class TurnResult:
     hops: list = field(default_factory=list)
     repairs: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    #: Act-vs-ask verdicts the intent advisor gave during this turn
+    #: (K1, ``puspa.intent.turn_wiring.IntentTurnAdvisor``): one
+    #: ``ActAskDecision`` per tool call the advisor was consulted
+    #: on, in order. Empty when no advisor is wired in — the loop's
+    #: behaviour without an advisor is unchanged.
+    intent_decisions: list = field(default_factory=list)
 
 
 class TurnLoop:
@@ -118,7 +128,11 @@ class TurnLoop:
     :meth:`run_turn`) — unless the caller passes explicit
     ``tools``, which win. ``narrowing_skills`` groups the catalog
     into skills; ``narrowing_selector`` picks the skills (None
-    means the deterministic keyword selector).
+    means the deterministic keyword selector). ``intent_advisor`` is an optional
+    :class:`puspa.intent.turn_wiring.IntentTurnAdvisor`: when wired in, the loop consults it
+    before dispatching a tool call to the registry — on ``ask`` the call is not run and the model
+    gets a payload telling it to ask the user the clarifying question instead (K1). Without an
+    advisor the loop behaves exactly as before.
     """
 
     def __init__(
@@ -136,6 +150,7 @@ class TurnLoop:
         tool_catalog=None,
         narrowing_skills=(),
         narrowing_selector=None,
+        intent_advisor=None,
     ) -> None:
         self.config = config or TurnConfig()
         self.model_call = model_call
@@ -148,6 +163,7 @@ class TurnLoop:
         self.tool_catalog = list(tool_catalog) if tool_catalog is not None else None
         self.narrowing_skills = list(narrowing_skills)
         self.narrowing_selector = narrowing_selector
+        self.intent_advisor = intent_advisor
         self._refusal_message = ""
         self._event: list[dict] = []
         self.sink = sink or (
@@ -312,6 +328,7 @@ class TurnLoop:
         notes: list[str] = []
         attempts: list = []
         hops: list = []
+        intent_decisions: list = []
         cost_rp = 0
         tier_used = ""
         self._record(
@@ -453,14 +470,16 @@ class TurnLoop:
                     tier_used,
                     agent_id,
                     task_id,
+                    intent_decisions=intent_decisions,
                 )
-            history = self._run_tool_calls(
+            history, turn_intent_decisions = self._run_tool_calls(
                 history,
                 reply,
                 agent_id=agent_id,
                 task_id=task_id,
                 tool_call=tool_call,
             )
+            intent_decisions.extend(turn_intent_decisions)
 
     def run_subagent_turn(
         self,
@@ -537,8 +556,21 @@ class TurnLoop:
         agent_id: str,
         task_id: str | None,
         tool_call=None,
-    ) -> list[InternalMessage]:
+    ) -> tuple[list[InternalMessage], list]:
+        """Dispatch the reply's tool calls; return (history, intent decisions).
+
+        Intercepted tools run first, as before — they are internal
+        state operations, not user-facing actions, so the intent
+        advisor never sees them. For a registry tool, when an
+        intent advisor is wired in, the advisor is consulted first
+        with the last user message: on ``ask`` the tool is NOT run
+        and the model gets the ask payload (with the clarifying
+        question) as the tool result instead; on ``act`` the call
+        runs exactly as before. An advisor failure never breaks
+        the turn: it fails open to running the call.
+        """
         registry = tool_call if tool_call is not None else self.tool_call
+        intent_decisions: list = []
         for call in reply.tool_calls:
             name = call.get("name", "")
             arguments = call.get("arguments") or {}
@@ -552,6 +584,28 @@ class TurnLoop:
                 result_text = _result_text(intercepted)
                 history.append(InternalMessage.tool_result(call_id, result_text, is_error=False))
                 continue
+            if self.intent_advisor is not None:
+                decision = self._consult_intent_advisor(name, arguments, history)
+                if decision is not None:
+                    intent_decisions.append(decision)
+                    if decision.outcome == "ask":
+                        self._record(
+                            "intent_ask",
+                            {
+                                "agent_id": agent_id,
+                                "task_id": task_id,
+                                "tool": name,
+                                "reason": decision.reason,
+                            },
+                        )
+                        from puspa.intent.turn_wiring import ask_payload
+
+                        history.append(
+                            InternalMessage.tool_result(
+                                call_id, ask_payload(decision, tool_name=name), is_error=False
+                            )
+                        )
+                        continue
             if registry is not None:
                 try:
                     raw = registry(name, arguments)
@@ -571,7 +625,19 @@ class TurnLoop:
                 )
                 is_error = True
             history.append(InternalMessage.tool_result(call_id, result_text, is_error=is_error))
-        return history
+        return history, intent_decisions
+
+    def _consult_intent_advisor(self, name: str, arguments: dict, history) -> ActAskDecision | None:
+        """Ask the intent advisor about one tool call, failing open.
+
+        Returns the advisor's ``ActAskDecision``, or None when the
+        advisor raised (the call then runs as if no advisor were
+        wired in — a broken signal must never block the turn).
+        """
+        try:
+            return self.intent_advisor.advise(_last_user_text(history), name, arguments)
+        except Exception:
+            return None
 
     # -- finishing -------------------------------------------------------
 
@@ -592,6 +658,7 @@ class TurnLoop:
         tier_used,
         agent_id,
         task_id,
+        intent_decisions=None,
     ) -> TurnResult:
         self._record(
             "turn_completed",
@@ -615,6 +682,7 @@ class TurnLoop:
             hops=hops,
             repairs=repairs,
             notes=notes,
+            intent_decisions=list(intent_decisions) if intent_decisions is not None else [],
         )
 
     def _finish_interrupted(
