@@ -579,13 +579,28 @@ Files: `puspa/retrieval/knowledge_graph.py`, `puspa/retrieval/hipporag.py`,
 
 ### Dependencies
 
-No new dependency. Embeddings reuse `HashEmbedding` (offline
-default) or the pinned `fastembed` provider. fastembed 0.9.1
-ships no reranker, so `CrossEncoderReranker.from_fastembed`
-raises `RerankerUnavailable` honestly; a real cross-encoder
-(`BAAI/bge-reranker-v2-m3` through FlagEmbedding, or a
-`cross-encoder/ms-marco-MiniLM-L6-v2` through
-sentence-transformers) is a follow-up dependency, not added here.
+Embeddings reuse `HashEmbedding` (offline default) or the
+pinned `fastembed` provider. fastembed 0.9.1 ships no
+reranker, so `CrossEncoderReranker.from_fastembed` raises
+`RerankerUnavailable` honestly. Rework 1 (18 Nov 2026) added
+the real cross-encoder as a dependency:
+`sentence-transformers==6.3.0`, `transformers==5.23.0`,
+`torch==2.15.0` in `requirements.txt`, with the model
+`cross-encoder/ms-marco-MiniLM-L-6-v2`. Licenses verified 18
+Nov 2026: sentence-transformers Apache-2.0 (LICENSE file,
+raw fetch), the model Apache-2.0 (HuggingFace API tag
+`license:apache-2.0`, safetensors weights), transformers
+Apache 2.0 (installed package metadata), torch composite
+Apache-2.0 / BSD-2-Clause / BSD-3-Clause / BSL-1.0 / ISC /
+MIT / Zlib (installed package metadata, all OSI-approved).
+Correction: `BAAI/bge-reranker-v2-m3` is Apache-2.0 per its
+HuggingFace API tag, not MIT as recorded earlier. The model
+was chosen over bge-reranker-v2-m3 for size (~90 MB vs
+~2.3 GB) and speed on this VM; the multilingual bge model
+remains a follow-up swap through the same seam. Install note:
+`pip install` needs `TMPDIR` outside `/tmp` (the torch wheel
+is about 800 MB, larger than the 512 MB tmpfs) and
+`NO_PROXY=localhost,127.0.0.1` for the HuggingFace download.
 
 ### Honest limits
 
@@ -600,7 +615,17 @@ sentence-transformers) is a follow-up dependency, not added here.
 - The deterministic reranker cannot judge relevance the way a
   cross-encoder can: on the hand-written eval set the decisive
   two-hop passage ranks 6-9, so the pipeline wins on reach
-  (recall@10) rather than on top-3 precision.
+  (recall@10) rather than on top-3 precision. Rework 1 added a
+  real cross-encoder (`cross-encoder/ms-marco-MiniLM-L-6-v2`
+  via sentence-transformers), and it beats lexical stuffing
+  (real answer rank 1 at 9.33 vs stuffing 5.07), but it does
+  NOT close the two-hop gap: for "Is the cheap Galaxy S24 deal
+  trustworthy?" it scores the fraud report -10.13 and the
+  keyword-stuffing passage 9.17, because it judges "does the
+  passage answer the question", not "is this passage evidence
+  about trust". The fraud report still does not reach top 3.
+  The model is English MS MARCO only, not multilingual; a swap
+  to bge-reranker-v2-m3 remains a follow-up.
 # google/adk-python (hierarchical multi-agent) - REUSE fragment
 
 Pattern studied from google/adk-python (Apache License 2.0), reimplemented

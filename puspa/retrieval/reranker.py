@@ -16,23 +16,20 @@ This module implements the same two hooks in Puspa's own code:
   three signals, lexical overlap, vector similarity and graph
   distance. It genuinely re-orders the shortlist and is what
   tests and the offline path use.
-- ``CrossEncoderReranker``: the seam for a real cross-encoder.
-  It takes any ``score_fn(query, text)`` callable, so a
-  sentence-transformers or FlagEmbedding model plugs in with one
-  function. ``from_fastembed`` tries the fastembed reranker and
-  raises ``RerankerUnavailable`` with an honest reason when it
-  cannot load: fastembed 0.9.1, the version pinned in this repo,
-  ships no reranker at all, so a real cross-encoder backend
-  (``BAAI/bge-reranker-v2-m3`` through FlagEmbedding, or a
-  ``cross-encoder/ms-marco-MiniLM-L6-v2`` through
-  sentence-transformers) is a follow-up dependency, not
-  something this module pretends to have.
+- ``CrossEncoderReranker``: a real cross-encoder backed by
+  sentence-transformers (``cross-encoder/ms-marco-MiniLM-L-6-v2``,
+  Apache-2.0). ``from_sentence_transformers`` loads the model
+  once per process and scores real (query, passage) pairs; the
+  batch path scores the whole shortlist in one ``predict`` call.
+  ``from_fastembed`` stays as the honest seam: fastembed 0.9.1
+  ships no reranker, so it still raises ``RerankerUnavailable``.
+  ``DeterministicReranker`` remains the fallback when no model
+  can load.
 - ``decompose_query`` plus ``retrieve_with_decomposition``: a
   deterministic stand-in for the LLM question generator. The
   query is split on conjunctions into sub-questions, each is
   retrieved separately, and the rankings are merged with
-  reciprocal rank fusion. A real LLM decomposer plugs into the
-  same shape by replacing ``decompose_query``.
+  reciprocal rank fusion.
 """
 
 from __future__ import annotations
@@ -44,6 +41,18 @@ from puspa.memory.episodic import extract_concepts
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _SPLIT_RE = re.compile(r"\s+and\s+|\s+vs\.?\s+|;\s*|\?\s*")
+
+#: Default cross-encoder model. MiniLM-L6-v2 is the small MS MARCO
+#: reranker (about 90 MB, MRR@10 39.01 on MS MARCO dev): fast on
+#: CPU and small enough to load once per process in tests. The
+#: stronger multilingual BAAI/bge-reranker-v2-m3 (about 2.3 GB)
+#: is a later swap through the same seam, not the default here.
+DEFAULT_CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+#: Loaded cross-encoder models, one per model name per process.
+#: ``from_sentence_transformers`` reuses the cached model so a
+#: second factory call never reloads the weights.
+_MODEL_CACHE: dict[str, object] = {}
 
 
 class RerankerUnavailable(Exception):
@@ -130,13 +139,62 @@ class CrossEncoderReranker:
     cross-encoder plugs in here: a sentence-transformers
     ``CrossEncoder`` wrapped as ``lambda q, t:
     model.predict([(q, t)])[0]``, or a FlagEmbedding reranker.
-    This class holds no model and downloads nothing itself.
+    ``from_sentence_transformers`` is the working factory: it
+    loads ``cross-encoder/ms-marco-MiniLM-L-6-v2`` once per
+    process and scores real (query, passage) pairs. When a
+    ``score_many_fn(query, texts)`` is given, ``rerank`` scores
+    the whole shortlist in one batched call instead of one
+    model call per passage.
     """
 
-    def __init__(self, score_fn):
+    def __init__(self, score_fn, score_many_fn=None, model=None,
+                 model_name=None):
         if not callable(score_fn):
             raise ValueError("score_fn must be a callable")
         self.score_fn = score_fn
+        self.score_many_fn = score_many_fn
+        #: The loaded model object, or None for an injected scorer.
+        self.model = model
+        self.model_name = model_name
+
+    @classmethod
+    def from_sentence_transformers(
+            cls, model_name: str = DEFAULT_CROSS_ENCODER_MODEL):
+        """Build a cross-encoder reranker through sentence-transformers.
+
+        Loads the model once per process: a second call with the
+        same name reuses the cached model instead of reloading
+        the weights. Runs on CPU. Raises ``RerankerUnavailable``
+        when the library is missing or the model cannot load,
+        with the reason attached.
+        """
+        if model_name in _MODEL_CACHE:
+            model = _MODEL_CACHE[model_name]
+        else:
+            try:
+                from sentence_transformers import CrossEncoder
+            except ImportError as exc:
+                raise RerankerUnavailable(
+                    "sentence-transformers is not installed; "
+                    "install it to use the cross-encoder reranker"
+                ) from exc
+            try:
+                model = CrossEncoder(model_name, device="cpu")
+            except Exception as exc:  # noqa: BLE001 - any load failure
+                raise RerankerUnavailable(
+                    f"could not load cross-encoder {model_name!r}: {exc}"
+                ) from exc
+            _MODEL_CACHE[model_name] = model
+
+        def _score(query, text):
+            return float(model.predict([(query, text)])[0])
+
+        def _score_many(query, texts):
+            return [float(score) for score in
+                    model.predict([(query, text) for text in texts])]
+
+        return cls(_score, score_many_fn=_score_many,
+                   model=model, model_name=model_name)
 
     @classmethod
     def from_fastembed(cls, model_name: str = "BAAI/bge-reranker-v2-m3"):
@@ -176,14 +234,24 @@ class CrossEncoderReranker:
 
     def rerank(self, query: str, candidates, top_n=None,
                graph_distances=None) -> list:
-        """Re-order candidates by cross-encoder score, best first."""
+        """Re-order candidates by cross-encoder score, best first.
+
+        Scores the shortlist in one batched model call when a
+        batch scorer is available, else one call per passage.
+        """
         if not isinstance(query, str) or query == "":
             raise ValueError("query must be a non-empty string")
+        candidates = list(candidates or [])
+        if self.score_many_fn is not None:
+            scores = self.score_many_fn(
+                query, [_candidate_text(c) for c in candidates])
+        else:
+            scores = [float(self.score_fn(query, _candidate_text(c)))
+                      for c in candidates]
         scored = []
-        for candidate in candidates or []:
+        for candidate, score in zip(candidates, scores):
             entry = dict(candidate)
-            entry["rerank_score"] = float(
-                self.score_fn(query, _candidate_text(candidate)))
+            entry["rerank_score"] = float(score)
             entry["rerank_signals"] = {"score": entry["rerank_score"]}
             scored.append(entry)
         scored.sort(key=lambda r: (-r["rerank_score"], _candidate_id(r)))
@@ -192,18 +260,27 @@ class CrossEncoderReranker:
         return scored
 
 
-def make_reranker(kind: str = "deterministic", **kwargs):
+def make_reranker(kind: str = "deterministic",
+                  backend: str = "sentence_transformers", **kwargs):
     """Build a reranker by kind: "deterministic" or "cross_encoder".
 
-    "cross_encoder" tries the fastembed backend and raises
-    ``RerankerUnavailable`` when it cannot load (see
+    "cross_encoder" builds a real cross-encoder through the
+    named backend: "sentence_transformers" (default, loads
+    cross-encoder/ms-marco-MiniLM-L-6-v2) or "fastembed"
+    (raises RerankerUnavailable on the pinned fastembed 0.9.1,
+    which ships no reranker; see
     ``CrossEncoderReranker.from_fastembed``).
     """
     if kind == "deterministic":
         return DeterministicReranker(**kwargs)
     if kind == "cross_encoder":
-        return CrossEncoderReranker.from_fastembed(
-            **kwargs)
+        if backend == "sentence_transformers":
+            return CrossEncoderReranker.from_sentence_transformers(
+                **kwargs)
+        if backend == "fastembed":
+            return CrossEncoderReranker.from_fastembed(**kwargs)
+        raise ValueError(
+            f"unknown cross-encoder backend: {backend!r}")
     raise ValueError(f"unknown reranker kind: {kind!r}")
 
 
@@ -215,8 +292,7 @@ def decompose_query(query: str) -> list:
     deterministic stand-in for LlamaIndex's LLM question
     generator: it cannot keep shared context across the split
     the way an LLM can, so a sub-question may read
-    under-specified on its own. A real LLM decomposer replaces
-    this function with the same return shape.
+    under-specified on its own.
     """
     if not isinstance(query, str) or query == "":
         raise ValueError("query must be a non-empty string")
@@ -237,6 +313,8 @@ def retrieve_with_decomposition(retrieve_fn, query: str, top_k: int = 5,
     """
     if top_k < 1:
         raise ValueError("top_k must be at least 1")
+    if max_subquestions < 1:
+        raise ValueError("max_subquestions must be at least 1")
     subquestions = decompose_query(query)[:max_subquestions]
     if len(subquestions) <= 1:
         return retrieve_fn(query, top_k=top_k)

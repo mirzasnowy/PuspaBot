@@ -33,3 +33,13 @@ playwright==1.65.2
 # nanobot-ai's loguru>=0.7.3). When fastembed is unavailable, the
 # HashEmbedding fallback in puspa/memory/embeddings.py still applies.
 fastembed==0.9.1
+# Real cross-encoder reranker (brain deepening, 18 Nov 2026):
+# sentence-transformers + cross-encoder/ms-marco-MiniLM-L-6-v2
+# (Apache-2.0 library and model, verified from the PyPI/HF
+# metadata). The model is about 90 MB and runs on CPU; torch
+# is the PyPI bundle (CUDA wheels + nvidia libs, about 2.5 GB
+# installed) and transformers is pinned to the version
+# sentence-transformers 6.3.0 was verified with.
+sentence-transformers==6.3.0
+transformers==5.23.0
+torch==2.15.0
