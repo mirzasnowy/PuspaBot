@@ -168,13 +168,17 @@ def _catalog_choice(provider: str, model: str) -> ChoiceModel | None:
     return None
 
 
-def _resolve_choice(role: str, model: str | None) -> ChoiceModel:
+def _resolve_choice(role: str, model: str | None, provider: str | None = None) -> ChoiceModel:
     """The model to call: the role's cheapest, or an explicit model.
 
     An explicit model keeps the catalog rates when it is listed
     there; when it is not listed, the rates are 0 and the cost
     stays unknown (``cost_rp=None`` on the result) instead of a
-    guessed rate.
+    guessed rate. ``provider`` names the provider for an
+    unlisted model (G33: a local Ollama model is not an
+    OpenRouter model, so its result must not be labelled
+    ``openrouter``); it is ignored for a catalogued model, whose
+    provider comes from the catalog.
     """
     if model is not None:
         if not isinstance(model, str) or not model.strip():
@@ -184,7 +188,7 @@ def _resolve_choice(role: str, model: str | None) -> ChoiceModel:
         if catalogued is not None:
             return catalogued
         return ChoiceModel(
-            provider="openrouter",
+            provider=provider or "openrouter",
             model=model,
             family="",
             rp_per_1k_input=0,
@@ -395,6 +399,7 @@ def complete_messages(
     key_resolver=None,
     tools: list[dict] | None = None,
     tool_choice=None,
+    provider: str | None = None,
 ) -> CompletionResult:
     """Complete a full message list through the router's model.
 
@@ -420,7 +425,7 @@ def complete_messages(
         raise ValueError("max_tokens must be at least 1")
     if timeout <= 0:
         raise ValueError("timeout must be positive")
-    choice = _resolve_choice(role, model)
+    choice = _resolve_choice(role, model, provider)
     key = resolve_api_key(
         choice.provider, api_key=api_key, user_id=user_id, dsn=dsn, key_resolver=key_resolver
     )
@@ -511,6 +516,7 @@ def complete_detailed(
     transport=None,
     client: httpx.Client | None = None,
     key_resolver=None,
+    provider: str | None = None,
 ) -> CompletionResult:
     """Complete one prompt through the router's cheapest model.
 
@@ -544,6 +550,7 @@ def complete_detailed(
         transport=transport,
         client=client,
         key_resolver=key_resolver,
+        provider=provider,
     )
 
 
@@ -562,6 +569,7 @@ def complete(
     transport=None,
     client: httpx.Client | None = None,
     key_resolver=None,
+    provider: str | None = None,
 ) -> str:
     """Complete one prompt and return the model's text.
 
@@ -585,6 +593,7 @@ def complete(
         transport=transport,
         client=client,
         key_resolver=key_resolver,
+        provider=provider,
     ).text
 
 
