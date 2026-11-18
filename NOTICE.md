@@ -152,6 +152,12 @@ to be included here because no third-party code is vendored.
   transparency log with Merkle inclusion proofs. Used as a pattern
   in `puspa/policy/signing.py` (local implementation, not the
   public sigstore service; no Fulcio, no Rekor, no network call).
+- **sigstore/sigstore-python** (Apache License 2.0) - dependency:
+  real Sigstore bundle verification
+  (`puspa/policy/sigstore_verify.py`, `sigstore==4.5.0`); test
+  fixture `bundle_v3` from its public test assets at commit
+  `7ee385ac8be192771bff1cc553434b11282ecce6`, embedded unchanged
+  in `tests/test_sigstore_verify.py`.
 - **dsse-lf/dsse** (Apache License 2.0) - pattern: DSSE envelope
   shape and the pre-authentication encoding rule. Only the
   specification was followed; no code was taken.

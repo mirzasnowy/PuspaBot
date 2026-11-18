@@ -10,6 +10,15 @@ nanobot-ai @ git+https://github.com/HKUDS/nanobot@e767174
 psycopg[binary]==3.3.9
 argon2-cffi==25.1.0
 cryptography==50.0.2
+# Real Sigstore bundle verification (puspa/policy/sigstore_verify.py,
+# brain deepening 18 Nov 2026): sigstore 4.5.0, Apache-2.0, verified
+# from the PyPI metadata (classifier "License :: OSI Approved ::
+# Apache Software License" + "licensed under the Apache 2.0
+# License"). Already installed in the venv; pinned here so it is an
+# explicit Puspa dependency, not a transitive one. The verifier uses
+# only the trust root shipped inside this package and works offline;
+# it never contacts Fulcio or Rekor at verify time.
+sigstore==4.5.0
 pytest==9.2.0
 # nanobot dependencies (needed by the puspa.chassis package + integration tests):
 pydantic==2.14.3
