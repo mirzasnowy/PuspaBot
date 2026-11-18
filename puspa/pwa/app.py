@@ -38,6 +38,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
 
+from puspa.i18n.server_lines import render as render_server_line
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_DIR = BASE_DIR / "apps" / "pwa" / "templates"
 STATIC_DIR = BASE_DIR / "apps" / "pwa" / "static"
@@ -211,7 +213,7 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
         )
         if not client_id:
             return JSONResponse(
-                {"error": "login Google belum dikonfigurasi (PUSPA_GOOGLE_CLIENT_ID kosong)"},
+                {"error": render_server_line("error.google_login_not_configured")},
                 status_code=503,
             )
         url, _state, _verifier = build_auth_url(client_id, redirect)
@@ -374,7 +376,9 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     def sse(request: Request):
         user_id = user(request)
         if user_id is None:
-            return JSONResponse({"error": "belum masuk"}, status_code=401)
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
 
         def aliran():
             from puspa.evidence.projections import office as office_projection
@@ -397,7 +401,9 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     def operator_status_endpoint(request: Request):
         user_id = need_user(request)
         if user_id is None:
-            return JSONResponse({"error": "belum masuk"}, status_code=401)
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
         from puspa.pwa.serve_modes import operator_status
 
         return operator_status(
@@ -439,7 +445,9 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     async def send_chat(request: Request, text: str = Form(...)):
         user_id = need_user(request)
         if user_id is None:
-            return JSONResponse({"error": "belum masuk"}, status_code=401)
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
         message = {"sender": "users", "text": text, "created_at": time.time()}
         app.state.chat[user_id].append(message)
         app.state.event.append(
@@ -459,7 +467,9 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     ):
         user_id = need_user(request)
         if user_id is None:
-            return JSONResponse({"error": "belum masuk"}, status_code=401)
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
         from puspa.runtime.agents import create_agent
 
         try:
@@ -471,7 +481,9 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     async def api_delete_agent(request: Request, agent_id: str):
         user_id = need_user(request)
         if user_id is None:
-            return JSONResponse({"error": "belum masuk"}, status_code=401)
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
         from puspa.runtime.agents import delete_agent
 
         try:
@@ -484,7 +496,9 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     async def api_create_task(request: Request, purpose: str = Form(...)):
         user_id = need_user(request)
         if user_id is None:
-            return JSONResponse({"error": "belum masuk"}, status_code=401)
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
         from puspa.runtime.agents import ensure_puspa_agent
         from puspa.runtime.tasks import Task, TaskRunner, create_task_id
 
@@ -514,7 +528,9 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     async def api_stop(request: Request, task_id: str):
         user_id = need_user(request)
         if user_id is None:
-            return JSONResponse({"error": "belum masuk"}, status_code=401)
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
         from puspa.runtime.subagents import SubagentPool
 
         pool = app.state.__dict__.setdefault("pool", SubagentPool())
@@ -534,10 +550,14 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     async def api_approval(request: Request, request_id: str, approve: str = Form(...)):
         user_id = need_user(request)
         if user_id is None:
-            return JSONResponse({"error": "belum masuk"}, status_code=401)
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
         item = app.state.approval.get(request_id)
         if item is None:
-            return JSONResponse({"error": "permintaan tidak dikenal"}, status_code=404)
+            return JSONResponse(
+                {"error": render_server_line("error.unknown_request")}, status_code=404
+            )
         item["status"] = "approved" if approve == "ya" else "rejected"
         app.state.event.append(
             {
@@ -556,7 +576,9 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     ):
         user_id = need_user(request)
         if user_id is None:
-            return JSONResponse({"error": "belum masuk"}, status_code=401)
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
         from puspa.connectors.grants import give_connector, revoke_connector
 
         try:
@@ -571,7 +593,9 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     async def api_push(request: Request):
         user_id = need_user(request)
         if user_id is None:
-            return JSONResponse({"error": "belum masuk"}, status_code=401)
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
         data = await request.json()
         from puspa.push.push import save_subscription
 
@@ -593,7 +617,9 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     async def api_get_model_settings(request: Request):
         user_id = need_user(request)
         if user_id is None:
-            return JSONResponse({"error": "belum masuk"}, status_code=401)
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
         from puspa.pwa.model_settings import get_selection
 
         try:
@@ -605,7 +631,9 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     async def api_save_model_settings(request: Request):
         user_id = need_user(request)
         if user_id is None:
-            return JSONResponse({"error": "belum masuk"}, status_code=401)
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
         from puspa.pwa.model_settings import save_selection
 
         try:
@@ -640,7 +668,9 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     async def api_save_byok_key(request: Request):
         user_id = need_user(request)
         if user_id is None:
-            return JSONResponse({"error": "belum masuk"}, status_code=401)
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
         from puspa.pwa.model_settings import save_byok_key
 
         try:
@@ -663,7 +693,9 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     async def api_delete_byok_key(request: Request, provider: str = ""):
         user_id = need_user(request)
         if user_id is None:
-            return JSONResponse({"error": "belum masuk"}, status_code=401)
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
         from puspa.pwa.model_settings import delete_byok_key
 
         try:
@@ -690,7 +722,9 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     async def api_onboarding_time(request: Request):
         user_id = need_user(request)
         if user_id is None:
-            return JSONResponse({"error": "belum masuk"}, status_code=401)
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
         data = await request.json()
         app.state.time_onboarding.append(
             {"user_id": user_id, "seconds": data.get("seconds"), "created_at": time.time()}
