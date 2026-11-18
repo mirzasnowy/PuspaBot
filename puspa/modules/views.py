@@ -13,8 +13,7 @@ from __future__ import annotations
 
 import html
 
-COMPONENTS = ("card", "table", "items", "form", "number", "line_chart",
-            "action_button")
+COMPONENTS = ("card", "table", "items", "form", "number", "line_chart", "action_button")
 
 
 def _esc(text) -> str:
@@ -48,7 +47,7 @@ def render_line_chart(title: str, value: list) -> str:
         f'role="img" aria-label="grafik garis {_esc(title)}">'
         f'<polyline points="{polyline}" fill="none" stroke="#2563eb" '
         f'stroke-width="2"/></svg>'
-        f'<p>{_esc(bottom)} – {_esc(top)}</p></div>'
+        f"<p>{_esc(bottom)} - {_esc(top)}</p></div>"
     )
 
 
@@ -61,18 +60,19 @@ def render_view(view: dict, data: dict) -> str:
         raise ValueError(f"komponen {event_type!r} tidak diizinkan")
     if event_type == "card":
         text = view.get("text", "")
-        return (f'<div class="kartu"><h4>{_esc(title)}</h4>'
-                f'<p>{_esc(text)}</p></div>')
+        return f'<div class="kartu"><h4>{_esc(title)}</h4><p>{_esc(text)}</p></div>'
     if event_type == "number":
         table = view.get("table", "")
         columns = view.get("columns", "")
         rows = data.get(table, [])
-        total = sum(float(row.get(columns, 0) or 0) for row in rows
-                    if isinstance(row.get(columns), (int, float)))
+        total = sum(
+            float(row.get(columns, 0) or 0)
+            for row in rows
+            if isinstance(row.get(columns), (int, float))
+        )
         label = view.get("format", "")
         value = _rupiah(total) if label == "Rupiah" else f"{total:,.0f}".replace(",", ".")
-        return (f'<div class="angka"><h4>{_esc(title)}</h4>'
-                f'<p class="nilai">{value}</p></div>')
+        return f'<div class="angka"><h4>{_esc(title)}</h4><p class="nilai">{value}</p></div>'
     if event_type == "table":
         table = view.get("table", "")
         columns = view.get("columns", []) or []
@@ -82,9 +82,11 @@ def render_view(view: dict, data: dict) -> str:
         for row in rows:
             cells = "".join(f"<td>{_esc(row.get(k, ''))}</td>" for k in columns)
             content += f"<tr>{cells}</tr>"
-        return (f'<div class="tabel"><h4>{_esc(title)}</h4>'
-                f'<table><thead><tr>{header}</tr></thead>'
-                f'<tbody>{content}</tbody></table></div>')
+        return (
+            f'<div class="tabel"><h4>{_esc(title)}</h4>'
+            f"<table><thead><tr>{header}</tr></thead>"
+            f"<tbody>{content}</tbody></table></div>"
+        )
     if event_type == "items":
         table = view.get("table", "")
         columns = view.get("columns", "")
@@ -95,20 +97,22 @@ def render_view(view: dict, data: dict) -> str:
         columns = view.get("columns", []) or []
         field = ""
         for k in columns:
-            field += (f'<label>{_esc(k)} '
-                      f'<input name="{_esc(k)}" type="text"></label>')
-        return (f'<div class="form"><h4>{_esc(title)}</h4>'
-                f'<form>{field}<button type="submit">Simpan</button></form></div>')
+            field += f'<label>{_esc(k)} <input name="{_esc(k)}" type="text"></label>'
+        return (
+            f'<div class="form"><h4>{_esc(title)}</h4>'
+            f'<form>{field}<button type="submit">Simpan</button></form></div>'
+        )
     if event_type == "line_chart":
         table = view.get("table", "")
         columns = view.get("columns", "")
         rows = data.get(table, [])
-        value = [row.get(columns) for row in rows
-                 if isinstance(row.get(columns), (int, float))]
-        return render_line_chart(title, value)
+        values = [row.get(columns) for row in rows if isinstance(row.get(columns), (int, float))]
+        return render_line_chart(title, values)
     # tombol_aksi
-    return (f'<div class="tombol-aksi"><button data-aksi="{_esc(view.get("action", ""))}" '
-            f'data-alur="{_esc(view.get("workflows", ""))}">{_esc(title)}</button></div>')
+    return (
+        f'<div class="tombol-aksi"><button data-aksi="{_esc(view.get("action", ""))}" '
+        f'data-alur="{_esc(view.get("workflows", ""))}">{_esc(title)}</button></div>'
+    )
 
 
 def render_module(manifest: dict, data: dict | None = None) -> str:

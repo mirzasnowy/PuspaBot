@@ -2,14 +2,12 @@
 
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from puspa.memory import dream
 from puspa.memory.facts import MemoryFactStore
-
-UTC = timezone.utc
 
 
 def _now():
@@ -38,21 +36,21 @@ def _stub_reply(payload):
 def test_dream_caps_and_confidence_floor():
     payload = {
         "learned": [
-            {"key": f"topic{i}", "content": f"fact {i}", "confidence": 0.9}
-            for i in range(8)
-        ] + [{"key": "weak", "content": "shaky fact", "confidence": 0.5}],
+            {"key": f"topic{i}", "content": f"fact {i}", "confidence": 0.9} for i in range(8)
+        ]
+        + [{"key": "weak", "content": "shaky fact", "confidence": 0.5}],
         "expired": [
-            {"key": f"old{i}", "content": f"old fact {i}", "confidence": 0.8}
-            for i in range(7)
-        ] + [{"key": "weakold", "content": "shaky old", "confidence": 0.69}],
-        "ideas": [
-            {"content": f"idea {i}", "confidence": 0.95} for i in range(5)
-        ],
+            {"key": f"old{i}", "content": f"old fact {i}", "confidence": 0.8} for i in range(7)
+        ]
+        + [{"key": "weakold", "content": "shaky old", "confidence": 0.69}],
+        "ideas": [{"content": f"idea {i}", "confidence": 0.95} for i in range(5)],
     }
     stub = _stub_reply(payload)
     result = dream.run_dream(
         [_conv("a", "talk about coffee"), _conv("b", "talk about tea")],
-        llm_complete=stub, now=_now())
+        llm_complete=stub,
+        now=_now(),
+    )
     assert result["status"] == "ok"
     assert len(result["learned"]) == 6
     assert len(result["expired"]) == 5
@@ -67,16 +65,13 @@ def test_dream_caps_and_confidence_floor():
 
 def test_dream_too_few_conversations():
     stub = _stub_reply({"learned": [], "expired": [], "ideas": []})
-    result = dream.run_dream([_conv("a", "only one")], llm_complete=stub,
-                             now=_now())
+    result = dream.run_dream([_conv("a", "only one")], llm_complete=stub, now=_now())
     assert result["status"] == "too_few"
     assert stub.calls == []
 
 
 def test_dream_no_llm_is_skipped_not_faked():
-    result = dream.run_dream(
-        [_conv("a", "one"), _conv("b", "two")],
-        llm_complete=None, now=_now())
+    result = dream.run_dream([_conv("a", "one"), _conv("b", "two")], llm_complete=None, now=_now())
     assert result["status"] == "no_llm"
     assert result["learned"] == []
 
@@ -108,7 +103,9 @@ def test_dream_max_conversations():
 def test_dream_bad_reply_parses_to_empty():
     result = dream.run_dream(
         [_conv("a", "one"), _conv("b", "two")],
-        llm_complete=lambda prompt: "not json at all", now=_now())
+        llm_complete=lambda prompt: "not json at all",
+        now=_now(),
+    )
     assert result["status"] == "ok"
     assert result["learned"] == [] and result["expired"] == []
     assert result["ideas"] == []
@@ -129,23 +126,18 @@ class TestDreamJob:
 
         user = str(uuid.uuid4())
         store = MemoryFactStore()
-        old = facts.record_fact(user, "city", "Jakarta", store=store,
-                                trust_check=False, now=_now())
+        old = facts.record_fact(user, "city", "Jakarta", store=store, trust_check=False, now=_now())
         assert old["status"] == "active"
-        episodic.record_episode(user, "user moved to Bandung",
-                                "user_message", task_id=uuid.uuid4())
-        episodic.record_episode(user, "Bandung is home now",
-                                "user_message", task_id=uuid.uuid4())
+        episodic.record_episode(user, "user moved to Bandung", "user_message", task_id=uuid.uuid4())
+        episodic.record_episode(user, "Bandung is home now", "user_message", task_id=uuid.uuid4())
         payload = {
-            "learned": [{"key": "city", "content": "user lives in Bandung",
-                         "confidence": 0.9}],
-            "expired": [{"key": "city", "content": "user lives in Jakarta",
-                         "confidence": 0.8}],
+            "learned": [{"key": "city", "content": "user lives in Bandung", "confidence": 0.9}],
+            "expired": [{"key": "city", "content": "user lives in Jakarta", "confidence": 0.8}],
             "ideas": [{"content": "visit Bandung cafes", "confidence": 0.9}],
         }
         result = dream.run_dream_job(
-            user, llm_complete=_stub_reply(payload), store=store,
-            now=_now())
+            user, llm_complete=_stub_reply(payload), store=store, now=_now()
+        )
         assert result["status"] == "ok"
         assert result["applied"] == {"learned": 1, "expired": 1}
         assert store.get(old["id"], user)["status"] == "expired"

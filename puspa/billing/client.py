@@ -173,12 +173,14 @@ REFUSAL_CODES: dict[str, dict] = {
 
 #: Reasons that block an upgrade no matter what the status says.
 #: Checked *before* status in the upgrade matrix.
-BLOCKING_UPGRADE_REASONS = frozenset({
-    "monthly_cap_exceeded",
-    "upgrade_cap_exceeded",
-    "role_required",
-    "consent_required",
-})
+BLOCKING_UPGRADE_REASONS = frozenset(
+    {
+        "monthly_cap_exceeded",
+        "upgrade_cap_exceeded",
+        "role_required",
+        "consent_required",
+    }
+)
 
 
 def render_state(state: str) -> dict:
@@ -235,7 +237,7 @@ def fetch_billing_state(fetch_fn) -> dict:
     """
     try:
         state = fetch_fn()
-    except Exception as exc:  # noqa: BLE001 - fail-closed by design
+    except Exception as exc:
         return {
             "state": "failed",
             "overlay_open": False,
@@ -252,30 +254,36 @@ def fetch_billing_state(fetch_fn) -> dict:
     return {"state": state["state"], "overlay_open": True, **state}
 
 
-def preview_charge_effect(*, amount_idr: int, balance_idr: int,
-                          scheduled: bool = False,
-                          blocked_reason: str | None = None) -> dict:
+def preview_charge_effect(
+    *, amount_idr: int, balance_idr: int, scheduled: bool = False, blocked_reason: str | None = None
+) -> dict:
     """Preview what a charge would do, before confirmation.
 
     Effect is one of ``"charge_now"``, ``"scheduled"``, ``"no_op"``
     (amount is zero), or ``"blocked"`` (with a reason).
     """
     if blocked_reason:
-        return {"effect": "blocked", "reason": blocked_reason,
-                "amount_idr": amount_idr}
+        return {"effect": "blocked", "reason": blocked_reason, "amount_idr": amount_idr}
     if amount_idr <= 0:
-        return {"effect": "no_op", "reason": "zero_amount",
-                "amount_idr": amount_idr}
+        return {"effect": "no_op", "reason": "zero_amount", "amount_idr": amount_idr}
     if scheduled:
-        return {"effect": "scheduled", "reason": None,
-                "amount_idr": amount_idr}
-    return {"effect": "charge_now", "reason": None,
-            "amount_idr": amount_idr, "balance_after_idr": balance_idr - amount_idr}
+        return {"effect": "scheduled", "reason": None, "amount_idr": amount_idr}
+    return {
+        "effect": "charge_now",
+        "reason": None,
+        "amount_idr": amount_idr,
+        "balance_after_idr": balance_idr - amount_idr,
+    }
 
 
-def evaluate_upgrade(*, current_tier: str, target_tier: str,
-                     reason: str | None, status: str,
-                     config: BillingConfig | None = None) -> dict:
+def evaluate_upgrade(
+    *,
+    current_tier: str,
+    target_tier: str,
+    reason: str | None,
+    status: str,
+    config: BillingConfig | None = None,
+) -> dict:
     """Upgrade matrix. The *reason* is checked before the *status*.
 
     A blocking reason blocks the upgrade even when the status looks
@@ -311,18 +319,21 @@ def evaluate_upgrade(*, current_tier: str, target_tier: str,
         }
     return {
         "allowed": True,
-        "effect": "charge_now" if cfg.tier(target_tier).price_idr_per_month > 0
-        else "no_op",
+        "effect": "charge_now" if cfg.tier(target_tier).price_idr_per_month > 0 else "no_op",
         "reason": None,
         "current_tier": current_tier,
         "target_tier": target_tier,
     }
 
 
-def poll_settlement(check_status, *, interval_s: float = 2.0,
-                    timeout_s: float = 300.0,
-                    sleep=time.sleep,
-                    monotonic=time.monotonic) -> dict:
+def poll_settlement(
+    check_status,
+    *,
+    interval_s: float = 2.0,
+    timeout_s: float = 300.0,
+    sleep=time.sleep,
+    monotonic=time.monotonic,
+) -> dict:
     """Poll until a payment settles, fails, or times out.
 
     ``check_status`` is a zero-arg callable returning ``"pending"``,
@@ -339,14 +350,11 @@ def poll_settlement(check_status, *, interval_s: float = 2.0,
         raw = check_status()
         status = raw.get("status") if isinstance(raw, dict) else raw
         if status == "settled":
-            return {"outcome": "settled", "attempts": attempts,
-                    "framing": "confirmed"}
+            return {"outcome": "settled", "attempts": attempts, "framing": "confirmed"}
         if status == "failed":
-            return {"outcome": "failed", "attempts": attempts,
-                    "framing": "failed"}
+            return {"outcome": "failed", "attempts": attempts, "framing": "failed"}
         if monotonic() >= deadline:
-            return {"outcome": "timeout", "attempts": attempts,
-                    "framing": "check_balance_first"}
+            return {"outcome": "timeout", "attempts": attempts, "framing": "check_balance_first"}
         sleep(interval_s)
 
 
@@ -365,11 +373,14 @@ class StepUpFlow:
     def resume(self, *, scope_granted: bool) -> dict:
         if not scope_granted:
             self.state = "cancelled"
-            return {"resumed": False, "state": self.state,
-                    "action": self.action}
+            return {"resumed": False, "state": self.state, "action": self.action}
         self.state = "resumed"
-        return {"resumed": True, "state": self.state,
-                "action": self.action, "payload": dict(self.payload)}
+        return {
+            "resumed": True,
+            "state": self.state,
+            "action": self.action,
+            "payload": dict(self.payload),
+        }
 
 
 def portal_link(tier_id: str, *, config: BillingConfig | None = None) -> str:
@@ -395,8 +406,9 @@ class BillingClient:
     config: BillingConfig = field(default_factory=default_config)
     max_key_retries: int = 3
 
-    def start_checkout(self, *, amount_idr: int, description: str,
-                       idempotency_key: str | None = None):
+    def start_checkout(
+        self, *, amount_idr: int, description: str, idempotency_key: str | None = None
+    ):
         """Create a checkout, retrying a key conflict with a fresh key."""
         key = idempotency_key or new_idempotency_key()
         attempts = 0
@@ -404,33 +416,38 @@ class BillingClient:
             attempts += 1
             try:
                 checkout = self.provider.create_checkout(
-                    amount_idr=amount_idr, description=description,
-                    idempotency_key=key)
-                return {"checkout": checkout, "attempts": attempts,
-                        "idempotency_key": key}
+                    amount_idr=amount_idr, description=description, idempotency_key=key
+                )
+                return {"checkout": checkout, "attempts": attempts, "idempotency_key": key}
             except KeyConflictError:
                 if attempts > self.max_key_retries:
                     raise
                 key = new_idempotency_key()
 
-    def charge(self, *, amount_idr: int, description: str,
-               balance_idr: int, check_status,
-               sleep=time.sleep, monotonic=time.monotonic) -> dict:
+    def charge(
+        self,
+        *,
+        amount_idr: int,
+        description: str,
+        balance_idr: int,
+        check_status,
+        sleep=time.sleep,
+        monotonic=time.monotonic,
+    ) -> dict:
         """Preview, charge, then poll settlement.
 
         Returns the preview, the checkout, and the poll outcome. An
         unconfirmed outcome is framed "check_balance_first".
         """
-        preview = preview_charge_effect(
-            amount_idr=amount_idr, balance_idr=balance_idr)
+        preview = preview_charge_effect(amount_idr=amount_idr, balance_idr=balance_idr)
         if preview["effect"] in ("no_op", "blocked"):
             return {"preview": preview, "checkout": None, "poll": None}
-        started = self.start_checkout(
-            amount_idr=amount_idr, description=description)
+        started = self.start_checkout(amount_idr=amount_idr, description=description)
         poll = poll_settlement(
             check_status,
             interval_s=self.config.settlement_poll_interval_s,
             timeout_s=self.config.settlement_poll_timeout_s,
-            sleep=sleep, monotonic=monotonic)
-        return {"preview": preview, "checkout": started["checkout"],
-                "poll": poll}
+            sleep=sleep,
+            monotonic=monotonic,
+        )
+        return {"preview": preview, "checkout": started["checkout"], "poll": poll}

@@ -14,10 +14,9 @@
 from __future__ import annotations
 
 import hashlib
-import re
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from puspa.sandbox.allowlist import is_allowed
 
@@ -31,7 +30,7 @@ class EvidenceError(Exception):
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @dataclass
@@ -52,20 +51,35 @@ class EvidenceRecord:
     screenshot: str | None = None  # path blob, TTL 30 hari
 
     def summarize(self) -> dict:
-        return {"evidence_id": self.evidence_id, "claim": self.claim, "value": self.value,
-                "unit": self.unit, "source_url": self.source_url,
-                "time_take": self.time_take.isoformat(),
-                "text_excerpt": self.text_excerpt, "verdict": self.verdict}
+        return {
+            "evidence_id": self.evidence_id,
+            "claim": self.claim,
+            "value": self.value,
+            "unit": self.unit,
+            "source_url": self.source_url,
+            "time_take": self.time_take.isoformat(),
+            "text_excerpt": self.text_excerpt,
+            "verdict": self.verdict,
+        }
 
 
 def create_evidence_id() -> str:
     return f"bukti-{uuid.uuid4().hex[:8]}"
 
 
-def record_evidence(*, task_id: str, claim: str, value, unit: str,
-                source_url: str, text_excerpt: str, page: str = "",
-                reader_id: str, screenshot: str | None = None,
-                time_take: datetime | None = None) -> EvidenceRecord:
+def record_evidence(
+    *,
+    task_id: str,
+    claim: str,
+    value,
+    unit: str,
+    source_url: str,
+    text_excerpt: str,
+    page: str = "",
+    reader_id: str,
+    screenshot: str | None = None,
+    time_take: datetime | None = None,
+) -> EvidenceRecord:
     """Buat rekaman bukti (belum vonis — vonis diisi Pemeriksa).
 
     Validasi deterministik lapis 1: nilai bisa di-parse, satuan
@@ -81,11 +95,16 @@ def record_evidence(*, task_id: str, claim: str, value, unit: str,
         raise EvidenceError(f"domain sumber tidak di allowlist: {source_url!r}")
     excerpt = " ".join(str(text_excerpt).split())[:EXCERPT_MAX]
     return EvidenceRecord(
-        evidence_id=create_evidence_id(), claim=claim, value=value_f, unit=unit,
-        source_url=source_url, time_take=time_take or _now(),
+        evidence_id=create_evidence_id(),
+        claim=claim,
+        value=value_f,
+        unit=unit,
+        source_url=source_url,
+        time_take=time_take or _now(),
         text_excerpt=excerpt,
         page_hash=hashlib.sha256(page.encode("utf-8")).hexdigest() if page else "",
-        reader_id=reader_id, screenshot=screenshot,
+        reader_id=reader_id,
+        screenshot=screenshot,
     )
 
 
@@ -95,7 +114,9 @@ def save_evidence(dsn: str, evidence: EvidenceRecord, user_id: str, task_id: str
 
     import psycopg
 
-    dsn = dsn or os.environ.get("PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
+    dsn = dsn or os.environ.get(
+        "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql"
+    )
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -103,10 +124,22 @@ def save_evidence(dsn: str, evidence: EvidenceRecord, user_id: str, task_id: str
                 " sumber_url, time_take, text_excerpt, page_hash, screenshot,"
                 " reader_id, verifier_id, vonis)"
                 " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                (evidence.evidence_id, task_id, user_id, evidence.claim, evidence.value,
-                 evidence.unit, evidence.source_url, evidence.time_take,
-                 evidence.text_excerpt, evidence.page_hash, evidence.screenshot,
-                 evidence.reader_id, evidence.verifier_id, evidence.verdict),
+                (
+                    evidence.evidence_id,
+                    task_id,
+                    user_id,
+                    evidence.claim,
+                    evidence.value,
+                    evidence.unit,
+                    evidence.source_url,
+                    evidence.time_take,
+                    evidence.text_excerpt,
+                    evidence.page_hash,
+                    evidence.screenshot,
+                    evidence.reader_id,
+                    evidence.verifier_id,
+                    evidence.verdict,
+                ),
             )
         conn.commit()
 
@@ -122,8 +155,11 @@ def reliability_score(vonis_terakhir: list[str]) -> dict:
     if not recent:
         return {"percent_verified": None, "amount": 0, "downgrade_verdict": False}
     percent = sum(1 for v in recent if v == "Verified") / len(recent)
-    return {"percent_verified": round(percent * 100, 1), "amount": len(recent),
-            "downgrade_verdict": percent < AMBANG_KEANDALAN}
+    return {
+        "percent_verified": round(percent * 100, 1),
+        "amount": len(recent),
+        "downgrade_verdict": percent < AMBANG_KEANDALAN,
+    }
 
 
 def verdict_summary(evidence_list: list[EvidenceRecord]) -> str:

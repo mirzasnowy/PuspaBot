@@ -272,14 +272,12 @@ class ReproduceFirst:
         """
         if not self.reproduced:
             raise ReproduceFirstError(
-                "cannot mark fixed: no failing reproduction was "
-                "observed before the fix"
+                "cannot mark fixed: no failing reproduction was observed before the fix"
             )
         fix_reports = [entry for entry in self.history if entry["step"] == "fix_verification"]
         if not fix_reports or not fix_reports[-1]["passed"]:
             raise ReproduceFirstError(
-                "cannot mark fixed: the reproduction test does not "
-                "pass on the fixed program yet"
+                "cannot mark fixed: the reproduction test does not pass on the fixed program yet"
             )
         self.status = STATUS_FIXED
         self.reproduction.status = STATUS_FIXED

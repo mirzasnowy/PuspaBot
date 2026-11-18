@@ -20,9 +20,15 @@ def test_path_write_and_read_episodic(make_user, test_dsn):
 
 def test_search_prefers_most_similar(make_user, test_dsn):
     u = make_user()
-    episodic.record_episode(u["user_id"], "harga laptop asus vivobook", "user_message", dsn=test_dsn)
-    episodic.record_episode(u["user_id"], "tagihan listrik pln bulan ini", "user_message", dsn=test_dsn)
-    episodic.record_episode(u["user_id"], "laptop asus vivobook empat belas inci", "agent_message", dsn=test_dsn)
+    episodic.record_episode(
+        u["user_id"], "harga laptop asus vivobook", "user_message", dsn=test_dsn
+    )
+    episodic.record_episode(
+        u["user_id"], "tagihan listrik pln bulan ini", "user_message", dsn=test_dsn
+    )
+    episodic.record_episode(
+        u["user_id"], "laptop asus vivobook empat belas inci", "agent_message", dsn=test_dsn
+    )
     result = episodic.search_episodes(u["user_id"], "laptop asus vivobook", limit=3, dsn=test_dsn)
     assert "laptop" in result[0]["content"]
     assert "laptop" in result[1]["content"]
@@ -49,17 +55,15 @@ def test_embedding_deterministic_and_normalized():
 
 def test_index_pgvector_exists(test_dsn):
     """Index HNSW episodik benar-benar terpasang di Postgres."""
-    import psycopg
 
-    with psycopg.connect(test_dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT indexname FROM pg_indexes WHERE tablename = 'episodic' "
-                "AND indexname = 'idx_episodik_embedding'"
-            )
-            assert cur.fetchone() is not None
-            cur.execute(
-                "SELECT data_type FROM information_schema.columns "
-                "WHERE table_name = 'episodic' AND column_name = 'embedding'"
-            )
-            assert cur.fetchone()[0] == "USER-DEFINED"  # tipe vector
+    with psycopg.connect(test_dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT indexname FROM pg_indexes WHERE tablename = 'episodic' "
+            "AND indexname = 'idx_episodik_embedding'"
+        )
+        assert cur.fetchone() is not None
+        cur.execute(
+            "SELECT data_type FROM information_schema.columns "
+            "WHERE table_name = 'episodic' AND column_name = 'embedding'"
+        )
+        assert cur.fetchone()[0] == "USER-DEFINED"  # tipe vector

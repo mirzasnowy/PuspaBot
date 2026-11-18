@@ -18,7 +18,7 @@ Tiga lapis:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from puspa.evidence.evidence import EvidenceRecord
 from puspa.sandbox.allowlist import is_allowed
@@ -28,8 +28,13 @@ def _normalize_name(name: str) -> str:
     return " ".join(str(name).lower().split())
 
 
-def verify(evidence: EvidenceRecord, *, reread, model_decision=None,
-            other_readings: list[float] | None = None) -> EvidenceRecord:
+def verify(
+    evidence: EvidenceRecord,
+    *,
+    reread,
+    model_decision=None,
+    other_readings: list[float] | None = None,
+) -> EvidenceRecord:
     """Periksa satu rekaman bukti; isi `id_pemeriksa` + `vonis`.
 
     `baca_ulang(sumber_url) -> dict` dengan kunci `nilai` (float) dan
@@ -63,8 +68,11 @@ def verify(evidence: EvidenceRecord, *, reread, model_decision=None,
     claim_name = evidence.claim
     reread_name = reread_result.get("name", "")
     if claim_name and reread_name:
-        same = (model_decision(claim_name, reread_name) if model_decision
-                else _normalize_name(claim_name) == _normalize_name(reread_name))
+        same = (
+            model_decision(claim_name, reread_name)
+            if model_decision
+            else _normalize_name(claim_name) == _normalize_name(reread_name)
+        )
         if not same:
             evidence.verdict = "Cannot be determined"
             return evidence
@@ -76,7 +84,9 @@ def verify(evidence: EvidenceRecord, *, reread, model_decision=None,
         reread_time = reread_result.get("time_take")
         if isinstance(reread_time, datetime) and reread_time > evidence.time_take:
             evidence.verdict = "Uncertain"
-        elif reread_value and abs(reread_value - evidence.value) / max(abs(reread_value), 1) <= 0.01:
+        elif (
+            reread_value and abs(reread_value - evidence.value) / max(abs(reread_value), 1) <= 0.01
+        ):
             evidence.verdict = "Verified"
         else:
             evidence.verdict = "Uncertain"

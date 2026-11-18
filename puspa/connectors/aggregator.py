@@ -20,11 +20,11 @@ from abc import ABC, abstractmethod
 from .allowlist import ToolAllowlist
 
 __all__ = [
+    "FAKE_BROKER_SERVICES",
     "Broker",
     "BrokerError",
     "FakeBroker",
     "ProjectSession",
-    "FAKE_BROKER_SERVICES",
 ]
 
 #: Services and tools the fake broker advertises (deterministic).
@@ -144,12 +144,9 @@ class ProjectSession:
 
     def call_tool(self, tool_name: str, arguments: dict) -> dict:
         """Call one advertised tool. Refuses non-advertised tools."""
-        advertised_names = {
-            tool["name"] for tool in self.advertised_tools()
-        }
+        advertised_names = {tool["name"] for tool in self.advertised_tools()}
         if tool_name not in advertised_names:
             raise BrokerError(
-                f"tool {tool_name!r} is not advertised to the engine "
-                "for this project session"
+                f"tool {tool_name!r} is not advertised to the engine for this project session"
             )
         return self.broker.call_tool(tool_name, arguments)

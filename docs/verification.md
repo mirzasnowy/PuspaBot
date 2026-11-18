@@ -104,14 +104,38 @@ see the test for the full list.
 
 ## CI
 
-`.github/workflows/ci.yml` is the first CI workflow: the full suite
-SOLO on Postgres 16 + pgvector, plus a dependency-light lane that runs
-the ratchet and drift tests without a database, behind one aggregate
-gate (`all-checks-pass`) that is the single required check. Lint and
-typecheck are **not** in CI yet: neither ruff nor mypy is installed or
-pinned in this repo, and inventing a tool the repo does not use would
-make CI fail on its first run. Adding one is a follow-up: pin the tool
-in `requirements.txt`, then add the step.
+`.github/workflows/ci.yml` runs one workflow with per-area lanes behind
+one aggregate gate (`all-checks-pass`) that is the single required
+check. A `changes` job (detect-changes) runs first and each lane runs
+only when something changed in its area; a push that changes Python
+code, dependencies, or the workflow itself runs every lane, while a
+docs-only push runs only the checks lane. A skipped lane is fine; only
+a failure or a cancellation fails the gate.
+
+Lanes:
+
+- `test` — the full suite SOLO on Postgres 16 + pgvector.
+- `checks` — the file-size ratchet and the docs-drift test, no database.
+- `lint` — `ruff check puspa tests demo` (rules in `pyproject.toml`
+  `[tool.ruff.lint]`).
+- `format` — `ruff format --check puspa tests demo` (style in
+  `pyproject.toml` `[tool.ruff]`).
+- `typecheck` — `python -m mypy puspa tests demo` (config in
+  `pyproject.toml` `[tool.mypy]`).
+
+Ruff and mypy are pinned in `requirements-dev.txt` (dev tools only,
+never imported by Puspa code). The lint and format lanes install only
+that file (fast: no torch); the typecheck lane installs
+`requirements.txt` too, because mypy needs the runtime dependencies to
+resolve imports. The same three commands run locally from the repo root
+with the venv (`.venv/bin/ruff check ...`, `.venv/bin/ruff format
+--check ...`, `.venv/bin/python -m mypy ...`); a lane that fails in CI
+must fail the same way locally before it is pushed.
+
+The ruff selection is explicit in `pyproject.toml` and curated: the
+families it does not enable (blind-except, tryceratops, bandit) are
+deliberate resilience patterns in this codebase, and enabling one is a
+follow-up task with its reason recorded in the config comments.
 
 ## License — pending decision
 

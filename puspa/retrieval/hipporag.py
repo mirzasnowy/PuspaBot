@@ -33,6 +33,7 @@ small score and ordering, not zero, is what matters.
 from __future__ import annotations
 
 import re
+from typing import Any, Protocol
 
 from puspa.memory.embeddings import HashEmbedding, cosine_similarity
 from puspa.memory.episodic import extract_concepts, extract_entities
@@ -47,9 +48,21 @@ from .triple_filter import (
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 
-def personalized_pagerank(graph: KnowledgeGraph, seeds,
-                          damping: float = 0.85, max_iter: int = 100,
-                          tol: float = 1e-6) -> dict:
+class _PageRankGraph(Protocol):
+    """Apa pun yang PageRank butuhkan: nama node + adjacency.
+
+    Dipenuhi ``KnowledgeGraph`` maupun ``_FilteredGraph`` (tampilan
+    tipis dengan adjacency pengganti).
+    """
+
+    nodes: dict[str, Any]
+
+    def adjacency(self) -> dict: ...
+
+
+def personalized_pagerank(
+    graph: _PageRankGraph, seeds, damping: float = 0.85, max_iter: int = 100, tol: float = 1e-6
+) -> dict:
     """Personalized PageRank over the graph, power iteration.
 
     ``seeds`` are node names, or a mapping of node name to
@@ -74,8 +87,7 @@ def personalized_pagerank(graph: KnowledgeGraph, seeds,
         }
     else:
         weighted = {
-            normalize_entity_name(s): 1.0 for s in seeds or []
-            if normalize_entity_name(s) in index
+            normalize_entity_name(s): 1.0 for s in seeds or [] if normalize_entity_name(s) in index
         }
     if not weighted:
         return {name: 0.0 for name in nodes}
@@ -133,10 +145,7 @@ def find_seed_nodes(graph: KnowledgeGraph, query: str) -> list:
         if matched:
             concept.append((len(matched) / len(tokens), name))
     concept.sort(key=lambda item: (-item[0], item[1]))
-    return (
-        sorted(set(exact)) + sorted(set(partial))
-        + [name for _, name in concept]
-    )
+    return sorted(set(exact)) + sorted(set(partial)) + [name for _, name in concept]
 
 
 def seed_weights(graph: KnowledgeGraph, query: str) -> dict:
@@ -199,10 +208,16 @@ class HippoRAGRetriever:
     last retrieval are kept on ``last_filter_decisions``.
     """
 
-    def __init__(self, graph: KnowledgeGraph, embedder=None,
-                 damping: float = 0.85, top_nodes: int = 10,
-                 weights=(0.5, 0.3, 0.2), triple_filter=None,
-                 llm_complete=None):
+    def __init__(
+        self,
+        graph: KnowledgeGraph,
+        embedder=None,
+        damping: float = 0.85,
+        top_nodes: int = 10,
+        weights=(0.5, 0.3, 0.2),
+        triple_filter=None,
+        llm_complete=None,
+    ):
         self.graph = graph
         self.embedder = embedder or HashEmbedding()
         self.damping = damping
@@ -211,8 +226,7 @@ class HippoRAGRetriever:
             raise ValueError("weights must be (graph, vector, lexical)")
         self.weights = weights
         if llm_complete is not None and triple_filter is not None:
-            raise ValueError(
-                "pass only one of triple_filter and llm_complete")
+            raise ValueError("pass only one of triple_filter and llm_complete")
         if isinstance(llm_complete, str):
             # "default": explicit opt-in to the router's live
             # completion; resolved lazily so importing this module
@@ -220,6 +234,9 @@ class HippoRAGRetriever:
             from puspa.router.complete import resolve_llm_complete
 
             llm_complete = resolve_llm_complete(llm_complete)
+        # Filter bisa berupa judge LLM atau aturan deterministik,
+        # tergantung apa yang disuntikkan pemanggil.
+        self.triple_filter: LLMTripleJudge | DeterministicTripleFilter
         if llm_complete is not None:
             self.triple_filter = LLMTripleJudge(llm_complete)
         elif triple_filter is not None:
@@ -252,8 +269,8 @@ class HippoRAGRetriever:
             near_seeds |= full.get(seed, set())
         triples = sorted(self.graph.edges)
         decisions = self.triple_filter.filter(
-            query, triples, seeds=near_seeds,
-            query_concepts=query_concepts)
+            query, triples, seeds=near_seeds, query_concepts=query_concepts
+        )
         self.last_filter_decisions = list(decisions)
         for decision in decisions:
             if not decision.keep:
@@ -288,13 +305,10 @@ class HippoRAGRetriever:
         query_concepts = extract_concepts(query)
         query_vec = self.embedder.embed(query)
         if not seeds:
-            return self._vector_fallback(
-                query, query_vec, query_concepts, top_k, reranker)
-        filtered = self._filtered_adjacency(
-            query, query_concepts, set(seeds))
+            return self._vector_fallback(query, query_vec, query_concepts, top_k, reranker)
+        filtered = self._filtered_adjacency(query, query_concepts, set(seeds))
         proxy = _FilteredGraph(self.graph, filtered)
-        scores = personalized_pagerank(
-            proxy, weights, damping=self.damping)
+        scores = personalized_pagerank(proxy, weights, damping=self.damping)
         ranked_nodes = sorted(scores, key=lambda n: -scores[n])
         # Only nodes the walk actually reached carry signal; zero
         # score nodes would enter on an alphabetical tie-break and
@@ -305,16 +319,27 @@ class HippoRAGRetriever:
         # the graph: they compete on vector and lexical score
         # alone, with a zero graph score.
         passage_ids += [
-            pid for pid, entities in self.graph.passage_entities.items()
+            pid
+            for pid, entities in self.graph.passage_entities.items()
             if not entities and pid not in passage_ids
         ]
         distances = hop_distances(filtered, seeds)
         return self._rank_passages(
-            query, passage_ids, scores, query_vec, query_concepts,
-            top_k, reranker, seeds, distances)
+            query, passage_ids, scores, query_vec, query_concepts, top_k, reranker, seeds, distances
+        )
 
-    def _rank_passages(self, query, passage_ids, node_scores, query_vec,
-                       query_concepts, top_k, reranker, seeds, distances):
+    def _rank_passages(
+        self,
+        query,
+        passage_ids,
+        node_scores,
+        query_vec,
+        query_concepts,
+        top_k,
+        reranker,
+        seeds,
+        distances,
+    ):
         weight_graph, weight_vector, weight_lexical = self.weights
         results = []
         for passage_id in passage_ids:
@@ -324,69 +349,66 @@ class HippoRAGRetriever:
             # the passage's linked nodes. A passage touching several
             # walked-to nodes outranks one touching a single node.
             graph_score = sum(node_scores.get(n, 0.0) for n in linked)
-            vector_score = max(
-                0.0, cosine_similarity(
-                    query_vec, self.embedder.embed(text)))
+            vector_score = max(0.0, cosine_similarity(query_vec, self.embedder.embed(text)))
             lexical_score = _lexical_overlap(query_concepts, text)
             score = (
                 weight_graph * graph_score
                 + weight_vector * vector_score
                 + weight_lexical * lexical_score
             )
-            hops = min(
-                (distances.get(n, 99) for n in linked), default=99)
-            results.append({
-                "passage_id": passage_id,
-                "text": text,
-                "score": score,
-                "graph_score": graph_score,
-                "vector_score": vector_score,
-                "lexical_score": lexical_score,
-                "hops": hops,
-                "seed_nodes": list(seeds),
-                "evidence_id": passage_id,
-            })
+            hops = min((distances.get(n, 99) for n in linked), default=99)
+            results.append(
+                {
+                    "passage_id": passage_id,
+                    "text": text,
+                    "score": score,
+                    "graph_score": graph_score,
+                    "vector_score": vector_score,
+                    "lexical_score": lexical_score,
+                    "hops": hops,
+                    "seed_nodes": list(seeds),
+                    "evidence_id": passage_id,
+                }
+            )
         results.sort(key=lambda r: (-r["score"], r["passage_id"]))
         if reranker is not None:
             original = {r["passage_id"]: r["score"] for r in results}
-            graph_distances = {
-                r["passage_id"]: r["hops"] for r in results}
+            graph_distances = {r["passage_id"]: r["hops"] for r in results}
             results = reranker.rerank(
-                query, results, top_n=top_k * 2,
-                graph_distances=graph_distances)
+                query, results, top_n=top_k * 2, graph_distances=graph_distances
+            )
             for result in results:
                 result["score"] = 0.5 * original[result["passage_id"]] + (
-                    0.5 * result.get(
-                        "rerank_score", original[result["passage_id"]]))
+                    0.5 * result.get("rerank_score", original[result["passage_id"]])
+                )
             results.sort(key=lambda r: (-r["score"], r["passage_id"]))
         return results[:top_k]
 
-    def _vector_fallback(self, query, query_vec, query_concepts,
-                         top_k, reranker):
+    def _vector_fallback(self, query, query_vec, query_concepts, top_k, reranker):
         results = []
         for passage_id, text in sorted(self.graph.passages.items()):
-            vector_score = max(
-                0.0, cosine_similarity(
-                    query_vec, self.embedder.embed(text)))
+            vector_score = max(0.0, cosine_similarity(query_vec, self.embedder.embed(text)))
             lexical_score = _lexical_overlap(query_concepts, text)
-            results.append({
-                "passage_id": passage_id,
-                "text": text,
-                "score": 0.7 * vector_score + 0.3 * lexical_score,
-                "graph_score": 0.0,
-                "vector_score": vector_score,
-                "lexical_score": lexical_score,
-                "seed_nodes": [],
-                "evidence_id": passage_id,
-            })
+            results.append(
+                {
+                    "passage_id": passage_id,
+                    "text": text,
+                    "score": 0.7 * vector_score + 0.3 * lexical_score,
+                    "graph_score": 0.0,
+                    "vector_score": vector_score,
+                    "lexical_score": lexical_score,
+                    "seed_nodes": [],
+                    "evidence_id": passage_id,
+                }
+            )
         results.sort(key=lambda r: (-r["score"], r["passage_id"]))
         if reranker is not None:
             original = {r["passage_id"]: r["score"] for r in results}
             results = reranker.rerank(query, results, top_n=top_k * 2)
             for result in results:
                 result["score"] = 0.5 * original[result["passage_id"]] + (
-                    0.5 * result.get(
-                        "rerank_score", original[result["passage_id"]]))
+                    0.5 * result.get("rerank_score", original[result["passage_id"]])
+                )
             results.sort(key=lambda r: (-r["score"], r["passage_id"]))
         return results[:top_k]
 

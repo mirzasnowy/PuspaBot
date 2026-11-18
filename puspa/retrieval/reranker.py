@@ -133,26 +133,16 @@ class DeterministicReranker:
         """Score one passage, returning the total plus each signal."""
         query_concepts = extract_concepts(query)
         tokens = set(_TOKEN_RE.findall(text.lower()))
-        lexical = (
-            len(set(query_concepts) & tokens) / len(query_concepts)
-            if query_concepts else 0.0
-        )
-        vector = max(0.0, cosine_similarity(
-            self.embedder.embed(query), self.embedder.embed(text)))
+        lexical = len(set(query_concepts) & tokens) / len(query_concepts) if query_concepts else 0.0
+        vector = max(0.0, cosine_similarity(self.embedder.embed(query), self.embedder.embed(text)))
         graph = 0.0
         if graph_distance is not None:
             graph = 1.0 / (1.0 + max(0, graph_distance))
         weight_lexical, weight_vector, weight_graph = self.weights
-        total = (
-            weight_lexical * lexical
-            + weight_vector * vector
-            + weight_graph * graph
-        )
-        return {"score": total, "lexical": lexical,
-                "vector": vector, "graph": graph}
+        total = weight_lexical * lexical + weight_vector * vector + weight_graph * graph
+        return {"score": total, "lexical": lexical, "vector": vector, "graph": graph}
 
-    def rerank(self, query: str, candidates, top_n=None,
-               graph_distances=None) -> list:
+    def rerank(self, query: str, candidates, top_n=None, graph_distances=None) -> list:
         """Re-order candidates by reranker score, best first.
 
         Each returned candidate is a copy with ``rerank_score``
@@ -165,9 +155,7 @@ class DeterministicReranker:
         scored = []
         for candidate in candidates or []:
             text = _candidate_text(candidate)
-            detail = self.score(
-                query, text,
-                graph_distance=distances.get(_candidate_id(candidate)))
+            detail = self.score(query, text, graph_distance=distances.get(_candidate_id(candidate)))
             entry = dict(candidate)
             entry["rerank_score"] = detail["score"]
             entry["rerank_signals"] = detail
@@ -193,8 +181,7 @@ class CrossEncoderReranker:
     model call per passage.
     """
 
-    def __init__(self, score_fn, score_many_fn=None, model=None,
-                 model_name=None):
+    def __init__(self, score_fn, score_many_fn=None, model=None, model_name=None):
         if not callable(score_fn):
             raise ValueError("score_fn must be a callable")
         self.score_fn = score_fn
@@ -204,8 +191,7 @@ class CrossEncoderReranker:
         self.model_name = model_name
 
     @classmethod
-    def from_sentence_transformers(
-            cls, model_name: str = DEFAULT_CROSS_ENCODER_MODEL):
+    def from_sentence_transformers(cls, model_name: str = DEFAULT_CROSS_ENCODER_MODEL):
         """Build a cross-encoder reranker through sentence-transformers.
 
         Loads the model once per process: a second call with the
@@ -227,7 +213,7 @@ class CrossEncoderReranker:
                 ) from exc
             try:
                 model = CrossEncoder(model_name, device="cpu")
-            except Exception as exc:  # noqa: BLE001 - any load failure
+            except Exception as exc:
                 raise RerankerUnavailable(
                     f"could not load cross-encoder {model_name!r}: {exc}"
                 ) from exc
@@ -237,16 +223,17 @@ class CrossEncoderReranker:
             return float(model.predict([(query, text)])[0])
 
         def _score_many(query, texts):
-            return [float(score) for score in
-                    model.predict([(query, text) for text in texts])]
+            return [float(score) for score in model.predict([(query, text) for text in texts])]
 
-        return cls(_score, score_many_fn=_score_many,
-                   model=model, model_name=model_name)
+        return cls(_score, score_many_fn=_score_many, model=model, model_name=model_name)
 
     @classmethod
     def from_flagembedding(
-            cls, model_name: str = DEFAULT_BGE_RERANKER_MODEL,
-            use_fp16: bool = False, normalize: bool = False):
+        cls,
+        model_name: str = DEFAULT_BGE_RERANKER_MODEL,
+        use_fp16: bool = False,
+        normalize: bool = False,
+    ):
         """Build a cross-encoder reranker through FlagEmbedding.
 
         Loads ``BAAI/bge-reranker-v2-m3`` (multilingual,
@@ -285,9 +272,9 @@ class CrossEncoderReranker:
                 ) from exc
             try:
                 model = FlagReranker(
-                    model_name, use_fp16=use_fp16,
-                    devices=["cpu"], normalize=normalize)
-            except Exception as exc:  # noqa: BLE001 - any load failure
+                    model_name, use_fp16=use_fp16, devices=["cpu"], normalize=normalize
+                )
+            except Exception as exc:
                 raise RerankerUnavailable(
                     f"could not load cross-encoder {model_name!r}: {exc}"
                 ) from exc
@@ -297,11 +284,11 @@ class CrossEncoderReranker:
             return float(model.compute_score([query, text])[0])
 
         def _score_many(query, texts):
-            return [float(score) for score in model.compute_score(
-                [(query, text) for text in texts])]
+            return [
+                float(score) for score in model.compute_score([(query, text) for text in texts])
+            ]
 
-        return cls(_score, score_many_fn=_score_many,
-                   model=model, model_name=model_name)
+        return cls(_score, score_many_fn=_score_many, model=model, model_name=model_name)
 
     @classmethod
     def from_fastembed(cls, model_name: str = "BAAI/bge-reranker-v2-m3"):
@@ -314,7 +301,7 @@ class CrossEncoderReranker:
         sentence-transformers) named.
         """
         try:
-            from fastembed import TextReranker
+            import fastembed
         except ImportError as exc:
             raise RerankerUnavailable(
                 "fastembed 0.9.1 ships no reranker (no TextReranker); "
@@ -322,9 +309,21 @@ class CrossEncoderReranker:
                 "(BAAI/bge-reranker-v2-m3) or "
                 "from_sentence_transformers instead"
             ) from exc
+        # fastembed 0.9.1 (dicek di venv ini) tidak punya
+        # TextReranker; getattr dipakai supaya mypy tidak menuntut
+        # atribut yang memang tidak ada, dan jalur ini tetap
+        # hidup bila fastembed nanti menambahkannya.
+        reranker_cls = getattr(fastembed, "TextReranker", None)
+        if reranker_cls is None:
+            raise RerankerUnavailable(
+                "fastembed 0.9.1 ships no reranker (no TextReranker); "
+                "use CrossEncoderReranker.from_flagembedding "
+                "(BAAI/bge-reranker-v2-m3) or "
+                "from_sentence_transformers instead"
+            )
         try:
-            model = TextReranker(model_name)
-        except Exception as exc:  # noqa: BLE001 - any load failure
+            model = reranker_cls(model_name)
+        except Exception as exc:
             raise RerankerUnavailable(
                 f"could not load cross-encoder {model_name!r}: {exc}"
             ) from exc
@@ -336,11 +335,14 @@ class CrossEncoderReranker:
 
     def score(self, query: str, text: str, graph_distance=None) -> dict:
         """Score one passage with the cross-encoder."""
-        return {"score": float(self.score_fn(query, text)),
-                "lexical": 0.0, "vector": 0.0, "graph": 0.0}
+        return {
+            "score": float(self.score_fn(query, text)),
+            "lexical": 0.0,
+            "vector": 0.0,
+            "graph": 0.0,
+        }
 
-    def rerank(self, query: str, candidates, top_n=None,
-               graph_distances=None) -> list:
+    def rerank(self, query: str, candidates, top_n=None, graph_distances=None) -> list:
         """Re-order candidates by cross-encoder score, best first.
 
         Scores the shortlist in one batched model call when a
@@ -350,11 +352,9 @@ class CrossEncoderReranker:
             raise ValueError("query must be a non-empty string")
         candidates = list(candidates or [])
         if self.score_many_fn is not None:
-            scores = self.score_many_fn(
-                query, [_candidate_text(c) for c in candidates])
+            scores = self.score_many_fn(query, [_candidate_text(c) for c in candidates])
         else:
-            scores = [float(self.score_fn(query, _candidate_text(c)))
-                      for c in candidates]
+            scores = [float(self.score_fn(query, _candidate_text(c))) for c in candidates]
         scored = []
         for candidate, score in zip(candidates, scores):
             entry = dict(candidate)
@@ -367,8 +367,7 @@ class CrossEncoderReranker:
         return scored
 
 
-def make_reranker(kind: str = "deterministic",
-                  backend: str = "bge", **kwargs):
+def make_reranker(kind: str = "deterministic", backend: str = "bge", **kwargs):
     """Build a reranker by kind: "deterministic" or "cross_encoder".
 
     "cross_encoder" builds a real cross-encoder through the
@@ -397,14 +396,12 @@ def make_reranker(kind: str = "deterministic",
         return DeterministicReranker(**kwargs)
     if kind == "cross_encoder":
         if backend == "sentence_transformers":
-            return CrossEncoderReranker.from_sentence_transformers(
-                **kwargs)
+            return CrossEncoderReranker.from_sentence_transformers(**kwargs)
         if backend in ("bge", "flagembedding"):
             return CrossEncoderReranker.from_flagembedding(**kwargs)
         if backend == "fastembed":
             return CrossEncoderReranker.from_fastembed(**kwargs)
-        raise ValueError(
-            f"unknown cross-encoder backend: {backend!r}")
+        raise ValueError(f"unknown cross-encoder backend: {backend!r}")
     raise ValueError(f"unknown reranker kind: {kind!r}")
 
 
@@ -438,22 +435,28 @@ def build_decompose_prompt(query: str, max_subquestions: int = 4) -> str:
     that needs no split comes back as a single-element list
     holding the question itself. The reply must be JSON only.
     """
-    return "\n".join([
-        "Break the question below into sub-questions, one per "
-        "independent part of what it asks. Each sub-question "
-        "must stand on its own: repeat the names and shared "
-        "context from the original question in every part, so "
-        "each part can be answered without seeing the others. "
-        "Keep each part short and focused on one thing. A "
-        "question that asks only one thing needs no split: "
-        "return it unchanged as the only sub-question.",
-        "",
-        f"Question: {query}",
-        "",
-        "Reply with JSON only, in this shape: "
-        "{\"subquestions\": [\"...\", ...]}. Return at most "
-        f"{max_subquestions} sub-questions.",
-    ])
+    return "\n".join(
+        [
+            (
+                "Break the question below into sub-questions, one per "
+                "independent part of what it asks. Each sub-question "
+                "must stand on its own: repeat the names and shared "
+                "context from the original question in every part, so "
+                "each part can be answered without seeing the others. "
+                "Keep each part short and focused on one thing. A "
+                "question that asks only one thing needs no split: "
+                "return it unchanged as the only sub-question."
+            ),
+            "",
+            f"Question: {query}",
+            "",
+            (
+                "Reply with JSON only, in this shape: "
+                '{"subquestions": ["...", ...]}. Return at most '
+                f"{max_subquestions} sub-questions."
+            ),
+        ]
+    )
 
 
 def parse_decompose_reply(reply: str) -> list:
@@ -471,22 +474,16 @@ def parse_decompose_reply(reply: str) -> list:
     try:
         parsed = json.loads(reply)
     except ValueError as exc:
-        raise DecomposerError(
-            "decomposer reply is not valid JSON") from exc
+        raise DecomposerError("decomposer reply is not valid JSON") from exc
     if not isinstance(parsed, dict):
-        raise DecomposerError(
-            "decomposer reply must be a JSON object")
+        raise DecomposerError("decomposer reply must be a JSON object")
     raw = parsed.get("subquestions")
     if not isinstance(raw, list) or not raw:
-        raise DecomposerError(
-            "decomposer reply must carry a non-empty "
-            "subquestions list")
+        raise DecomposerError("decomposer reply must carry a non-empty subquestions list")
     subquestions = []
     for item in raw:
         if not isinstance(item, str) or item.strip() == "":
-            raise DecomposerError(
-                "every decomposer sub-question must be a "
-                "non-empty string")
+            raise DecomposerError("every decomposer sub-question must be a non-empty string")
         subquestions.append(item.strip())
     return subquestions
 
@@ -507,18 +504,14 @@ def _dedupe_subquestions(subquestions) -> list:
         if not candidate:
             continue
         folded = candidate.lower().rstrip("?")
-        if any(folded == kept_sub.lower().rstrip("?")
-               for kept_sub in kept):
+        if any(folded == kept_sub.lower().rstrip("?") for kept_sub in kept):
             continue
-        if any(folded in kept_sub.lower().rstrip("?")
-               for kept_sub in kept):
+        if any(folded in kept_sub.lower().rstrip("?") for kept_sub in kept):
             continue
-        kept = [kept_sub for kept_sub in kept
-                if kept_sub.lower().rstrip("?") not in folded]
+        kept = [kept_sub for kept_sub in kept if kept_sub.lower().rstrip("?") not in folded]
         kept.append(candidate)
     if not kept:
-        raise DecomposerError(
-            "decomposer returned no usable sub-question")
+        raise DecomposerError("decomposer returned no usable sub-question")
     return kept
 
 
@@ -541,8 +534,7 @@ class RegexQueryDecomposer:
         self.max_subquestions = max_subquestions
 
     def decompose(self, query: str) -> Decomposition:
-        subquestions = _dedupe_subquestions(
-            decompose_query(query))[:self.max_subquestions]
+        subquestions = _dedupe_subquestions(decompose_query(query))[: self.max_subquestions]
         return Decomposition(subquestions=subquestions, source="regex")
 
 
@@ -582,15 +574,12 @@ class LLMQueryDecomposer:
             raise ValueError("query must be a non-empty string")
         try:
             self.calls += 1
-            reply = self.complete(build_decompose_prompt(
-                query, self.max_subquestions))
+            reply = self.complete(build_decompose_prompt(query, self.max_subquestions))
         except DecomposerError:
             raise
-        except Exception as exc:  # noqa: BLE001 - any LLM failure
-            raise DecomposerError(
-                f"LLM decomposer call failed: {exc}") from exc
-        subquestions = _dedupe_subquestions(
-            parse_decompose_reply(reply))[:self.max_subquestions]
+        except Exception as exc:
+            raise DecomposerError(f"LLM decomposer call failed: {exc}") from exc
+        subquestions = _dedupe_subquestions(parse_decompose_reply(reply))[: self.max_subquestions]
         return Decomposition(subquestions=subquestions, source="llm")
 
 
@@ -613,10 +602,14 @@ def decompose_query(query: str) -> list:
     return parts or [query]
 
 
-def retrieve_with_decomposition(retrieve_fn, query: str, top_k: int = 5,
-                                max_subquestions: int = 4,
-                                decomposer=None,
-                                llm_complete=None) -> list:
+def retrieve_with_decomposition(
+    retrieve_fn,
+    query: str,
+    top_k: int = 5,
+    max_subquestions: int = 4,
+    decomposer=None,
+    llm_complete=None,
+) -> list:
     """Retrieve per sub-question, merge with reciprocal rank fusion.
 
     ``retrieve_fn(sub_query, top_k)`` returns ranked dicts with
@@ -644,8 +637,7 @@ def retrieve_with_decomposition(retrieve_fn, query: str, top_k: int = 5,
     if max_subquestions < 1:
         raise ValueError("max_subquestions must be at least 1")
     if decomposer is not None and llm_complete is not None:
-        raise ValueError(
-            "pass only one of decomposer and llm_complete")
+        raise ValueError("pass only one of decomposer and llm_complete")
     if isinstance(llm_complete, str):
         # "default": explicit opt-in to the router's live
         # completion; resolved lazily so importing this module
@@ -654,28 +646,23 @@ def retrieve_with_decomposition(retrieve_fn, query: str, top_k: int = 5,
 
         llm_complete = resolve_llm_complete(llm_complete)
     if llm_complete is not None:
-        decomposer = LLMQueryDecomposer(
-            llm_complete, max_subquestions=max_subquestions)
+        decomposer = LLMQueryDecomposer(llm_complete, max_subquestions=max_subquestions)
     elif decomposer is None:
-        decomposer = RegexQueryDecomposer(
-            max_subquestions=max_subquestions)
+        decomposer = RegexQueryDecomposer(max_subquestions=max_subquestions)
     decomposition = decomposer.decompose(query)
     subquestions = decomposition.subquestions[:max_subquestions]
     if len(subquestions) <= 1:
         return retrieve_fn(query, top_k=top_k)
     fused: dict[str, dict] = {}
     for sub in subquestions:
-        for rank, result in enumerate(
-                retrieve_fn(sub, top_k=top_k)):
+        for rank, result in enumerate(retrieve_fn(sub, top_k=top_k)):
             passage_id = _candidate_id(result)
             if not passage_id:
                 continue
             entry = fused.setdefault(passage_id, dict(result))
-            entry["rrf_score"] = entry.get("rrf_score", 0.0) + (
-                1.0 / (60.0 + rank))
+            entry["rrf_score"] = entry.get("rrf_score", 0.0) + (1.0 / (60.0 + rank))
             entry.setdefault("subquestions", []).append(sub)
-    merged = sorted(
-        fused.values(), key=lambda r: (-r["rrf_score"], _candidate_id(r)))
+    merged = sorted(fused.values(), key=lambda r: (-r["rrf_score"], _candidate_id(r)))
     for entry in merged:
         entry["score"] = entry["rrf_score"]
         entry["decomposition_source"] = decomposition.source

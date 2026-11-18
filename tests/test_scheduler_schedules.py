@@ -3,7 +3,7 @@
 In-memory: no database, no network.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -18,41 +18,46 @@ from puspa.scheduler.schedules import (
     validate_schedule,
 )
 
-NOW = datetime(2026, 11, 18, 10, 0, tzinfo=timezone.utc)  # Wednesday
+NOW = datetime(2026, 11, 18, 10, 0, tzinfo=UTC)  # Wednesday
 
 
 # --- validation -----------------------------------------------------------
 
+
 def test_valid_schedules_pass():
-    assert validate_schedule({"type": "once", "at": "2026-11-20T07:00:00+00:00",
-                              "timezone": "Asia/Jakarta"}) == []
-    assert validate_schedule({"type": "daily", "time": "07:00",
-                              "weekdays": [0, 2, 4],
-                              "timezone": "UTC"}) == []
+    assert (
+        validate_schedule(
+            {"type": "once", "at": "2026-11-20T07:00:00+00:00", "timezone": "Asia/Jakarta"}
+        )
+        == []
+    )
+    assert (
+        validate_schedule(
+            {"type": "daily", "time": "07:00", "weekdays": [0, 2, 4], "timezone": "UTC"}
+        )
+        == []
+    )
     assert validate_schedule({"type": "daily", "time": "07:00"}) == []
-    assert validate_schedule({"type": "interval", "seconds": 3600,
-                              "timezone": "UTC"}) == []
-    assert validate_schedule({"type": "cron", "expression": "0 9 * * 1-5",
-                              "timezone": "UTC"}) == []
+    assert validate_schedule({"type": "interval", "seconds": 3600, "timezone": "UTC"}) == []
+    assert validate_schedule({"type": "cron", "expression": "0 9 * * 1-5", "timezone": "UTC"}) == []
 
 
 def test_unknown_type_and_timezone_rejected():
     assert validate_schedule({"type": "weekly"}) != []
-    assert any("timezone" in p for p in validate_schedule(
-        {"type": "daily", "time": "07:00", "timezone": "Mars/Olympus"}))
+    assert any(
+        "timezone" in p
+        for p in validate_schedule({"type": "daily", "time": "07:00", "timezone": "Mars/Olympus"})
+    )
     # Empty timezone falls back to UTC (reader default), not an error.
-    assert validate_schedule({"type": "daily", "time": "07:00",
-                              "timezone": ""}) == []
+    assert validate_schedule({"type": "daily", "time": "07:00", "timezone": ""}) == []
 
 
 def test_field_problems_reported():
     assert validate_schedule({"type": "once", "at": "tomorrow"}) != []
     assert validate_schedule({"type": "once", "at": "2026-11-20T07:00:00"}) != []
     assert validate_schedule({"type": "daily", "time": "7:00"}) != []
-    assert validate_schedule({"type": "daily", "time": "07:00",
-                              "weekdays": [7]}) != []
-    assert validate_schedule({"type": "daily", "time": "07:00",
-                              "weekdays": [1, 1]}) != []
+    assert validate_schedule({"type": "daily", "time": "07:00", "weekdays": [7]}) != []
+    assert validate_schedule({"type": "daily", "time": "07:00", "weekdays": [1, 1]}) != []
     assert validate_schedule({"type": "interval", "seconds": 30}) != []
     assert validate_schedule({"type": "interval", "seconds": "3600"}) != []
     assert validate_schedule({"type": "cron", "expression": "0 9 * *"}) != []
@@ -69,6 +74,7 @@ def test_is_valid_timezone():
 
 # --- legacy records ---------------------------------------------------------
 
+
 def test_schedule_from_record_defaults_timezone_and_weekdays():
     record = {"type": "daily", "time": "07:00"}
     schedule = schedule_from_record(record)
@@ -79,8 +85,8 @@ def test_schedule_from_record_defaults_timezone_and_weekdays():
 
 def test_schedule_from_record_keeps_existing_timezone():
     schedule = schedule_from_record(
-        {"type": "once", "at": "2026-11-20T07:00:00+07:00",
-         "timezone": "Asia/Jakarta"})
+        {"type": "once", "at": "2026-11-20T07:00:00+07:00", "timezone": "Asia/Jakarta"}
+    )
     assert schedule["timezone"] == "Asia/Jakarta"
 
 
@@ -92,56 +98,47 @@ def test_schedule_from_record_rejects_non_schedules():
 
 # --- next occurrence --------------------------------------------------------
 
+
 def test_once_next_occurrence():
-    schedule = {"type": "once", "at": "2026-11-20T07:00:00+00:00",
-                "timezone": "UTC"}
-    assert next_occurrence(schedule, NOW) == datetime(
-        2026, 11, 20, 7, 0, tzinfo=timezone.utc)
-    assert next_occurrence(schedule, datetime(
-        2026, 11, 21, tzinfo=timezone.utc)) is None
+    schedule = {"type": "once", "at": "2026-11-20T07:00:00+00:00", "timezone": "UTC"}
+    assert next_occurrence(schedule, NOW) == datetime(2026, 11, 20, 7, 0, tzinfo=UTC)
+    assert next_occurrence(schedule, datetime(2026, 11, 21, tzinfo=UTC)) is None
 
 
 def test_daily_next_occurrence_same_day_and_next_day():
     schedule = {"type": "daily", "time": "07:00", "timezone": "UTC"}
-    assert next_occurrence(schedule, datetime(
-        2026, 11, 18, 6, 0, tzinfo=timezone.utc)) == datetime(
-        2026, 11, 18, 7, 0, tzinfo=timezone.utc)
-    assert next_occurrence(schedule, NOW) == datetime(
-        2026, 11, 19, 7, 0, tzinfo=timezone.utc)
+    assert next_occurrence(schedule, datetime(2026, 11, 18, 6, 0, tzinfo=UTC)) == datetime(
+        2026, 11, 18, 7, 0, tzinfo=UTC
+    )
+    assert next_occurrence(schedule, NOW) == datetime(2026, 11, 19, 7, 0, tzinfo=UTC)
 
 
 def test_daily_weekdays_skip_to_next_matching_day():
     # NOW is Wednesday; weekdays [0] = Mondays only.
-    schedule = {"type": "daily", "time": "07:00", "weekdays": [0],
-                "timezone": "UTC"}
-    assert next_occurrence(schedule, NOW) == datetime(
-        2026, 11, 23, 7, 0, tzinfo=timezone.utc)
+    schedule = {"type": "daily", "time": "07:00", "weekdays": [0], "timezone": "UTC"}
+    assert next_occurrence(schedule, NOW) == datetime(2026, 11, 23, 7, 0, tzinfo=UTC)
 
 
 def test_daily_timezone_is_applied():
     # 07:00 Asia/Jakarta = 00:00 UTC.
-    schedule = {"type": "daily", "time": "07:00",
-                "timezone": "Asia/Jakarta"}
-    assert next_occurrence(schedule, datetime(
-        2026, 11, 18, 1, 0, tzinfo=timezone.utc)) == datetime(
-        2026, 11, 19, 0, 0, tzinfo=timezone.utc)
+    schedule = {"type": "daily", "time": "07:00", "timezone": "Asia/Jakarta"}
+    assert next_occurrence(schedule, datetime(2026, 11, 18, 1, 0, tzinfo=UTC)) == datetime(
+        2026, 11, 19, 0, 0, tzinfo=UTC
+    )
 
 
 def test_interval_next_occurrence():
     schedule = {"type": "interval", "seconds": 3600, "timezone": "UTC"}
-    assert next_occurrence(schedule, NOW) == datetime(
-        2026, 11, 18, 11, 0, tzinfo=timezone.utc)
+    assert next_occurrence(schedule, NOW) == datetime(2026, 11, 18, 11, 0, tzinfo=UTC)
 
 
 def test_cron_next_occurrence():
-    schedule = {"type": "cron", "expression": "0 9 * * 1-5",
-                "timezone": "UTC"}
-    assert next_occurrence(schedule, NOW) == datetime(
-        2026, 11, 19, 9, 0, tzinfo=timezone.utc)
+    schedule = {"type": "cron", "expression": "0 9 * * 1-5", "timezone": "UTC"}
+    assert next_occurrence(schedule, NOW) == datetime(2026, 11, 19, 9, 0, tzinfo=UTC)
 
 
 def test_cron_expression_parsing():
-    minute, hour, dom, month, dow = parse_cron_expression("*/15 9 * * 0,6")
+    minute, hour, _dom, _month, dow = parse_cron_expression("*/15 9 * * 0,6")
     assert minute == frozenset({0, 15, 30, 45})
     assert hour == frozenset({9})
     assert 0 in dow and 6 in dow
@@ -158,20 +155,17 @@ def test_next_occurrence_rejects_invalid_schedule():
 
 # --- merge ------------------------------------------------------------------
 
+
 def test_merge_keeps_old_fields_and_overrides_new_ones():
-    old = {"type": "daily", "time": "07:00", "weekdays": [0, 1],
-           "timezone": "UTC"}
+    old = {"type": "daily", "time": "07:00", "weekdays": [0, 1], "timezone": "UTC"}
     merged = merge_schedule(old, {"time": "08:30"})
-    assert merged == {"type": "daily", "time": "08:30",
-                      "weekdays": [0, 1], "timezone": "UTC"}
+    assert merged == {"type": "daily", "time": "08:30", "weekdays": [0, 1], "timezone": "UTC"}
 
 
 def test_merge_type_change_replaces_whole_schedule():
-    old = {"type": "daily", "time": "07:00", "weekdays": [0],
-           "timezone": "UTC"}
+    old = {"type": "daily", "time": "07:00", "weekdays": [0], "timezone": "UTC"}
     merged = merge_schedule(old, {"type": "interval", "seconds": 7200})
-    assert merged == {"type": "interval", "seconds": 7200,
-                      "timezone": "UTC"}
+    assert merged == {"type": "interval", "seconds": 7200, "timezone": "UTC"}
 
 
 def test_merge_keeps_old_timezone_when_new_has_none():
@@ -182,39 +176,39 @@ def test_merge_keeps_old_timezone_when_new_has_none():
 
 def test_merge_rejects_invalid_update():
     with pytest.raises(ScheduleError):
-        merge_schedule({"type": "daily", "time": "07:00"},
-                       {"time": "25:00"})
+        merge_schedule({"type": "daily", "time": "07:00"}, {"time": "25:00"})
     with pytest.raises(ScheduleError):
-        merge_schedule({"type": "daily", "time": "07:00"},
-                       {"timezone": "Nowhere/Special"})
+        merge_schedule({"type": "daily", "time": "07:00"}, {"timezone": "Nowhere/Special"})
 
 
 # --- user input -------------------------------------------------------------
 
+
 def test_user_input_once_and_daily():
     schedule, problems = RoutineScheduleInput.from_user_input(
-        {"type": "once", "at": "2026-11-20T07:00:00+00:00",
-         "timezone": "UTC"})
+        {"type": "once", "at": "2026-11-20T07:00:00+00:00", "timezone": "UTC"}
+    )
     assert problems == [] and schedule["type"] == "once"
     schedule, problems = RoutineScheduleInput.from_user_input(
-        {"type": "daily", "time": "07:00", "weekdays": [0, 2]})
+        {"type": "daily", "time": "07:00", "weekdays": [0, 2]}
+    )
     assert problems == [] and schedule["weekdays"] == [0, 2]
     assert schedule["timezone"] == "UTC"  # default when omitted
 
 
 def test_user_input_interval_and_cron():
-    schedule, problems = RoutineScheduleInput.from_user_input(
-        {"type": "interval", "seconds": 7200})
+    schedule, problems = RoutineScheduleInput.from_user_input({"type": "interval", "seconds": 7200})
     assert problems == [] and schedule["seconds"] == 7200
     schedule, problems = RoutineScheduleInput.from_user_input(
-        {"type": "cron", "expression": "30 8 * * *",
-         "timezone": "Asia/Jakarta"})
+        {"type": "cron", "expression": "30 8 * * *", "timezone": "Asia/Jakarta"}
+    )
     assert problems == [] and schedule["timezone"] == "Asia/Jakarta"
 
 
 def test_user_input_reports_problems_without_raising():
     _, problems = RoutineScheduleInput.from_user_input(
-        {"type": "daily", "time": "07:00", "timezone": "Nope/Zone"})
+        {"type": "daily", "time": "07:00", "timezone": "Nope/Zone"}
+    )
     assert problems and any("timezone" in p for p in problems)
     _, problems = RoutineScheduleInput.from_user_input({"type": "daily"})
     assert problems and any("'time'" in p for p in problems)

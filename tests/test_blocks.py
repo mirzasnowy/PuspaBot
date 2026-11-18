@@ -3,15 +3,32 @@
 import pytest
 
 from puspa.workflow.blocks import (
-    BLOCKS, BlockError, list_blocks, block_definition, branch_depth,
-    validate_workflow, validate_step, validate_inputs,
+    BLOCKS,
+    BlockError,
+    block_definition,
+    branch_depth,
+    list_blocks,
+    validate_inputs,
+    validate_step,
+    validate_workflow,
 )
 
 BLOCK_REQUIRED = (
-    "check_bill", "compare_prices", "watch_prices", "search_email",
-    "read_email", "create_draft", "create_event", "prepare_payment",
-    "send_notification", "ask_user", "wait_for_approval", "condition",
-    "for_each", "save_memory", "save_to_module_table",
+    "check_bill",
+    "compare_prices",
+    "watch_prices",
+    "search_email",
+    "read_email",
+    "create_draft",
+    "create_event",
+    "prepare_payment",
+    "send_notification",
+    "ask_user",
+    "wait_for_approval",
+    "condition",
+    "for_each",
+    "save_memory",
+    "save_to_module_table",
 )
 
 
@@ -47,8 +64,7 @@ def test_unknown_block_rejected():
 
 def test_check_input_with_fewer_fields():
     assert validate_inputs("check_bill", {"provider": "PLN"}) == ["customer_number"]
-    assert validate_inputs("check_bill",
-                            {"provider": "PLN", "customer_number": "1"}) == []
+    assert validate_inputs("check_bill", {"provider": "PLN", "customer_number": "1"}) == []
 
 
 def test_max_10_steps():
@@ -59,28 +75,49 @@ def test_max_10_steps():
 
 def test_max_2_branching_levels():
     depth = {"block": "send_notification", "inputs": {"message": "x"}}
-    tiga = {"block": "condition", "inputs": {"expression": "a == b"},
-            "then": [{"block": "condition", "inputs": {"expression": "a == b"},
-                      "then": [{"block": "condition", "inputs": {"expression": "a == b"},
-                                "then": [depth], "else": []}],
-                      "else": []}],
-            "else": []}
+    tiga = {
+        "block": "condition",
+        "inputs": {"expression": "a == b"},
+        "then": [
+            {
+                "block": "condition",
+                "inputs": {"expression": "a == b"},
+                "then": [
+                    {
+                        "block": "condition",
+                        "inputs": {"expression": "a == b"},
+                        "then": [depth],
+                        "else": [],
+                    }
+                ],
+                "else": [],
+            }
+        ],
+        "else": [],
+    }
     assert branch_depth([tiga]) == 3
     assert any("maks 2" in m for m in validate_workflow([tiga]))
 
 
 def test_branch_2_levels_passed():
     depth = {"block": "send_notification", "inputs": {"message": "x"}}
-    dua = {"block": "condition", "inputs": {"expression": "a == b"},
-           "then": [{"block": "condition", "inputs": {"expression": "a == b"},
-                     "then": [depth], "else": []}],
-           "else": []}
+    dua = {
+        "block": "condition",
+        "inputs": {"expression": "a == b"},
+        "then": [
+            {"block": "condition", "inputs": {"expression": "a == b"}, "then": [depth], "else": []}
+        ],
+        "else": [],
+    }
     assert branch_depth([dua]) == 2
     assert validate_workflow([dua]) == []
 
 
 def test_for_each_max_20_items_checked_in_runner():
-    step = {"block": "for_each", "inputs": {"items": list(range(21))},
-               "nested_steps": [{"block": "send_notification", "inputs": {"message": "x"}}]}
+    step = {
+        "block": "for_each",
+        "inputs": {"items": list(range(21))},
+        "nested_steps": [{"block": "send_notification", "inputs": {"message": "x"}}],
+    }
     # Skema langkah lolos (batas item dicek saat jalan, bukan saat susun).
     assert validate_step(step) == []

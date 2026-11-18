@@ -60,24 +60,32 @@ def _generic_step(name="gather_notes"):
 
 
 def _seed_price(model, product="kopi", store="toko_a", price=10000):
-    model.ingest_graph([{
-        "id": product, "kind": "product",
-        "attributes": {"price": price, "store": store},
-    }])
+    model.ingest_graph(
+        [
+            {
+                "id": product,
+                "kind": "product",
+                "attributes": {"price": price, "store": store},
+            }
+        ]
+    )
 
 
 def _seed_bill(model, bill_id="pln", amount=50000, due_day=10):
-    model.ingest_graph([{
-        "id": bill_id, "kind": "bill",
-        "attributes": {"amount": amount, "due_day": due_day,
-                       "status": "not_due"},
-    }])
+    model.ingest_graph(
+        [
+            {
+                "id": bill_id,
+                "kind": "bill",
+                "attributes": {"amount": amount, "due_day": due_day, "status": "not_due"},
+            }
+        ]
+    )
 
 
 def _capability(model, task_kind):
     """Capability forecast for a task kind (success/rate/count)."""
-    return model.predict(
-        {"type": "attempt_task", "task_kind": task_kind}).outcome
+    return model.predict({"type": "attempt_task", "task_kind": task_kind}).outcome
 
 
 def _events_of(runner, event_type):
@@ -140,11 +148,18 @@ def test_handoff_rejected_teaches_capability_not_price():
     # The stale prediction was discarded, not left to be scored
     # against a later observation: a different price observed
     # afterwards is grounding only, never a misprediction.
-    outcome = model.update({
-        "action": {"type": "check_price", "product_id": "kopi",
-                   "store": "toko_a", "task_kind": "check_kopi_price"},
-        "observed": {"price": 12000}, "day": 0,
-    })
+    outcome = model.update(
+        {
+            "action": {
+                "type": "check_price",
+                "product_id": "kopi",
+                "store": "toko_a",
+                "task_kind": "check_kopi_price",
+            },
+            "observed": {"price": 12000},
+            "day": 0,
+        }
+    )
     assert outcome["correct"] is None
     assert model.mispredictions == []
     assert loop.experiences == []
@@ -305,8 +320,11 @@ def test_world_miss_on_successful_step_corrects_price():
     step = _price_step()
     runner = TaskRunner(
         executor=lambda name, inputs: {
-            "type": "result", "price": 12000,
-            "product_id": "kopi", "store": "toko_a", "success": True,
+            "type": "result",
+            "price": 12000,
+            "product_id": "kopi",
+            "store": "toko_a",
+            "success": True,
         },
         world_model=model,
         learning_loop=loop,
@@ -336,8 +354,13 @@ def test_successful_steps_unchanged():
     def executor(name, inputs):
         if name == "gather_notes":
             return {"type": "result", "value": 1}
-        return {"type": "result", "price": 10000,
-                "product_id": "kopi", "store": "toko_a", "success": True}
+        return {
+            "type": "result",
+            "price": 10000,
+            "product_id": "kopi",
+            "store": "toko_a",
+            "success": True,
+        }
 
     runner = TaskRunner(
         executor=executor,
@@ -385,13 +408,20 @@ def test_model_ingest_step_failure_gate_rejected():
     model = WorldModel()
     model.learning_loop = LearningLoop()
     _seed_price(model)
-    action = {"type": "check_price", "product_id": "kopi",
-              "store": "toko_a", "task_kind": "check_kopi_price"}
+    action = {
+        "type": "check_price",
+        "product_id": "kopi",
+        "store": "toko_a",
+        "task_kind": "check_kopi_price",
+    }
     prediction = model.predict(action)
     assert prediction.outcome["price"] == 10000
     summary = model.ingest_step_failure(
-        task_kind="check_kopi_price", action=action,
-        failure_kind="gate_rejected", reason="keluaran tidak lolos skema")
+        task_kind="check_kopi_price",
+        action=action,
+        failure_kind="gate_rejected",
+        reason="keluaran tidak lolos skema",
+    )
     assert summary["failure_kind"] == "gate_rejected"
     assert summary["discarded_pending"] is True
     assert summary["scored"] is None
@@ -412,13 +442,15 @@ def test_model_ingest_step_failure_world_failed_attempt_task_once():
     # Two successes first, so the prediction says success; still
     # trial (verified needs three), so the failure folds directly.
     for _ in range(2):
-        model.ingest_task_result(
-            {"task": "try_pay", "success": True, "result": {}})
+        model.ingest_task_result({"task": "try_pay", "success": True, "result": {}})
     action = {"type": "attempt_task", "task_kind": "try_pay"}
     assert model.predict(action).outcome["success"] is True
     summary = model.ingest_step_failure(
-        task_kind="try_pay", action=action,
-        failure_kind="world_failed", reason="RuntimeError: tool crashed")
+        task_kind="try_pay",
+        action=action,
+        failure_kind="world_failed",
+        reason="RuntimeError: tool crashed",
+    )
     assert summary["scored"] is not None
     assert summary["scored"]["correct"] is False
     assert summary["discarded_pending"] is False
@@ -435,8 +467,12 @@ def test_model_ingest_step_failure_world_failed_attempt_task_once():
 def test_model_discard_pending_prediction():
     """A pending prediction can be dropped unscored, or left alone."""
     model = WorldModel()
-    action = {"type": "check_price", "product_id": "kopi",
-              "store": "toko_a", "task_kind": "check_kopi_price"}
+    action = {
+        "type": "check_price",
+        "product_id": "kopi",
+        "store": "toko_a",
+        "task_kind": "check_kopi_price",
+    }
     assert model.discard_pending_prediction(action) is False
     model.predict(action)
     other = {"type": "check_bill", "bill_id": "pln"}
@@ -451,8 +487,7 @@ def test_model_ingest_step_failure_rejects_unknown_kind():
     """An unknown failure kind is a programmer error, not a silent fold."""
     model = WorldModel()
     try:
-        model.ingest_step_failure(
-            task_kind="some_step", failure_kind="mystery")
+        model.ingest_step_failure(task_kind="some_step", failure_kind="mystery")
     except ValueError as exc:
         assert "mystery" in str(exc)
     else:

@@ -26,15 +26,12 @@ from puspa.world.store import (
     serialize_state,
 )
 
-DSN = os.environ.get(
-    "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql"
-)
+DSN = os.environ.get("PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
 
 
 def _interaction(contact_id, replied, channel="whatsapp", delay=None, day=15):
     """One observed interaction, folded in through a task result."""
-    result = {"day": day, "contact_id": contact_id,
-              "channel": channel, "replied": replied}
+    result = {"day": day, "contact_id": contact_id, "channel": channel, "replied": replied}
     if delay is not None:
         result["reply_delay_hours"] = delay
     return {"task": "message_contact", "success": True, "result": result}
@@ -52,11 +49,11 @@ def _task(task_kind, day, hour=None, weekday=None):
 
 # -- contact beliefs ---------------------------------------------------
 
+
 def test_contact_belief_absent_before_first_observation():
     model = WorldModel()
     prediction = model.predict({"type": "contact_reply", "contact_id": "sari"})
-    assert prediction.outcome == {"contact_id": "sari", "reply_likely": None,
-                                  "known": False}
+    assert prediction.outcome == {"contact_id": "sari", "reply_likely": None, "known": False}
     assert prediction.confidence == 0.0
     assert "sari" not in model._contact_beliefs
     # An unrelated contact's interactions teach nothing about Sari.
@@ -159,25 +156,33 @@ def test_contact_reply_scored_by_update():
     for day in (15, 16, 17):
         model.ingest_task_result(_interaction("sari", True, delay=2, day=day))
     model.predict({"type": "contact_reply", "contact_id": "sari"})
-    result = model.update({
-        "action": {"type": "contact_reply", "contact_id": "sari"},
-        "observed": {"replied": True, "channel": "whatsapp",
-                     "reply_delay_hours": 2},
-        "task": "message_contact", "day": 18})
+    result = model.update(
+        {
+            "action": {"type": "contact_reply", "contact_id": "sari"},
+            "observed": {"replied": True, "channel": "whatsapp", "reply_delay_hours": 2},
+            "task": "message_contact",
+            "day": 18,
+        }
+    )
     assert result["correct"] is True
     assert result["error"] == 0.0
     # Silence after a reply-likely forecast is a miss, reported onward.
     model.predict({"type": "contact_reply", "contact_id": "sari"})
-    result = model.update({
-        "action": {"type": "contact_reply", "contact_id": "sari"},
-        "observed": {"replied": False, "channel": "whatsapp"},
-        "task": "message_contact", "day": 19})
+    result = model.update(
+        {
+            "action": {"type": "contact_reply", "contact_id": "sari"},
+            "observed": {"replied": False, "channel": "whatsapp"},
+            "task": "message_contact",
+            "day": 19,
+        }
+    )
     assert result["correct"] is False
     assert result["error"] == 1.0
     assert len(model.mispredictions) == 1
 
 
 # -- habit beliefs -----------------------------------------------------
+
 
 def test_habit_not_formed_from_one_task():
     model = WorldModel()
@@ -291,23 +296,32 @@ def test_habit_pattern_scored_by_update():
     for day in (1, 8, 15):
         model.ingest_task_result(_task("pay_bill", day=day, hour=8))
     model.predict({"type": "habit_pattern", "task_kind": "pay_bill"})
-    result = model.update({
-        "action": {"type": "habit_pattern", "task_kind": "pay_bill"},
-        "observed": {"interval_days": 7, "hour": 8},
-        "task": "pay_bill", "day": 22})
+    result = model.update(
+        {
+            "action": {"type": "habit_pattern", "task_kind": "pay_bill"},
+            "observed": {"interval_days": 7, "hour": 8},
+            "task": "pay_bill",
+            "day": 22,
+        }
+    )
     assert result["correct"] is True
     assert result["error"] == 0.0
     # An interval far from the learned 7 days is a miss.
     model.predict({"type": "habit_pattern", "task_kind": "pay_bill"})
-    result = model.update({
-        "action": {"type": "habit_pattern", "task_kind": "pay_bill"},
-        "observed": {"interval_days": 20, "hour": 8},
-        "task": "pay_bill", "day": 42})
+    result = model.update(
+        {
+            "action": {"type": "habit_pattern", "task_kind": "pay_bill"},
+            "observed": {"interval_days": 20, "hour": 8},
+            "task": "pay_bill",
+            "day": 42,
+        }
+    )
     assert result["correct"] is False
     assert result["error"] == 13.0
 
 
 # -- persistence -------------------------------------------------------
+
 
 def test_contact_and_habit_state_round_trip_without_db():
     """Beliefs survive JSON serialization exactly, no database needed."""
@@ -319,19 +333,25 @@ def test_contact_and_habit_state_round_trip_without_db():
     restored = WorldModel()
     restored._restore_state(deserialize_state(json.loads(payload)))
     assert restored.state == model.state
-    assert (restored.predict({"type": "contact_reply", "contact_id": "sari"})
-            .outcome["reply_rate"] == 1.0)
-    assert (restored.predict({"type": "habit_pattern", "task_kind": "pay_bill"})
-            .outcome["peak_hour"] == 9)
+    assert (
+        restored.predict({"type": "contact_reply", "contact_id": "sari"}).outcome["reply_rate"]
+        == 1.0
+    )
+    assert (
+        restored.predict({"type": "habit_pattern", "task_kind": "pay_bill"}).outcome["peak_hour"]
+        == 9
+    )
     # An old saved state without the new keys still restores cleanly.
-    old_state = {key: value for key, value in model.state.items()
-                 if key not in ("contact_beliefs", "habit_beliefs")}
+    old_state = {
+        key: value
+        for key, value in model.state.items()
+        if key not in ("contact_beliefs", "habit_beliefs")
+    }
     legacy = WorldModel()
     legacy._restore_state(deserialize_state(serialize_state(old_state)))
     assert legacy._contact_beliefs == {}
     assert legacy._habit_beliefs == {}
-    assert (legacy.predict({"type": "contact_reply", "contact_id": "sari"})
-            .outcome["known"] is False)
+    assert legacy.predict({"type": "contact_reply", "contact_id": "sari"}).outcome["known"] is False
 
 
 def _dsn_available():
@@ -373,12 +393,22 @@ def test_save_load_round_trip_keeps_contact_and_habit_beliefs():
         restored = load_world_model(user_id, agent_id, dsn=DSN)
         assert restored is not None
         assert restored.state == model.state
-        assert (restored.predict({"type": "contact_reply", "contact_id": "sari"})
-                .outcome["reply_rate"] == 1.0)
-        assert (restored.predict({"type": "contact_reply", "contact_id": "sari"})
-                .outcome["preferred_channel"] == "whatsapp")
-        assert (restored.predict({"type": "habit_pattern", "task_kind": "pay_bill"})
-                .outcome["peak_hour"] == 9)
+        assert (
+            restored.predict({"type": "contact_reply", "contact_id": "sari"}).outcome["reply_rate"]
+            == 1.0
+        )
+        assert (
+            restored.predict({"type": "contact_reply", "contact_id": "sari"}).outcome[
+                "preferred_channel"
+            ]
+            == "whatsapp"
+        )
+        assert (
+            restored.predict({"type": "habit_pattern", "task_kind": "pay_bill"}).outcome[
+                "peak_hour"
+            ]
+            == 9
+        )
         assert restored._contact_beliefs["sari"].version == 1
         assert restored._habit_beliefs["pay_bill"].version == 1
     finally:

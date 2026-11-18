@@ -84,10 +84,10 @@ events ``TaskRunner`` and ``Planner`` already emit (``plan_created``,
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from puspa.memory.learning_loop import get_learning_loop
-from puspa.runtime.budget import BudgetTracker, CEILING_RP_PER_TASK
+from puspa.runtime.budget import CEILING_RP_PER_TASK, BudgetTracker
 from puspa.runtime.planner import Planner, decompose
 from puspa.runtime.tasks import Task, create_task_id
 
@@ -130,14 +130,13 @@ def default_task_budget_check():
     """
     try:
         from puspa.billing.ledger import task_budget_remaining
-    except Exception:  # noqa: BLE001 - ledger may not exist yet
+    except Exception:
         return None
 
     def _check(user_id, task_id, *, cap_rp=2000):
         try:
-            return int(task_budget_remaining(
-                user_id, task_id, cap_rp=cap_rp))
-        except Exception:  # noqa: BLE001 - a broken check must not stop learning
+            return int(task_budget_remaining(user_id, task_id, cap_rp=cap_rp))
+        except Exception:
             return None
 
     return _check
@@ -150,17 +149,30 @@ class CurriculumError(Exception):
 class CurriculumRunner:
     """Run learning tasks proposed by the learning loop, idle only."""
 
-    def __init__(self, *, loop=None, sink=None, executor=None,
-                 verifier=None, is_idle=None, user_id=None,
-                 agent_id=None, max_tasks_per_day=None,
-                 cost_ceiling_rp=None, max_replans=2,
-                 plan_builder=None, world_model=None,
-                 learning_loop=None, budget_check=None):
+    def __init__(
+        self,
+        *,
+        loop=None,
+        sink=None,
+        executor=None,
+        verifier=None,
+        is_idle=None,
+        user_id=None,
+        agent_id=None,
+        max_tasks_per_day=None,
+        cost_ceiling_rp=None,
+        max_replans=2,
+        plan_builder=None,
+        world_model=None,
+        learning_loop=None,
+        budget_check=None,
+    ):
         self.loop = loop if loop is not None else get_learning_loop()
         self._events: list[dict] = []
         if sink is None:
             self.sink = lambda event_type, content: self._events.append(
-                {"type": event_type, "content": content})
+                {"type": event_type, "content": content}
+            )
         else:
             # Always keep an in-memory copy of events (the runner
             # reads failure reasons back from them), and forward
@@ -168,13 +180,11 @@ class CurriculumRunner:
             user_sink = sink
 
             def _sink(event_type, content, _user=user_sink):
-                self._events.append(
-                    {"type": event_type, "content": content})
+                self._events.append({"type": event_type, "content": content})
                 _user(event_type, content)
 
             self.sink = _sink
-        self.executor = executor or (
-            lambda name, inputs: {"type": "result", "value": None})
+        self.executor = executor or (lambda name, inputs: {"type": "result", "value": None})
         self.verifier = verifier
         # Idle check: a caller-supplied callable () -> bool wins; when
         # none is given, the user_task_active flag decides.
@@ -232,7 +242,7 @@ class CurriculumRunner:
     def runs_today(self, day: str | None = None) -> int:
         """Learning tasks already run on the given day (UTC, ISO date)."""
         if day is None:
-            day = datetime.now(timezone.utc).date().isoformat()
+            day = datetime.now(UTC).date().isoformat()
         return self._runs_by_day.get(day, 0)
 
     def _purpose_for(self, proposal: dict) -> str:
@@ -264,8 +274,7 @@ class CurriculumRunner:
             return planner.last_failure_reason
         for event in reversed(self._events):
             content = event.get("content") or {}
-            if (event.get("type") == "task_failed"
-                    and content.get("task_id") == task_id):
+            if event.get("type") == "task_failed" and content.get("task_id") == task_id:
                 return str(content.get("reason", "") or "")
         return "learning task failed"
 
@@ -289,9 +298,16 @@ class CurriculumRunner:
 
         return wrapped
 
-    def _record_experience(self, proposal: dict, *, outcome: str,
-                           observed: str, error=None, task_id=None,
-                           cost_rp: int = 0) -> dict:
+    def _record_experience(
+        self,
+        proposal: dict,
+        *,
+        outcome: str,
+        observed: str,
+        error=None,
+        task_id=None,
+        cost_rp: int = 0,
+    ) -> dict:
         """Append one experience entry to the loop experience log."""
         entry = {
             "id": uuid.uuid4().hex,
@@ -321,56 +337,81 @@ class CurriculumRunner:
         run count. Never raises for a busy runner, a reached daily
         cap, or an empty curriculum: those are reported as outcomes.
         """
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         day = now.date().isoformat()
         if not self.is_idle_now():
-            outcome = {"status": "busy", "ran": False, "proposal": None,
-                       "task_id": None, "task_status": None, "cost_rp": 0,
-                       "runs_today": self.runs_today(day),
-                       "reason": "a user task is pending or running"}
+            outcome = {
+                "status": "busy",
+                "ran": False,
+                "proposal": None,
+                "task_id": None,
+                "task_status": None,
+                "cost_rp": 0,
+                "runs_today": self.runs_today(day),
+                "reason": "a user task is pending or running",
+            }
             self.history.append(outcome)
             return outcome
         if self.runs_today(day) >= self.max_tasks_per_day:
-            outcome = {"status": "daily_cap_reached", "ran": False,
-                       "proposal": None, "task_id": None,
-                       "task_status": None, "cost_rp": 0,
-                       "runs_today": self.runs_today(day),
-                       "reason": "daily learning task cap reached"}
+            outcome = {
+                "status": "daily_cap_reached",
+                "ran": False,
+                "proposal": None,
+                "task_id": None,
+                "task_status": None,
+                "cost_rp": 0,
+                "runs_today": self.runs_today(day),
+                "reason": "daily learning task cap reached",
+            }
             self.history.append(outcome)
             return outcome
         proposal = self.loop.propose_next_task()
         if proposal is None:
-            outcome = {"status": "no_task", "ran": False, "proposal": None,
-                       "task_id": None, "task_status": None, "cost_rp": 0,
-                       "runs_today": self.runs_today(day),
-                       "reason": "curriculum has nothing to propose"}
+            outcome = {
+                "status": "no_task",
+                "ran": False,
+                "proposal": None,
+                "task_id": None,
+                "task_status": None,
+                "cost_rp": 0,
+                "runs_today": self.runs_today(day),
+                "reason": "curriculum has nothing to propose",
+            }
             self.history.append(outcome)
             return outcome
         task_name = str(proposal["task"])
         completed = self._completed_by_day.setdefault(day, set())
         if task_name in completed:
-            outcome = {"status": "already_completed", "ran": False,
-                       "proposal": proposal, "task_id": None,
-                       "task_status": None, "cost_rp": 0,
-                       "runs_today": self.runs_today(day),
-                       "reason": "task already completed today"}
+            outcome = {
+                "status": "already_completed",
+                "ran": False,
+                "proposal": proposal,
+                "task_id": None,
+                "task_status": None,
+                "cost_rp": 0,
+                "runs_today": self.runs_today(day),
+                "reason": "task already completed today",
+            }
             self.history.append(outcome)
             return outcome
         # Ledger budget gate: no remaining budget means the task
         # waits (a hold, not a failure) and consumes no daily run.
         if self.budget_check is not None:
             try:
-                remaining = self.budget_check(
-                    self.user_id, task_name,
-                    cap_rp=self.cost_ceiling_rp)
+                remaining = self.budget_check(self.user_id, task_name, cap_rp=self.cost_ceiling_rp)
             except Exception:
                 remaining = None
             if remaining is not None and remaining <= 0:
-                outcome = {"status": "budget_hold", "ran": False,
-                           "proposal": proposal, "task_id": None,
-                           "task_status": None, "cost_rp": 0,
-                           "runs_today": self.runs_today(day),
-                           "reason": "no task budget remaining"}
+                outcome = {
+                    "status": "budget_hold",
+                    "ran": False,
+                    "proposal": proposal,
+                    "task_id": None,
+                    "task_status": None,
+                    "cost_rp": 0,
+                    "runs_today": self.runs_today(day),
+                    "reason": "no task budget remaining",
+                }
                 self.history.append(outcome)
                 return outcome
 
@@ -378,64 +419,99 @@ class CurriculumRunner:
         plan = self._plan_for(proposal, purpose)
         budget = BudgetTracker(rupiah_max=self.cost_ceiling_rp)
         self.last_budget = budget
-        planner = Planner(sink=self.sink,
-                          executor=self._charging_executor(budget),
-                          verifier=self.verifier,
-                          max_replans=self.max_replans,
-                          world_model=self.world_model,
-                          learning_loop=self.learning_loop)
-        task = Task(task_id=create_task_id(), user_id=self.user_id,
-                    agent_id=self.agent_id, purpose=purpose, plan=plan)
+        planner = Planner(
+            sink=self.sink,
+            executor=self._charging_executor(budget),
+            verifier=self.verifier,
+            max_replans=self.max_replans,
+            world_model=self.world_model,
+            learning_loop=self.learning_loop,
+        )
+        task = Task(
+            task_id=create_task_id(),
+            user_id=self.user_id,
+            agent_id=self.agent_id,
+            purpose=purpose,
+            plan=plan,
+        )
         self._runs_by_day[day] = self.runs_today(day) + 1
         result = planner.run(task)
         cost_rp = budget.rupiah_used
         status = result.status
-        outcome = {"status": status, "ran": True, "proposal": proposal,
-                   "task_id": result.task_id, "task_status": status,
-                   "cost_rp": cost_rp,
-                   "runs_today": self.runs_today(day),
-                   "reason": proposal.get("reason")}
+        outcome = {
+            "status": status,
+            "ran": True,
+            "proposal": proposal,
+            "task_id": result.task_id,
+            "task_status": status,
+            "cost_rp": cost_rp,
+            "runs_today": self.runs_today(day),
+            "reason": proposal.get("reason"),
+        }
         if status == "completed":
-            self._record_experience(proposal, outcome="completed",
-                                    observed="completed", task_id=result.task_id,
-                                    cost_rp=cost_rp)
+            self._record_experience(
+                proposal,
+                outcome="completed",
+                observed="completed",
+                task_id=result.task_id,
+                cost_rp=cost_rp,
+            )
             if proposal.get("reason") == "misprediction_gap":
                 self.loop.gaps.pop(task_name, None)
             completed.add(task_name)
         elif status == "failed":
             reason = self._failure_reason(result.task_id, planner)
             outcome["reason"] = reason
-            self.loop.record_misprediction({
-                "task": task_name,
-                "predicted": self.loop.predict(task_name),
-                "observed": f"failed: {reason}",
-                "error": reason,
-                "context": {"source": "curriculum_runner",
-                            "reason": proposal.get("reason"),
-                            "cost_rp": cost_rp,
-                            "task_id": result.task_id},
-            })
+            self.loop.record_misprediction(
+                {
+                    "task": task_name,
+                    "predicted": self.loop.predict(task_name),
+                    "observed": f"failed: {reason}",
+                    "error": reason,
+                    "context": {
+                        "source": "curriculum_runner",
+                        "reason": proposal.get("reason"),
+                        "cost_rp": cost_rp,
+                        "task_id": result.task_id,
+                    },
+                }
+            )
         elif status == "pending_approval":
             # Outbound step: stopped before execution, recorded only.
-            self._record_experience(proposal, outcome="pending_approval",
-                                    observed="pending_approval",
-                                    task_id=result.task_id, cost_rp=cost_rp)
+            self._record_experience(
+                proposal,
+                outcome="pending_approval",
+                observed="pending_approval",
+                task_id=result.task_id,
+                cost_rp=cost_rp,
+            )
         elif status == "pending_user":
-            self._record_experience(proposal, outcome="pending_user",
-                                    observed="pending_user",
-                                    task_id=result.task_id, cost_rp=cost_rp)
+            self._record_experience(
+                proposal,
+                outcome="pending_user",
+                observed="pending_user",
+                task_id=result.task_id,
+                cost_rp=cost_rp,
+            )
         self.history.append(outcome)
         return outcome
 
 
-def run_curriculum_tick(*, runner: CurriculumRunner | None = None,
-                        loop=None, sink=None, executor=None,
-                        verifier=None, is_idle=None,
-                        max_tasks_per_day=None,
-                        cost_ceiling_rp=None,
-                        world_model=None, learning_loop=None,
-                        budget_check=None,
-                        now: datetime | None = None) -> dict:
+def run_curriculum_tick(
+    *,
+    runner: CurriculumRunner | None = None,
+    loop=None,
+    sink=None,
+    executor=None,
+    verifier=None,
+    is_idle=None,
+    max_tasks_per_day=None,
+    cost_ceiling_rp=None,
+    world_model=None,
+    learning_loop=None,
+    budget_check=None,
+    now: datetime | None = None,
+) -> dict:
     """Run one curriculum step from a scheduler tick.
 
     Pass an existing ``runner`` to keep the daily cap and the
@@ -448,15 +524,26 @@ def run_curriculum_tick(*, runner: CurriculumRunner | None = None,
     try:
         if runner is None:
             runner = CurriculumRunner(
-                loop=loop, sink=sink, executor=executor,
-                verifier=verifier, is_idle=is_idle,
+                loop=loop,
+                sink=sink,
+                executor=executor,
+                verifier=verifier,
+                is_idle=is_idle,
                 max_tasks_per_day=max_tasks_per_day,
                 cost_ceiling_rp=cost_ceiling_rp,
                 world_model=world_model,
                 learning_loop=learning_loop,
-                budget_check=budget_check)
+                budget_check=budget_check,
+            )
         return runner.run_once(now=now)
-    except Exception as exc:  # noqa: BLE001 - tick must never break
-        return {"status": "error", "ran": False, "proposal": None,
-                "task_id": None, "task_status": None, "cost_rp": 0,
-                "runs_today": 0, "reason": str(exc)}
+    except Exception as exc:
+        return {
+            "status": "error",
+            "ran": False,
+            "proposal": None,
+            "task_id": None,
+            "task_status": None,
+            "cost_rp": 0,
+            "runs_today": 0,
+            "reason": str(exc),
+        }

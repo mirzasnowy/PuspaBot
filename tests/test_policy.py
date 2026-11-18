@@ -5,7 +5,6 @@ Memetakan ke gerbang: token menyempit ke bawah (anak ⊆ induk),
 signature Ed25519, pencabutan, dan skill tanpa tanda tangan ditolak.
 """
 
-import copy
 import json
 import time
 
@@ -16,10 +15,10 @@ from puspa.policy import (
     SkillRejected,
     TokenError,
     check_tool,
-    issue_child,
-    issue_token,
     is_revoked,
     is_subset,
+    issue_child,
+    issue_token,
     load_skill,
     revoke,
     revoke_all_for_task,
@@ -50,6 +49,7 @@ def _payload(**overrides):
 
 # --- Token: terbit + verifikasi -------------------------------------------
 
+
 def test_issue_verify_roundtrip(ephemeral_keys):
     sk, pk = ephemeral_keys
     token = issue_token(_payload(), sk)
@@ -76,9 +76,11 @@ def test_verify_tampered_payload_raises(ephemeral_keys):
 
     raw = json.loads(base64.urlsafe_b64decode(raw_b64 + "=" * (-len(raw_b64) % 4)))
     raw["tools"] = ["delete_all"]
-    raw_b64_new = base64.urlsafe_b64encode(
-        json.dumps(raw, sort_keys=True, separators=(",", ":")).encode()
-    ).rstrip(b"=").decode()
+    raw_b64_new = (
+        base64.urlsafe_b64encode(json.dumps(raw, sort_keys=True, separators=(",", ":")).encode())
+        .rstrip(b"=")
+        .decode()
+    )
     with pytest.raises(TokenError):
         verify_token(f"{raw_b64_new}.{sig_b64}", pk)
 
@@ -121,6 +123,7 @@ def test_verify_malformed_token_raises(ephemeral_keys):
 
 # --- Subset ---------------------------------------------------------------
 
+
 def test_is_subset_ok():
     parent = _payload()
     child = _payload(
@@ -161,6 +164,7 @@ def test_is_subset_subagent_cannot_spawn_subagent():
 
 # --- Token anak -----------------------------------------------------------
 
+
 def test_issue_child_ok(ephemeral_keys):
     sk, pk = ephemeral_keys
     parent_token = issue_token(_payload(), sk)
@@ -194,6 +198,7 @@ def test_issue_child_bad_parent_raises(ephemeral_keys):
 
 
 # --- Pencabutan -----------------------------------------------------------
+
 
 def test_revoke_and_is_revoked(ephemeral_keys):
     sk, pk = ephemeral_keys
@@ -229,6 +234,7 @@ def test_revoke_all_for_task(ephemeral_keys):
 
 
 # --- Skill bertanda tangan ------------------------------------------------
+
 
 def test_skill_sign_verify_load(ephemeral_keys, tmp_skill_dir):
     sk, pk = ephemeral_keys
@@ -302,12 +308,9 @@ def test_check_tool_manifest_unsigned_rejected(ephemeral_keys, tmp_skill_dir):
         check_tool(manifest, "read_price", pk)
 
 
-def test_tool_manifest_changed_after_signing_rejected(
-    ephemeral_keys, tmp_skill_dir
-):
+def test_tool_manifest_changed_after_signing_rejected(ephemeral_keys, tmp_skill_dir):
     """Manifes yang ditandatangani lalu diubah diam-diam (tool berbahaya
     ditambahkan) ditolak — signature tidak lagi cocok dengan isinya."""
-    import json as _json
 
     sk, pk = ephemeral_keys
     manifest = sign_skill(tmp_skill_dir, sk)

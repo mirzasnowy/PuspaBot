@@ -112,8 +112,9 @@ class MarketplaceRegistry:
         self._entries: dict[str, RegistryEntry] = {}
 
     # -- index ---------------------------------------------------------
-    def list_entries(self, *, origin: str | None = None,
-                     status: str | None = None) -> list[RegistryEntry]:
+    def list_entries(
+        self, *, origin: str | None = None, status: str | None = None
+    ) -> list[RegistryEntry]:
         entries = list(self._entries.values())
         if origin is not None:
             entries = [e for e in entries if e.origin == origin]
@@ -130,29 +131,22 @@ class MarketplaceRegistry:
         return len(json.dumps(index, ensure_ascii=False).encode("utf-8"))
 
     def _check_limits(self, new_entry: RegistryEntry) -> None:
-        if new_entry.skill_id not in self._entries:
-            if len(self._entries) >= MAX_SKILLS:
-                raise MarketplaceError(
-                    f"marketplace index is full ({MAX_SKILLS} skills)"
-                )
+        if new_entry.skill_id not in self._entries and len(self._entries) >= MAX_SKILLS:
+            raise MarketplaceError(f"marketplace index is full ({MAX_SKILLS} skills)")
         staged = sum(1 for e in self._entries.values() if e.staged)
-        if new_entry.staged and new_entry.skill_id not in self._entries:
-            if staged >= MAX_STAGED:
-                raise MarketplaceError(
-                    f"at most {MAX_STAGED} staged skills"
-                )
+        if new_entry.staged and new_entry.skill_id not in self._entries and staged >= MAX_STAGED:
+            raise MarketplaceError(f"at most {MAX_STAGED} staged skills")
         probe = [e.index_entry() for e in self.list_entries()]
         if new_entry.skill_id not in self._entries:
             probe.append(new_entry.index_entry())
         size = len(json.dumps(probe, ensure_ascii=False).encode("utf-8"))
         if size > MAX_INDEX_BYTES:
-            raise MarketplaceError(
-                f"marketplace index would exceed {MAX_INDEX_BYTES} bytes"
-            )
+            raise MarketplaceError(f"marketplace index would exceed {MAX_INDEX_BYTES} bytes")
 
     # -- import --------------------------------------------------------
-    def import_skill(self, folder_path, *, origin: str | None = None,
-                     source: str | None = None) -> RegistryEntry:
+    def import_skill(
+        self, folder_path, *, origin: str | None = None, source: str | None = None
+    ) -> RegistryEntry:
         """Import one skill folder. Lands DISABLED; only SKILL.md is
         taken in (other files are hashed, never executed).
 
@@ -162,13 +156,9 @@ class MarketplaceRegistry:
         folder or manifest is invalid, :class:`MarketplaceError`
         when a limit is hit.
         """
-        manifest, problems, frontmatter, body = validate_skill_folder(
-            folder_path, origin=origin
-        )
+        manifest, problems, frontmatter, _body = validate_skill_folder(folder_path, origin=origin)
         if problems:
-            raise MarketplaceError(
-                "skill folder failed validation: " + "; ".join(problems)
-            )
+            raise MarketplaceError("skill folder failed validation: " + "; ".join(problems))
         if source is not None:
             data = manifest.to_dict()
             data["source"] = source
@@ -202,8 +192,7 @@ class MarketplaceRegistry:
         return score_module(manifest=manifest, signature_ok=None)
 
     # -- install / rollback / uninstall --------------------------------
-    def install(self, skill_id: str, *, user_id: str,
-                explicit_approval: bool = False) -> dict:
+    def install(self, skill_id: str, *, user_id: str, explicit_approval: bool = False) -> dict:
         """Install (enable) a skill.
 
         Checks, in order: the skill is registered, the trust floor
@@ -216,16 +205,22 @@ class MarketplaceRegistry:
             raise MarketplaceError(f"skill {skill_id!r} is not in the registry")
         score = self.trust_score(skill_id)
         try:
-            require_trust(score, explicit_approval=explicit_approval,
-                          skill_id=skill_id)
+            require_trust(score, explicit_approval=explicit_approval, skill_id=skill_id)
         except TrustError:
-            self._audit("install_refused_trust", entry, user_id,
-                        {"trust_score": score.total,
-                         "minimum": MIN_TRUST_SCORE})
+            self._audit(
+                "install_refused_trust",
+                entry,
+                user_id,
+                {"trust_score": score.total, "minimum": MIN_TRUST_SCORE},
+            )
             raise
         if not self._entitlement(user_id, entry.manifest):
-            self._audit("install_refused_entitlement", entry, user_id,
-                        {"price_credits": entry.manifest.price_credits})
+            self._audit(
+                "install_refused_entitlement",
+                entry,
+                user_id,
+                {"price_credits": entry.manifest.price_credits},
+            )
             raise EntitlementError(
                 f"skill {skill_id!r} costs {entry.manifest.price_credits} "
                 "credits and no entitlement record exists for this user"
@@ -244,13 +239,15 @@ class MarketplaceRegistry:
         installed = self.store.record_install(record)
         entry.status = STATUS_ENABLED
         entry.staged = False
-        self._audit("installed", entry, user_id,
-                    {"version": entry.manifest.version,
-                     "trust_score": score.total})
+        self._audit(
+            "installed",
+            entry,
+            user_id,
+            {"version": entry.manifest.version, "trust_score": score.total},
+        )
         return installed
 
-    def rollback(self, skill_id: str, *, user_id: str,
-                 to_version: str | None = None) -> dict:
+    def rollback(self, skill_id: str, *, user_id: str, to_version: str | None = None) -> dict:
         """Restore the previously installed version.
 
         ``to_version`` names the version to restore; when omitted,
@@ -265,24 +262,18 @@ class MarketplaceRegistry:
             raise MarketplaceError(f"skill {skill_id!r} is not in the registry")
         current = self.store.get_install(skill_id, user_id)
         if current is None:
-            raise MarketplaceError(
-                f"skill {skill_id!r} is not installed for this user"
-            )
+            raise MarketplaceError(f"skill {skill_id!r} is not installed for this user")
         versions = self.store.list_versions(skill_id, user_id)
         candidates = [v for v in versions if v["version"] != current["version"]]
         if to_version is not None:
-            target = next(
-                (v for v in candidates if v["version"] == to_version), None
-            )
+            target = next((v for v in candidates if v["version"] == to_version), None)
             if target is None:
                 raise MarketplaceError(
                     f"version {to_version!r} of skill {skill_id!r} "
                     "was never installed for this user"
                 )
         elif not candidates:
-            raise MarketplaceError(
-                f"skill {skill_id!r} has no earlier version to roll back to"
-            )
+            raise MarketplaceError(f"skill {skill_id!r} has no earlier version to roll back to")
         else:
             target = candidates[-1]
         record = {
@@ -297,10 +288,16 @@ class MarketplaceRegistry:
         }
         self.store.record_install(record)
         entry.status = STATUS_ENABLED
-        self._audit("rolled_back", entry, user_id,
-                    {"from_version": current["version"],
-                     "to_version": target["version"],
-                     "sha256": target["sha256"]})
+        self._audit(
+            "rolled_back",
+            entry,
+            user_id,
+            {
+                "from_version": current["version"],
+                "to_version": target["version"],
+                "sha256": target["sha256"],
+            },
+        )
         return record
 
     def uninstall(self, skill_id: str, *, user_id: str) -> dict:
@@ -311,34 +308,33 @@ class MarketplaceRegistry:
             raise MarketplaceError(f"skill {skill_id!r} is not in the registry")
         current = self.store.get_install(skill_id, user_id)
         if current is None:
-            raise MarketplaceError(
-                f"skill {skill_id!r} is not installed for this user"
-            )
+            raise MarketplaceError(f"skill {skill_id!r} is not installed for this user")
         record = dict(current)
         record["status"] = STATUS_REMOVED
         self.store.record_install(record)
         entry.status = STATUS_DISABLED
-        self._audit("uninstalled", entry, user_id,
-                    {"version": current["version"]})
+        self._audit("uninstalled", entry, user_id, {"version": current["version"]})
         return record
 
     # -- audit ----------------------------------------------------------
-    def audit_log(self, *, skill_id: str | None = None,
-                  user_id: str | None = None) -> list[dict]:
+    def audit_log(self, *, skill_id: str | None = None, user_id: str | None = None) -> list[dict]:
         return self.store.list_audit(skill_id=skill_id, user_id=user_id)
 
-    def _audit(self, event: str, entry: RegistryEntry, user_id: str,
-               detail: dict | None = None) -> dict:
-        return self.store.record_audit({
-            "event": event,
-            "skill_id": entry.skill_id,
-            "user_id": user_id,
-            "sha256": entry.manifest.get("sha256", ""),
-            "source": entry.manifest.get("source", ""),
-            "license": entry.manifest.license,
-            "price_credits": entry.manifest.price_credits,
-            "detail": detail or {},
-        })
+    def _audit(
+        self, event: str, entry: RegistryEntry, user_id: str, detail: dict | None = None
+    ) -> dict:
+        return self.store.record_audit(
+            {
+                "event": event,
+                "skill_id": entry.skill_id,
+                "user_id": user_id,
+                "sha256": entry.manifest.get("sha256", ""),
+                "source": entry.manifest.get("source", ""),
+                "license": entry.manifest.license,
+                "price_credits": entry.manifest.price_credits,
+                "detail": detail or {},
+            }
+        )
 
 
 def open_text(folder_path) -> str:

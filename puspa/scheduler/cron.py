@@ -30,12 +30,13 @@ not an HTTP route.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from . import due as due_mod
@@ -53,11 +54,11 @@ __all__ = [
     "CronError",
     "CronJob",
     "CronJobStore",
-    "parse_schedule_spec",
-    "parse_delay",
     "cronjob_manage",
-    "run_due_jobs",
     "execute_job",
+    "parse_delay",
+    "parse_schedule_spec",
+    "run_due_jobs",
 ]
 
 #: A run this late still executes; older runs are marked missed.
@@ -84,8 +85,9 @@ def parse_delay(text: str) -> int:
     return int(match.group(1)) * _DELAY_SECONDS[match.group(2).lower()]
 
 
-def parse_schedule_spec(spec, *, now: datetime | None = None,
-                        timezone_name: str = DEFAULT_TIMEZONE) -> dict:
+def parse_schedule_spec(
+    spec, *, now: datetime | None = None, timezone_name: str = DEFAULT_TIMEZONE
+) -> dict:
     """Parse one of the four schedule formats into a union dict.
 
     A dict is validated as-is (the union schema from
@@ -99,27 +101,22 @@ def parse_schedule_spec(spec, *, now: datetime | None = None,
             raise CronError("; ".join(problems))
         return dict(spec)
     text = str(spec).strip()
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     if _DELAY_RE.match(text):
         at = now + timedelta(seconds=parse_delay(text))
-        return {"type": "once", "at": at.isoformat(),
-                "timezone": timezone_name}
+        return {"type": "once", "at": at.isoformat(), "timezone": timezone_name}
     match = _EVERY_RE.match(text)
     if match:
         seconds = int(match.group(1)) * _DELAY_SECONDS[match.group(2).lower()]
-        return {"type": "interval", "seconds": seconds,
-                "timezone": timezone_name}
-    try:
-        at = datetime.fromisoformat(text)
-    except ValueError:
-        at = None
-    if at is not None:
-        if at.tzinfo is None:
-            at = at.replace(tzinfo=timezone.utc)
-        return {"type": "once", "at": at.isoformat(),
-                "timezone": timezone_name}
-    schedule = {"type": "cron", "expression": text,
-                "timezone": timezone_name}
+        return {"type": "interval", "seconds": seconds, "timezone": timezone_name}
+    parsed_at: datetime | None = None
+    with contextlib.suppress(ValueError):
+        parsed_at = datetime.fromisoformat(text)
+    if parsed_at is not None:
+        if parsed_at.tzinfo is None:
+            parsed_at = parsed_at.replace(tzinfo=UTC)
+        return {"type": "once", "at": parsed_at.isoformat(), "timezone": timezone_name}
+    schedule = {"type": "cron", "expression": text, "timezone": timezone_name}
     problems = validate_schedule(schedule)
     if problems:
         raise CronError("; ".join(problems))
@@ -145,11 +142,10 @@ class CronJob:
     last_result: str | None = None
     attempts: int = 0
     missed_runs: int = 0
-    created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @classmethod
-    def from_record(cls, record: dict) -> "CronJob":
+    def from_record(cls, record: dict) -> CronJob:
         """Build a job from a stored record (``.get()`` tolerant).
 
         Records written before ``timezone`` existed read as UTC;
@@ -175,18 +171,17 @@ class CronJob:
             missed_runs=int(record.get("missed_runs") or 0),
         )
         job.last_result = record.get("last_result")
-        for attr, key in (("next_run", "next_run"),
-                          ("last_run", "last_run"),
-                          ("created_at", "created_at")):
+        for attr, key in (
+            ("next_run", "next_run"),
+            ("last_run", "last_run"),
+            ("created_at", "created_at"),
+        ):
             raw = record.get(key)
             if isinstance(raw, str):
-                try:
+                with contextlib.suppress(ValueError):
                     setattr(job, attr, datetime.fromisoformat(raw))
-                except ValueError:
-                    pass
         if job.next_run is None and job.status == "active":
-            job.next_run = next_occurrence(
-                job.schedule, job.created_at)
+            job.next_run = next_occurrence(job.schedule, job.created_at)
         return job
 
     def to_dict(self) -> dict:
@@ -201,10 +196,8 @@ class CronJob:
             "provider": self.provider,
             "script": self.script,
             "status": self.status,
-            "next_run": (self.next_run.isoformat()
-                         if self.next_run else None),
-            "last_run": (self.last_run.isoformat()
-                         if self.last_run else None),
+            "next_run": (self.next_run.isoformat() if self.next_run else None),
+            "last_run": (self.last_run.isoformat() if self.last_run else None),
             "last_result": self.last_result,
             "attempts": self.attempts,
             "missed_runs": self.missed_runs,
@@ -213,11 +206,15 @@ class CronJob:
 
     def to_execution_dict(self) -> dict:
         """The dict ``execution.build_execution`` consumes."""
-        return {"id": self.id, "prompt": self.prompt,
-                "skills": list(self.skills),
-                "deliver_to": self.deliver_to,
-                "model": self.model, "provider": self.provider,
-                "script": self.script}
+        return {
+            "id": self.id,
+            "prompt": self.prompt,
+            "skills": list(self.skills),
+            "deliver_to": self.deliver_to,
+            "model": self.model,
+            "provider": self.provider,
+            "script": self.script,
+        }
 
 
 class CronJobStore:
@@ -252,13 +249,14 @@ class CronJobStore:
             if isinstance(record, dict) and record.get("id"):
                 job = CronJob.from_record(record)
                 self.jobs[job.id] = job
-        self.deliveries = [dict(d) for d in (data.get("deliveries") or [])
-                           if isinstance(d, dict)]
+        self.deliveries = [dict(d) for d in (data.get("deliveries") or []) if isinstance(d, dict)]
 
     def save(self) -> None:
         """Persist jobs + delivery queue atomically."""
-        data = {"jobs": [job.to_dict() for job in self.jobs.values()],
-                "deliveries": self.deliveries}
+        data = {
+            "jobs": [job.to_dict() for job in self.jobs.values()],
+            "deliveries": self.deliveries,
+        }
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = self.path.with_suffix(self.path.suffix + ".tmp")
         with open(tmp_path, "w", encoding="utf-8") as handle:
@@ -280,8 +278,7 @@ class CronJobStore:
         self.save()
         return True
 
-    def queue_delivery(self, *, job_id: str, run_id: str,
-                       target: str, text: str) -> dict:
+    def queue_delivery(self, *, job_id: str, run_id: str, target: str, text: str) -> dict:
         """Queue a delivery that could not be sent immediately."""
         delivery = {
             "id": f"delivery-{uuid.uuid4().hex[:12]}",
@@ -291,7 +288,7 @@ class CronJobStore:
             "text": text,
             "status": "queued",
             "attempts": 0,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
         self.deliveries.append(delivery)
         self.save()
@@ -331,8 +328,7 @@ def _resolve_llm_complete(job: CronJob, llm_complete):
     return default_llm_complete(role="reader", **kwargs)
 
 
-def execute_job(job: CronJob, *, run_id: str, llm_complete=None,
-                due_state: str = "due") -> str:
+def execute_job(job: CronJob, *, run_id: str, llm_complete=None, due_state: str = "due") -> str:
     """Execute one job with a fresh agent (no history).
 
     The execution prompt is composed by ``execution`` and the text
@@ -341,14 +337,20 @@ def execute_job(job: CronJob, *, run_id: str, llm_complete=None,
     a key the router raises, and that failure is real.
     """
     complete = _resolve_llm_complete(job, llm_complete)
-    request = build_execution(job.to_execution_dict(), run_id=run_id,
-                              due_state=due_state)
+    request = build_execution(job.to_execution_dict(), run_id=run_id, due_state=due_state)
     return complete(request.prompt)
 
 
-def run_due_jobs(store: CronJobStore, *, now: datetime | None = None,
-                 llm_complete=None, deliver=None, sink=None,
-                 quota_hold=None, notify_owner=None) -> list[dict]:
+def run_due_jobs(
+    store: CronJobStore,
+    *,
+    now: datetime | None = None,
+    llm_complete=None,
+    deliver=None,
+    sink=None,
+    quota_hold=None,
+    notify_owner=None,
+) -> list[dict]:
     """Run every active job whose ``next_run`` has arrived.
 
     Missed runs (past the 12-hour grace) never execute: they are
@@ -360,10 +362,9 @@ def run_due_jobs(store: CronJobStore, *, now: datetime | None = None,
     A delivery that fails is queued separately for retry instead
     of failing the run. Returns one outcome dict per job touched.
     """
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     outcomes: list[dict] = []
-    for job in sorted(store.jobs.values(),
-                      key=lambda j: (j.next_run or now, j.id)):
+    for job in sorted(store.jobs.values(), key=lambda j: (j.next_run or now, j.id)):
         if job.status != "active" or job.next_run is None:
             continue
         if job.next_run > now:
@@ -378,14 +379,12 @@ def run_due_jobs(store: CronJobStore, *, now: datetime | None = None,
                 job.status = "completed"
             store.put(job)
             if sink is not None:
-                try:
-                    sink("run_missed", {"job_id": job.id,
-                                        "run_id": run_id,
-                                        "due_at": job.last_run.isoformat()})
-                except Exception:
-                    pass
-            outcomes.append({"job_id": job.id, "run_id": run_id,
-                             "status": "missed"})
+                with contextlib.suppress(Exception):
+                    sink(
+                        "run_missed",
+                        {"job_id": job.id, "run_id": run_id, "due_at": job.last_run.isoformat()},
+                    )
+            outcomes.append({"job_id": job.id, "run_id": run_id, "status": "missed"})
             continue
         if quota_hold is not None:
             try:
@@ -398,24 +397,22 @@ def run_due_jobs(store: CronJobStore, *, now: datetime | None = None,
                     job.status = "completed"
                 store.put(job)
                 if sink is not None:
-                    try:
-                        sink("quota_hold", {"job_id": job.id,
-                                            "run_id": run_id})
-                    except Exception:
-                        pass
-                outcomes.append({"job_id": job.id, "run_id": run_id,
-                                 "status": "quota_hold"})
+                    with contextlib.suppress(Exception):
+                        sink("quota_hold", {"job_id": job.id, "run_id": run_id})
+                outcomes.append({"job_id": job.id, "run_id": run_id, "status": "quota_hold"})
                 continue
         try:
-            result = execute_job(job, run_id=run_id,
-                                 llm_complete=llm_complete,
-                                 due_state=state)
-        except Exception as exc:  # noqa: BLE001 - recovery decides
+            result = execute_job(job, run_id=run_id, llm_complete=llm_complete, due_state=state)
+        except Exception as exc:
             record = handle_failure(
-                job_id=job.id, run_id=run_id, error=str(exc),
-                attempts=job.attempts, sink=sink,
+                job_id=job.id,
+                run_id=run_id,
+                error=str(exc),
+                attempts=job.attempts,
+                sink=sink,
                 notify_owner=notify_owner,
-                requeue=(lambda _j, _r: None))
+                requeue=(lambda _j, _r: None),
+            )
             job.attempts += 1
             if record.requeued:
                 job.next_run = now + REQUEUE_DELAY
@@ -425,10 +422,15 @@ def run_due_jobs(store: CronJobStore, *, now: datetime | None = None,
                     job.status = "completed"
             job.last_run = now
             store.put(job)
-            outcomes.append({"job_id": job.id, "run_id": run_id,
-                             "status": "failed",
-                             "requeued": record.requeued,
-                             "error": str(exc)})
+            outcomes.append(
+                {
+                    "job_id": job.id,
+                    "run_id": run_id,
+                    "status": "failed",
+                    "requeued": record.requeued,
+                    "error": str(exc),
+                }
+            )
             continue
         job.attempts = 0
         job.last_run = now
@@ -443,17 +445,22 @@ def run_due_jobs(store: CronJobStore, *, now: datetime | None = None,
                 deliver(job.deliver_to, result)
             except Exception:
                 delivery = store.queue_delivery(
-                    job_id=job.id, run_id=run_id,
-                    target=job.deliver_to, text=result)
+                    job_id=job.id, run_id=run_id, target=job.deliver_to, text=result
+                )
         if sink is not None:
-            try:
-                sink("run_completed", {"job_id": job.id, "run_id": run_id,
-                                       "delivery_queued": delivery is not None})
-            except Exception:
-                pass
-        outcomes.append({"job_id": job.id, "run_id": run_id,
-                         "status": "completed",
-                         "delivery_queued": delivery is not None})
+            with contextlib.suppress(Exception):
+                sink(
+                    "run_completed",
+                    {"job_id": job.id, "run_id": run_id, "delivery_queued": delivery is not None},
+                )
+        outcomes.append(
+            {
+                "job_id": job.id,
+                "run_id": run_id,
+                "status": "completed",
+                "delivery_queued": delivery is not None,
+            }
+        )
     return outcomes
 
 
@@ -471,8 +478,7 @@ def cronjob_manage(store: CronJobStore, action: str, **kwargs) -> dict:
     """
     action = str(action)
     if action == "list":
-        jobs = [job.to_dict() for job in sorted(
-            store.jobs.values(), key=lambda j: j.id)]
+        jobs = [job.to_dict() for job in sorted(store.jobs.values(), key=lambda j: j.id)]
         return {"action": "list", "jobs": jobs}
     if action == "create":
         prompt = str(kwargs.get("prompt") or "").strip()
@@ -482,7 +488,7 @@ def cronjob_manage(store: CronJobStore, action: str, **kwargs) -> dict:
         if not is_valid_timezone(timezone_name):
             raise CronError(f"unknown timezone: {timezone_name!r}")
         raw_schedule = kwargs.get("schedule")
-        now = kwargs.get("now") or datetime.now(timezone.utc)
+        now = kwargs.get("now") or datetime.now(UTC)
         if raw_schedule is None:
             user_input = {
                 "type": kwargs.get("type"),
@@ -493,13 +499,13 @@ def cronjob_manage(store: CronJobStore, action: str, **kwargs) -> dict:
                 "expression": kwargs.get("expression"),
                 "timezone": timezone_name,
             }
-            schedule, problems = RoutineScheduleInput.from_user_input(
-                user_input)
+            schedule, problems = RoutineScheduleInput.from_user_input(user_input)
             if problems:
                 raise CronError("; ".join(problems))
+            if schedule is None:
+                raise CronError("invalid schedule")
         else:
-            schedule = parse_schedule_spec(raw_schedule, now=now,
-                                           timezone_name=timezone_name)
+            schedule = parse_schedule_spec(raw_schedule, now=now, timezone_name=timezone_name)
             schedule["timezone"] = timezone_name
         job = CronJob(
             id=f"cron-{uuid.uuid4().hex[:12]}",
@@ -518,25 +524,23 @@ def cronjob_manage(store: CronJobStore, action: str, **kwargs) -> dict:
         store.put(job)
         return {"action": "create", "job": job.to_dict()}
     if action in ("update", "pause", "resume", "run", "remove"):
-        job = store.get(str(kwargs.get("job_id") or ""))
-        if job is None:
-            raise CronError(
-                f"no such cron job: {kwargs.get('job_id')!r}")
+        existing = store.get(str(kwargs.get("job_id") or ""))
+        if existing is None:
+            raise CronError(f"no such cron job: {kwargs.get('job_id')!r}")
+        job = existing
     if action == "update":
-        timezone_name = kwargs.get("timezone")
-        if timezone_name is not None:
-            if not is_valid_timezone(str(timezone_name)):
-                raise CronError(f"unknown timezone: {timezone_name!r}")
-            job.timezone = str(timezone_name)
+        new_timezone = kwargs.get("timezone")
+        if new_timezone is not None:
+            if not is_valid_timezone(str(new_timezone)):
+                raise CronError(f"unknown timezone: {new_timezone!r}")
+            job.timezone = str(new_timezone)
         if kwargs.get("schedule") is not None:
-            schedule = parse_schedule_spec(
-                kwargs["schedule"], timezone_name=job.timezone)
+            schedule = parse_schedule_spec(kwargs["schedule"], timezone_name=job.timezone)
             schedule["timezone"] = job.timezone
             job.schedule = schedule
-            now = kwargs.get("now") or datetime.now(timezone.utc)
+            now = kwargs.get("now") or datetime.now(UTC)
             job.next_run = next_occurrence(schedule, now)
-        for field_name in ("prompt", "deliver_to", "model",
-                           "provider", "script"):
+        for field_name in ("prompt", "deliver_to", "model", "provider", "script"):
             if kwargs.get(field_name) is not None:
                 setattr(job, field_name, kwargs[field_name])
         if kwargs.get("skills") is not None:
@@ -550,16 +554,13 @@ def cronjob_manage(store: CronJobStore, action: str, **kwargs) -> dict:
     if action == "resume":
         job.status = "active"
         if job.next_run is None:
-            job.next_run = next_occurrence(
-                job.schedule, kwargs.get("now") or datetime.now(timezone.utc))
+            job.next_run = next_occurrence(job.schedule, kwargs.get("now") or datetime.now(UTC))
         store.put(job)
         return {"action": "resume", "job": job.to_dict()}
     if action == "run":
         run_id = f"run-{uuid.uuid4().hex[:12]}"
-        result = execute_job(
-            job, run_id=run_id,
-            llm_complete=kwargs.get("llm_complete"))
-        job.last_run = kwargs.get("now") or datetime.now(timezone.utc)
+        result = execute_job(job, run_id=run_id, llm_complete=kwargs.get("llm_complete"))
+        job.last_run = kwargs.get("now") or datetime.now(UTC)
         job.last_result = result
         store.put(job)
         deliver = kwargs.get("deliver")
@@ -567,10 +568,10 @@ def cronjob_manage(store: CronJobStore, action: str, **kwargs) -> dict:
             try:
                 deliver(job.deliver_to, result)
             except Exception:
-                store.queue_delivery(job_id=job.id, run_id=run_id,
-                                     target=job.deliver_to, text=result)
-        return {"action": "run", "job_id": job.id, "run_id": run_id,
-                "result": result}
+                store.queue_delivery(
+                    job_id=job.id, run_id=run_id, target=job.deliver_to, text=result
+                )
+        return {"action": "run", "job_id": job.id, "run_id": run_id, "result": result}
     if action == "remove":
         store.remove(job.id)
         return {"action": "remove", "job_id": job.id}

@@ -88,9 +88,7 @@ def test_e2e_miss_recorded_then_next_prediction_corrected():
     # The same advisory prediction is attached to the handoff event,
     # which is the copy the ledger keeps (closed event-type set).
     proposed = _events_of(runner, "handoff_proposed")
-    assert proposed[0]["content"]["world_prediction"]["predicted"][
-        "expected_days"
-    ] is None
+    assert proposed[0]["content"]["world_prediction"]["predicted"]["expected_days"] is None
 
     # The miss was recorded in the learning loop, keyed by step name.
     correction = loop.correction_for("estimate_check_pln")
@@ -100,8 +98,7 @@ def test_e2e_miss_recorded_then_next_prediction_corrected():
     assert len(_events_of(runner, "world_misprediction")) == 1
     # The model itself learned the duration from the observation.
     assert (
-        model.predict({"type": "estimate_task", "task_kind": "check_pln"})
-        .outcome["expected_days"]
+        model.predict({"type": "estimate_task", "task_kind": "check_pln"}).outcome["expected_days"]
         == 5.0
     )
 
@@ -146,9 +143,7 @@ def test_unmapped_step_folds_outcome_without_prediction():
     assert _events_of(runner, "world_prediction") == []
     # The completed step taught the capability belief.
     assert (
-        model.predict(
-            {"type": "attempt_task", "task_kind": "gather_listings"}
-        ).outcome["success"]
+        model.predict({"type": "attempt_task", "task_kind": "gather_listings"}).outcome["success"]
         is True
     )
 
@@ -192,9 +187,7 @@ def test_no_brain_is_plain_runner():
 
 
 def _bind(monkeypatch, agent_id="agen-9", **kwargs):
-    monkeypatch.setattr(
-        agent_session, "validate_session", lambda token, dsn=None: "user-9"
-    )
+    monkeypatch.setattr(agent_session, "validate_session", lambda token, dsn=None: "user-9")
     keys = Ed25519PrivateKey.generate()
     return agent_session.bind_turn(
         session_token="tok",
@@ -225,9 +218,9 @@ def test_session_brain_is_shared_across_turns(monkeypatch):
     assert brain2.learning_loop is brain1.learning_loop
     # What turn 1 learned is still there in turn 2.
     assert (
-        brain2.world_model.predict(
-            {"type": "estimate_task", "task_kind": "pay_bill"}
-        ).outcome["expected_days"]
+        brain2.world_model.predict({"type": "estimate_task", "task_kind": "pay_bill"}).outcome[
+            "expected_days"
+        ]
         == 2.0
     )
     agent_session.reset_session_brains()
@@ -271,8 +264,7 @@ def test_planner_forwards_brain_to_runner():
     assert result.status == "completed"
     assert loop.correction_for("estimate_check_pln") is not None
     assert (
-        model.predict({"type": "estimate_task", "task_kind": "check_pln"})
-        .outcome["expected_days"]
+        model.predict({"type": "estimate_task", "task_kind": "check_pln"}).outcome["expected_days"]
         == 5.0
     )
 
@@ -315,7 +307,6 @@ def test_curriculum_runner_forwards_brain():
     assert outcome["status"] == "completed"
     assert "check_pln" not in loop.gaps
     assert (
-        model.predict({"type": "estimate_task", "task_kind": "check_pln"})
-        .outcome["expected_days"]
+        model.predict({"type": "estimate_task", "task_kind": "check_pln"}).outcome["expected_days"]
         == 5.0
     )

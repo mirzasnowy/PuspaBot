@@ -29,8 +29,10 @@ in-memory). Antrean tugas memakai Postgres SKIP LOCKED
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from dataclasses import dataclass, field
+from typing import Any
 
 from puspa.runtime.budget import BudgetExhausted, BudgetTracker
 from puspa.runtime.handoff import Handoff, HandoffContract
@@ -50,7 +52,7 @@ WORLD_PREDICTION_EVENT = "world_prediction"
 WORLD_MISPREDICTION_EVENT = "world_misprediction"
 
 
-def _world_action_for_step(step: "Step") -> dict | None:
+def _world_action_for_step(step: Step) -> dict | None:
     """Translate a plan step into a world-model action, or None.
 
     A step whose inputs carry a ``type`` the world model knows
@@ -84,7 +86,9 @@ class Step:
     inputs: dict
     expected_output: dict
     permission_class: str = "Pelaksana"
-    budget: dict = field(default_factory=lambda: {"step_max": 15, "token_max": 20000, "rupiah_max": 2000})
+    budget: dict = field(
+        default_factory=lambda: {"step_max": 15, "token_max": 20000, "rupiah_max": 2000}
+    )
     completion_condition: str = ""
     outbound_action: bool = False
     parallel_with: list[str] = field(default_factory=list)
@@ -148,24 +152,33 @@ class TaskRunner:
     a misprediction in the learning loop.
     """
 
-    def __init__(self, *, sink=None, executor=None, verifier=None,
-                 budget: BudgetTracker | None = None,
-                 world_model=None, learning_loop=None) -> None:
+    def __init__(
+        self,
+        *,
+        sink=None,
+        executor=None,
+        verifier=None,
+        budget: BudgetTracker | None = None,
+        world_model=None,
+        learning_loop=None,
+    ) -> None:
         # sink(jenis, isi): pencatat kejadian; default buang ke memori.
         self._event: list[dict] = []
-        self.sink = sink or (lambda event_type, content: self._event.append({"type": event_type, "content": content}))
+        self.sink = sink or (
+            lambda event_type, content: self._event.append({"type": event_type, "content": content})
+        )
         # pelaksana(nama_langkah, masukan) -> dict hasil ber-skema.
-        self.executor = executor or (lambda name, inputs: {"type": inputs.get("type", "result"), "value": None})
+        self.executor = executor or (
+            lambda name, inputs: {"type": inputs.get("type", "result"), "value": None}
+        )
         # pemeriksa(hasil) -> (lolos: bool, alasan: str).
         self.verifier = verifier or (lambda result: (True, ""))
         self.budget = budget or BudgetTracker()
         self.world_model = world_model
         self.learning_loop = learning_loop
         if world_model is not None and learning_loop is not None:
-            try:
+            with contextlib.suppress(Exception):
                 world_model.learning_loop = learning_loop
-            except Exception:
-                pass
 
     def _predict_step(self, task: Task, step: Step, action: dict):
         """Predict one step's action before acting (advisory).
@@ -178,17 +191,20 @@ class TaskRunner:
             prediction = self.world_model.predict(action)
         except Exception:
             return None
-        self._record(WORLD_PREDICTION_EVENT, {
-            "task_id": task.task_id, "step": step.name,
-            "action": dict(action),
-            "predicted": dict(prediction.outcome),
-            "confidence": prediction.confidence,
-            "advisory": True,
-        })
+        self._record(
+            WORLD_PREDICTION_EVENT,
+            {
+                "task_id": task.task_id,
+                "step": step.name,
+                "action": dict(action),
+                "predicted": dict(prediction.outcome),
+                "confidence": prediction.confidence,
+                "advisory": True,
+            },
+        )
         return prediction
 
-    def _observe_step(self, task: Task, step: Step, action: dict,
-                      result: dict):
+    def _observe_step(self, task: Task, step: Step, action: dict, result: dict):
         """Score one step's result against its prediction.
 
         Calls ``WorldModel.update`` (which scores the pending
@@ -204,23 +220,30 @@ class TaskRunner:
         # unless its result says otherwise.
         observed.setdefault("success", True)
         try:
-            outcome = self.world_model.update({
-                "action": dict(action), "observed": observed,
-                "task": step.name,
-                "day": observed.get("day"),
-            })
+            outcome = self.world_model.update(
+                {
+                    "action": dict(action),
+                    "observed": observed,
+                    "task": step.name,
+                    "day": observed.get("day"),
+                }
+            )
         except Exception:
             return None
         if outcome.get("correct") is False:
-            self._record(WORLD_MISPREDICTION_EVENT, {
-                "task_id": task.task_id, "step": step.name,
-                "task_name": step.name,
-                "predicted": outcome.get("predicted"),
-                "observed": outcome.get("observed"),
-                "error": outcome.get("error"),
-                "context": {"action": dict(action)},
-                "advisory": True,
-            })
+            self._record(
+                WORLD_MISPREDICTION_EVENT,
+                {
+                    "task_id": task.task_id,
+                    "step": step.name,
+                    "task_name": step.name,
+                    "predicted": outcome.get("predicted"),
+                    "observed": outcome.get("observed"),
+                    "error": outcome.get("error"),
+                    "context": {"action": dict(action)},
+                    "advisory": True,
+                },
+            )
         return outcome
 
     def _ingest_step(self, task: Task, step: Step, result: dict) -> None:
@@ -234,17 +257,18 @@ class TaskRunner:
         """
         if not isinstance(result, dict):
             return
-        try:
-            self.world_model.ingest_task_result({
-                "task": step.name,
-                "success": bool(result.get("success", True)),
-                "result": result,
-            })
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            self.world_model.ingest_task_result(
+                {
+                    "task": step.name,
+                    "success": bool(result.get("success", True)),
+                    "result": result,
+                }
+            )
 
-    def _fold_step_failure(self, task: Task, step: Step, action: dict | None,
-                           *, failure_kind: str, reason: str) -> None:
+    def _fold_step_failure(
+        self, task: Task, step: Step, action: dict | None, *, failure_kind: str, reason: str
+    ) -> None:
         """Fold a step that aborted the run into the world model.
 
         Two separate paths, and the difference is deliberate (see
@@ -267,34 +291,39 @@ class TaskRunner:
             return
         try:
             summary = self.world_model.ingest_step_failure(
-                task_kind=step.name, action=action,
-                failure_kind=failure_kind, reason=reason)
+                task_kind=step.name, action=action, failure_kind=failure_kind, reason=reason
+            )
         except Exception:
             return
         scored = summary.get("scored") if isinstance(summary, dict) else None
         if isinstance(scored, dict) and scored.get("correct") is False:
-            self._record(WORLD_MISPREDICTION_EVENT, {
-                "task_id": task.task_id, "step": step.name,
-                "task_name": step.name,
-                "predicted": scored.get("predicted"),
-                "observed": scored.get("observed"),
-                "error": scored.get("error"),
-                "context": {"action": dict(action) if action else None},
-                "failure_kind": failure_kind,
-                "advisory": True,
-            })
+            self._record(
+                WORLD_MISPREDICTION_EVENT,
+                {
+                    "task_id": task.task_id,
+                    "step": step.name,
+                    "task_name": step.name,
+                    "predicted": scored.get("predicted"),
+                    "observed": scored.get("observed"),
+                    "error": scored.get("error"),
+                    "context": {"action": dict(action) if action else None},
+                    "failure_kind": failure_kind,
+                    "advisory": True,
+                },
+            )
 
     def _record(self, event_type: str, content: dict) -> None:
-        try:
+        # Penulisan ledger best-effort (keputusan Fase 0 no. 9):
+        # Postgres mati tidak boleh menjatuhkan turn.
+        with contextlib.suppress(Exception):
             self.sink(event_type, content)
-        except Exception:
-            # Penulisan ledger best-effort (keputusan Fase 0 no. 9):
-            # Postgres mati tidak boleh menjatuhkan turn.
-            pass
 
     def run(self, task: Task) -> Task:
         """Jalankan 5 tahap sampai selesai / gagal / menunggu."""
-        self._record("task_created", {"task_id": task.task_id, "agent_id": task.agent_id, "purpose": task.purpose})
+        self._record(
+            "task_created",
+            {"task_id": task.task_id, "agent_id": task.agent_id, "purpose": task.purpose},
+        )
         # 1. Terima.
         task.stage = "accept"
         if len(task.purpose.split()) < 3:
@@ -306,12 +335,16 @@ class TaskRunner:
         task.stage = "plan"
         if task.plan:
             create_plan(task.purpose, task.plan)
-        self._record("plan_created", {"task_id": task.task_id,
-                                       "step": [step.name for step in task.plan]})
+        self._record(
+            "plan_created", {"task_id": task.task_id, "step": [step.name for step in task.plan]}
+        )
         if any(step.outbound_action for step in task.plan):
             # Berhenti di titik persetujuan sebelum menjalankan apa pun.
             task.status = "pending_approval"
-            self._record("approval_requested", {"task_id": task.task_id, "reason": "rencana memuat aksi keluar"})
+            self._record(
+                "approval_requested",
+                {"task_id": task.task_id, "reason": "rencana memuat aksi keluar"},
+            )
             return task
         # 3. Jalankan.
         task.stage = "run"
@@ -328,10 +361,13 @@ class TaskRunner:
                 current_action = None
                 self.budget.record_step(1)
                 contract = HandoffContract(
-                    from_id=task.agent_id, to_id=f"{task.agent_id}:pelaksana",
-                    purpose=step.name, inputs=step.inputs,
+                    from_id=task.agent_id,
+                    to_id=f"{task.agent_id}:pelaksana",
+                    purpose=step.name,
+                    inputs=step.inputs,
                     expected_output=step.expected_output,
-                    budget=step.budget, permission_class=step.permission_class,
+                    budget=step.budget,
+                    permission_class=step.permission_class,
                     completion_definition=step.completion_condition or step.name,
                 )
                 handoff = Handoff(contract)
@@ -346,8 +382,12 @@ class TaskRunner:
                     current_action = action
                     if action is not None:
                         prediction = self._predict_step(task, step, action)
-                proposed = {"task_id": task.task_id, "handoff_id": handoff.id, "purpose": step.name}
-                if prediction is not None:
+                proposed: dict[str, Any] = {
+                    "task_id": task.task_id,
+                    "handoff_id": handoff.id,
+                    "purpose": step.name,
+                }
+                if prediction is not None and action is not None:
                     # Same advisory prediction, kept in the ledger:
                     # the closed event-type set drops the dedicated
                     # `world_prediction` event, this key survives.
@@ -381,13 +421,19 @@ class TaskRunner:
                     failed_step = step
                     failure_kind = "world_failed"
                     self._fold_step_failure(
-                        task, step, action, failure_kind=failure_kind,
-                        reason=f"{type(exc).__name__}: {exc}")
+                        task,
+                        step,
+                        action,
+                        failure_kind=failure_kind,
+                        reason=f"{type(exc).__name__}: {exc}",
+                    )
                     raise TaskError(f"langkah {step.name!r} gagal: {exc}") from exc
                 hand_over_status = handoff.hand_over(result)
                 if hand_over_status == "rejected":
                     # serahkan() sudah menandai status 'ditolak' + alasan.
-                    self._record("handoff_rejected", {"task_id": task.task_id, "handoff_id": handoff.id})
+                    self._record(
+                        "handoff_rejected", {"task_id": task.task_id, "handoff_id": handoff.id}
+                    )
                     # Refused by policy (schema), not by the world:
                     # capability learns, the pending prediction is
                     # discarded unscored, price/bill beliefs are
@@ -395,8 +441,12 @@ class TaskRunner:
                     failed_step = step
                     failure_kind = "gate_rejected"
                     self._fold_step_failure(
-                        task, step, action, failure_kind=failure_kind,
-                        reason="keluaran tidak lolos skema")
+                        task,
+                        step,
+                        action,
+                        failure_kind=failure_kind,
+                        reason="keluaran tidak lolos skema",
+                    )
                     raise TaskError(f"langkah {step.name!r} ditolak: keluaran tidak lolos skema")
                 handoff.mark_passed()
                 handed_over = {"task_id": task.task_id, "handoff_id": handoff.id}
@@ -419,31 +469,43 @@ class TaskRunner:
                 failed_step = current_step
                 failure_kind = "gate_rejected"
                 self._fold_step_failure(
-                    task, current_step, current_action,
-                    failure_kind=failure_kind, reason=str(exc))
+                    task, current_step, current_action, failure_kind=failure_kind, reason=str(exc)
+                )
             task.status = "failed"
             self._record("budget_exhausted", {"task_id": task.task_id, "reason": str(exc)})
-            self._record("task_failed", {
-                "task_id": task.task_id, "reason": str(exc),
-                "failure_kind": failure_kind,
-                "step": failed_step.name if failed_step is not None else None,
-            })
+            self._record(
+                "task_failed",
+                {
+                    "task_id": task.task_id,
+                    "reason": str(exc),
+                    "failure_kind": failure_kind,
+                    "step": failed_step.name if failed_step is not None else None,
+                },
+            )
             return task
         except TaskError as exc:
             task.status = "failed"
-            self._record("task_failed", {
-                "task_id": task.task_id, "reason": str(exc),
-                "failure_kind": failure_kind,
-                "step": failed_step.name if failed_step is not None else None,
-            })
+            self._record(
+                "task_failed",
+                {
+                    "task_id": task.task_id,
+                    "reason": str(exc),
+                    "failure_kind": failure_kind,
+                    "step": failed_step.name if failed_step is not None else None,
+                },
+            )
             return task
         # 4. Periksa.
         task.stage = "verify"
         passed, reason = self.verifier(task.result)
-        self._record("verification_completed", {"task_id": task.task_id, "passed": passed, "reason": reason})
+        self._record(
+            "verification_completed", {"task_id": task.task_id, "passed": passed, "reason": reason}
+        )
         if not passed:
             task.status = "failed"
-            self._record("task_failed", {"task_id": task.task_id, "reason": reason or "pemeriksaan gagal"})
+            self._record(
+                "task_failed", {"task_id": task.task_id, "reason": reason or "pemeriksaan gagal"}
+            )
             return task
         # 5. Sajikan (juru bicara tunggal = agen pemilik tugas).
         task.stage = "present"
@@ -467,7 +529,9 @@ def claim_next_task(dsn: str, agent_id: str) -> dict | None:
 
     import psycopg
 
-    dsn = dsn or os.environ.get("PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
+    dsn = dsn or os.environ.get(
+        "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql"
+    )
     with psycopg.connect(dsn, row_factory=psycopg.rows.dict_row) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -487,8 +551,9 @@ def create_task_id() -> str:
     return f"tugas-{uuid.uuid4().hex[:12]}"
 
 
-def tombstone_task(task_id: str, user_id: str, agent_id: str, *, dsn=None,
-                    sink=None, cassette_dir=None) -> dict:
+def tombstone_task(
+    task_id: str, user_id: str, agent_id: str, *, dsn=None, sink=None, cassette_dir=None
+) -> dict:
     """Hapus tugas (C129): isi kejadian diganti tanda hapus TANPA
     UPDATE/DELETE di Buku Kerja — append `tugas_dihentikan` dengan
     isi {"dihapus": true}; proyeksi menyembunyikan tugas. Kaset +
@@ -503,9 +568,12 @@ def tombstone_task(task_id: str, user_id: str, agent_id: str, *, dsn=None,
         from puspa.ledger import Ledger
 
         ledger = Ledger(dsn)
-        sink = lambda event_type, content: ledger.append_event(
-            task_id=task_id, agent_id=agent_id, event_type=event_type, content=content)
-    sink("task_stopped", {"task_id": task_id, "deleted": True,
-                              "user_id": user_id})
+
+        def sink(event_type, content):
+            return ledger.append_event(
+                task_id=task_id, agent_id=agent_id, event_type=event_type, content=content
+            )
+
+    sink("task_stopped", {"task_id": task_id, "deleted": True, "user_id": user_id})
     cassette = delete_cassette_task(task_id, cassette_dir=cassette_dir, dsn=dsn)
     return {"task_id": task_id, "tombstone": True, "cassette_deleted": cassette["deleted"]}

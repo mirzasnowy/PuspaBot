@@ -56,10 +56,10 @@ from .fallback import CallResult
 from .router import CATALOG, ChoiceModel, choose, compute_cost
 
 __all__ = [
-    "CompletionError",
-    "CompletionResult",
     "OPENROUTER_API_BASE",
     "ROLE_ALIASES",
+    "CompletionError",
+    "CompletionResult",
     "complete",
     "complete_detailed",
     "default_llm_complete",
@@ -138,8 +138,7 @@ def resolve_role(role: str) -> str:
     if not isinstance(role, str) or not role:
         raise ValueError(f"unknown role: {role!r} (known: {', '.join(_KNOWN_ROLES)})")
     mapped = ROLE_ALIASES.get(role, role)
-    if mapped not in ("perencana", "penyaji", "pembaca", "pencari",
-                      "pemeriksa", "vision"):
+    if mapped not in ("perencana", "penyaji", "pembaca", "pencari", "pemeriksa", "vision"):
         raise ValueError(f"unknown role: {role!r} (known: {', '.join(_KNOWN_ROLES)})")
     return mapped
 
@@ -148,9 +147,14 @@ def _catalog_choice(provider: str, model: str) -> ChoiceModel | None:
     """The catalog entry for a model, or None when it is not listed."""
     for row in CATALOG:
         if row[0] == provider and row[1] == model:
-            return ChoiceModel(provider=row[0], model=row[1], family=row[2],
-                               rp_per_1k_input=row[3],
-                               rp_per_1k_output=row[4], vision=row[5])
+            return ChoiceModel(
+                provider=row[0],
+                model=row[1],
+                family=row[2],
+                rp_per_1k_input=row[3],
+                rp_per_1k_output=row[4],
+                vision=row[5],
+            )
     return None
 
 
@@ -169,18 +173,28 @@ def _resolve_choice(role: str, model: str | None) -> ChoiceModel:
         catalogued = _catalog_choice("openrouter", model)
         if catalogued is not None:
             return catalogued
-        return ChoiceModel(provider="openrouter", model=model, family="",
-                           rp_per_1k_input=0, rp_per_1k_output=0,
-                           vision=False)
+        return ChoiceModel(
+            provider="openrouter",
+            model=model,
+            family="",
+            rp_per_1k_input=0,
+            rp_per_1k_output=0,
+            vision=False,
+        )
     choice = choose(resolve_role(role))
     if choice is None:
         raise ValueError(f"no model in the router catalog for role {role!r}")
     return choice
 
 
-def resolve_api_key(provider: str, *, api_key: str | None = None,
-                    user_id=None, dsn: str | None = None,
-                    key_resolver=None) -> str:
+def resolve_api_key(
+    provider: str,
+    *,
+    api_key: str | None = None,
+    user_id=None,
+    dsn: str | None = None,
+    key_resolver=None,
+) -> str:
     """Find the API key for one provider, without ever printing it.
 
     Order: an injected ``key_resolver(provider)`` (tests), an
@@ -194,8 +208,8 @@ def resolve_api_key(provider: str, *, api_key: str | None = None,
         key = key_resolver(provider)
         if not key or not str(key).strip():
             raise KeyError(
-                f"no API key for provider {provider!r}: the injected "
-                "key resolver returned nothing")
+                f"no API key for provider {provider!r}: the injected key resolver returned nothing"
+            )
         return str(key)
     if api_key:
         return str(api_key)
@@ -205,9 +219,12 @@ def resolve_api_key(provider: str, *, api_key: str | None = None,
     demo_dir = Path(__file__).resolve().parent.parent.parent.parent / "demo"
     if str(demo_dir) not in sys.path:
         sys.path.insert(0, str(demo_dir))
-    from demo.byok_provider import resolve_key  # noqa: E402
+    from demo.byok_provider import resolve_key
 
-    return resolve_key(provider, None, user_id=user_id, dsn=dsn)
+    key = resolve_key(provider, None, user_id=user_id, dsn=dsn)
+    if not key:
+        raise KeyError(f"no API key for provider {provider!r}: the BYOK path returned nothing")
+    return key
 
 
 def _proxy_from_env() -> str | None:
@@ -239,9 +256,12 @@ def _build_client(*, transport=None, timeout: float) -> httpx.Client:
     """
     if transport is not None:
         return httpx.Client(transport=transport, timeout=timeout)
-    return httpx.Client(proxy=_proxy_from_env(), trust_env=False,
-                        verify=ssl.create_default_context(),
-                        timeout=timeout)
+    return httpx.Client(
+        proxy=_proxy_from_env(),
+        trust_env=False,
+        verify=ssl.create_default_context(),
+        timeout=timeout,
+    )
 
 
 def _parse_reply(payload: dict, *, provider: str, model: str) -> tuple[str, int, int]:
@@ -254,24 +274,19 @@ def _parse_reply(payload: dict, *, provider: str, model: str) -> tuple[str, int,
     answer.
     """
     if not isinstance(payload, dict):
-        raise CompletionError(
-            f"{provider}/{model} returned a reply that is not a JSON object")
+        raise CompletionError(f"{provider}/{model} returned a reply that is not a JSON object")
     choices = payload.get("choices")
     if not isinstance(choices, list) or not choices:
-        raise CompletionError(
-            f"{provider}/{model} returned no choices")
+        raise CompletionError(f"{provider}/{model} returned no choices")
     first = choices[0]
     if not isinstance(first, dict):
-        raise CompletionError(
-            f"{provider}/{model} returned a choice that is not an object")
+        raise CompletionError(f"{provider}/{model} returned a choice that is not an object")
     message = first.get("message")
     if not isinstance(message, dict):
-        raise CompletionError(
-            f"{provider}/{model} returned a choice with no message")
+        raise CompletionError(f"{provider}/{model} returned a choice with no message")
     content = message.get("content")
     if not isinstance(content, str) or content.strip() == "":
-        raise CompletionError(
-            f"{provider}/{model} returned an empty completion")
+        raise CompletionError(f"{provider}/{model} returned an empty completion")
     usage = payload.get("usage") or {}
     if not isinstance(usage, dict):
         usage = {}
@@ -281,18 +296,26 @@ def _parse_reply(payload: dict, *, provider: str, model: str) -> tuple[str, int,
         input_tokens = int(input_tokens)
         output_tokens = int(output_tokens)
     except (TypeError, ValueError) as exc:
-        raise CompletionError(
-            f"{provider}/{model} returned unusable token counts") from exc
+        raise CompletionError(f"{provider}/{model} returned unusable token counts") from exc
     return content, max(0, input_tokens), max(0, output_tokens)
 
 
-def complete_detailed(prompt: str, *, role: str = "reader",
-                      model: str | None = None, api_key: str | None = None,
-                      user_id=None, dsn: str | None = None,
-                      temperature: float = 0.0, max_tokens: int = 1024,
-                      timeout: float = 60.0, base_url: str | None = None,
-                      transport=None, client: httpx.Client | None = None,
-                      key_resolver=None) -> CompletionResult:
+def complete_detailed(
+    prompt: str,
+    *,
+    role: str = "reader",
+    model: str | None = None,
+    api_key: str | None = None,
+    user_id=None,
+    dsn: str | None = None,
+    temperature: float = 0.0,
+    max_tokens: int = 1024,
+    timeout: float = 60.0,
+    base_url: str | None = None,
+    transport=None,
+    client: httpx.Client | None = None,
+    key_resolver=None,
+) -> CompletionResult:
     """Complete one prompt through the router's cheapest model.
 
     ``role`` picks the model (see ``ROLE_ALIASES``); ``model``
@@ -316,9 +339,9 @@ def complete_detailed(prompt: str, *, role: str = "reader",
     if timeout <= 0:
         raise ValueError("timeout must be positive")
     choice = _resolve_choice(role, model)
-    key = resolve_api_key(choice.provider, api_key=api_key,
-                          user_id=user_id, dsn=dsn,
-                          key_resolver=key_resolver)
+    key = resolve_api_key(
+        choice.provider, api_key=api_key, user_id=user_id, dsn=dsn, key_resolver=key_resolver
+    )
     url = (base_url or OPENROUTER_API_BASE).rstrip("/") + "/chat/completions"
     body = {
         "model": choice.model,
@@ -327,62 +350,80 @@ def complete_detailed(prompt: str, *, role: str = "reader",
         "max_tokens": max_tokens,
     }
     own_client = client is None
-    http = client if client is not None else _build_client(
-        transport=transport, timeout=timeout)
+    http = client if client is not None else _build_client(transport=transport, timeout=timeout)
     try:
         try:
             response = http.post(
-                url, json=body,
-                headers={"Authorization": f"Bearer {key}",
-                         "Content-Type": "application/json"},
+                url,
+                json=body,
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 timeout=timeout,
             )
         except httpx.TimeoutException as exc:
             raise CompletionError(
-                f"{choice.provider}/{choice.model} timed out after "
-                f"{timeout}s") from exc
+                f"{choice.provider}/{choice.model} timed out after {timeout}s"
+            ) from exc
         except httpx.HTTPError as exc:
             raise CompletionError(
-                f"{choice.provider}/{choice.model} request failed: "
-                f"{type(exc).__name__}: {exc}") from exc
+                f"{choice.provider}/{choice.model} request failed: {type(exc).__name__}: {exc}"
+            ) from exc
         if response.status_code < 200 or response.status_code >= 300:
             detail = ""
             try:
                 detail = (response.json().get("error", {}) or {}).get(
-                    "message", "") or response.text[:300]
+                    "message", ""
+                ) or response.text[:300]
             except ValueError:
                 detail = response.text[:300]
             raise CompletionError(
                 f"{choice.provider}/{choice.model} rejected the request"
                 + (f": {detail}" if detail else ""),
-                status=response.status_code)
+                status=response.status_code,
+            )
         try:
             payload = response.json()
         except ValueError as exc:
             raise CompletionError(
-                f"{choice.provider}/{choice.model} returned a reply "
-                "that is not valid JSON") from exc
+                f"{choice.provider}/{choice.model} returned a reply that is not valid JSON"
+            ) from exc
         text, input_tokens, output_tokens = _parse_reply(
-            payload, provider=choice.provider, model=choice.model)
+            payload, provider=choice.provider, model=choice.model
+        )
         catalogued = _catalog_choice(choice.provider, choice.model)
-        cost = (compute_cost(catalogued, input_tokens, output_tokens)
-                if catalogued is not None else None)
+        cost = (
+            compute_cost(catalogued, input_tokens, output_tokens)
+            if catalogued is not None
+            else None
+        )
         return CompletionResult(
-            text=text, provider=choice.provider, model=choice.model,
-            input_tokens=input_tokens, output_tokens=output_tokens,
-            cost_rp=cost)
+            text=text,
+            provider=choice.provider,
+            model=choice.model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_rp=cost,
+        )
     finally:
         if own_client:
             http.close()
 
 
-def complete(prompt: str, *, role: str = "reader",
-             model: str | None = None, api_key: str | None = None,
-             user_id=None, dsn: str | None = None,
-             temperature: float = 0.0, max_tokens: int = 1024,
-             timeout: float = 60.0, base_url: str | None = None,
-             transport=None, client: httpx.Client | None = None,
-             key_resolver=None) -> str:
+def complete(
+    prompt: str,
+    *,
+    role: str = "reader",
+    model: str | None = None,
+    api_key: str | None = None,
+    user_id=None,
+    dsn: str | None = None,
+    temperature: float = 0.0,
+    max_tokens: int = 1024,
+    timeout: float = 60.0,
+    base_url: str | None = None,
+    transport=None,
+    client: httpx.Client | None = None,
+    key_resolver=None,
+) -> str:
     """Complete one prompt and return the model's text.
 
     Thin wrapper over :func:`complete_detailed`: same arguments,
@@ -392,10 +433,20 @@ def complete(prompt: str, *, role: str = "reader",
     take.
     """
     return complete_detailed(
-        prompt, role=role, model=model, api_key=api_key, user_id=user_id,
-        dsn=dsn, temperature=temperature, max_tokens=max_tokens,
-        timeout=timeout, base_url=base_url, transport=transport,
-        client=client, key_resolver=key_resolver).text
+        prompt,
+        role=role,
+        model=model,
+        api_key=api_key,
+        user_id=user_id,
+        dsn=dsn,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        timeout=timeout,
+        base_url=base_url,
+        transport=transport,
+        client=client,
+        key_resolver=key_resolver,
+    ).text
 
 
 def default_llm_complete(*, role: str = "reader", **kwargs):
@@ -411,6 +462,7 @@ def default_llm_complete(*, role: str = "reader", **kwargs):
     (``model=``, ``api_key=``, ``transport=``, ``key_resolver=``,
     ...), so tests can bind a fake transport here once.
     """
+
     def _complete(prompt: str) -> str:
         return complete(prompt, role=role, **kwargs)
 
@@ -434,8 +486,8 @@ def resolve_llm_complete(llm_complete, *, role: str = "reader", **kwargs):
     if isinstance(llm_complete, str) and llm_complete == "default":
         return default_llm_complete(role=role, **kwargs)
     raise ValueError(
-        "llm_complete must be a callable, the string \"default\", "
-        f"or None, not {llm_complete!r}")
+        f'llm_complete must be a callable, the string "default", or None, not {llm_complete!r}'
+    )
 
 
 def make_call_fn(prompt: str, **kwargs):
@@ -455,8 +507,8 @@ def make_call_fn(prompt: str, **kwargs):
 
     def call_fn(entry) -> CallResult:
         result = complete_detailed(prompt, model=entry.model, **kwargs)
-        return CallResult(value=result.text,
-                          input_tokens=result.input_tokens,
-                          output_tokens=result.output_tokens)
+        return CallResult(
+            value=result.text, input_tokens=result.input_tokens, output_tokens=result.output_tokens
+        )
 
     return call_fn

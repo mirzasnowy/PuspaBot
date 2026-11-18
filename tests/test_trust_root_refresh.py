@@ -25,11 +25,12 @@ its ~100 lines of base64 here.
 
 import os
 import socket
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from importlib.resources import as_file, files
 from pathlib import Path
 
 import pytest
+from test_sigstore_verify import IDENTITY, ISSUER, _artifact, _bundle_bytes
 
 from puspa.policy import trust_root
 from puspa.policy.sigstore_verify import verify_sigstore_bundle
@@ -42,9 +43,8 @@ from puspa.policy.trust_root import (
     resolve_trust_root_for_verify,
     run_trust_root_refresh_job,
 )
-from test_sigstore_verify import IDENTITY, ISSUER, _artifact, _bundle_bytes
 
-NOW = datetime(2026, 11, 18, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 18, 12, 0, 0, tzinfo=UTC)
 
 _BUNDLED_ROOTS = {
     "production": "https%3A%2F%2Ftuf-repo-cdn.sigstore.dev/trusted_root.json",
@@ -118,8 +118,8 @@ def download_dir(tmp_path):
 def test_refresh_writes_new_cached_root(cache_path, download_dir, sink):
     data = _bundled_root_bytes("production")
     outcome = refresh_trust_root(
-        cache_path, sink=sink, now=NOW,
-        updater_factory=_CountingFactory(download_dir, data))
+        cache_path, sink=sink, now=NOW, updater_factory=_CountingFactory(download_dir, data)
+    )
     assert outcome["status"] == "refreshed"
     assert outcome["path"] == str(cache_path)
     assert cache_path.read_bytes() == data
@@ -130,8 +130,7 @@ def test_refresh_writes_new_cached_root(cache_path, download_dir, sink):
 def test_fresh_cache_skips_network(cache_path, download_dir, sink):
     _write_cache(cache_path, _bundled_root_bytes("production"), age_days=1)
     factory = _CountingFactory(download_dir, _bundled_root_bytes("production"))
-    outcome = refresh_trust_root(
-        cache_path, sink=sink, now=NOW, updater_factory=factory)
+    outcome = refresh_trust_root(cache_path, sink=sink, now=NOW, updater_factory=factory)
     assert outcome["status"] == "fresh"
     assert factory.calls == []
     assert sink.events == []
@@ -142,18 +141,16 @@ def test_due_cache_refreshes(cache_path, download_dir, sink):
     _write_cache(cache_path, old, age_days=8)
     new = _bundled_root_bytes("production")
     outcome = refresh_trust_root(
-        cache_path, sink=sink, now=NOW,
-        updater_factory=_CountingFactory(download_dir, new))
+        cache_path, sink=sink, now=NOW, updater_factory=_CountingFactory(download_dir, new)
+    )
     assert outcome["status"] == "refreshed"
     assert cache_path.read_bytes() == new
 
 
 def test_force_refreshes_fresh_cache(cache_path, download_dir):
     _write_cache(cache_path, _bundled_root_bytes("production"), age_days=1)
-    factory = _CountingFactory(
-        download_dir, _bundled_root_bytes("production"))
-    outcome = refresh_trust_root(
-        cache_path, force=True, now=NOW, updater_factory=factory)
+    factory = _CountingFactory(download_dir, _bundled_root_bytes("production"))
+    outcome = refresh_trust_root(cache_path, force=True, now=NOW, updater_factory=factory)
     # Same bytes as the cache: nothing to install, but the network
     # path was taken because force was asked for.
     assert outcome["status"] == "unchanged"
@@ -165,8 +162,8 @@ def test_identical_download_leaves_cache_untouched(cache_path, download_dir):
     _write_cache(cache_path, data, age_days=8)
     before = cache_path.stat().st_mtime_ns
     outcome = refresh_trust_root(
-        cache_path, now=NOW,
-        updater_factory=_CountingFactory(download_dir, data))
+        cache_path, now=NOW, updater_factory=_CountingFactory(download_dir, data)
+    )
     assert outcome["status"] == "unchanged"
     assert cache_path.stat().st_mtime_ns == before
     assert cache_path.read_bytes() == data
@@ -184,9 +181,12 @@ def test_stale_root_detected_and_recorded(cache_path, sink):
 
 def test_missing_root_is_stale(cache_path, sink):
     result = check_staleness(cache_path, sink=sink, now=NOW)
-    assert result == {"stale": True, "age_days": None,
-                      "path": str(cache_path),
-                      "reason": "no cached trust root"}
+    assert result == {
+        "stale": True,
+        "age_days": None,
+        "path": str(cache_path),
+        "reason": "no cached trust root",
+    }
     assert [e["type"] for e in sink.events] == ["trust_root_stale"]
 
 
@@ -202,8 +202,11 @@ def test_bad_download_never_overwrites_good_cache(cache_path, download_dir, sink
     _write_cache(cache_path, good, age_days=40)
     before_mtime = cache_path.stat().st_mtime_ns
     outcome = refresh_trust_root(
-        cache_path, sink=sink, now=NOW,
-        updater_factory=_CountingFactory(download_dir, b"not json at all"))
+        cache_path,
+        sink=sink,
+        now=NOW,
+        updater_factory=_CountingFactory(download_dir, b"not json at all"),
+    )
     assert outcome["status"] == "failed"
     assert "rejected" in outcome["reason"]
     assert cache_path.read_bytes() == good
@@ -211,15 +214,18 @@ def test_bad_download_never_overwrites_good_cache(cache_path, download_dir, sink
     assert [e["type"] for e in sink.events] == ["trust_root_refresh_failed"]
 
 
-@pytest.mark.parametrize("bad", [
-    b'{"mediaType": "text/plain"}',
-    b"",
-    b"{" ,
-])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        b'{"mediaType": "text/plain"}',
+        b"",
+        b"{",
+    ],
+)
 def test_malformed_downloads_rejected(cache_path, download_dir, bad):
     outcome = refresh_trust_root(
-        cache_path, now=NOW,
-        updater_factory=_CountingFactory(download_dir, bad))
+        cache_path, now=NOW, updater_factory=_CountingFactory(download_dir, bad)
+    )
     assert outcome["status"] == "failed"
     assert not cache_path.exists()
 
@@ -227,8 +233,8 @@ def test_malformed_downloads_rejected(cache_path, download_dir, bad):
 def test_oversized_download_rejected(cache_path, download_dir):
     big = b"x" * (trust_root.MAX_TRUSTED_ROOT_BYTES + 1)
     outcome = refresh_trust_root(
-        cache_path, now=NOW,
-        updater_factory=_CountingFactory(download_dir, big))
+        cache_path, now=NOW, updater_factory=_CountingFactory(download_dir, big)
+    )
     assert outcome["status"] == "failed"
     assert "over the" in outcome["reason"]
     assert not cache_path.exists()
@@ -241,8 +247,7 @@ def test_download_failure_keeps_old_cache(cache_path, download_dir, sink):
     def _failing_factory(tuf_url):
         raise ConnectionError("tuf-repo-cdn.sigstore.dev unreachable")
 
-    outcome = refresh_trust_root(
-        cache_path, sink=sink, now=NOW, updater_factory=_failing_factory)
+    outcome = refresh_trust_root(cache_path, sink=sink, now=NOW, updater_factory=_failing_factory)
     assert outcome["status"] == "failed"
     assert cache_path.read_bytes() == good
     assert [e["type"] for e in sink.events] == ["trust_root_refresh_failed"]
@@ -252,8 +257,7 @@ def test_missing_tuf_client_reports_unavailable(cache_path, sink):
     def _no_client(tuf_url):
         raise TrustRootError("sigstore TUF client is not available: no tuf")
 
-    outcome = refresh_trust_root(
-        cache_path, sink=sink, now=NOW, updater_factory=_no_client)
+    outcome = refresh_trust_root(cache_path, sink=sink, now=NOW, updater_factory=_no_client)
     assert outcome["status"] == "unavailable"
     assert not cache_path.exists()
     assert [e["type"] for e in sink.events] == ["trust_root_refresh_failed"]
@@ -261,8 +265,7 @@ def test_missing_tuf_client_reports_unavailable(cache_path, sink):
 
 def test_resolve_returns_cached_path_and_records_staleness(cache_path, sink):
     _write_cache(cache_path, _bundled_root_bytes("production"), age_days=40)
-    path, status = resolve_trust_root_for_verify(
-        cache_path, sink=sink, now=NOW)
+    path, status = resolve_trust_root_for_verify(cache_path, sink=sink, now=NOW)
     # A stale cached root is still the freshest TUF-verified copy, so
     # it is returned — but only after the staleness is recorded.
     assert path == str(cache_path)
@@ -271,24 +274,23 @@ def test_resolve_returns_cached_path_and_records_staleness(cache_path, sink):
 
 
 def test_resolve_without_cache_falls_back_to_bundled(cache_path, sink):
-    path, status = resolve_trust_root_for_verify(
-        cache_path, sink=sink, now=NOW)
+    path, status = resolve_trust_root_for_verify(cache_path, sink=sink, now=NOW)
     assert path is None
     assert status["stale"] is True
     assert status["reason"] == "no cached trust root"
 
 
-def test_refresh_job_records_staleness_and_refresh(
-        cache_path, download_dir, sink):
+def test_refresh_job_records_staleness_and_refresh(cache_path, download_dir, sink):
     outcome = run_trust_root_refresh_job(
-        sink=sink, cache_path=cache_path, now=NOW,
-        updater_factory=_CountingFactory(
-            download_dir, _bundled_root_bytes("production")))
+        sink=sink,
+        cache_path=cache_path,
+        now=NOW,
+        updater_factory=_CountingFactory(download_dir, _bundled_root_bytes("production")),
+    )
     assert outcome["status"] == "refreshed"
     assert outcome["staleness"]["stale"] is True  # no cache existed yet
     assert outcome["staleness"]["reason"] == "no cached trust root"
-    assert [e["type"] for e in sink.events] == [
-        "trust_root_stale", "trust_root_refreshed"]
+    assert [e["type"] for e in sink.events] == ["trust_root_stale", "trust_root_refreshed"]
     assert cache_path.read_bytes() == _bundled_root_bytes("production")
 
 
@@ -297,7 +299,8 @@ def test_refresh_job_never_raises(cache_path, download_dir, sink):
         raise RuntimeError("boom")
 
     outcome = run_trust_root_refresh_job(
-        sink=sink, cache_path=cache_path, now=NOW, updater_factory=_boom)
+        sink=sink, cache_path=cache_path, now=NOW, updater_factory=_boom
+    )
     assert outcome["status"] == "failed"
     assert outcome["staleness"]["stale"] is True
 
@@ -332,7 +335,8 @@ def test_verify_with_cached_root_uses_no_network(cache_path, monkeypatch):
 
     monkeypatch.setattr(socket, "socket", _no_socket)
     ok, reason = verify_sigstore_bundle(
-        _bundle_bytes(), _artifact(), IDENTITY, ISSUER, trust_root=path)
+        _bundle_bytes(), _artifact(), IDENTITY, ISSUER, trust_root=path
+    )
     assert (ok, reason) == (True, "ok")
 
 
@@ -341,14 +345,24 @@ def test_scheduler_registers_daily_refresh_trigger(monkeypatch):
 
     seen = {}
 
-    def _fake_create_trigger(user_id, event_type, next_trigger_at,
-                            schedule="", workflow="", dsn=None):
-        seen.update({"user_id": user_id, "event_type": event_type,
-                     "next_trigger_at": next_trigger_at,
-                     "schedule": schedule})
+    def _fake_create_trigger(
+        user_id, event_type, next_trigger_at, schedule="", workflow="", dsn=None
+    ):
+        seen.update(
+            {
+                "user_id": user_id,
+                "event_type": event_type,
+                "next_trigger_at": next_trigger_at,
+                "schedule": schedule,
+            }
+        )
         return scheduler.Trigger(
-            id="pemicu-test", user_id=user_id, event_type=event_type,
-            schedule=schedule, next_trigger_at=next_trigger_at)
+            id="pemicu-test",
+            user_id=user_id,
+            event_type=event_type,
+            schedule=schedule,
+            next_trigger_at=next_trigger_at,
+        )
 
     monkeypatch.setattr(scheduler, "create_trigger", _fake_create_trigger)
     trigger = scheduler.schedule_trust_root_refresh("user-1")
@@ -392,18 +406,21 @@ def test_scheduler_dispatches_refresh_job(monkeypatch):
             return _FakeCursor(self._row)
 
     monkeypatch.setattr(
-        scheduler, "_connect",
-        lambda dsn=None: _FakeConn(("trust_root_refresh", "user-1")))
+        scheduler, "_connect", lambda dsn=None: _FakeConn(("trust_root_refresh", "user-1"))
+    )
     called = {}
 
     def _fake_job(**kwargs):
         called.update(kwargs)
-        return {"status": "fresh", "path": "/cache/trusted_root.json",
-                "age_days": 1.0, "reason": "fresh",
-                "staleness": {"stale": False}}
+        return {
+            "status": "fresh",
+            "path": "/cache/trusted_root.json",
+            "age_days": 1.0,
+            "reason": "fresh",
+            "staleness": {"stale": False},
+        }
 
     monkeypatch.setattr(trust_root, "run_trust_root_refresh_job", _fake_job)
-    result = scheduler.run_scheduled_job(
-        {"trigger_id": "pemicu-test", "task_id": "tugas-test"})
+    result = scheduler.run_scheduled_job({"trigger_id": "pemicu-test", "task_id": "tugas-test"})
     assert result["job"] == "trust_root_refresh"
     assert result["result"]["status"] == "fresh"

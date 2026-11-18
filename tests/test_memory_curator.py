@@ -5,7 +5,7 @@ directories. No database, no live LLM.
 """
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from puspa.memory.curator import (
@@ -26,7 +26,7 @@ from puspa.memory.curator import (
     save_usage,
 )
 
-NOW = datetime(2026, 11, 18, 15, 30, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 18, 15, 30, tzinfo=UTC)
 
 
 def _skill(root, name, *, body="# Skill\n", manifest=None):
@@ -34,9 +34,7 @@ def _skill(root, name, *, body="# Skill\n", manifest=None):
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text(body, encoding="utf-8")
     if manifest is not None:
-        (skill_dir / "manifest.json").write_text(
-            json.dumps(manifest), encoding="utf-8"
-        )
+        (skill_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return skill_dir
 
 
@@ -100,10 +98,7 @@ def test_next_state_active_to_stale_at_threshold():
 def test_next_state_stale_to_archived_one_step_per_run():
     # 200 days inactive but still active: one step only (stale, not archived).
     assert next_state(_aged_usage(days=200), now=NOW) == STATE_STALE
-    assert (
-        next_state(_aged_usage(days=200, state=STATE_STALE), now=NOW)
-        == STATE_ARCHIVED
-    )
+    assert next_state(_aged_usage(days=200, state=STATE_STALE), now=NOW) == STATE_ARCHIVED
     assert (
         next_state(
             _aged_usage(days=ARCHIVE_AFTER_DAYS - 1, state=STATE_STALE),
@@ -114,13 +109,8 @@ def test_next_state_stale_to_archived_one_step_per_run():
 
 
 def test_next_state_pinned_is_immune_and_archived_is_terminal():
-    assert (
-        next_state(_aged_usage(days=500, pinned=True), now=NOW) == STATE_ACTIVE
-    )
-    assert (
-        next_state(_aged_usage(days=1, state=STATE_ARCHIVED), now=NOW)
-        == STATE_ARCHIVED
-    )
+    assert next_state(_aged_usage(days=500, pinned=True), now=NOW) == STATE_ACTIVE
+    assert next_state(_aged_usage(days=1, state=STATE_ARCHIVED), now=NOW) == STATE_ARCHIVED
 
 
 def test_next_state_never_used_stays_active():
@@ -182,9 +172,7 @@ def test_run_curator_transitions_pins_and_never_deletes(tmp_path):
     assert load_usage(pinned_dir).state == STATE_ACTIVE
     assert load_usage(fresh_dir).state == STATE_ACTIVE
     # The backup was taken before the run: it holds the old states.
-    backup_old = json.loads(
-        (Path(report.backup_path) / "old-one" / ".usage.json").read_text()
-    )
+    backup_old = json.loads((Path(report.backup_path) / "old-one" / ".usage.json").read_text())
     assert backup_old["state"] == STATE_STALE
 
 

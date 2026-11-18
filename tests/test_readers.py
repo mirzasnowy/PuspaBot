@@ -4,7 +4,11 @@ import httpx
 import pytest
 
 from puspa.pricing.readers import (
-    HttpReader, PlaywrightReader, create_reader, extract_price_from_html)
+    HttpReader,
+    PlaywrightReader,
+    create_reader,
+    extract_price_from_html,
+)
 
 HTML_JSONLD = """<html><head><script type="application/ld+json">
 {"@type": "Product", "name": "Samsung Galaxy S24",

@@ -2,14 +2,14 @@
 
 import pytest
 
-from puspa.router.router import compute_cost, choose
+from puspa.router.router import choose, compute_cost
 
 
 def test_reader_uses_cheapest_model():
     p = choose("pembaca")
     assert p.rp_per_1k_input + p.rp_per_1k_output == min(
-        b[3] + b[4] for b in
-        __import__("puspa.router.router", fromlist=["KATALOG"]).CATALOG)
+        b[3] + b[4] for b in __import__("puspa.router.router", fromlist=["KATALOG"]).CATALOG
+    )
 
 
 def test_planner_uses_mid_tier_model_passed_by_reference():

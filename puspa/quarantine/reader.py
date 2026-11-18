@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 from urllib.parse import urlparse
 
-__all__ = ["QuarantinedReader", "MAX_CHARS"]
+__all__ = ["MAX_CHARS", "QuarantinedReader"]
 
 MAX_CHARS = 200
 

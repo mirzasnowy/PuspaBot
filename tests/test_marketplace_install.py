@@ -16,9 +16,7 @@ def _trusted_registry():
     """Registry whose trust scorer always passes (isolates install
     flow from trust scoring, which has its own test file)."""
     return MarketplaceRegistry(
-        trust_scorer=lambda manifest, skill_id: TrustScore(
-            total=100, signals={}, reasons=[]
-        )
+        trust_scorer=lambda manifest, skill_id: TrustScore(total=100, signals={}, reasons=[])
     )
 
 
@@ -69,7 +67,9 @@ def test_rollback_restores_previous_version(tmp_path):
     # A new version arrives and installs over v1 (different SKILL.md,
     # so a different sha256).
     entry_v2 = _import(
-        registry, tmp_path, version="1.1.0",
+        registry,
+        tmp_path,
+        version="1.1.0",
         body="Author: Puspa Team\n\n## Description\n\nCompares prices, v2.\n",
     )
     registry.install("price-compare", user_id="user-1")
@@ -93,8 +93,7 @@ def test_rollback_to_named_version(tmp_path):
     registry.install("price-compare", user_id="user-1")
     _import(registry, tmp_path, version="1.2.0")
     registry.install("price-compare", user_id="user-1")
-    rolled = registry.rollback("price-compare", user_id="user-1",
-                               to_version="1.0.0")
+    rolled = registry.rollback("price-compare", user_id="user-1", to_version="1.0.0")
     assert rolled["version"] == "1.0.0"
 
 
@@ -113,8 +112,7 @@ def test_rollback_unknown_version_raises(tmp_path):
     _import(registry, tmp_path, version="1.1.0")
     registry.install("price-compare", user_id="user-1")
     with pytest.raises(MarketplaceError, match="never installed"):
-        registry.rollback("price-compare", user_id="user-1",
-                          to_version="9.9.9")
+        registry.rollback("price-compare", user_id="user-1", to_version="9.9.9")
 
 
 def test_uninstall_removes_install_but_keeps_audit(tmp_path):
@@ -148,9 +146,7 @@ def test_paid_module_without_entitlement_is_refused(tmp_path):
 
 def test_paid_module_with_entitlement_installs(tmp_path):
     registry = MarketplaceRegistry(
-        trust_scorer=lambda manifest, skill_id: TrustScore(
-            total=100, signals={}, reasons=[]
-        ),
+        trust_scorer=lambda manifest, skill_id: TrustScore(total=100, signals={}, reasons=[]),
         entitlement=lambda user_id, manifest: True,
     )
     _import(registry, tmp_path, price=500)

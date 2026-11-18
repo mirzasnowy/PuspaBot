@@ -11,7 +11,7 @@ external source.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 __all__ = [
@@ -34,8 +34,7 @@ class HoldStore:
     def __init__(self):
         self._holds: dict[str, _Hold] = {}
 
-    def set_hold(self, scope: str, *, until: datetime | None = None,
-                 reason: str = "") -> None:
+    def set_hold(self, scope: str, *, until: datetime | None = None, reason: str = "") -> None:
         """Hold ``scope`` until ``until`` (or until cleared)."""
         self._holds[str(scope)] = _Hold(until=until, reason=reason)
 
@@ -50,7 +49,7 @@ class HoldStore:
             return False
         if hold.until is None:
             return True
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         if now >= hold.until:
             del self._holds[str(scope)]
             return False
@@ -77,17 +76,15 @@ class Pacer:
         self.min_interval = min_interval
         self._last: dict[str, datetime] = {}
 
-    def should_check(self, scope: str,
-                     now: datetime | None = None) -> bool:
-        now = now or datetime.now(timezone.utc)
+    def should_check(self, scope: str, now: datetime | None = None) -> bool:
+        now = now or datetime.now(UTC)
         last = self._last.get(str(scope))
         if last is None:
             return True
         return now - last >= self.min_interval
 
-    def record_check(self, scope: str,
-                     now: datetime | None = None) -> None:
-        self._last[str(scope)] = now or datetime.now(timezone.utc)
+    def record_check(self, scope: str, now: datetime | None = None) -> None:
+        self._last[str(scope)] = now or datetime.now(UTC)
 
     def next_allowed(self, scope: str) -> datetime | None:
         """Earliest next check time for a scope (None = any time)."""
@@ -104,13 +101,11 @@ def parse_quiet_window(window: str) -> tuple[time, time]:
         start = time.fromisoformat(start_text.strip())
         end = time.fromisoformat(end_text.strip())
     except ValueError:
-        raise ValueError(
-            f"quiet window must be HH:MM-HH:MM, got {window!r}") from None
+        raise ValueError(f"quiet window must be HH:MM-HH:MM, got {window!r}") from None
     return start, end
 
 
-def is_quiet(now: datetime, quiet_window: str,
-             timezone_name: str = "UTC") -> bool:
+def is_quiet(now: datetime, quiet_window: str, timezone_name: str = "UTC") -> bool:
     """True when ``now`` falls inside the daily quiet window.
 
     A window whose end is earlier than its start spans midnight

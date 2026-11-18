@@ -22,6 +22,7 @@ import hmac
 import os
 import re
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -67,28 +68,28 @@ class PaymentProvider(Protocol):
 
     name: str
 
-    def create_checkout(self, *, amount_idr: int, description: str,
-                        idempotency_key: str,
-                        success_url: str = "", cancel_url: str = "") -> Checkout:
-        ...
+    def create_checkout(
+        self,
+        *,
+        amount_idr: int,
+        description: str,
+        idempotency_key: str,
+        success_url: str = "",
+        cancel_url: str = "",
+    ) -> Checkout: ...
 
-    def get_invoice(self, invoice_id: str) -> Invoice:
-        ...
+    def get_invoice(self, invoice_id: str) -> Invoice: ...
 
-    def list_invoices(self, *, user_id: str, limit: int = 20) -> list[Invoice]:
-        ...
+    def list_invoices(self, *, user_id: str, limit: int = 20) -> list[Invoice]: ...
 
-    def verify_webhook_signature(self, *, payload: bytes, signature: str,
-                                 secret: str) -> bool:
-        ...
+    def verify_webhook_signature(self, *, payload: bytes, signature: str, secret: str) -> bool: ...
 
-    def refund(self, *, checkout_id: str, amount_idr: int | None = None,
-               idempotency_key: str = "") -> dict:
-        ...
+    def refund(
+        self, *, checkout_id: str, amount_idr: int | None = None, idempotency_key: str = ""
+    ) -> dict: ...
 
 
-def product_key_from_env(product_id: str, *,
-                         env: dict | None = None) -> str:
+def product_key_from_env(product_id: str, *, env: Mapping[str, str] | None = None) -> str:
     """Map a product id to its provider product key from the environment.
 
     Reads ``PUSPA_BILLING_PRODUCT_KEY_<PRODUCT_ID>``. Raises
@@ -99,10 +100,7 @@ def product_key_from_env(product_id: str, *,
     var = "PUSPA_BILLING_PRODUCT_KEY_" + re.sub(r"[^A-Z0-9]", "_", product_id.upper())
     value = env.get(var)
     if not value:
-        raise ProviderError(
-            f"product key for {product_id!r} is not configured "
-            f"(set {var})"
-        )
+        raise ProviderError(f"product key for {product_id!r} is not configured (set {var})")
     return value
 
 
@@ -135,9 +133,15 @@ class FakePaymentProvider:
     _checkouts: dict[str, Checkout] = field(default_factory=dict)
     _invoices: dict[str, Invoice] = field(default_factory=dict)
 
-    def create_checkout(self, *, amount_idr: int, description: str,
-                        idempotency_key: str,
-                        success_url: str = "", cancel_url: str = "") -> Checkout:
+    def create_checkout(
+        self,
+        *,
+        amount_idr: int,
+        description: str,
+        idempotency_key: str,
+        success_url: str = "",
+        cancel_url: str = "",
+    ) -> Checkout:
         if not idempotency_key:
             raise ProviderError("idempotency_key is required")
         existing = self._checkouts.get(idempotency_key)
@@ -180,21 +184,18 @@ class FakePaymentProvider:
         # it created, newest first, capped at the limit.
         return list(reversed(list(self._invoices.values())))[:limit]
 
-    def verify_webhook_signature(self, *, payload: bytes, signature: str,
-                                 secret: str) -> bool:
-        return verify_hmac_signature(
-            payload=payload, signature=signature, secret=secret)
+    def verify_webhook_signature(self, *, payload: bytes, signature: str, secret: str) -> bool:
+        return verify_hmac_signature(payload=payload, signature=signature, secret=secret)
 
-    def refund(self, *, checkout_id: str, amount_idr: int | None = None,
-               idempotency_key: str = "") -> dict:
-        matches = [c for c in self._checkouts.values()
-                   if c.checkout_id == checkout_id]
+    def refund(
+        self, *, checkout_id: str, amount_idr: int | None = None, idempotency_key: str = ""
+    ) -> dict:
+        matches = [c for c in self._checkouts.values() if c.checkout_id == checkout_id]
         if not matches:
             raise ProviderError(f"unknown checkout {checkout_id!r}")
         return {
             "checkout_id": checkout_id,
-            "refunded_idr": amount_idr if amount_idr is not None
-            else matches[0].amount_idr,
+            "refunded_idr": amount_idr if amount_idr is not None else matches[0].amount_idr,
             "status": "refunded",
             "idempotency_key": idempotency_key or str(uuid.uuid4()),
         }
@@ -222,9 +223,15 @@ class LocalGatewayProvider:
             "real API; until then use FakePaymentProvider."
         )
 
-    def create_checkout(self, *, amount_idr: int, description: str,
-                        idempotency_key: str,
-                        success_url: str = "", cancel_url: str = "") -> Checkout:
+    def create_checkout(
+        self,
+        *,
+        amount_idr: int,
+        description: str,
+        idempotency_key: str,
+        success_url: str = "",
+        cancel_url: str = "",
+    ) -> Checkout:
         raise self._unimplemented("create_checkout")
 
     def get_invoice(self, invoice_id: str) -> Invoice:
@@ -233,18 +240,17 @@ class LocalGatewayProvider:
     def list_invoices(self, *, user_id: str, limit: int = 20) -> list[Invoice]:
         raise self._unimplemented("list_invoices")
 
-    def verify_webhook_signature(self, *, payload: bytes, signature: str,
-                                 secret: str) -> bool:
+    def verify_webhook_signature(self, *, payload: bytes, signature: str, secret: str) -> bool:
         # Signature verification is pure HMAC and needs no gateway.
-        return verify_hmac_signature(
-            payload=payload, signature=signature, secret=secret)
+        return verify_hmac_signature(payload=payload, signature=signature, secret=secret)
 
-    def refund(self, *, checkout_id: str, amount_idr: int | None = None,
-               idempotency_key: str = "") -> dict:
+    def refund(
+        self, *, checkout_id: str, amount_idr: int | None = None, idempotency_key: str = ""
+    ) -> dict:
         raise self._unimplemented("refund")
 
 
-def provider_from_env(*, env: dict | None = None) -> PaymentProvider:
+def provider_from_env(*, env: Mapping[str, str] | None = None) -> PaymentProvider:
     """Pick a provider from ``PUSPA_BILLING_PROVIDER``.
 
     ``"fake"`` (default) or ``"local-gateway"``. Anything else raises
@@ -255,6 +261,5 @@ def provider_from_env(*, env: dict | None = None) -> PaymentProvider:
     if name == "fake":
         return FakePaymentProvider()
     if name == "local-gateway":
-        return LocalGatewayProvider(
-            gateway_name=env.get("PUSPA_BILLING_GATEWAY_NAME", ""))
+        return LocalGatewayProvider(gateway_name=env.get("PUSPA_BILLING_GATEWAY_NAME", ""))
     raise ProviderError(f"unknown billing provider {name!r}")

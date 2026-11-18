@@ -30,20 +30,29 @@ def _grounded_model(day=15):
     model.day = day
     world = SimulatedWorld(start_day=day)
     for store in STORES:
-        model.update({"action": {"type": "check_price", "product_id": PRODUCT_ID, "store": store},
-                      "observed": world.observe_price(PRODUCT_ID, store),
-                      "task": "grounding", "day": day})
-    model.update({"action": {"type": "check_bill", "bill_id": BILL_ID},
-                  "observed": world.observe_bill(),
-                  "task": "grounding", "day": day})
+        model.update(
+            {
+                "action": {"type": "check_price", "product_id": PRODUCT_ID, "store": store},
+                "observed": world.observe_price(PRODUCT_ID, store),
+                "task": "grounding",
+                "day": day,
+            }
+        )
+    model.update(
+        {
+            "action": {"type": "check_bill", "bill_id": BILL_ID},
+            "observed": world.observe_bill(),
+            "task": "grounding",
+            "day": day,
+        }
+    )
     return model, world
 
 
 def test_predict_before_act_returns_prediction_and_confidence():
     model, _ = _grounded_model()
     before = model.state
-    prediction = model.predict(
-        {"type": "check_price", "product_id": PRODUCT_ID, "store": "Shopee"})
+    prediction = model.predict({"type": "check_price", "product_id": PRODUCT_ID, "store": "Shopee"})
     assert prediction.outcome["known"] is True
     assert prediction.outcome["price"] == 5100000
     assert 0.0 < prediction.confidence <= 1.0
@@ -54,7 +63,8 @@ def test_predict_before_act_returns_prediction_and_confidence():
 def test_predict_unknown_entity_has_zero_confidence():
     model = WorldModel()
     prediction = model.predict(
-        {"type": "check_price", "product_id": "phone-unknown", "store": "Shopee"})
+        {"type": "check_price", "product_id": "phone-unknown", "store": "Shopee"}
+    )
     assert prediction.outcome == {"price": None, "known": False}
     assert prediction.confidence == 0.0
 
@@ -87,10 +97,16 @@ def test_plan_find_cheapest_price_simulation():
 
 def test_plan_sequence_simulates_given_steps():
     model, _ = _grounded_model()
-    result = plan(model, {"goal": "sequence", "steps": [
-        {"type": "check_bill", "bill_id": BILL_ID},
-        {"type": "pay_bill", "bill_id": BILL_ID},
-    ]})
+    result = plan(
+        model,
+        {
+            "goal": "sequence",
+            "steps": [
+                {"type": "check_bill", "bill_id": BILL_ID},
+                {"type": "pay_bill", "bill_id": BILL_ID},
+            ],
+        },
+    )
     assert result["feasible"] is True
     assert len(result["steps"]) == 2
     assert result["predicted_outcome"]["status"] == "paid"
@@ -108,24 +124,32 @@ def test_update_from_observation_changes_state():
     world.day = 16
     observed = world.observe_price(PRODUCT_ID, "Shopee")
     assert observed["price"] == 5103000
-    result = model.update({"action": {"type": "check_price", "product_id": PRODUCT_ID, "store": "Shopee"},
-                           "observed": observed, "task": "watch_price", "day": 16})
+    result = model.update(
+        {
+            "action": {"type": "check_price", "product_id": PRODUCT_ID, "store": "Shopee"},
+            "observed": observed,
+            "task": "watch_price",
+            "day": 16,
+        }
+    )
     assert result["observed"]["price"] == 5103000
-    prediction = model.predict(
-        {"type": "check_price", "product_id": PRODUCT_ID, "store": "Shopee"})
+    prediction = model.predict({"type": "check_price", "product_id": PRODUCT_ID, "store": "Shopee"})
     assert prediction.outcome["price"] == 5103000
 
 
 def test_misprediction_is_recorded_and_model_corrected():
     model, _ = _grounded_model()
     # The model has no trend yet, so it predicts the price stays flat.
-    prediction = model.predict(
-        {"type": "check_price", "product_id": PRODUCT_ID, "store": "Shopee"})
+    prediction = model.predict({"type": "check_price", "product_id": PRODUCT_ID, "store": "Shopee"})
     assert prediction.outcome["price"] == 5100000
-    result = model.update({"action": {"type": "check_price", "product_id": PRODUCT_ID, "store": "Shopee"},
-                           "observed": {"price": 5103000, "store": "Shopee",
-                                        "product_id": PRODUCT_ID, "day": 16},
-                           "task": "watch_price", "day": 16})
+    result = model.update(
+        {
+            "action": {"type": "check_price", "product_id": PRODUCT_ID, "store": "Shopee"},
+            "observed": {"price": 5103000, "store": "Shopee", "product_id": PRODUCT_ID, "day": 16},
+            "task": "watch_price",
+            "day": 16,
+        }
+    )
     assert result["correct"] is False
     assert result["error"] == 3000
     assert len(model.mispredictions) == 1
@@ -136,22 +160,34 @@ def test_misprediction_is_recorded_and_model_corrected():
     assert record["error"] == 3000
     assert record["context"]["action"]["store"] == "Shopee"
     # The correction lands: the model now holds the observed price.
-    assert model.predict(
-        {"type": "check_price", "product_id": PRODUCT_ID, "store": "Shopee"}
-    ).outcome["price"] == 5103000
+    assert (
+        model.predict({"type": "check_price", "product_id": PRODUCT_ID, "store": "Shopee"}).outcome[
+            "price"
+        ]
+        == 5103000
+    )
 
 
 def test_misprediction_reported_to_learning_loop_when_present(monkeypatch):
     received = []
     fake_loop = types.ModuleType("puspa.memory.learning_loop")
-    fake_loop.record_misprediction = lambda record: received.append(record)
+    fake_loop.record_misprediction = received.append
     monkeypatch.setitem(sys.modules, "puspa.memory.learning_loop", fake_loop)
     model, _ = _grounded_model()
     model.predict({"type": "check_price", "product_id": PRODUCT_ID, "store": "Tokopedia"})
-    model.update({"action": {"type": "check_price", "product_id": PRODUCT_ID, "store": "Tokopedia"},
-                  "observed": {"price": 5248000, "store": "Tokopedia",
-                               "product_id": PRODUCT_ID, "day": 16},
-                  "task": "watch_price", "day": 16})
+    model.update(
+        {
+            "action": {"type": "check_price", "product_id": PRODUCT_ID, "store": "Tokopedia"},
+            "observed": {
+                "price": 5248000,
+                "store": "Tokopedia",
+                "product_id": PRODUCT_ID,
+                "day": 16,
+            },
+            "task": "watch_price",
+            "day": 16,
+        }
+    )
     assert len(received) == 1
     assert set(received[0]) == {"task", "predicted", "observed", "error", "context"}
     assert received[0]["task"] == "watch_price"
@@ -189,7 +225,10 @@ def test_world_model_imports_without_learning_loop():
     """)
     proc = subprocess.run(
         [sys.executable, "-c", script],
-        capture_output=True, text=True, timeout=60,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     assert proc.returncode == 0, proc.stderr
     assert "world model imports without the loop; miss recorded" in proc.stdout
@@ -198,30 +237,55 @@ def test_world_model_imports_without_learning_loop():
 def test_ingest_graph_and_task_result_build_beliefs():
     model = WorldModel()
     model.ingest_graph(
-        [{"id": PRODUCT_ID, "kind": "product",
-          "attributes": {"price": 5100000, "store": "Shopee"}},
-         {"id": BILL_ID, "kind": "bill",
-          "attributes": {"amount": BILL_AMOUNT, "due_day": BILL_DUE_DAY,
-                         "status": "not_due", "amount_due": BILL_AMOUNT}}],
-        relations=[(PRODUCT_ID, "sold_at", "Shopee")])
-    assert model.predict(
-        {"type": "check_price", "product_id": PRODUCT_ID, "store": "Shopee"}
-    ).outcome["price"] == 5100000
-    assert model.predict(
-        {"type": "check_bill", "bill_id": BILL_ID}
-    ).outcome["status"] == "not_due"
+        [
+            {
+                "id": PRODUCT_ID,
+                "kind": "product",
+                "attributes": {"price": 5100000, "store": "Shopee"},
+            },
+            {
+                "id": BILL_ID,
+                "kind": "bill",
+                "attributes": {
+                    "amount": BILL_AMOUNT,
+                    "due_day": BILL_DUE_DAY,
+                    "status": "not_due",
+                    "amount_due": BILL_AMOUNT,
+                },
+            },
+        ],
+        relations=[(PRODUCT_ID, "sold_at", "Shopee")],
+    )
+    assert (
+        model.predict({"type": "check_price", "product_id": PRODUCT_ID, "store": "Shopee"}).outcome[
+            "price"
+        ]
+        == 5100000
+    )
+    assert model.predict({"type": "check_bill", "bill_id": BILL_ID}).outcome["status"] == "not_due"
     assert len(model.relations) == 1
-    model.ingest_task_result({"task": "pay_bill", "success": True, "result": {
-        "bill_id": BILL_ID, "status": "paid", "amount_due": 0, "day": 16}})
-    assert model.predict(
-        {"type": "check_bill", "bill_id": BILL_ID}
-    ).outcome["status"] == "paid"
+    model.ingest_task_result(
+        {
+            "task": "pay_bill",
+            "success": True,
+            "result": {"bill_id": BILL_ID, "status": "paid", "amount_due": 0, "day": 16},
+        }
+    )
+    assert model.predict({"type": "check_bill", "bill_id": BILL_ID}).outcome["status"] == "paid"
     # A failed task result must not change the model.
-    model.ingest_task_result({"task": "pay_bill", "success": False, "result": {
-        "bill_id": BILL_ID, "status": "not_due", "amount_due": BILL_AMOUNT, "day": 16}})
-    assert model.predict(
-        {"type": "check_bill", "bill_id": BILL_ID}
-    ).outcome["status"] == "paid"
+    model.ingest_task_result(
+        {
+            "task": "pay_bill",
+            "success": False,
+            "result": {
+                "bill_id": BILL_ID,
+                "status": "not_due",
+                "amount_due": BILL_AMOUNT,
+                "day": 16,
+            },
+        }
+    )
+    assert model.predict({"type": "check_bill", "bill_id": BILL_ID}).outcome["status"] == "paid"
 
 
 def test_prediction_accuracy_improves_across_episodes():
@@ -231,9 +295,11 @@ def test_prediction_accuracy_improves_across_episodes():
     # Key evidence, printed so the run log carries the numbers:
     # episode 1 predicts flat prices and misses every drifting store
     # until the trend is confirmed; later episodes predict exactly.
-    print(f"episode accuracies: {accuracies} "
-          f"(first={summary['first_accuracy']:.3f}, "
-          f"last={summary['last_accuracy']:.3f})")
+    print(
+        f"episode accuracies: {accuracies} "
+        f"(first={summary['first_accuracy']:.3f}, "
+        f"last={summary['last_accuracy']:.3f})"
+    )
     assert summary["episodes"][0]["total"] == 17
     assert accuracies[0] < 0.75
     assert accuracies[1] > accuracies[0]
@@ -245,13 +311,28 @@ def test_prediction_accuracy_improves_across_episodes():
 
 def test_bill_observation_corrects_stale_paid_belief():
     model, _ = _grounded_model()
-    model.ingest_task_result({"task": "pay_bill", "success": True, "result": {
-        "bill_id": BILL_ID, "status": "paid", "amount_due": 0, "day": 16}})
+    model.ingest_task_result(
+        {
+            "task": "pay_bill",
+            "success": True,
+            "result": {"bill_id": BILL_ID, "status": "paid", "amount_due": 0, "day": 16},
+        }
+    )
     assert model.predict({"type": "check_bill", "bill_id": BILL_ID}).outcome["status"] == "paid"
     # A fresh billing cycle: the bill is unpaid again.
-    model.update({"action": {"type": "check_bill", "bill_id": BILL_ID},
-                  "observed": {"status": "not_due", "amount_due": BILL_AMOUNT,
-                               "amount": BILL_AMOUNT, "due_day": BILL_DUE_DAY,
-                               "bill_id": BILL_ID, "day": 15},
-                  "task": "grounding", "day": 15})
+    model.update(
+        {
+            "action": {"type": "check_bill", "bill_id": BILL_ID},
+            "observed": {
+                "status": "not_due",
+                "amount_due": BILL_AMOUNT,
+                "amount": BILL_AMOUNT,
+                "due_day": BILL_DUE_DAY,
+                "bill_id": BILL_ID,
+                "day": 15,
+            },
+            "task": "grounding",
+            "day": 15,
+        }
+    )
     assert model.predict({"type": "check_bill", "bill_id": BILL_ID}).outcome["status"] == "not_due"

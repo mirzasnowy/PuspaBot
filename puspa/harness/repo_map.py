@@ -33,6 +33,7 @@ raised, so one broken file cannot hide the rest of the map.
 from __future__ import annotations
 
 import ast
+import contextlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -107,10 +108,8 @@ def _format_args(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
     for arg, default in zip(positional, defaults):
         text = arg.arg
         if arg.annotation is not None:
-            try:
+            with contextlib.suppress(Exception):
                 text += ": " + ast.unparse(arg.annotation)
-            except Exception:
-                pass
         if default is not None:
             try:
                 text += " = " + ast.unparse(default)
@@ -122,10 +121,8 @@ def _format_args(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
     for arg, default in zip(args.kwonlyargs, args.kw_defaults):
         text = arg.arg
         if arg.annotation is not None:
-            try:
+            with contextlib.suppress(Exception):
                 text += ": " + ast.unparse(arg.annotation)
-            except Exception:
-                pass
         if default is not None:
             try:
                 text += " = " + ast.unparse(default)
@@ -136,10 +133,8 @@ def _format_args(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
         parts.append("**" + args.kwarg.arg)
     rendered = "(" + ", ".join(parts) + ")"
     if node.returns is not None:
-        try:
+        with contextlib.suppress(Exception):
             rendered += " -> " + ast.unparse(node.returns)
-        except Exception:
-            pass
     return rendered
 
 
@@ -229,7 +224,8 @@ def build_repo_map(
     py_files = sorted(
         path
         for path in root_path.rglob("*.py")
-        if "__pycache__" not in path.parts and not any(part.startswith(".") for part in path.relative_to(root_path).parts)
+        if "__pycache__" not in path.parts
+        and not any(part.startswith(".") for part in path.relative_to(root_path).parts)
     )[:max_files]
     for path in py_files:
         rel_path = str(path.relative_to(root_path))

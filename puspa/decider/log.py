@@ -24,12 +24,12 @@ __all__ = ["DecisionLog", "state_hash"]
 
 def _canonical(value) -> str:
     """Canonical JSON: sorted keys, no whitespace, ASCII-safe."""
-    return json.dumps(value, sort_keys=True, separators=(",", ":"),
-                      ensure_ascii=False, default=str)
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def state_hash(*, job: str, question, backend: str | None,
-               value=None, reason: str | None = None) -> str:
+def state_hash(
+    *, job: str, question, backend: str | None, value=None, reason: str | None = None
+) -> str:
     """The state hash of one decision.
 
     ``question`` is a question object (``to_dict()``) or None
@@ -61,10 +61,12 @@ class DecisionLog:
 
     def record(self, decision: dict, question=None) -> dict:
         digest = state_hash(
-            job=decision["job"], question=question,
+            job=decision["job"],
+            question=question,
             backend=decision.get("backend"),
             value=decision.get("value"),
-            reason=decision.get("reason"))
+            reason=decision.get("reason"),
+        )
         entry = {
             "seq": len(self._entries),
             "state_hash": digest,

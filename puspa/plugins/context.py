@@ -41,8 +41,9 @@ from __future__ import annotations
 
 import inspect
 import re
-from dataclasses import dataclass, field
-from typing import Any, Callable
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 from .context_engine import ContextEngine
 from .errors import PluginConfigError, PluginStructureError
@@ -88,22 +89,18 @@ def _validate_parameters(parameters, *, what: str) -> dict:
         raise PluginStructureError(f"{what}: parameters must be a dict")
     if parameters.get("type", "object") != "object":
         raise PluginStructureError(
-            f"{what}: parameters type must be 'object', "
-            f"got {parameters.get('type')!r}"
+            f"{what}: parameters type must be 'object', got {parameters.get('type')!r}"
         )
     properties = parameters.get("properties", {})
     if not isinstance(properties, dict):
         raise PluginStructureError(f"{what}: properties must be a dict")
     required = parameters.get("required", [])
-    if not isinstance(required, list) or not all(
-        isinstance(item, str) for item in required
-    ):
+    if not isinstance(required, list) or not all(isinstance(item, str) for item in required):
         raise PluginStructureError(f"{what}: required must be a list of strings")
     unknown_required = sorted(set(required) - set(properties))
     if unknown_required:
         raise PluginStructureError(
-            f"{what}: required names not in properties: "
-            f"{', '.join(unknown_required)}"
+            f"{what}: required names not in properties: {', '.join(unknown_required)}"
         )
     return parameters
 
@@ -160,8 +157,7 @@ class PluginContext:
 
     # -- tools ---------------------------------------------------------
 
-    def register_tool(self, name, description, parameters, handler, *,
-                      read_only=False):
+    def register_tool(self, name, description, parameters, handler, *, read_only=False):
         """Register a tool the agent can call.
 
         ``handler`` takes keyword arguments matching ``parameters``
@@ -174,18 +170,14 @@ class PluginContext:
                 "(lowercase snake_case starting with a letter)"
             )
         if name in self._tools:
-            raise PluginStructureError(
-                f"plugin {self.plugin_id!r}: tool {name!r} registered twice"
-            )
+            raise PluginStructureError(f"plugin {self.plugin_id!r}: tool {name!r} registered twice")
         if not isinstance(description, str) or not description.strip():
             raise PluginStructureError(
-                f"plugin {self.plugin_id!r}: tool {name!r} needs a "
-                "non-empty description"
+                f"plugin {self.plugin_id!r}: tool {name!r} needs a non-empty description"
             )
         if not callable(handler):
             raise PluginStructureError(
-                f"plugin {self.plugin_id!r}: tool {name!r} handler "
-                "is not callable"
+                f"plugin {self.plugin_id!r}: tool {name!r} handler is not callable"
             )
         _validate_parameters(parameters, what=f"tool {name!r}")
         self._tools[name] = ToolDefinition(
@@ -209,12 +201,9 @@ class PluginContext:
             )
         if not callable(handler):
             raise PluginStructureError(
-                f"plugin {self.plugin_id!r}: hook handler for {event!r} "
-                "is not callable"
+                f"plugin {self.plugin_id!r}: hook handler for {event!r} is not callable"
             )
-        definition = HookDefinition(
-            event=event, handler=handler, plugin_id=self.plugin_id
-        )
+        definition = HookDefinition(event=event, handler=handler, plugin_id=self.plugin_id)
         self._hooks.append(definition)
         return definition
 
@@ -237,13 +226,11 @@ class PluginContext:
             )
         if not isinstance(description, str) or not description.strip():
             raise PluginStructureError(
-                f"plugin {self.plugin_id!r}: command {name!r} needs a "
-                "non-empty description"
+                f"plugin {self.plugin_id!r}: command {name!r} needs a non-empty description"
             )
         if not callable(handler):
             raise PluginStructureError(
-                f"plugin {self.plugin_id!r}: command {name!r} handler "
-                "is not callable"
+                f"plugin {self.plugin_id!r}: command {name!r} handler is not callable"
             )
         self._commands[name] = CommandDefinition(
             name=name,
@@ -267,20 +254,14 @@ class PluginContext:
 
         if self._single_select is None:
             raise PluginStructureError(
-                f"plugin {self.plugin_id!r}: no single-select registry "
-                "attached to this context"
+                f"plugin {self.plugin_id!r}: no single-select registry attached to this context"
             )
-        if not (
-            isinstance(provider_cls, type)
-            and issubclass(provider_cls, MemoryProvider)
-        ):
+        if not (isinstance(provider_cls, type) and issubclass(provider_cls, MemoryProvider)):
             raise PluginStructureError(
                 f"plugin {self.plugin_id!r}: memory provider {name!r} "
                 "must be a MemoryProvider subclass"
             )
-        self._single_select.register(
-            "memory_provider", name, provider_cls, default=default
-        )
+        self._single_select.register("memory_provider", name, provider_cls, default=default)
         self._single_select_names.append(("memory_provider", name))
 
     def register_context_engine(self, name, engine_factory, *, default=False):
@@ -291,18 +272,16 @@ class PluginContext:
         """
         if self._single_select is None:
             raise PluginStructureError(
-                f"plugin {self.plugin_id!r}: no single-select registry "
-                "attached to this context"
+                f"plugin {self.plugin_id!r}: no single-select registry attached to this context"
             )
         if not callable(engine_factory):
             raise PluginStructureError(
-                f"plugin {self.plugin_id!r}: context engine {name!r} "
-                "factory is not callable"
+                f"plugin {self.plugin_id!r}: context engine {name!r} factory is not callable"
             )
         probe = None
         try:
             probe = engine_factory(config=None)
-        except Exception as exc:  # noqa: BLE001 - probe must not crash load
+        except Exception as exc:
             raise PluginStructureError(
                 f"plugin {self.plugin_id!r}: context engine {name!r} "
                 f"factory failed to build an engine: {exc}"
@@ -312,9 +291,7 @@ class PluginContext:
                 f"plugin {self.plugin_id!r}: context engine {name!r} "
                 "factory must return a ContextEngine"
             )
-        self._single_select.register(
-            "context_engine", name, engine_factory, default=default
-        )
+        self._single_select.register("context_engine", name, engine_factory, default=default)
         self._single_select_names.append(("context_engine", name))
 
     # -- logging -------------------------------------------------------
@@ -366,12 +343,8 @@ class PluginContext:
             except (TypeError, ValueError):
                 return True  # builtins/callables without a signature pass
             params = list(sig.parameters.values())
-            has_var_positional = any(
-                p.kind == inspect.Parameter.VAR_POSITIONAL for p in params
-            )
-            has_var_keyword = any(
-                p.kind == inspect.Parameter.VAR_KEYWORD for p in params
-            )
+            has_var_positional = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params)
+            has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
             positional = [
                 p
                 for p in params
@@ -397,17 +370,10 @@ class PluginContext:
                 problems.append(f"tool {tool.name!r}: handler takes no arguments")
         for hook in self._hooks:
             if not _accepts(hook.handler, min_positional=2, accepts_kwargs=False):
-                problems.append(
-                    f"hook {hook.event!r}: handler must accept "
-                    "(event, payload)"
-                )
+                problems.append(f"hook {hook.event!r}: handler must accept (event, payload)")
         for command in self._commands.values():
-            if not _accepts(
-                command.handler, min_positional=1, accepts_kwargs=False
-            ):
-                problems.append(
-                    f"command {command.name!r}: handler must accept (argv)"
-                )
+            if not _accepts(command.handler, min_positional=1, accepts_kwargs=False):
+                problems.append(f"command {command.name!r}: handler must accept (argv)")
         return problems
 
 
@@ -418,8 +384,7 @@ def validate_plugin_config(schema, config):
     "required": bool, "default": ...}``). Kept as a thin alias so
     plugin authors use one name; raises ``PluginConfigError``.
     """
-    from puspa.memory.provider import ProviderConfigError
-    from puspa.memory.provider import validate_config
+    from puspa.memory.provider import ProviderConfigError, validate_config
 
     try:
         return validate_config(schema, config)

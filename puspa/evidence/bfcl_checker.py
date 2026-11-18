@@ -102,7 +102,9 @@ class ToolCall:
         """A canonical string for multiset comparison (order check)."""
         return json.dumps(
             {"name": self.name, "arguments": self.arguments},
-            sort_keys=True, ensure_ascii=False, default=str,
+            sort_keys=True,
+            ensure_ascii=False,
+            default=str,
         )
 
 
@@ -111,9 +113,7 @@ def _literal(node: ast.AST):
     try:
         return ast.literal_eval(node)
     except (ValueError, SyntaxError, MemoryError, RecursionError) as exc:
-        raise ToolCallParseError(
-            f"call argument is not a literal value: {ast.dump(node)}"
-        ) from exc
+        raise ToolCallParseError(f"call argument is not a literal value: {ast.dump(node)}") from exc
 
 
 def parse_tool_call(raw, spec: dict | None = None) -> ToolCall:
@@ -144,13 +144,10 @@ def parse_tool_call(raw, spec: dict | None = None) -> ToolCall:
             try:
                 arguments = json.loads(arguments)
             except json.JSONDecodeError as exc:
-                raise ToolCallParseError(
-                    f"arguments are not valid JSON: {arguments!r}") from exc
+                raise ToolCallParseError(f"arguments are not valid JSON: {arguments!r}") from exc
         if not isinstance(arguments, dict):
-            raise ToolCallParseError(
-                f"arguments are not an object: {arguments!r}")
-        return ToolCall(name=str(payload["name"]),
-                        arguments=copy.deepcopy(arguments))
+            raise ToolCallParseError(f"arguments are not an object: {arguments!r}")
+        return ToolCall(name=str(payload["name"]), arguments=copy.deepcopy(arguments))
     if isinstance(raw, str):
         try:
             tree = ast.parse(raw.strip(), mode="eval")
@@ -160,28 +157,28 @@ def parse_tool_call(raw, spec: dict | None = None) -> ToolCall:
             raise ToolCallParseError(f"not a call expression: {raw!r}")
         call = tree.body
         if not isinstance(call.func, ast.Name):
-            raise ToolCallParseError(
-                f"call target is not a plain function name: {raw!r}")
-        arguments: dict = {}
+            raise ToolCallParseError(f"call target is not a plain function name: {raw!r}")
+        call_arguments: dict = {}
         if call.args:
             if spec is None:
                 raise ToolCallParseError(
                     "positional arguments need a function spec to map "
                     f"them to parameter names: {raw!r}",
-                    kind="unexpected_positional")
+                    kind="unexpected_positional",
+                )
             param_names = list((spec.get("properties") or {}).keys())
             if len(call.args) > len(param_names):
                 raise ToolCallParseError(
-                    "more positional arguments than parameters: "
-                    f"{raw!r}", kind="unexpected_positional")
+                    f"more positional arguments than parameters: {raw!r}",
+                    kind="unexpected_positional",
+                )
             for name, node in zip(param_names, call.args):
-                arguments[name] = _literal(node)
+                call_arguments[name] = _literal(node)
         for keyword in call.keywords:
             if keyword.arg is None:
-                raise ToolCallParseError(
-                    f"** unpacking is not supported: {raw!r}")
-            arguments[keyword.arg] = _literal(keyword.value)
-        return ToolCall(name=call.func.id, arguments=arguments)
+                raise ToolCallParseError(f"** unpacking is not supported: {raw!r}")
+            call_arguments[keyword.arg] = _literal(keyword.value)
+        return ToolCall(name=call.func.id, arguments=call_arguments)
     raise ToolCallParseError(f"unsupported call form: {type(raw).__name__}")
 
 
@@ -229,9 +226,9 @@ class TaskCheck:
         return sum(turn.calls_checked for turn in self.turns)
 
 
-def _values_equal(actual, expected, path: str, turn: int,
-                  call_index: int | None,
-                  failures: list[CallFailure]) -> None:
+def _values_equal(
+    actual, expected, path: str, turn: int, call_index: int | None, failures: list[CallFailure]
+) -> None:
     """Compare two argument values, strictly, recording failures.
 
     Appends one failure per mismatch (never raises). Recursion
@@ -242,111 +239,202 @@ def _values_equal(actual, expected, path: str, turn: int,
     # isinstance(True, int) is True and must not let True pass as 1.
     if isinstance(expected, bool) or isinstance(actual, bool):
         if not (isinstance(expected, bool) and isinstance(actual, bool)):
-            failures.append(CallFailure(
-                kind="wrong_type", turn=turn, call_index=call_index,
-                path=path, expected=expected, actual=actual,
-                message=(f"{path}: expected a boolean {expected!r}, "
-                         f"got {actual!r} of type "
-                         f"{type(actual).__name__}")))
+            failures.append(
+                CallFailure(
+                    kind="wrong_type",
+                    turn=turn,
+                    call_index=call_index,
+                    path=path,
+                    expected=expected,
+                    actual=actual,
+                    message=(
+                        f"{path}: expected a boolean {expected!r}, "
+                        f"got {actual!r} of type "
+                        f"{type(actual).__name__}"
+                    ),
+                )
+            )
         elif actual != expected:
-            failures.append(CallFailure(
-                kind="wrong_value", turn=turn, call_index=call_index,
-                path=path, expected=expected, actual=actual,
-                message=f"{path}: expected {expected!r}, got {actual!r}"))
+            failures.append(
+                CallFailure(
+                    kind="wrong_value",
+                    turn=turn,
+                    call_index=call_index,
+                    path=path,
+                    expected=expected,
+                    actual=actual,
+                    message=f"{path}: expected {expected!r}, got {actual!r}",
+                )
+            )
         return
     if isinstance(expected, (int, float)) or isinstance(actual, (int, float)):
         if type(actual) is not type(expected):
-            failures.append(CallFailure(
-                kind="wrong_type", turn=turn, call_index=call_index,
-                path=path, expected=expected, actual=actual,
-                message=(f"{path}: expected {type(expected).__name__} "
-                         f"{expected!r}, got {type(actual).__name__} "
-                         f"{actual!r}")))
+            failures.append(
+                CallFailure(
+                    kind="wrong_type",
+                    turn=turn,
+                    call_index=call_index,
+                    path=path,
+                    expected=expected,
+                    actual=actual,
+                    message=(
+                        f"{path}: expected {type(expected).__name__} "
+                        f"{expected!r}, got {type(actual).__name__} "
+                        f"{actual!r}"
+                    ),
+                )
+            )
         elif actual != expected:
-            failures.append(CallFailure(
-                kind="wrong_value", turn=turn, call_index=call_index,
-                path=path, expected=expected, actual=actual,
-                message=f"{path}: expected {expected!r}, got {actual!r}"))
+            failures.append(
+                CallFailure(
+                    kind="wrong_value",
+                    turn=turn,
+                    call_index=call_index,
+                    path=path,
+                    expected=expected,
+                    actual=actual,
+                    message=f"{path}: expected {expected!r}, got {actual!r}",
+                )
+            )
         return
     if isinstance(expected, str) or isinstance(actual, str):
         if not (isinstance(expected, str) and isinstance(actual, str)):
-            failures.append(CallFailure(
-                kind="wrong_type", turn=turn, call_index=call_index,
-                path=path, expected=expected, actual=actual,
-                message=(f"{path}: expected a string {expected!r}, got "
-                         f"{actual!r} of type {type(actual).__name__}")))
+            failures.append(
+                CallFailure(
+                    kind="wrong_type",
+                    turn=turn,
+                    call_index=call_index,
+                    path=path,
+                    expected=expected,
+                    actual=actual,
+                    message=(
+                        f"{path}: expected a string {expected!r}, got "
+                        f"{actual!r} of type {type(actual).__name__}"
+                    ),
+                )
+            )
         elif actual != expected:
-            failures.append(CallFailure(
-                kind="wrong_value", turn=turn, call_index=call_index,
-                path=path, expected=expected, actual=actual,
-                message=f"{path}: expected {expected!r}, got {actual!r}"))
+            failures.append(
+                CallFailure(
+                    kind="wrong_value",
+                    turn=turn,
+                    call_index=call_index,
+                    path=path,
+                    expected=expected,
+                    actual=actual,
+                    message=f"{path}: expected {expected!r}, got {actual!r}",
+                )
+            )
         return
     if expected is None or actual is None:
         if expected is not actual:
-            failures.append(CallFailure(
-                kind="wrong_value", turn=turn, call_index=call_index,
-                path=path, expected=expected, actual=actual,
-                message=f"{path}: expected {expected!r}, got {actual!r}"))
+            failures.append(
+                CallFailure(
+                    kind="wrong_value",
+                    turn=turn,
+                    call_index=call_index,
+                    path=path,
+                    expected=expected,
+                    actual=actual,
+                    message=f"{path}: expected {expected!r}, got {actual!r}",
+                )
+            )
         return
     if isinstance(expected, dict) or isinstance(actual, dict):
         if not (isinstance(expected, dict) and isinstance(actual, dict)):
-            failures.append(CallFailure(
-                kind="wrong_type", turn=turn, call_index=call_index,
-                path=path, expected=expected, actual=actual,
-                message=(f"{path}: expected a dict, got "
-                         f"{type(actual).__name__}")))
+            failures.append(
+                CallFailure(
+                    kind="wrong_type",
+                    turn=turn,
+                    call_index=call_index,
+                    path=path,
+                    expected=expected,
+                    actual=actual,
+                    message=(f"{path}: expected a dict, got {type(actual).__name__}"),
+                )
+            )
             return
         for key in expected:
             if key not in actual:
-                failures.append(CallFailure(
-                    kind="missing_argument", turn=turn,
-                    call_index=call_index, path=f"{path}.{key}",
-                    expected=expected[key], actual=None,
-                    message=f"{path}.{key}: missing, expected "
-                            f"{expected[key]!r}"))
+                failures.append(
+                    CallFailure(
+                        kind="missing_argument",
+                        turn=turn,
+                        call_index=call_index,
+                        path=f"{path}.{key}",
+                        expected=expected[key],
+                        actual=None,
+                        message=f"{path}.{key}: missing, expected {expected[key]!r}",
+                    )
+                )
         for key in actual:
             if key not in expected:
-                failures.append(CallFailure(
-                    kind="extra_argument", turn=turn,
-                    call_index=call_index, path=f"{path}.{key}",
-                    expected=None, actual=actual[key],
-                    message=f"{path}.{key}: unexpected extra argument "
-                            f"{actual[key]!r}"))
+                failures.append(
+                    CallFailure(
+                        kind="extra_argument",
+                        turn=turn,
+                        call_index=call_index,
+                        path=f"{path}.{key}",
+                        expected=None,
+                        actual=actual[key],
+                        message=f"{path}.{key}: unexpected extra argument {actual[key]!r}",
+                    )
+                )
         for key in expected:
             if key in actual:
-                _values_equal(actual[key], expected[key], f"{path}.{key}",
-                              turn, call_index, failures)
+                _values_equal(
+                    actual[key], expected[key], f"{path}.{key}", turn, call_index, failures
+                )
         return
     if isinstance(expected, (list, tuple)) or isinstance(actual, (list, tuple)):
-        if not (isinstance(expected, (list, tuple))
-                and isinstance(actual, (list, tuple))):
-            failures.append(CallFailure(
-                kind="wrong_type", turn=turn, call_index=call_index,
-                path=path, expected=expected, actual=actual,
-                message=(f"{path}: expected a list, got "
-                         f"{type(actual).__name__}")))
+        if not (isinstance(expected, (list, tuple)) and isinstance(actual, (list, tuple))):
+            failures.append(
+                CallFailure(
+                    kind="wrong_type",
+                    turn=turn,
+                    call_index=call_index,
+                    path=path,
+                    expected=expected,
+                    actual=actual,
+                    message=(f"{path}: expected a list, got {type(actual).__name__}"),
+                )
+            )
             return
         if len(actual) != len(expected):
-            failures.append(CallFailure(
-                kind="wrong_value", turn=turn, call_index=call_index,
-                path=path, expected=expected, actual=actual,
-                message=(f"{path}: expected {len(expected)} items, got "
-                         f"{len(actual)}")))
+            failures.append(
+                CallFailure(
+                    kind="wrong_value",
+                    turn=turn,
+                    call_index=call_index,
+                    path=path,
+                    expected=expected,
+                    actual=actual,
+                    message=(f"{path}: expected {len(expected)} items, got {len(actual)}"),
+                )
+            )
             return
-        for index, (item_actual, item_expected) in enumerate(
-                zip(actual, expected)):
-            _values_equal(item_actual, item_expected, f"{path}[{index}]",
-                          turn, call_index, failures)
+        for index, (item_actual, item_expected) in enumerate(zip(actual, expected)):
+            _values_equal(
+                item_actual, item_expected, f"{path}[{index}]", turn, call_index, failures
+            )
         return
     if actual != expected:
-        failures.append(CallFailure(
-            kind="wrong_value", turn=turn, call_index=call_index,
-            path=path, expected=expected, actual=actual,
-            message=f"{path}: expected {expected!r}, got {actual!r}"))
+        failures.append(
+            CallFailure(
+                kind="wrong_value",
+                turn=turn,
+                call_index=call_index,
+                path=path,
+                expected=expected,
+                actual=actual,
+                message=f"{path}: expected {expected!r}, got {actual!r}",
+            )
+        )
 
 
-def compare_call(actual: ToolCall, expected: ToolCall, *, turn: int,
-                 call_index: int | None = None) -> list[CallFailure]:
+def compare_call(
+    actual: ToolCall, expected: ToolCall, *, turn: int, call_index: int | None = None
+) -> list[CallFailure]:
     """Compare one actual call against one reference call.
 
     Returns the list of failures (empty when the calls match
@@ -356,19 +444,27 @@ def compare_call(actual: ToolCall, expected: ToolCall, *, turn: int,
     """
     failures: list[CallFailure] = []
     if actual.name != expected.name:
-        failures.append(CallFailure(
-            kind="wrong_name", turn=turn, call_index=call_index,
-            path="name", expected=expected.name, actual=actual.name,
-            message=(f"call {call_index}: expected function "
-                     f"{expected.name!r}, got {actual.name!r}")))
+        failures.append(
+            CallFailure(
+                kind="wrong_name",
+                turn=turn,
+                call_index=call_index,
+                path="name",
+                expected=expected.name,
+                actual=actual.name,
+                message=(
+                    f"call {call_index}: expected function {expected.name!r}, got {actual.name!r}"
+                ),
+            )
+        )
         return failures
-    _values_equal(actual.arguments, expected.arguments, "arguments",
-                  turn, call_index, failures)
+    _values_equal(actual.arguments, expected.arguments, "arguments", turn, call_index, failures)
     return failures
 
 
-def check_turn(actual_calls, expected_calls: list[ToolCall], *,
-               turn: int, specs: dict | None = None) -> TurnCheck:
+def check_turn(
+    actual_calls, expected_calls: list[ToolCall], *, turn: int, specs: dict | None = None
+) -> TurnCheck:
     """Check one turn of agent calls against the reference calls.
 
     ``actual_calls`` may mix ``ToolCall`` objects, dicts and Python
@@ -396,69 +492,111 @@ def check_turn(actual_calls, expected_calls: list[ToolCall], *,
                 except ToolCallParseError as exc:
                     if exc.kind != "unexpected_positional":
                         raise
-                    name = ast.parse(raw.strip(), mode="eval").body.func.id
+                    name_tree = ast.parse(raw.strip(), mode="eval")
+                    if not isinstance(name_tree.body, ast.Call) or not isinstance(
+                        name_tree.body.func, ast.Name
+                    ):
+                        raise
+                    name = name_tree.body.func.id
                     spec = specs.get(name)
                     parsed.append(parse_tool_call(raw, spec=spec))
                     continue
             parsed.append(parse_tool_call(raw))
         except ToolCallParseError as exc:
             parsed.append(None)
-            failures.append(CallFailure(
-                kind=exc.kind, turn=turn, call_index=index,
-                path=f"calls[{index}]", expected=None, actual=raw,
-                message=f"call {index}: could not be parsed ({exc})"))
+            failures.append(
+                CallFailure(
+                    kind=exc.kind,
+                    turn=turn,
+                    call_index=index,
+                    path=f"calls[{index}]",
+                    expected=None,
+                    actual=raw,
+                    message=f"call {index}: could not be parsed ({exc})",
+                )
+            )
     calls_checked = len(expected_calls)
     calls_correct = 0
     overlap = min(len(parsed), len(expected_calls))
-    if len(parsed) == len(expected_calls) and parsed and all(
-            call is not None for call in parsed):
-        canonical_actual = sorted(call.canonical() for call in parsed)
-        canonical_expected = sorted(call.canonical()
-                                    for call in expected_calls)
+    if len(parsed) == len(expected_calls) and parsed and all(call is not None for call in parsed):
+        # The all() above proves there is no None; filter to a
+        # ToolCall-typed list so mypy knows too.
+        actual_parsed: list[ToolCall] = [call for call in parsed if call is not None]
+        canonical_actual = sorted(call.canonical() for call in actual_parsed)
+        canonical_expected = sorted(call.canonical() for call in expected_calls)
         sequence_matches = all(
             call.canonical() == expected.canonical()
-            for call, expected in zip(parsed, expected_calls))
+            for call, expected in zip(actual_parsed, expected_calls)
+        )
         if not sequence_matches and canonical_actual == canonical_expected:
-            failures.append(CallFailure(
-                kind="wrong_order", turn=turn, call_index=None,
-                path="calls", expected=[c.to_source() for c in expected_calls],
-                actual=[c.to_source() for c in parsed],
-                message="calls are the same set in a different order"))
+            failures.append(
+                CallFailure(
+                    kind="wrong_order",
+                    turn=turn,
+                    call_index=None,
+                    path="calls",
+                    expected=[c.to_source() for c in expected_calls],
+                    actual=[c.to_source() for c in actual_parsed],
+                    message="calls are the same set in a different order",
+                )
+            )
     for index in range(overlap):
         call = parsed[index]
         if call is None:
             continue
-        call_failures = compare_call(call, expected_calls[index],
-                                     turn=turn, call_index=index)
+        call_failures = compare_call(call, expected_calls[index], turn=turn, call_index=index)
         if not call_failures:
             calls_correct += 1
         failures.extend(call_failures)
     if len(parsed) < len(expected_calls):
         for index in range(len(parsed), len(expected_calls)):
-            failures.append(CallFailure(
-                kind="missing_call", turn=turn, call_index=index,
-                path=f"calls[{index}]",
-                expected=expected_calls[index].to_source(), actual=None,
-                message=(f"call {index}: missing, expected "
-                         f"{expected_calls[index].to_source()}")))
+            failures.append(
+                CallFailure(
+                    kind="missing_call",
+                    turn=turn,
+                    call_index=index,
+                    path=f"calls[{index}]",
+                    expected=expected_calls[index].to_source(),
+                    actual=None,
+                    message=(
+                        f"call {index}: missing, expected {expected_calls[index].to_source()}"
+                    ),
+                )
+            )
     elif len(parsed) > len(expected_calls):
         for index in range(len(expected_calls), len(parsed)):
             actual = parsed[index]
-            failures.append(CallFailure(
-                kind="extra_call", turn=turn, call_index=index,
-                path=f"calls[{index}]", expected=None,
-                actual=actual.to_source() if actual is not None else None,
-                message=(f"call {index}: extra call "
-                         f"{actual.to_source() if actual is not None else None!r}")))
+            failures.append(
+                CallFailure(
+                    kind="extra_call",
+                    turn=turn,
+                    call_index=index,
+                    path=f"calls[{index}]",
+                    expected=None,
+                    actual=actual.to_source() if actual is not None else None,
+                    message=(
+                        f"call {index}: extra call "
+                        f"{actual.to_source() if actual is not None else None!r}"
+                    ),
+                )
+            )
     passed = not failures
-    return TurnCheck(turn=turn, passed=passed, failures=failures,
-                     calls_checked=calls_checked,
-                     calls_correct=calls_correct)
+    return TurnCheck(
+        turn=turn,
+        passed=passed,
+        failures=failures,
+        calls_checked=calls_checked,
+        calls_correct=calls_correct,
+    )
 
 
-def check_task(task_id: str, actual_turns: list,
-              expected_turns: list[list[ToolCall]], *,
-              specs: dict | None = None) -> TaskCheck:
+def check_task(
+    task_id: str,
+    actual_turns: list,
+    expected_turns: list[list[ToolCall]],
+    *,
+    specs: dict | None = None,
+) -> TaskCheck:
     """Check a whole multi-turn task.
 
     ``actual_turns`` is one list of calls per turn (each call a
@@ -485,24 +623,40 @@ def check_task(task_id: str, actual_turns: list,
                     rendered = call.to_source()
                 except ToolCallParseError:
                     rendered = repr(raw)
-                failures.append(CallFailure(
-                    kind="extra_call", turn=index, call_index=call_index,
-                    path=f"turns[{index}].calls[{call_index}]",
-                    expected=None, actual=rendered,
-                    message=f"turn {index}: extra turn with call "
-                            f"{rendered}"))
-            turns.append(TurnCheck(turn=index, passed=False,
-                                   failures=[f for f in failures
-                                             if f.turn == index],
-                                   calls_checked=0, calls_correct=0))
+                failures.append(
+                    CallFailure(
+                        kind="extra_call",
+                        turn=index,
+                        call_index=call_index,
+                        path=f"turns[{index}].calls[{call_index}]",
+                        expected=None,
+                        actual=rendered,
+                        message=f"turn {index}: extra turn with call {rendered}",
+                    )
+                )
+            turns.append(
+                TurnCheck(
+                    turn=index,
+                    passed=False,
+                    failures=[f for f in failures if f.turn == index],
+                    calls_checked=0,
+                    calls_correct=0,
+                )
+            )
     total_turns = len(expected_turns)
     passed_turns = sum(1 for turn in turns[:total_turns] if turn.passed)
     turn_accuracy = (passed_turns / total_turns) if total_turns else 0.0
     total_calls = sum(turn.calls_checked for turn in turns)
     correct_calls = sum(turn.calls_correct for turn in turns)
     call_accuracy = (correct_calls / total_calls) if total_calls else 0.0
-    passed = (len(actual_turns) == len(expected_turns)
-              and all(turn.passed for turn in turns[:total_turns]))
-    return TaskCheck(task_id=task_id, passed=passed, turns=turns,
-                     turn_accuracy=turn_accuracy,
-                     call_accuracy=call_accuracy, failures=failures)
+    passed = len(actual_turns) == len(expected_turns) and all(
+        turn.passed for turn in turns[:total_turns]
+    )
+    return TaskCheck(
+        task_id=task_id,
+        passed=passed,
+        turns=turns,
+        turn_accuracy=turn_accuracy,
+        call_accuracy=call_accuracy,
+        failures=failures,
+    )

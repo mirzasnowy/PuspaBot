@@ -26,7 +26,6 @@ touches the puspa_test database.
 from __future__ import annotations
 
 import asyncio
-import json
 import re
 import subprocess
 from pathlib import Path
@@ -52,6 +51,7 @@ def _reset_tables():
 # Fixtures: realistic Puspa tool outputs (built from real repo content)
 # ---------------------------------------------------------------------------
 
+
 def make_diff() -> str:
     """Unified diff with long unchanged runs between changes, two files."""
     context = [f"    context_line_{i} = compute_value({i})" for i in range(30)]
@@ -66,7 +66,7 @@ def make_diff() -> str:
     lines += [
         '-    ("openrouter", "qwen/qwen3-32b", "qwen", 2, 6, False, True),',
         '+    ("openrouter", "qwen/qwen3-32b", "qwen", 3, 9, False, True),',
-        '+    # price check: Rp4.750.000 for the reference phone',
+        "+    # price check: Rp4.750.000 for the reference phone",
     ]
     lines += context[12:24]
     lines += [
@@ -107,16 +107,14 @@ def make_status() -> str:
     lines += [f"\tnew_module_{i:02d}.py" for i in range(30)]
     lines += [
         "",
-        "no changes added to commit "
-        "(use \"git add\" and/or \"git commit -a\")",
+        ('no changes added to commit (use "git add" and/or "git commit -a")'),
     ]
     return "\n".join(lines) + "\n"
 
 
 def make_grep() -> str:
     lines = []
-    for path in ("puspa/router/router.py", "puspa/chassis/tools.py",
-                 "puspa/runtime/tasks.py"):
+    for path in ("puspa/router/router.py", "puspa/chassis/tools.py", "puspa/runtime/tasks.py"):
         for i in range(15):
             lines.append(f"{path}:{10 + i}:    result = run_tool(name, args)")
         # exact duplicates, as a repeated search often returns them
@@ -130,8 +128,16 @@ def make_grep() -> str:
 def make_find() -> str:
     parts = []
     for module in ("memory", "world", "router", "chassis"):
-        for name in ("model.py", "store.py", "loop.py", "index.py",
-                     "utils.py", "config.py", "events.py", "cache.py"):
+        for name in (
+            "model.py",
+            "store.py",
+            "loop.py",
+            "index.py",
+            "utils.py",
+            "config.py",
+            "events.py",
+            "cache.py",
+        ):
             parts.append(f"puspa/{module}/deep/nested/package/{name}")
     return "\n".join(parts) + "\n"
 
@@ -142,15 +148,25 @@ def make_ls() -> str:
         sections.append(f"{dirname}:")
         sections.append("total 96")
         for i, name in enumerate(
-            ("__init__.py", "router.py", "compression.py", "context.py",
-             "tools.py", "registry.py", "factory.py", "hooks.py",
-             "agent_session.py", "sandbox_tool.py", "skill_loader.py",
-             "budget.py", "planner.py", "agents.py", "tasks.py")
-        ):
-            sections.append(
-                f"-rw-r--r-- 1 root root {1024 + i * 137:6d} "
-                f"Nov 18 11:{i:02d} {name}"
+            (
+                "__init__.py",
+                "router.py",
+                "compression.py",
+                "context.py",
+                "tools.py",
+                "registry.py",
+                "factory.py",
+                "hooks.py",
+                "agent_session.py",
+                "sandbox_tool.py",
+                "skill_loader.py",
+                "budget.py",
+                "planner.py",
+                "agents.py",
+                "tasks.py",
             )
+        ):
+            sections.append(f"-rw-r--r-- 1 root root {1024 + i * 137:6d} Nov 18 11:{i:02d} {name}")
     return "\n".join(sections) + "\n"
 
 
@@ -159,8 +175,16 @@ def make_tree() -> str:
     for module in ("router", "chassis", "memory", "world"):
         lines.append(f"├── {module}")
         for i, name in enumerate(
-            ("__init__.py", "model.py", "store.py", "loop.py", "index.py",
-             "utils.py", "config.py", "events.py")
+            (
+                "__init__.py",
+                "model.py",
+                "store.py",
+                "loop.py",
+                "index.py",
+                "utils.py",
+                "config.py",
+                "events.py",
+            )
         ):
             branch = "└──" if i == 7 else "├──"
             lines.append(f"│   {branch} {name}")
@@ -173,24 +197,23 @@ def make_tree() -> str:
 
 
 ORPHAN_LINE = (
-    "2026-11-18 11:40:02 INFO payment Rp1.250.000 customer 081234567890 "
-    "succeeded score 98.7"
+    "2026-11-18 11:40:02 INFO payment Rp1.250.000 customer 081234567890 succeeded score 98.7"
 )
 
 
 def make_log() -> str:
     lines = []
-    for i in range(60):
+    for _ in range(60):
         lines.append("2026-11-18 11:39:01 INFO worker heartbeat ok")
-    for i in range(40):
+    for _ in range(40):
         lines.append("2026-11-18 11:39:02 DEBUG tick processed batch 7")
     lines.append(ORPHAN_LINE)
-    for i in range(50):
+    for _ in range(50):
         lines.append("2026-11-18 11:39:03 INFO worker heartbeat ok")
     for i in range(25):
         lines.append(f"2026-11-18 11:39:04 WARNING retry {i % 3} slow query")
     lines.append("2026-11-18 11:39:05 ERROR checkout failed order 44521 amount 75000")
-    for i in range(30):
+    for _ in range(30):
         lines.append("2026-11-18 11:39:06 INFO worker heartbeat ok")
     return "\n".join(lines) + "\n"
 
@@ -227,22 +250,29 @@ def make_search() -> str:
 
 def make_generic() -> str:
     sentences = [
-        "note: the agent reviewed the listing and compared it "
-        "against the reference price band before drafting the reply",
-        "note: the summary was checked against the ledger and "
-        "the evidence file before the presenter wrote the message",
-        "note: the draft was kept short and the price range was "
-        "quoted from the latest sold listings in the same city",
-        "note: the checker verified the claim against the stored "
-        "evidence before the reply was sent to the user",
-        "note: the memory entry was updated with the new price "
-        "band so the next check starts from fresh data",
+        (
+            "note: the agent reviewed the listing and compared it "
+            "against the reference price band before drafting the reply"
+        ),
+        (
+            "note: the summary was checked against the ledger and "
+            "the evidence file before the presenter wrote the message"
+        ),
+        (
+            "note: the draft was kept short and the price range was "
+            "quoted from the latest sold listings in the same city"
+        ),
+        (
+            "note: the checker verified the claim against the stored "
+            "evidence before the reply was sent to the user"
+        ),
+        (
+            "note: the memory entry was updated with the new price "
+            "band so the next check starts from fresh data"
+        ),
     ]
     lines = [sentences[i % len(sentences)] for i in range(70)]
-    lines.append(
-        "invoice total Rp9.876.543, customer 081298765432, 17 items, "
-        "order 88412"
-    )
+    lines.append("invoice total Rp9.876.543, customer 081298765432, 17 items, order 88412")
     lines += [sentences[i % len(sentences)] for i in range(70, 140)]
     return "\n".join(lines) + "\n"
 
@@ -269,6 +299,7 @@ def _digit_runs(text: str) -> set[str]:
 # Auto-detection from the first 1KB
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("kind", sorted(FIXTURES))
 def test_detect_kind_from_first_kilobyte(kind):
     assert detect_kind(FIXTURES[kind]) == kind
@@ -289,8 +320,16 @@ def test_tool_name_hint_is_ignored():
 # ---------------------------------------------------------------------------
 
 MIN_SAVINGS_PCT = {
-    "diff": 10.0, "status": 5.0, "grep": 20.0, "find": 5.0, "ls": 5.0,
-    "tree": 5.0, "log": 30.0, "read": 3.0, "search": 5.0, "generic": 10.0,
+    "diff": 10.0,
+    "status": 5.0,
+    "grep": 20.0,
+    "find": 5.0,
+    "ls": 5.0,
+    "tree": 5.0,
+    "log": 30.0,
+    "read": 3.0,
+    "search": 5.0,
+    "generic": 10.0,
 }
 
 
@@ -319,6 +358,7 @@ def test_token_counter_is_real_tokenizer():
 # Lossless in the task sense + orphan-number rule
 # ---------------------------------------------------------------------------
 
+
 def test_diff_keeps_every_file_hunk_and_changed_line():
     text = make_diff()
     result = compress_tool_result(text)
@@ -330,7 +370,7 @@ def test_diff_keeps_every_file_hunk_and_changed_line():
         "@@ -40,15 +40,16 @@",
         '-    ("openrouter", "qwen/qwen3-32b", "qwen", 2, 6, False, True),',
         '+    ("openrouter", "qwen/qwen3-32b", "qwen", 3, 9, False, True),',
-        '+    # price check: Rp4.750.000 for the reference phone',
+        "+    # price check: Rp4.750.000 for the reference phone",
         '-    return {"credits": 20, "price_rp": 9000}',
         '+    return {"credits": 20, "price_rp": 9000, "bonus": 5}',
     ):
@@ -365,8 +405,7 @@ def test_meaningful_numbers_survive(kind):
         assert changed_numbers <= _digit_runs(result.text)
         return
     assert _digit_runs(text) <= _digit_runs(result.text), (
-        f"{kind} lost numbers: "
-        f"{sorted(_digit_runs(text) - _digit_runs(result.text))[:5]}"
+        f"{kind} lost numbers: {sorted(_digit_runs(text) - _digit_runs(result.text))[:5]}"
     )
 
 
@@ -413,6 +452,7 @@ def test_find_keeps_every_distinct_path():
 # Fail-safe: filter failure, no savings, short text
 # ---------------------------------------------------------------------------
 
+
 def test_failsafe_when_filter_raises(monkeypatch):
     import puspa.router.compression as comp
 
@@ -430,9 +470,7 @@ def test_failsafe_when_filter_raises(monkeypatch):
 def test_failsafe_when_filter_grows_text(monkeypatch):
     import puspa.router.compression as comp
 
-    monkeypatch.setitem(
-        comp._FILTERS, "log", lambda text: text + " extra padding"
-    )
+    monkeypatch.setitem(comp._FILTERS, "log", lambda text: text + " extra padding")
     text = make_log()
     result = compress_tool_result(text)
     assert result.text == text
@@ -467,12 +505,11 @@ def test_non_string_input_does_not_raise():
 # Wiring: what the model actually receives through PuspaTool / MCP
 # ---------------------------------------------------------------------------
 
-def _fake_tool_class(name, payload):
-    from nanobot.agent.tools.base import Tool, ToolResult, tool_parameters
 
-    @tool_parameters(
-        {"type": "object", "properties": {"text": {"type": "string"}}}
-    )
+def _fake_tool_class(name, payload):
+    from nanobot.agent.tools.base import Tool, tool_parameters
+
+    @tool_parameters({"type": "object", "properties": {"text": {"type": "string"}}})
     class FakeTool(Tool):
         @property
         def name(self) -> str:
@@ -548,22 +585,26 @@ def test_mcp_wrapper_compresses_string_result(tmp_path, ephemeral_keys):
         "connectors": {},
         "author": "puspa",
     }
-    (skill_dir / "manifest.json").write_text(
-        _json.dumps(manifest, indent=2), encoding="utf-8"
-    )
+    (skill_dir / "manifest.json").write_text(_json.dumps(manifest, indent=2), encoding="utf-8")
     signed = sign_skill(skill_dir, sk)
     original = make_log()
     transport = StubMcpTransport(
-        tools={"echo_log": (
-            {"type": "object", "properties": {}},
-            lambda args: original,
-        )}
+        tools={
+            "echo_log": (
+                {"type": "object", "properties": {}},
+                lambda args: original,
+            )
+        }
     )
     wrapper = McpClientWrapper(
-        transport, skill_manifest=signed, public_key=pk,
+        transport,
+        skill_manifest=signed,
+        public_key=pk,
     )
     out = wrapper.call_tool_sync(
-        "echo_log", {}, token_payload={"user_id": "u1", "agent_id": "a1"},
+        "echo_log",
+        {},
+        token_payload={"user_id": "u1", "agent_id": "a1"},
     )
     assert out["status"] == "ok"
     assert isinstance(out["result"], str)
@@ -575,10 +616,9 @@ def test_mcp_wrapper_compresses_string_result(tmp_path, ephemeral_keys):
 # Real Puspa tool outputs (subprocess, read-only)
 # ---------------------------------------------------------------------------
 
+
 def _run(cmd, cwd=BUILD_DIR):
-    return subprocess.run(
-        cmd, capture_output=True, text=True, cwd=str(cwd)
-    ).stdout
+    return subprocess.run(cmd, check=False, capture_output=True, text=True, cwd=str(cwd)).stdout
 
 
 def test_real_ls_find_grep_tree_detect_and_preserve_numbers():
@@ -613,8 +653,7 @@ def test_real_git_diff_and_status_in_tmp_repo(tmp_path):
     (repo / "router.py").write_text(src)
     _run(["git", "init", "-q"], cwd=repo)
     _run(["git", "add", "."], cwd=repo)
-    _run(["git", "-c", "user.email=a@b.c", "-c", "user.name=t",
-          "commit", "-qm", "init"], cwd=repo)
+    _run(["git", "-c", "user.email=a@b.c", "-c", "user.name=t", "commit", "-qm", "init"], cwd=repo)
     lines = src.splitlines()
     lines[10] = lines[10] + "  # changed"
     lines.insert(60, "NEW_CONSTANT = 123456")
@@ -633,6 +672,7 @@ def test_real_git_diff_and_status_in_tmp_repo(tmp_path):
 # ---------------------------------------------------------------------------
 # Measured savings table (printed with -s; thresholds asserted above)
 # ---------------------------------------------------------------------------
+
 
 def test_measured_savings_report(capsys):
     rows = []

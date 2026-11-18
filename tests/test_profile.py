@@ -15,9 +15,7 @@ def test_add_user_stated_fact_visible_in_profile(make_user, test_dsn):
 
 def test_inferred_fact_stays_proposed_not_in_profile(make_user, test_dsn):
     u = make_user()
-    fact = profile.add_fact(
-        u["user_id"], "suka", "kopi", "inferred", dsn=test_dsn
-    )
+    fact = profile.add_fact(u["user_id"], "suka", "kopi", "inferred", dsn=test_dsn)
     assert fact["status"] == "proposed"
     assert profile.get_profile(u["user_id"], dsn=test_dsn) == {}
     assert [p["key"] for p in profile.list_proposals(u["user_id"], dsn=test_dsn)] == ["suka"]
@@ -57,7 +55,7 @@ def test_new_fact_does_not_silently_overwrite(make_user, test_dsn):
 
 def test_correction_and_delete_fact(make_user, test_dsn):
     u = make_user()
-    fact = profile.add_fact(u["user_id"], "name", "Nero", "user_stated", dsn=test_dsn)
+    profile.add_fact(u["user_id"], "name", "Nero", "user_stated", dsn=test_dsn)
     profile.correct_fact(u["user_id"], "name", "Nero Mirza", dsn=test_dsn)
     assert profile.get_profile(u["user_id"], dsn=test_dsn) == {"name": "Nero Mirza"}
     active = profile.list_facts(u["user_id"], key="name", dsn=test_dsn)
@@ -73,8 +71,12 @@ def test_core_profile_visible_to_all_agents_agent_fact_not(make_user, test_dsn):
     agent_lain = str(uuid.uuid4())
     profile.add_fact(u["user_id"], "name", "Nero", "user_stated", dsn=test_dsn)
     profile.add_fact(
-        u["user_id"], "task_rahasia", "X", "user_stated",
-        agent_id=u["agent_id"], dsn=test_dsn,
+        u["user_id"],
+        "task_rahasia",
+        "X",
+        "user_stated",
+        agent_id=u["agent_id"],
+        dsn=test_dsn,
     )
     assert profile.get_profile(u["user_id"], agent_id=agent_lain, dsn=test_dsn) == {"name": "Nero"}
     assert profile.get_profile(u["user_id"], agent_id=u["agent_id"], dsn=test_dsn) == {

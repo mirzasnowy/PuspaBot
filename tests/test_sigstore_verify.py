@@ -46,7 +46,7 @@ covered the signing time.
 import base64
 import json
 import socket
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from cryptography import x509
@@ -55,7 +55,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.x509.oid import NameOID
 
-import puspa.policy.sigstore_verify as sigstore_verify
+from puspa.policy import sigstore_verify
 from puspa.policy.sigstore_verify import (
     MAX_ARTIFACT_BYTES,
     MAX_BUNDLE_BYTES,
@@ -175,6 +175,7 @@ _BUNDLE_V3_B64 = (
     "Cn0K"
 )
 
+
 def _artifact() -> bytes:
     return base64.b64decode(_ARTIFACT_V3_B64)
 
@@ -209,29 +210,29 @@ def _flip_first_char(value: str) -> str:
 
 def _expired_certificate_bundle() -> bytes:
     """The fixture bundle with its certificate replaced by an
-    expired self-signed certificate carrying the same identity.
+        expired self-signed certificate carrying the same identity.
 
-    The replacement was never issued by Fulcio and its validity
-    window (a year ago) never covered the Rekor integrated time,
-    so verification must reject it.
+        The replacement was never issued by Fulcio and its validity
+        window (a year ago) never covered the Rekor integrated time,
+        so verification must reject it.
 
-DSSE fixture. ``_ARTIFACT_DSSE_B64`` and ``_BUNDLE_DSSE_B64`` are the
-Sigstore project's public test assets, copied without modification
-from https://github.com/sigstore/sigstore-python/tree/9cfab5d5e2467e728afbfbae1b0afc6b90e771e4/test/assets
-(``a.dsse.staging-rekor-v2.txt`` and
-``a.dsse.staging-rekor-v2.txt.sigstore.json``), Apache-2.0,
-Copyright The Sigstore Authors. The bundle is a staging DSSE bundle:
-an in-toto statement for ``a.txt`` signed by a short-lived Fulcio
-staging certificate for the GitHub Actions workflow identity
-``https://github.com/sigstore-conformance/extremely-dangerous-public-oidc-beacon/.github/workflows/extremely-dangerous-oidc-beacon.yml@refs/heads/main``
-via ``https://token.actions.githubusercontent.com``, logged in the
-staging Rekor log as a hashedrekord 0.0.2 entry. Known limit: the
-statement's subject digest (a0cfc712...) does not match the companion
-artifact file (sha256 e248a5db...): the upstream fixture was
-regenerated and the statement still carries the old subject digest,
-so the companion artifact is rejected by the binding check and the
-pass test uses the sigstore-conformance ``a.txt`` instead (see
-``_ARTIFACT_DSSE_BOUND_B64``), whose sha256 is a0cfc712....
+    DSSE fixture. ``_ARTIFACT_DSSE_B64`` and ``_BUNDLE_DSSE_B64`` are the
+    Sigstore project's public test assets, copied without modification
+    from https://github.com/sigstore/sigstore-python/tree/9cfab5d5e2467e728afbfbae1b0afc6b90e771e4/test/assets
+    (``a.dsse.staging-rekor-v2.txt`` and
+    ``a.dsse.staging-rekor-v2.txt.sigstore.json``), Apache-2.0,
+    Copyright The Sigstore Authors. The bundle is a staging DSSE bundle:
+    an in-toto statement for ``a.txt`` signed by a short-lived Fulcio
+    staging certificate for the GitHub Actions workflow identity
+    ``https://github.com/sigstore-conformance/extremely-dangerous-public-oidc-beacon/.github/workflows/extremely-dangerous-oidc-beacon.yml@refs/heads/main``
+    via ``https://token.actions.githubusercontent.com``, logged in the
+    staging Rekor log as a hashedrekord 0.0.2 entry. Known limit: the
+    statement's subject digest (a0cfc712...) does not match the companion
+    artifact file (sha256 e248a5db...): the upstream fixture was
+    regenerated and the statement still carries the old subject digest,
+    so the companion artifact is rejected by the binding check and the
+    pass test uses the sigstore-conformance ``a.txt`` instead (see
+    ``_ARTIFACT_DSSE_BOUND_B64``), whose sha256 is a0cfc712....
     """
     key = ec.generate_private_key(ec.SECP256R1())
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "expired fixture")])
@@ -241,11 +242,9 @@ pass test uses the sigstore-conformance ``a.txt`` instead (see
         .issuer_name(name)
         .public_key(key.public_key())
         .serial_number(1)
-        .not_valid_before(datetime.now(timezone.utc) - timedelta(days=365))
-        .not_valid_after(datetime.now(timezone.utc) - timedelta(days=364))
-        .add_extension(
-            x509.SubjectAlternativeName([x509.RFC822Name(IDENTITY)]), False
-        )
+        .not_valid_before(datetime.now(UTC) - timedelta(days=365))
+        .not_valid_after(datetime.now(UTC) - timedelta(days=364))
+        .add_extension(x509.SubjectAlternativeName([x509.RFC822Name(IDENTITY)]), False)
         .sign(key, hashes.SHA256())
     )
     raw = base64.b64encode(expired.public_bytes(Encoding.DER)).decode("ascii")
@@ -260,11 +259,9 @@ def test_valid_staging_bundle_verifies():
     # The fixture certificate expired in 2024, yet the bundle
     # verifies: validity is judged at the Rekor integrated time.
     cert = x509.load_der_x509_certificate(
-        base64.b64decode(
-            _bundle_dict()["verificationMaterial"]["certificate"]["rawBytes"]
-        )
+        base64.b64decode(_bundle_dict()["verificationMaterial"]["certificate"]["rawBytes"])
     )
-    assert cert.not_valid_after_utc < datetime.now(timezone.utc)
+    assert cert.not_valid_after_utc < datetime.now(UTC)
 
 
 def test_verification_uses_no_network(monkeypatch):
@@ -280,7 +277,10 @@ def test_verification_uses_no_network(monkeypatch):
 
 def test_tampered_artifact_rejected():
     ok, reason = verify_sigstore_bundle(
-        _bundle_bytes(), _artifact() + b"modified", IDENTITY, ISSUER,
+        _bundle_bytes(),
+        _artifact() + b"modified",
+        IDENTITY,
+        ISSUER,
         trust_root="staging",
     )
     assert ok is False
@@ -289,12 +289,8 @@ def test_tampered_artifact_rejected():
 
 def test_forged_signature_rejected():
     original = _bundle_dict()["messageSignature"]["signature"]
-    forged = _mutated_bundle(
-        **{"messageSignature.signature": _flip_first_char(original)}
-    )
-    ok, reason = verify_sigstore_bundle(
-        forged, _artifact(), IDENTITY, ISSUER, trust_root="staging"
-    )
+    forged = _mutated_bundle(**{"messageSignature.signature": _flip_first_char(original)})
+    ok, reason = verify_sigstore_bundle(forged, _artifact(), IDENTITY, ISSUER, trust_root="staging")
     assert ok is False
     assert reason
 
@@ -313,7 +309,10 @@ def test_tampered_certificate_rejected():
 
 def test_expired_certificate_rejected():
     ok, reason = verify_sigstore_bundle(
-        _expired_certificate_bundle(), _artifact(), IDENTITY, ISSUER,
+        _expired_certificate_bundle(),
+        _artifact(),
+        IDENTITY,
+        ISSUER,
         trust_root="staging",
     )
     assert ok is False
@@ -330,7 +329,7 @@ def test_tampered_inclusion_proof_rejected():
                     **_bundle_dict()["verificationMaterial"]["tlogEntries"][0],
                     "inclusionProof": {
                         **proof,
-                        "hashes": [_flip_first_char(original)] + proof["hashes"][1:],
+                        "hashes": [_flip_first_char(original), *proof["hashes"][1:]],
                     },
                 }
             ]
@@ -345,7 +344,10 @@ def test_tampered_inclusion_proof_rejected():
 
 def test_wrong_identity_rejected():
     ok, reason = verify_sigstore_bundle(
-        _bundle_bytes(), _artifact(), "attacker@example.com", ISSUER,
+        _bundle_bytes(),
+        _artifact(),
+        "attacker@example.com",
+        ISSUER,
         trust_root="staging",
     )
     assert ok is False
@@ -354,7 +356,10 @@ def test_wrong_identity_rejected():
 
 def test_wrong_issuer_rejected():
     ok, reason = verify_sigstore_bundle(
-        _bundle_bytes(), _artifact(), IDENTITY, "https://example.com",
+        _bundle_bytes(),
+        _artifact(),
+        IDENTITY,
+        "https://example.com",
         trust_root="staging",
     )
     assert ok is False
@@ -381,12 +386,18 @@ def test_non_bytes_bundle_rejected(bad_bundle):
 
 def test_oversized_inputs_rejected():
     ok, _ = verify_sigstore_bundle(
-        b"x" * (MAX_BUNDLE_BYTES + 1), _artifact(), IDENTITY, ISSUER,
+        b"x" * (MAX_BUNDLE_BYTES + 1),
+        _artifact(),
+        IDENTITY,
+        ISSUER,
         trust_root="staging",
     )
     assert ok is False
     ok, _ = verify_sigstore_bundle(
-        _bundle_bytes(), b"x" * (MAX_ARTIFACT_BYTES + 1), IDENTITY, ISSUER,
+        _bundle_bytes(),
+        b"x" * (MAX_ARTIFACT_BYTES + 1),
+        IDENTITY,
+        ISSUER,
         trust_root="staging",
     )
     assert ok is False
@@ -724,9 +735,9 @@ def _tampered_dsse_payload_bundle() -> bytes:
     data = _bundle_dsse_dict()
     payload = json.loads(base64.b64decode(data["dsseEnvelope"]["payload"]))
     payload["subject"][0]["name"] = "b.txt"
-    data["dsseEnvelope"]["payload"] = base64.b64encode(
-        json.dumps(payload).encode("utf-8")
-    ).decode("ascii")
+    data["dsseEnvelope"]["payload"] = base64.b64encode(json.dumps(payload).encode("utf-8")).decode(
+        "ascii"
+    )
     return json.dumps(data).encode("utf-8")
 
 
@@ -735,10 +746,7 @@ def test_dsse_fixture_is_byte_identical_to_source():
 
     assert hashlib.sha256(_artifact_dsse()).hexdigest() == _ARTIFACT_DSSE_SHA256
     assert hashlib.sha256(_bundle_dsse_bytes()).hexdigest() == _BUNDLE_DSSE_SHA256
-    assert (
-        hashlib.sha256(_artifact_dsse_bound()).hexdigest()
-        == _ARTIFACT_DSSE_BOUND_SHA256
-    )
+    assert hashlib.sha256(_artifact_dsse_bound()).hexdigest() == _ARTIFACT_DSSE_BOUND_SHA256
     # The bound artifact is the one the statement was signed over.
     assert _ARTIFACT_DSSE_BOUND_SHA256 == _SUBJECT_DIGEST_DSSE
 
@@ -758,9 +766,7 @@ def test_dsse_bundle_parses_as_dsse_envelope():
     assert len(envelope["signatures"]) == 1
     payload = json.loads(base64.b64decode(envelope["payload"]))
     assert payload["_type"] == "https://in-toto.io/Statement/v1"
-    assert payload["subject"] == [
-        {"name": "a.txt", "digest": {"sha256": _SUBJECT_DIGEST_DSSE}}
-    ]
+    assert payload["subject"] == [{"name": "a.txt", "digest": {"sha256": _SUBJECT_DIGEST_DSSE}}]
     assert payload["predicateType"] == "https://slsa.dev/provenance/v1"
     # Rekor v2 records DSSE envelopes as hashedrekord 0.0.2 entries.
     entry = raw["verificationMaterial"]["tlogEntries"][0]
@@ -800,24 +806,16 @@ def test_dsse_bundle_verifies_offline_with_library_verifier(monkeypatch):
         bundle, Identity(identity=IDENTITY_DSSE, issuer=ISSUER_DSSE)
     )
     assert payload_type == "application/vnd.in-toto+json"
-    assert payload == base64.b64decode(
-        _bundle_dsse_dict()["dsseEnvelope"]["payload"]
-    )
+    assert payload == base64.b64decode(_bundle_dsse_dict()["dsseEnvelope"]["payload"])
     # Same expiry semantics as the message-signature fixture: the
     # certificate expired in 2026, yet the bundle verifies because
     # validity is judged at signing time.
     cert = x509.load_der_x509_certificate(
-        base64.b64decode(
-            _bundle_dsse_dict()["verificationMaterial"]["certificate"]["rawBytes"]
-        )
+        base64.b64decode(_bundle_dsse_dict()["verificationMaterial"]["certificate"]["rawBytes"])
     )
-    assert cert.not_valid_after_utc < datetime.now(timezone.utc)
-    sans = cert.extensions.get_extension_for_class(
-        x509.SubjectAlternativeName
-    ).value
-    assert sans.get_values_for_type(x509.UniformResourceIdentifier) == [
-        IDENTITY_DSSE
-    ]
+    assert cert.not_valid_after_utc < datetime.now(UTC)
+    sans = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+    assert sans.get_values_for_type(x509.UniformResourceIdentifier) == [IDENTITY_DSSE]
 
 
 def test_dsse_bundle_verifies():
@@ -832,7 +830,10 @@ def test_dsse_bundle_verifies():
     test_dsse_unbound_artifact_rejected.)
     """
     ok, reason = verify_sigstore_bundle(
-        _bundle_dsse_bytes(), _artifact_dsse_bound(), IDENTITY_DSSE, ISSUER_DSSE,
+        _bundle_dsse_bytes(),
+        _artifact_dsse_bound(),
+        IDENTITY_DSSE,
+        ISSUER_DSSE,
         trust_root="staging",
     )
     assert (ok, reason) == (True, "ok")
@@ -849,7 +850,10 @@ def test_dsse_unbound_artifact_rejected():
     a genuine bundle for one artifact alongside a different one.
     """
     ok, reason = verify_sigstore_bundle(
-        _bundle_dsse_bytes(), _artifact_dsse(), IDENTITY_DSSE, ISSUER_DSSE,
+        _bundle_dsse_bytes(),
+        _artifact_dsse(),
+        IDENTITY_DSSE,
+        ISSUER_DSSE,
         trust_root="staging",
     )
     assert ok is False
@@ -975,9 +979,7 @@ def test_dsse_binding_check_fails_closed(payload_type, payload):
     """
     from puspa.policy.sigstore_verify import _check_dsse_binding
 
-    ok, reason = _check_dsse_binding(
-        payload_type, payload, _artifact_dsse_bound()
-    )
+    ok, reason = _check_dsse_binding(payload_type, payload, _artifact_dsse_bound())
     assert ok is False
     assert reason
 
@@ -1026,8 +1028,11 @@ def test_dsse_tampered_envelope_signature_rejected():
     sig = data["dsseEnvelope"]["signatures"][0]
     sig["sig"] = _flip_first_char(sig["sig"])
     ok, reason = verify_sigstore_bundle(
-        json.dumps(data).encode("utf-8"), _artifact_dsse_bound(),
-        IDENTITY_DSSE, ISSUER_DSSE, trust_root="staging",
+        json.dumps(data).encode("utf-8"),
+        _artifact_dsse_bound(),
+        IDENTITY_DSSE,
+        ISSUER_DSSE,
+        trust_root="staging",
     )
     assert ok is False
     assert reason
@@ -1036,8 +1041,11 @@ def test_dsse_tampered_envelope_signature_rejected():
 
 def test_dsse_tampered_payload_rejected():
     ok, reason = verify_sigstore_bundle(
-        _tampered_dsse_payload_bundle(), _artifact_dsse_bound(),
-        IDENTITY_DSSE, ISSUER_DSSE, trust_root="staging",
+        _tampered_dsse_payload_bundle(),
+        _artifact_dsse_bound(),
+        IDENTITY_DSSE,
+        ISSUER_DSSE,
+        trust_root="staging",
     )
     assert ok is False
     assert reason
@@ -1049,8 +1057,11 @@ def test_dsse_tampered_certificate_rejected():
     raw = data["verificationMaterial"]["certificate"]["rawBytes"]
     data["verificationMaterial"]["certificate"]["rawBytes"] = _flip_first_char(raw)
     ok, reason = verify_sigstore_bundle(
-        json.dumps(data).encode("utf-8"), _artifact_dsse_bound(),
-        IDENTITY_DSSE, ISSUER_DSSE, trust_root="staging",
+        json.dumps(data).encode("utf-8"),
+        _artifact_dsse_bound(),
+        IDENTITY_DSSE,
+        ISSUER_DSSE,
+        trust_root="staging",
     )
     assert ok is False
     assert reason
@@ -1060,10 +1071,13 @@ def test_dsse_tampered_certificate_rejected():
 def test_dsse_tampered_inclusion_proof_rejected():
     data = _bundle_dsse_dict()
     proof = data["verificationMaterial"]["tlogEntries"][0]["inclusionProof"]
-    proof["hashes"] = [_flip_first_char(proof["hashes"][0])] + proof["hashes"][1:]
+    proof["hashes"] = [_flip_first_char(proof["hashes"][0]), *proof["hashes"][1:]]
     ok, reason = verify_sigstore_bundle(
-        json.dumps(data).encode("utf-8"), _artifact_dsse_bound(),
-        IDENTITY_DSSE, ISSUER_DSSE, trust_root="staging",
+        json.dumps(data).encode("utf-8"),
+        _artifact_dsse_bound(),
+        IDENTITY_DSSE,
+        ISSUER_DSSE,
+        trust_root="staging",
     )
     assert ok is False
     assert reason
@@ -1072,8 +1086,11 @@ def test_dsse_tampered_inclusion_proof_rejected():
 
 def test_dsse_wrong_identity_rejected():
     ok, reason = verify_sigstore_bundle(
-        _bundle_dsse_bytes(), _artifact_dsse_bound(), "attacker@example.com",
-        ISSUER_DSSE, trust_root="staging",
+        _bundle_dsse_bytes(),
+        _artifact_dsse_bound(),
+        "attacker@example.com",
+        ISSUER_DSSE,
+        trust_root="staging",
     )
     assert ok is False
     assert reason
@@ -1082,8 +1099,11 @@ def test_dsse_wrong_identity_rejected():
 
 def test_dsse_wrong_issuer_rejected():
     ok, reason = verify_sigstore_bundle(
-        _bundle_dsse_bytes(), _artifact_dsse_bound(), IDENTITY_DSSE,
-        "https://example.com", trust_root="staging",
+        _bundle_dsse_bytes(),
+        _artifact_dsse_bound(),
+        IDENTITY_DSSE,
+        "https://example.com",
+        trust_root="staging",
     )
     assert ok is False
     assert reason
@@ -1093,7 +1113,10 @@ def test_dsse_wrong_issuer_rejected():
 def test_dsse_staging_bundle_rejected_under_production_root():
     # Same non-interchangeability as the message-signature fixture.
     ok, reason = verify_sigstore_bundle(
-        _bundle_dsse_bytes(), _artifact_dsse_bound(), IDENTITY_DSSE, ISSUER_DSSE,
+        _bundle_dsse_bytes(),
+        _artifact_dsse_bound(),
+        IDENTITY_DSSE,
+        ISSUER_DSSE,
         trust_root="production",
     )
     assert ok is False

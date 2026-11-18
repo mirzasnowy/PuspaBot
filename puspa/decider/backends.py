@@ -84,9 +84,7 @@ def _overlap(question_text: str, keywords) -> int:
     hits = 0
     for keyword in keywords or []:
         key_words = _words(str(keyword))
-        if key_words and key_words & words:
-            hits += 1
-        elif str(keyword).lower() in question_text.lower():
+        if (key_words and key_words & words) or str(keyword).lower() in question_text.lower():
             hits += 1
     return hits
 
@@ -103,69 +101,52 @@ def parse_reply(question, raw: str):
     try:
         data = json.loads(raw)
     except (ValueError, TypeError) as exc:
-        raise BackendError(
-            "unparseable_answer",
-            f"reply is not JSON: {str(exc)[:120]}") from exc
+        raise BackendError("unparseable_answer", f"reply is not JSON: {str(exc)[:120]}") from exc
     if not isinstance(data, dict):
-        raise BackendError(
-            "unparseable_answer", "reply is not a JSON object")
+        raise BackendError("unparseable_answer", "reply is not a JSON object")
     if isinstance(question, ChoiceQuestion):
         choice = data.get("choice")
         known = {o.id for o in question.options}
         if not isinstance(choice, str) or choice not in known:
-            raise BackendError(
-                "unparseable_answer",
-                f"choice {choice!r} is not one of the options")
+            raise BackendError("unparseable_answer", f"choice {choice!r} is not one of the options")
         try:
             confidence = float(data.get("confidence", 0.5))
         except (TypeError, ValueError) as exc:
-            raise BackendError(
-                "unparseable_answer", "confidence is not a number") from exc
+            raise BackendError("unparseable_answer", "confidence is not a number") from exc
         if not 0.0 <= confidence <= 1.0:
-            raise BackendError(
-                "unparseable_answer", "confidence outside 0..1")
+            raise BackendError("unparseable_answer", "confidence outside 0..1")
         return ChoiceAnswer(choice=choice, confidence=confidence)
     if isinstance(question, ScoreQuestion):
         scores = data.get("scores")
         if not isinstance(scores, dict):
-            raise BackendError(
-                "unparseable_answer", "scores is not an object")
+            raise BackendError("unparseable_answer", "scores is not an object")
         known = {o.id for o in question.options}
         if set(scores) != known:
-            raise BackendError(
-                "unparseable_answer",
-                "scores must cover exactly the options")
+            raise BackendError("unparseable_answer", "scores must cover exactly the options")
         checked = {}
         for option_id, score in scores.items():
             try:
                 value = float(score)
             except (TypeError, ValueError) as exc:
                 raise BackendError(
-                    "unparseable_answer",
-                    f"score for {option_id!r} is not a number") from exc
+                    "unparseable_answer", f"score for {option_id!r} is not a number"
+                ) from exc
             if not 0.0 <= value <= 1.0:
-                raise BackendError(
-                    "unparseable_answer",
-                    f"score for {option_id!r} outside 0..1")
+                raise BackendError("unparseable_answer", f"score for {option_id!r} outside 0..1")
             checked[option_id] = value
         return ScoreAnswer(scores=checked)
     if isinstance(question, YesNoQuestion):
-        value = data.get("answer")
-        if not isinstance(value, bool):
-            raise BackendError(
-                "unparseable_answer", "answer is not true/false")
+        answer = data.get("answer")
+        if not isinstance(answer, bool):
+            raise BackendError("unparseable_answer", "answer is not true/false")
         try:
             confidence = float(data.get("confidence", 0.5))
         except (TypeError, ValueError) as exc:
-            raise BackendError(
-                "unparseable_answer", "confidence is not a number") from exc
+            raise BackendError("unparseable_answer", "confidence is not a number") from exc
         if not 0.0 <= confidence <= 1.0:
-            raise BackendError(
-                "unparseable_answer", "confidence outside 0..1")
-        return YesNoAnswer(value=value, confidence=confidence)
-    raise BackendError(
-        "unparseable_answer",
-        f"unknown question type: {type(question).__name__}")
+            raise BackendError("unparseable_answer", "confidence outside 0..1")
+        return YesNoAnswer(value=answer, confidence=confidence)
+    raise BackendError("unparseable_answer", f"unknown question type: {type(question).__name__}")
 
 
 class RuleBackend:
@@ -198,8 +179,8 @@ class RuleBackend:
         if isinstance(question, YesNoQuestion):
             return self._yes_no(question)
         raise BackendError(
-            "unparseable_answer",
-            f"unknown question type: {type(question).__name__}")
+            "unparseable_answer", f"unknown question type: {type(question).__name__}"
+        )
 
     def _choice(self, question: ChoiceQuestion) -> ChoiceAnswer:
         best = question.options[0]
@@ -208,14 +189,11 @@ class RuleBackend:
         for option in question.options:
             hits = _overlap(question.text, option.keywords)
             if hits > best_hits:
-                second_hits = best_hits if best_hits > 0 else 0
+                second_hits = max(0, best_hits)
                 best, best_hits = option, hits
             elif hits > second_hits:
                 second_hits = hits
-        if best_hits <= 0:
-            confidence = 0.0
-        else:
-            confidence = (best_hits - second_hits) / best_hits
+        confidence = 0.0 if best_hits <= 0 else (best_hits - second_hits) / best_hits
         return ChoiceAnswer(choice=best.id, confidence=confidence)
 
     def _score(self, question: ScoreQuestion) -> ScoreAnswer:
@@ -234,10 +212,9 @@ class RuleBackend:
         no_hits = _overlap(question.text, context.get("no_keywords") or [])
         if yes_hits or no_hits:
             return YesNoAnswer(
-                value=yes_hits >= no_hits,
-                confidence=1.0 if yes_hits != no_hits else 0.5)
-        return YesNoAnswer(
-            value=bool(context.get("default", False)), confidence=0.0)
+                value=yes_hits >= no_hits, confidence=1.0 if yes_hits != no_hits else 0.5
+            )
+        return YesNoAnswer(value=bool(context.get("default", False)), confidence=0.0)
 
     def check_key(self):
         """The rule backend needs no credential: always ready."""
@@ -267,8 +244,7 @@ class LLMBackend:
         self._key_resolver = key_resolver
 
     @classmethod
-    def from_router(cls, *, role: str = "reader",
-                    timeout: float = 1.5, **kwargs):
+    def from_router(cls, *, role: str = "reader", timeout: float = 1.5, **kwargs):
         """Build the backend on the live router completion.
 
         ``timeout`` bounds one completion call; extra keyword
@@ -279,18 +255,16 @@ class LLMBackend:
         """
         from puspa.router.complete import default_llm_complete
 
-        complete = default_llm_complete(
-            role=role, timeout=timeout, **kwargs)
-        return cls(complete,
-                   key_resolver=kwargs.get("key_resolver"))
+        complete = default_llm_complete(role=role, timeout=timeout, **kwargs)
+        return cls(complete, key_resolver=kwargs.get("key_resolver"))
 
     def ask(self, question):
         try:
             raw = self._complete(build_prompt(question))
-        except Exception as exc:  # noqa: BLE001 - any failure is a value
+        except Exception as exc:
             raise BackendError(
-                "backend_error",
-                f"completion failed: {type(exc).__name__}: {exc}") from exc
+                "backend_error", f"completion failed: {type(exc).__name__}: {exc}"
+            ) from exc
         if not isinstance(raw, str) or not raw.strip():
             raise BackendError("unparseable_answer", "empty completion")
         return parse_reply(question, raw)
@@ -307,7 +281,7 @@ class LLMBackend:
         if self._key_resolver is not None:
             try:
                 key = self._key_resolver("openrouter")
-            except Exception as exc:  # noqa: BLE001 - key check must not throw
+            except Exception as exc:
                 return False, f"key_resolver failed: {exc}"
             if not key or not str(key).strip():
                 return False, "missing_api_key"
@@ -318,7 +292,7 @@ class LLMBackend:
             resolve_api_key("openrouter")
         except KeyError:
             return False, "missing_api_key"
-        except Exception as exc:  # noqa: BLE001 - key check must not throw
+        except Exception as exc:
             return False, f"key check failed: {exc}"
         return True, None
 
@@ -347,14 +321,14 @@ class UserEngineBackend:
     def ask(self, question):
         if self._engine_complete is None:
             raise BackendError(
-                "no_user_engine",
-                "no user engine configured for the chooser backend")
+                "no_user_engine", "no user engine configured for the chooser backend"
+            )
         try:
             raw = self._engine_complete(build_prompt(question))
-        except Exception as exc:  # noqa: BLE001 - any failure is a value
+        except Exception as exc:
             raise BackendError(
-                "backend_error",
-                f"engine call failed: {type(exc).__name__}: {exc}") from exc
+                "backend_error", f"engine call failed: {type(exc).__name__}: {exc}"
+            ) from exc
         if not isinstance(raw, str) or not raw.strip():
             raise BackendError("unparseable_answer", "empty engine reply")
         return parse_reply(question, raw)

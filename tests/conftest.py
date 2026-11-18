@@ -25,13 +25,16 @@ from pathlib import Path
 import psycopg
 import pytest
 
-from puspa.accounts import create_schema as create_account_schema  # noqa: E402
-from puspa.accounts.access import create_agent_schema  # noqa: E402
-from puspa.graphs import create_schema as create_graphs_schema, reset_tables as reset_graphs  # noqa: E402
-from puspa.ledger import Ledger  # noqa: E402
-from puspa.memory import create_schema as create_memory_schema  # noqa: E402
-from puspa.runtime import create_schema as create_runtime_schema, reset_tables as reset_runtime  # noqa: E402
-from puspa.workflow.schema import create_schema as create_workflow_schema, reset_tables as reset_workflow  # noqa: E402
+from puspa.accounts import create_schema as create_account_schema
+from puspa.accounts.access import create_agent_schema
+from puspa.graphs import create_schema as create_graphs_schema
+from puspa.graphs import reset_tables as reset_graphs
+from puspa.ledger import Ledger
+from puspa.memory import create_schema as create_memory_schema
+from puspa.runtime import create_schema as create_runtime_schema
+from puspa.runtime import reset_tables as reset_runtime
+from puspa.workflow.schema import create_schema as create_workflow_schema
+from puspa.workflow.schema import reset_tables as reset_workflow
 
 # Belt + braces: if a local nanobot clone exists (./nanobot), import from
 # there; otherwise nanobot comes from the installed dependency (git pin
@@ -44,8 +47,14 @@ if _NANOBOT_LOCAL.exists():
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 MEMORY_TABLES = (
-    "profile_facts", "episodic", "procedures", "slice_grants",
-    "summaries", "style_examples", "onboarding", "data_consents",
+    "profile_facts",
+    "episodic",
+    "procedures",
+    "slice_grants",
+    "summaries",
+    "style_examples",
+    "onboarding",
+    "data_consents",
     "used_email_links",
 )
 
@@ -93,7 +102,8 @@ def _reset_tables(test_dsn):
     with psycopg.connect(test_dsn) as conn:
         conn.execute(
             "TRUNCATE users, sessions, vault, agents, events, "
-            + ", ".join(MEMORY_TABLES) + " CASCADE"
+            + ", ".join(MEMORY_TABLES)
+            + " CASCADE"
         )
         conn.commit()
     reset_runtime(test_dsn)
@@ -103,7 +113,8 @@ def _reset_tables(test_dsn):
     with psycopg.connect(test_dsn) as conn:
         conn.execute(
             "TRUNCATE users, sessions, vault, agents, events, "
-            + ", ".join(MEMORY_TABLES) + " CASCADE"
+            + ", ".join(MEMORY_TABLES)
+            + " CASCADE"
         )
         conn.commit()
     reset_runtime(test_dsn)
@@ -165,9 +176,7 @@ def tmp_skill_dir(tmp_path):
         "connectors": {"gmail": ["read"]},
         "author": "puspa",
     }
-    (skill_dir / "manifest.json").write_text(
-        json.dumps(manifest, indent=2), encoding="utf-8"
-    )
+    (skill_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return skill_dir
 
 
@@ -203,14 +212,25 @@ def token_payloads():
     import time
 
     now = int(time.time())
-    agent = {"user_id": "user-1", "agent_id": "agen-1", "subagent_id": None,
-            "tools": ["read", "tulis"], "domains": ["tokopedia.com"],
-            "connectors": {"gmail": ["read"]},
-            "budget": {"step_max": 25, "token_max": 100000, "rupiah_max": 2000},
-            "exp": now + 3600, "iat": now, "parent": None}
-    sub = dict(agent, subagent_id="sub-1", tools=["read"],
-               budget={"step_max": 15, "token_max": 20000, "rupiah_max": 1000},
-               parent="agen-1")
+    agent = {
+        "user_id": "user-1",
+        "agent_id": "agen-1",
+        "subagent_id": None,
+        "tools": ["read", "tulis"],
+        "domains": ["tokopedia.com"],
+        "connectors": {"gmail": ["read"]},
+        "budget": {"step_max": 25, "token_max": 100000, "rupiah_max": 2000},
+        "exp": now + 3600,
+        "iat": now,
+        "parent": None,
+    }
+    sub = dict(
+        agent,
+        subagent_id="sub-1",
+        tools=["read"],
+        budget={"step_max": 15, "token_max": 20000, "rupiah_max": 1000},
+        parent="agen-1",
+    )
     return {"signing_key": signing_key, "agents": agent, "sub": sub}
 
 
@@ -227,7 +247,6 @@ def permission_user_penuh():
     return {
         "connectors": ["gmail", "calendar"],
         "scope": ["gmail.readonly", "gmail.compose", "calendar.events"],
-        "domain": ["tokopedia.com", "shopee.co.id", "blibli.com",
-                   "site_provider_bill"],
+        "domain": ["tokopedia.com", "shopee.co.id", "blibli.com", "site_provider_bill"],
         "spending_limit": 1000000,
     }

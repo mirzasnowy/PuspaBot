@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 #: Minimum conversations for one dream pass.
 MIN_CONVERSATIONS = 2
@@ -55,7 +55,7 @@ Conversations:
 
 
 def _now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _conversation_text(conversation):
@@ -76,13 +76,12 @@ def _select_conversations(conversations, now):
             in_window.append(conv)
             continue
         if stamp.tzinfo is None:
-            stamp = stamp.replace(tzinfo=timezone.utc)
+            stamp = stamp.replace(tzinfo=UTC)
         if stamp >= cutoff:
             in_window.append(conv)
     in_window.sort(
-        key=lambda c: c.get("created_at") or datetime.min.replace(
-            tzinfo=timezone.utc),
-        reverse=True)
+        key=lambda c: c.get("created_at") or datetime.min.replace(tzinfo=UTC), reverse=True
+    )
     return in_window[:MAX_CONVERSATIONS]
 
 
@@ -172,8 +171,11 @@ def run_dream(conversations, *, llm_complete=None, now=None):
     if len(selected) < MIN_CONVERSATIONS:
         return {
             "status": "too_few",
-            "learned": [], "expired": [], "ideas": [],
-            "conversations_used": len(selected), "bytes_used": 0,
+            "learned": [],
+            "expired": [],
+            "ideas": [],
+            "conversations_used": len(selected),
+            "bytes_used": 0,
         }
     from puspa.router.complete import resolve_llm_complete
 
@@ -181,33 +183,36 @@ def run_dream(conversations, *, llm_complete=None, now=None):
     if complete is None:
         return {
             "status": "no_llm",
-            "learned": [], "expired": [], "ideas": [],
-            "conversations_used": len(selected), "bytes_used": 0,
+            "learned": [],
+            "expired": [],
+            "ideas": [],
+            "conversations_used": len(selected),
+            "bytes_used": 0,
         }
     transcript, used, count = _budget_transcript(selected)
     if count < MIN_CONVERSATIONS:
         return {
             "status": "too_few",
-            "learned": [], "expired": [], "ideas": [],
-            "conversations_used": count, "bytes_used": used,
+            "learned": [],
+            "expired": [],
+            "ideas": [],
+            "conversations_used": count,
+            "bytes_used": used,
         }
     prompt = _DREAM_PROMPT_TEMPLATE.format(transcript=transcript)
     reply = complete(prompt)
     payload = _parse_dream_reply(reply)
     return {
         "status": "ok",
-        "learned": _filter_entries(payload.get("learned"), MAX_LEARNED,
-                                   need_key=True),
-        "expired": _filter_entries(payload.get("expired"), MAX_EXPIRED,
-                                   need_key=True),
+        "learned": _filter_entries(payload.get("learned"), MAX_LEARNED, need_key=True),
+        "expired": _filter_entries(payload.get("expired"), MAX_EXPIRED, need_key=True),
         "ideas": _filter_entries(payload.get("ideas"), MAX_IDEAS),
         "conversations_used": count,
         "bytes_used": used,
     }
 
 
-def run_dream_job(user_id, *, llm_complete="default", dsn=None,
-                  store=None, journal=None, now=None):
+def run_dream_job(user_id, *, llm_complete="default", dsn=None, store=None, journal=None, now=None):
     """Scheduler entry point: dream over the last 7 days of episodic.
 
     Groups the user's episodic rows by task into conversations and
@@ -227,39 +232,41 @@ def run_dream_job(user_id, *, llm_complete="default", dsn=None,
         stamp = row.get("created_at")
         if stamp is not None:
             if stamp.tzinfo is None:
-                stamp = stamp.replace(tzinfo=timezone.utc)
+                stamp = stamp.replace(tzinfo=UTC)
             if stamp < cutoff:
                 continue
         task = str(row.get("task_id") or "general")
-        by_task.setdefault(task, {"id": task, "messages": [],
-                                  "created_at": stamp})
-        by_task[task]["messages"].append(
-            f"[{row.get('type', 'message')}] {row.get('content', '')}")
+        by_task.setdefault(task, {"id": task, "messages": [], "created_at": stamp})
+        by_task[task]["messages"].append(f"[{row.get('type', 'message')}] {row.get('content', '')}")
         if stamp is not None and (
-                by_task[task]["created_at"] is None
-                or stamp > by_task[task]["created_at"]):
+            by_task[task]["created_at"] is None or stamp > by_task[task]["created_at"]
+        ):
             by_task[task]["created_at"] = stamp
     conversations = sorted(
         by_task.values(),
-        key=lambda c: c["created_at"] or datetime.min.replace(
-            tzinfo=timezone.utc),
-        reverse=True)
+        key=lambda c: c["created_at"] or datetime.min.replace(tzinfo=UTC),
+        reverse=True,
+    )
     result = run_dream(conversations, llm_complete=llm_complete, now=now)
     applied = {"learned": 0, "expired": 0}
     if result["status"] == "ok":
         store = store or facts.default_store()
         for item in result["learned"]:
             recorded = facts.record_fact(
-                user_id, item["key"], item["content"],
-                source="inferred", store=store, journal=journal, now=now)
+                user_id,
+                item["key"],
+                item["content"],
+                source="inferred",
+                store=store,
+                journal=journal,
+                now=now,
+            )
             if recorded.get("stored"):
                 applied["learned"] += 1
         for item in result["expired"]:
-            for fact in facts.get_fact_history(
-                    user_id, item["key"], store=store):
+            for fact in facts.get_fact_history(user_id, item["key"], store=store):
                 if fact["status"] == "active":
-                    facts.expire_fact(user_id, fact["id"], store=store,
-                                      journal=journal, now=now)
+                    facts.expire_fact(user_id, fact["id"], store=store, journal=journal, now=now)
                     applied["expired"] += 1
     result["applied"] = applied
     return result

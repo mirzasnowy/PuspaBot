@@ -26,7 +26,8 @@ from .users import (
     delete_user,
     resolve_dsn,
 )
-from .vault import VaultError, delete as vault_delete
+from .vault import VaultError
+from .vault import delete as vault_delete
 from .vault import get as vault_get
 from .vault import list_names as vault_list_names
 from .vault import put as vault_put

@@ -27,27 +27,27 @@ def card_step_html(card: dict) -> str:
         lencana = ' <span class="lencana-aksi">butuh persetujuan</span>'
     return (
         f'<div class="kartu-langkah" data-blok="{_esc(card.get("block", ""))}">'
-        f'<h4>{_esc(card.get("title", ""))}</h4>'
-        f'<p>{_esc(card.get("description", ""))}</p>'
+        f"<h4>{_esc(card.get('title', ''))}</h4>"
+        f"<p>{_esc(card.get('description', ''))}</p>"
         f'<p class="meta">Blok: <code>{_esc(card.get("block", ""))}</code>'
-        f' · Kelas: {_esc(card.get("permission_class", ""))}{lencana}</p>'
-        f'</div>'
+        f" · Kelas: {_esc(card.get('permission_class', ''))}{lencana}</p>"
+        f"</div>"
     )
 
 
-def panel_workflow_html(*, name: str, trigger: dict, card: list[dict],
-                    manifest_text: str = "", message: str = "") -> str:
+def panel_workflow_html(
+    *, name: str, trigger: dict, card: list[dict], manifest_text: str = "", message: str = ""
+) -> str:
     """Panel draf alur: nama + pemicu + kartu langkah + manifes izin."""
     card_html = "\n".join(card_step_html(k) for k in card)
     trigger_text = _esc(trigger.get("type", "manual"))
     message_html = f'<p class="pesan">{_esc(message)}</p>' if message else ""
-    manifest_html = (f'<pre class="manifes">{_esc(manifest_text)}</pre>'
-                    if manifest_text else "")
+    manifest_html = f'<pre class="manifes">{_esc(manifest_text)}</pre>' if manifest_text else ""
     return (
         f'<section class="panel-alur"><h3>{_esc(name)}</h3>'
-        f'<p>Pemicu: {trigger_text}</p>{message_html}'
+        f"<p>Pemicu: {trigger_text}</p>{message_html}"
         f'<div class="daftar-langkah">{card_html}</div>'
-        f'{manifest_html}</section>'
+        f"{manifest_html}</section>"
     )
 
 
@@ -55,16 +55,19 @@ def result_run_html(result: dict) -> str:
     """Hasil jalan / uji kering: tiap langkah + status + biaya + alasan."""
     rows = []
     for step_result in result.get("step_results", []):
-        status = "successful" if step_result.get("success") else (
-            "pending" if step_result.get("success") is None else "failed")
+        status = (
+            "successful"
+            if step_result.get("success")
+            else ("pending" if step_result.get("success") is None else "failed")
+        )
         if step_result.get("simulated"):
             status = "simulasi (uji kering)"
-        rows.append(f'<li>{_esc(step_result.get("block", "?"))} — {status}</li>')
+        rows.append(f"<li>{_esc(step_result.get('block', '?'))} — {status}</li>")
     reason = result.get("reason") or ""
     return (
         f'<section class="hasil-jalan"><p>Status: {_esc(result.get("status", ""))}</p>'
-        f'<ul>{"".join(rows)}</ul>'
-        f'<p>Biaya: Rp{int(result.get("cost_rp", 0)):,}</p>'.replace(",", ".")
-        + (f'<p>Alasan: {_esc(reason)}</p>' if reason else "")
-        + '</section>'
+        f"<ul>{''.join(rows)}</ul>"
+        f"<p>Biaya: Rp{int(result.get('cost_rp', 0)):,}</p>".replace(",", ".")
+        + (f"<p>Alasan: {_esc(reason)}</p>" if reason else "")
+        + "</section>"
     )

@@ -7,10 +7,9 @@ DSN, no conftest fixtures) so the file also runs with
 
 import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import psycopg
-import pytest
 
 from puspa.scheduler.claim import (
     DEFAULT_DSN,
@@ -25,18 +24,18 @@ from puspa.scheduler.claim import (
 
 DSN = os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
 
-NOW = datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
 
 
 def _cleanup(item_ids):
     if not item_ids:
         return
     with psycopg.connect(DSN, autocommit=True) as conn:
-        conn.execute("DELETE FROM work_items WHERE id = ANY(%s)",
-                     (list(item_ids),))
+        conn.execute("DELETE FROM work_items WHERE id = ANY(%s)", (list(item_ids),))
 
 
 # --- postgres ----------------------------------------------------------------
+
 
 def test_enqueue_and_claim_roundtrip():
     ensure_work_items_schema(DSN)
@@ -76,8 +75,7 @@ def test_expired_lease_can_be_reclaimed():
     ensure_work_items_schema(DSN)
     item_id = enqueue_work_item({"kind": "stuck"}, dsn=DSN)
     try:
-        claimed = claim_work_items(owner="replica-a", lease_seconds=1,
-                                   dsn=DSN)
+        claimed = claim_work_items(owner="replica-a", lease_seconds=1, dsn=DSN)
         assert len(claimed) == 1
         time.sleep(1.2)
         reclaimed = claim_work_items(owner="replica-b", dsn=DSN)
@@ -113,6 +111,7 @@ def test_complete_and_fail_on_unknown_item():
 
 # --- in-memory fallback -------------------------------------------------------
 
+
 def test_in_memory_queue_same_surface():
     queue = InMemoryWorkQueue()
     item_id = queue.enqueue({"kind": "bill_check"}, max_attempts=2)
@@ -125,8 +124,7 @@ def test_in_memory_queue_same_surface():
     stuck = queue.enqueue({"kind": "stuck"})
     queue.claim(owner="replica-a", lease_seconds=1, now=NOW)
     assert queue.claim(owner="replica-b", now=NOW) == []
-    reclaimed = queue.claim(owner="replica-b",
-                            now=NOW + timedelta(seconds=2))
+    reclaimed = queue.claim(owner="replica-b", now=NOW + timedelta(seconds=2))
     assert [item.id for item in reclaimed] == [stuck]
 
     flaky = queue.enqueue({"kind": "flaky"}, max_attempts=1)

@@ -37,8 +37,7 @@ USER = "user-1"
 
 
 def _task(purpose, plan=None):
-    return Task(task_id="task-1", user_id=USER, agent_id=AGENT,
-                purpose=purpose, plan=plan or [])
+    return Task(task_id="task-1", user_id=USER, agent_id=AGENT, purpose=purpose, plan=plan or [])
 
 
 def _ok_executor(name, inputs):
@@ -49,12 +48,12 @@ def _ok_executor(name, inputs):
 # Planner: decomposition
 # ---------------------------------------------------------------------------
 
+
 def test_decompose_compare_price_covers_three_stores():
     steps = decompose("compare laptop prices across stores")
     names = [step.name for step in steps]
     assert names[0] == "search_listings"
-    assert names[1:4] == ["read_price_tokopedia", "read_price_shopee",
-                          "read_price_blibli"]
+    assert names[1:4] == ["read_price_tokopedia", "read_price_shopee", "read_price_blibli"]
     assert "verify_price" in names
     assert "present_comparison" in names
 
@@ -68,11 +67,21 @@ def test_decompose_bill_plan_ends_in_outbound_payment():
 
 def test_decompose_research_email_drive_and_generic():
     assert [s.name for s in decompose("research and summarize 5 articles")] == [
-        "search_artikel", "read_artikel", "summarize"]
+        "search_artikel",
+        "read_artikel",
+        "summarize",
+    ]
     assert [s.name for s in decompose("read email and create a draft reply")] == [
-        "gmail_search", "gmail_read", "gmail_create_draft", "present"]
+        "gmail_search",
+        "gmail_read",
+        "gmail_create_draft",
+        "present",
+    ]
     assert [s.name for s in decompose("search a file in Drive and summarize it")] == [
-        "drive_search", "drive_read", "summarize"]
+        "drive_search",
+        "drive_read",
+        "summarize",
+    ]
     generic = decompose("do something completely new for me")
     assert [s.name for s in generic] == ["gather", "verify", "present"]
 
@@ -94,6 +103,7 @@ def test_step_tool_maps_prefixed_steps():
 # ---------------------------------------------------------------------------
 # Planner: execution + bounded replan
 # ---------------------------------------------------------------------------
+
 
 def test_planner_runs_plan_to_completion():
     planner = Planner(executor=_ok_executor)
@@ -118,9 +128,9 @@ def test_planner_replans_and_retries_failed_step():
     assert result.status == "completed"
     assert planner.replans == 1
     assert planner.attempts == 2
-    replan_events = [e for e in planner.events
-                     if e["type"] == "plan_created"
-                     and e["content"].get("replan")]
+    replan_events = [
+        e for e in planner.events if e["type"] == "plan_created" and e["content"].get("replan")
+    ]
     assert len(replan_events) == 1
     assert replan_events[0]["content"]["reason"]
 
@@ -168,6 +178,7 @@ def test_planner_does_not_replan_around_approval_gate():
 # Eval harness
 # ---------------------------------------------------------------------------
 
+
 def test_reference_eval_runs_ten_tasks_and_scores_them():
     tasks = load_reference_tasks()
     assert len(tasks) == 10
@@ -181,9 +192,13 @@ def test_reference_eval_runs_ten_tasks_and_scores_them():
 
 
 def test_eval_scorer_reports_which_state_key_failed():
-    task = EvalTask(task_id="eval-x", name="x", prompt="x",
-                    cassette_name="compare_price_laptop",
-                    expected_state={"cheapest_price": 100.0, "prices_seen": 3})
+    task = EvalTask(
+        task_id="eval-x",
+        name="x",
+        prompt="x",
+        cassette_name="compare_price_laptop",
+        expected_state={"cheapest_price": 100.0, "prices_seen": 3},
+    )
     passed, details = score_state(task, {"cheapest_price": 200.0, "prices_seen": 3})
     assert passed is False
     assert details["cheapest_price"]["matched"] is False
@@ -214,6 +229,7 @@ def test_sandbox_availability_reports_without_executing():
 # ---------------------------------------------------------------------------
 # Prompt optimiser (DSPy pattern, cassettes only)
 # ---------------------------------------------------------------------------
+
 
 def test_optimizer_scores_planner_on_all_cassettes():
     outcome = evaluate_program(DEFAULT_PROGRAMS["planner"])

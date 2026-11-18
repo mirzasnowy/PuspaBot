@@ -96,12 +96,12 @@ from dataclasses import dataclass, field
 from puspa.router.compression import count_tokens
 
 __all__ = [
-    "CompressionResult",
-    "ContextCompressor",
-    "MIN_PROTECTED",
     "GATEWAY_THRESHOLD",
+    "MIN_PROTECTED",
     "PREFLIGHT_THRESHOLD",
     "SUMMARY_PROMPT_TEMPLATE",
+    "CompressionResult",
+    "ContextCompressor",
     "extractive_summary",
     "prepare_turn_messages",
     "should_compress",
@@ -270,10 +270,18 @@ class ContextCompressor:
     drive the real default path offline through ``httpx.MockTransport``).
     """
 
-    def __init__(self, *, context_limit: int = 128_000,
-                 protect_last_n: int = DEFAULT_PROTECT_LAST_N,
-                 summarize=None, flush=None, user_id=None, dsn=None,
-                 token_counter=None, llm_kwargs=None) -> None:
+    def __init__(
+        self,
+        *,
+        context_limit: int = 128_000,
+        protect_last_n: int = DEFAULT_PROTECT_LAST_N,
+        summarize=None,
+        flush=None,
+        user_id=None,
+        dsn=None,
+        token_counter=None,
+        llm_kwargs=None,
+    ) -> None:
         if context_limit <= 0:
             raise ValueError("context_limit must be positive")
         if protect_last_n < 1:
@@ -322,7 +330,7 @@ class ContextCompressor:
         summarize = self._summarize or self._default_summarize
         try:
             result = summarize(text)
-        except Exception as exc:  # noqa: BLE001 - any summarizer failure falls back
+        except Exception as exc:
             return extractive_summary(text), f"{type(exc).__name__}: {exc}"
         if not isinstance(result, str) or not result.strip():
             return extractive_summary(text), "empty summarizer reply"
@@ -340,9 +348,8 @@ class ContextCompressor:
         try:
             from puspa.memory.consolidate import consolidate_idle
 
-            outcome = consolidate_idle(
-                self._user_id, agent_id=None, dsn=self._dsn)
-        except Exception as exc:  # noqa: BLE001 - flush must never block compression
+            outcome = consolidate_idle(self._user_id, agent_id=None, dsn=self._dsn)
+        except Exception as exc:
             return {"called": True, "ok": False, "error": f"{type(exc).__name__}: {exc}"}
         return {"called": True, "ok": True, "outcome": outcome}
 
@@ -350,9 +357,8 @@ class ContextCompressor:
         if self._flush is not None:
             try:
                 outcome = self._flush()
-            except Exception as exc:  # noqa: BLE001 - flush must never block compression
-                return {"called": True, "ok": False,
-                        "error": f"{type(exc).__name__}: {exc}"}
+            except Exception as exc:
+                return {"called": True, "ok": False, "error": f"{type(exc).__name__}: {exc}"}
             if isinstance(outcome, dict):
                 return {"called": True, "ok": True, "outcome": outcome}
             return {"called": True, "ok": True}
@@ -385,7 +391,8 @@ class ContextCompressor:
             index += 1
             if message.get("role") == "assistant" and message.get("tool_calls"):
                 wanted = {
-                    str(call.get("id")) for call in message["tool_calls"]
+                    str(call.get("id"))
+                    for call in message["tool_calls"]
                     if isinstance(call, dict) and call.get("id")
                 }
                 while index < total:
@@ -421,12 +428,8 @@ class ContextCompressor:
         original = [dict(m) for m in (messages or [])]
         tokens_before = self.count_messages(original)
         threshold_hit = should_compress(tokens_before, self.context_limit)
-        mode_threshold = (
-            GATEWAY_THRESHOLD if mode == "gateway" else PREFLIGHT_THRESHOLD
-        )
-        hit_for_mode = (
-            threshold_hit == "gateway"
-            or (threshold_hit == "preflight" and mode == "preflight")
+        hit_for_mode = threshold_hit == "gateway" or (
+            threshold_hit == "preflight" and mode == "preflight"
         )
         stats: dict = {
             "tokens_before": tokens_before,
@@ -444,8 +447,7 @@ class ContextCompressor:
             "system_count": 0,
         }
         if not hit_for_mode or tokens_before == 0:
-            return CompressionResult(
-                messages=original, lineage_id=lineage_id, stats=stats)
+            return CompressionResult(messages=original, lineage_id=lineage_id, stats=stats)
         # The gateway is more aggressive: it protects half as many
         # tail messages (never fewer than MIN_PROTECTED). A gateway
         # call below the 85% gateway threshold compresses nothing:
@@ -457,8 +459,7 @@ class ContextCompressor:
         system, units = self._group_units(original)
         stats["system_count"] = len(system)
         if not units:
-            return CompressionResult(
-                messages=original, lineage_id=lineage_id, stats=stats)
+            return CompressionResult(messages=original, lineage_id=lineage_id, stats=stats)
         # Walk units from the tail until the protected message count
         # reaches protect_n; everything before that is the middle.
         protected_units: list[list[dict]] = []
@@ -471,19 +472,16 @@ class ContextCompressor:
         middle_units = units[:cursor]
         if not middle_units:
             stats["protected_count"] = protected_messages
-            return CompressionResult(
-                messages=original, lineage_id=lineage_id, stats=stats)
+            return CompressionResult(messages=original, lineage_id=lineage_id, stats=stats)
         # 1. Flush memory to disk BEFORE summarizing.
         flush_stats = self._run_flush()
         stats["flush"] = flush_stats
         # 2. Summarize the middle turns into one dense summary.
         middle_messages = [m for unit in middle_units for m in unit]
         transcript_lines = [
-            f"{m.get('role', 'unknown')}: {_message_text(m)}"
-            for m in middle_messages
+            f"{m.get('role', 'unknown')}: {_message_text(m)}" for m in middle_messages
         ]
-        summary, fallback_reason = self._summarize_text(
-            "\n".join(transcript_lines))
+        summary, fallback_reason = self._summarize_text("\n".join(transcript_lines))
         stats["summary_fallback"] = fallback_reason
         stats["summarized_count"] = len(middle_messages)
         stats["summary_chars"] = len(summary)
@@ -505,14 +503,17 @@ class ContextCompressor:
             round(tokens_after / tokens_before, 4) if tokens_before else 1.0
         )
         stats["compressed"] = True
-        return CompressionResult(
-            messages=new_messages, lineage_id=lineage_id, stats=stats)
+        return CompressionResult(messages=new_messages, lineage_id=lineage_id, stats=stats)
 
 
-def prepare_turn_messages(messages, *, context_limit: int,
-                          compressor: ContextCompressor | None = None,
-                          mode: str | None = None,
-                          **compressor_kwargs) -> tuple[list[dict], CompressionResult | None]:
+def prepare_turn_messages(
+    messages,
+    *,
+    context_limit: int,
+    compressor: ContextCompressor | None = None,
+    mode: str | None = None,
+    **compressor_kwargs,
+) -> tuple[list[dict], CompressionResult | None]:
     """Check a turn's messages against the thresholds, compress if hit.
 
     The call site for G19: a Puspa-owned turn wrapper calls this
@@ -523,8 +524,7 @@ def prepare_turn_messages(messages, *, context_limit: int,
     ``mode`` forces ``"preflight"`` or ``"gateway"``; without it the
     mode follows ``should_compress``.
     """
-    compressor = compressor or ContextCompressor(
-        context_limit=context_limit, **compressor_kwargs)
+    compressor = compressor or ContextCompressor(context_limit=context_limit, **compressor_kwargs)
     tokens = compressor.count_messages(messages or [])
     hit = should_compress(tokens, context_limit)
     if hit is None:

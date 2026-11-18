@@ -31,9 +31,8 @@ def check_backend(backend) -> dict:
         return {"ok": True, "reason": None}
     try:
         ok, reason = check()
-    except Exception as exc:  # noqa: BLE001 - key-check must not throw
-        return {"ok": False,
-                "reason": f"key_check_failed: {type(exc).__name__}: {exc}"}
+    except Exception as exc:
+        return {"ok": False, "reason": f"key_check_failed: {type(exc).__name__}: {exc}"}
     if ok:
         return {"ok": True, "reason": None}
     return {"ok": False, "reason": reason or "key_check_failed"}

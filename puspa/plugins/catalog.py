@@ -105,15 +105,11 @@ def validate_manifest(manifest) -> list[str]:
             "(letters/digits/'-'/'_', 3-64 chars, starting alphanumerically)"
         )
     for field_name in ("name", "description", "author"):
-        if not isinstance(manifest[field_name], str) or not manifest[
-            field_name
-        ].strip():
+        if not isinstance(manifest[field_name], str) or not manifest[field_name].strip():
             problems.append(f"{field_name} must be a non-empty string")
     version = manifest["version"]
     if not isinstance(version, str) or not _VERSION_RE.match(version):
-        problems.append(
-            f"version {version!r} must be semver MAJOR.MINOR.PATCH"
-        )
+        problems.append(f"version {version!r} must be semver MAJOR.MINOR.PATCH")
     if manifest["license"] not in ALLOWED_LICENSES:
         problems.append(
             f"license {manifest['license']!r} is not allowed "
@@ -126,38 +122,23 @@ def validate_manifest(manifest) -> list[str]:
             "github.com or gitlab.com (owner/repo)"
         )
     entry_point = manifest["entry_point"]
-    if not isinstance(entry_point, str) or not _ENTRY_POINT_RE.match(
-        entry_point
-    ):
-        problems.append(
-            f"entry_point {entry_point!r} must be a dotted module path"
-        )
+    if not isinstance(entry_point, str) or not _ENTRY_POINT_RE.match(entry_point):
+        problems.append(f"entry_point {entry_point!r} must be a dotted module path")
     elif entry_point.startswith("puspa."):
-        problems.append(
-            "entry_point must be a third-party module, not a puspa.* module"
-        )
+        problems.append("entry_point must be a third-party module, not a puspa.* module")
     if manifest["kind"] not in ALLOWED_KINDS:
-        problems.append(
-            f"kind {manifest['kind']!r} must be one of "
-            f"{', '.join(ALLOWED_KINDS)}"
-        )
+        problems.append(f"kind {manifest['kind']!r} must be one of {', '.join(ALLOWED_KINDS)}")
     if manifest["api_version"] != CATALOG_API_VERSION:
         problems.append(
-            f"api_version must be {CATALOG_API_VERSION}, "
-            f"got {manifest['api_version']!r}"
+            f"api_version must be {CATALOG_API_VERSION}, got {manifest['api_version']!r}"
         )
     dependencies = manifest.get("dependencies", [])
     if not isinstance(dependencies, list) or not all(
-        isinstance(item, str) and _REQUIREMENT_RE.match(item.strip())
-        for item in dependencies
+        isinstance(item, str) and _REQUIREMENT_RE.match(item.strip()) for item in dependencies
     ):
-        problems.append(
-            "dependencies must be a list of pip requirement strings"
-        )
+        problems.append("dependencies must be a list of pip requirement strings")
     price = manifest.get("price_credits")
-    if price is not None and (
-        not isinstance(price, int) or isinstance(price, bool) or price < 0
-    ):
+    if price is not None and (not isinstance(price, int) or isinstance(price, bool) or price < 0):
         problems.append("price_credits must be a non-negative integer")
     return problems
 
@@ -176,14 +157,10 @@ def load_manifest(path) -> dict:
     try:
         manifest = yaml.safe_load(text)
     except yaml.YAMLError as exc:
-        raise PluginStructureError(
-            f"manifest {path} is not valid YAML: {exc}"
-        ) from exc
+        raise PluginStructureError(f"manifest {path} is not valid YAML: {exc}") from exc
     problems = validate_manifest(manifest)
     if problems:
-        raise PluginStructureError(
-            f"manifest {path} failed admission: " + "; ".join(problems)
-        )
+        raise PluginStructureError(f"manifest {path} failed admission: " + "; ".join(problems))
     return manifest
 
 
@@ -224,11 +201,11 @@ def check_repository_alive(repository: str, *, timeout_s=5) -> bool:
     try:
         with urllib.request.urlopen(request, timeout=timeout_s) as response:
             return 200 <= response.status < 400
-    except Exception:  # noqa: BLE001 - liveness is best-effort by design
+    except Exception:
         pass
     request = urllib.request.Request(repository, method="GET")
     try:
         with urllib.request.urlopen(request, timeout=timeout_s) as response:
             return 200 <= response.status < 400
-    except Exception:  # noqa: BLE001 - liveness is best-effort by design
+    except Exception:
         return False

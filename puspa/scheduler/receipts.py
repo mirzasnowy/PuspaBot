@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 import os
 import threading
-from datetime import datetime, timezone
 
 import psycopg
 
@@ -100,8 +99,7 @@ class PostgresReceiptStore:
     def receipt(self, key: str) -> dict | None:
         with psycopg.connect(self.dsn) as conn:
             row = conn.execute(
-                "SELECT payload FROM event_receipts"
-                " WHERE idempotency_key = %s",
+                "SELECT payload FROM event_receipts WHERE idempotency_key = %s",
                 (key,),
             ).fetchone()
         if row is None:

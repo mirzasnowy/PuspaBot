@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from puspa.policy.tokens import is_subset, revoke_all_for_task
 
@@ -47,9 +47,17 @@ class SubagentPool:
         self._active: dict[str, Subagent] = {}
         self._queued: list[Subagent] = []
 
-    def spawn(self, *, agent_id: str, task_id: str, permission_class: str,
-              agent_token: dict, subagent_token: dict,
-              creator_is_subagent: bool = False, role: str = "") -> Subagent:
+    def spawn(
+        self,
+        *,
+        agent_id: str,
+        task_id: str,
+        permission_class: str,
+        agent_token: dict,
+        subagent_token: dict,
+        creator_is_subagent: bool = False,
+        role: str = "",
+    ) -> Subagent:
         """Buat sub-agen baru (atau antrekan bila kolam penuh).
 
         `token_agen` / `token_subagen` adalah payload dict yang sudah
@@ -66,7 +74,9 @@ class SubagentPool:
             raise SubagentError("token sub-agen bukan himpunan bagian dari token agennya")
         sub = Subagent(
             subagent_id=f"sub-{uuid.uuid4().hex[:12]}",
-            agent_id=agent_id, task_id=task_id, permission_class=permission_class,
+            agent_id=agent_id,
+            task_id=task_id,
+            permission_class=permission_class,
             role=role,
         )
         per_agent = sum(1 for s in self._active.values() if s.agent_id == agent_id)
@@ -106,8 +116,7 @@ class SubagentPool:
 
     def active_by_role(self, agent_id: str, role: str) -> list[Subagent]:
         """Sub-agen aktif satu agen dengan peran hierarki tertentu."""
-        return [s for s in self._active.values()
-                if s.agent_id == agent_id and s.role == role]
+        return [s for s in self._active.values() if s.agent_id == agent_id and s.role == role]
 
     def count_active(self) -> int:
         return len(self._active)
@@ -130,5 +139,8 @@ class SubagentPool:
             if sub in self._queued:
                 self._queued.remove(sub)
         revoked = revoke_all_for_task(task_id)
-        return {"stopped": len(stopped_subagents), "tokens_revoked": revoked,
-                "seconds": round(time.monotonic() - start, 3)}
+        return {
+            "stopped": len(stopped_subagents),
+            "tokens_revoked": revoked,
+            "seconds": round(time.monotonic() - start, 3),
+        }

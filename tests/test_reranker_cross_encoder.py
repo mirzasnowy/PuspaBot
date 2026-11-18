@@ -65,17 +65,19 @@ QUERY = "What is the price of Galaxy S24?"
 #: cross-encoder answer 9.33, stuffed 5.07, generic 1.74;
 #: deterministic stuffed 0.487, generic 0.347, answer 0.301.
 CANDIDATES = [
-    {"passage_id": "p-answer",
-     "text": "Samsung Galaxy S24 costs Rp12.999.000 at Tokopedia."},
-    {"passage_id": "p-stuffed",
-     "text": "Galaxy S24 price price price price price cheap deal "
-             "discount promo sale."},
-    {"passage_id": "p-generic",
-     "text": "The Galaxy S24 is a Samsung phone with a great camera "
-             "and long battery life."},
-    {"passage_id": "p-offtopic",
-     "text": "The seller never shipped the phone and buyers lost "
-             "their money."},
+    {"passage_id": "p-answer", "text": "Samsung Galaxy S24 costs Rp12.999.000 at Tokopedia."},
+    {
+        "passage_id": "p-stuffed",
+        "text": "Galaxy S24 price price price price price cheap deal discount promo sale.",
+    },
+    {
+        "passage_id": "p-generic",
+        "text": "The Galaxy S24 is a Samsung phone with a great camera and long battery life.",
+    },
+    {
+        "passage_id": "p-offtopic",
+        "text": "The seller never shipped the phone and buyers lost their money.",
+    },
 ]
 
 
@@ -124,8 +126,7 @@ def test_cross_encoder_scores_are_consistent(cross_encoder):
     assert first > 0.0
     ranked_once = cross_encoder.rerank(QUERY, CANDIDATES)
     ranked_twice = cross_encoder.rerank(QUERY, CANDIDATES)
-    assert [r["rerank_score"] for r in ranked_once] == [
-        r["rerank_score"] for r in ranked_twice]
+    assert [r["rerank_score"] for r in ranked_once] == [r["rerank_score"] for r in ranked_twice]
 
 
 def test_cross_encoder_batch_scores_match_single_scores(cross_encoder):
@@ -134,16 +135,12 @@ def test_cross_encoder_batch_scores_match_single_scores(cross_encoder):
     # The batched rerank path must agree with scoring each
     # pair on its own through the same model.
     for candidate in CANDIDATES:
-        single = cross_encoder.score(
-            QUERY, candidate["text"])["score"]
-        assert by_id[candidate["passage_id"]] == pytest.approx(
-            single, abs=1e-6)
+        single = cross_encoder.score(QUERY, candidate["text"])["score"]
+        assert by_id[candidate["passage_id"]] == pytest.approx(single, abs=1e-6)
     # And with a direct call to the underlying model.
-    direct = cross_encoder.model.predict(
-        [(QUERY, c["text"]) for c in CANDIDATES])
+    direct = cross_encoder.model.predict([(QUERY, c["text"]) for c in CANDIDATES])
     for candidate, value in zip(CANDIDATES, direct):
-        assert by_id[candidate["passage_id"]] == pytest.approx(
-            float(value), abs=1e-6)
+        assert by_id[candidate["passage_id"]] == pytest.approx(float(value), abs=1e-6)
 
 
 def test_factory_reuses_the_loaded_model(cross_encoder):
@@ -152,23 +149,21 @@ def test_factory_reuses_the_loaded_model(cross_encoder):
     assert again.model_name == MODEL_NAME
     # The factory entry point shares the same loaded model too
     # (explicit light backend: the default backend is bge now).
-    built = make_reranker(
-        "cross_encoder", backend="sentence_transformers")
+    built = make_reranker("cross_encoder", backend="sentence_transformers")
     assert built.model is cross_encoder.model
     assert built.rerank(QUERY, CANDIDATES)[0]["passage_id"] == "p-answer"
 
 
 def test_missing_model_fails_loudly_and_fallback_works():
     with pytest.raises(RerankerUnavailable) as excinfo:
-        CrossEncoderReranker.from_sentence_transformers(
-            "cross-encoder/does-not-exist-xyz")
+        CrossEncoderReranker.from_sentence_transformers("cross-encoder/does-not-exist-xyz")
     assert "does-not-exist-xyz" in str(excinfo.value)
     # The failure is loud, not silent: the deterministic
     # fallback is a separate, explicit choice that still works.
     fallback = make_reranker("deterministic")
     assert isinstance(fallback, DeterministicReranker)
     ranked = fallback.rerank(QUERY, CANDIDATES)
-    assert [r["passage_id"] for r in ranked][0] == "p-stuffed"
+    assert next(r["passage_id"] for r in ranked) == "p-stuffed"
 
 
 # ---------------------------------------------------------------------------
@@ -183,17 +178,19 @@ def test_missing_model_fails_loudly_and_fallback_works():
 #: 0.75, generic -1.43, off-topic -11.00.
 ID_QUERY = "Berapa harga Galaxy S24?"
 ID_CANDIDATES = [
-    {"passage_id": "p-answer",
-     "text": "Harga Samsung Galaxy S24 Rp12.999.000 di Tokopedia."},
-    {"passage_id": "p-stuffed",
-     "text": "harga harga harga harga harga Galaxy S24 murah "
-             "diskon promo sale."},
-    {"passage_id": "p-generic",
-     "text": "Galaxy S24 adalah ponsel Samsung dengan kamera "
-             "bagus dan baterai tahan lama."},
-    {"passage_id": "p-offtopic",
-     "text": "Penjual tidak pernah mengirim ponsel dan pembeli "
-             "kehilangan uang mereka."},
+    {"passage_id": "p-answer", "text": "Harga Samsung Galaxy S24 Rp12.999.000 di Tokopedia."},
+    {
+        "passage_id": "p-stuffed",
+        "text": "harga harga harga harga harga Galaxy S24 murah diskon promo sale.",
+    },
+    {
+        "passage_id": "p-generic",
+        "text": "Galaxy S24 adalah ponsel Samsung dengan kamera bagus dan baterai tahan lama.",
+    },
+    {
+        "passage_id": "p-offtopic",
+        "text": "Penjual tidak pernah mengirim ponsel dan pembeli kehilangan uang mereka.",
+    },
 ]
 
 #: Trust questions, English and Indonesian. The passage that
@@ -205,25 +202,27 @@ ID_CANDIDATES = [
 #: swap (see test_bge_trust_query_still_misses_the_fraud_report).
 TRUST_QUERY = "Is the cheap Galaxy S24 deal trustworthy?"
 TRUST_CANDIDATES = [
-    {"passage_id": "p-fraud",
-     "text": "The seller never shipped the phone and buyers lost "
-             "their money."},
-    {"passage_id": "p-stuffed",
-     "text": "Galaxy S24 price price price price price cheap deal "
-             "discount promo sale."},
-    {"passage_id": "p-answer",
-     "text": "Samsung Galaxy S24 costs Rp12.999.000 at Tokopedia."},
+    {
+        "passage_id": "p-fraud",
+        "text": "The seller never shipped the phone and buyers lost their money.",
+    },
+    {
+        "passage_id": "p-stuffed",
+        "text": "Galaxy S24 price price price price price cheap deal discount promo sale.",
+    },
+    {"passage_id": "p-answer", "text": "Samsung Galaxy S24 costs Rp12.999.000 at Tokopedia."},
 ]
 ID_TRUST_QUERY = "Apakah penawaran Galaxy S24 murah ini bisa dipercaya?"
 ID_TRUST_CANDIDATES = [
-    {"passage_id": "p-fraud",
-     "text": "Penjual tidak pernah mengirim ponsel dan pembeli "
-             "kehilangan uang mereka."},
-    {"passage_id": "p-stuffed",
-     "text": "harga harga harga harga harga Galaxy S24 murah "
-             "diskon promo sale."},
-    {"passage_id": "p-answer",
-     "text": "Harga Samsung Galaxy S24 Rp12.999.000 di Tokopedia."},
+    {
+        "passage_id": "p-fraud",
+        "text": "Penjual tidak pernah mengirim ponsel dan pembeli kehilangan uang mereka.",
+    },
+    {
+        "passage_id": "p-stuffed",
+        "text": "harga harga harga harga harga Galaxy S24 murah diskon promo sale.",
+    },
+    {"passage_id": "p-answer", "text": "Harga Samsung Galaxy S24 Rp12.999.000 di Tokopedia."},
 ]
 
 
@@ -274,8 +273,9 @@ def test_bge_trust_query_still_misses_the_fraud_report(bge_reranker):
     # later reranker fixes it, update this test with the new
     # measured order instead of deleting it silently.
     for query, candidates in [
-            (TRUST_QUERY, TRUST_CANDIDATES),
-            (ID_TRUST_QUERY, ID_TRUST_CANDIDATES)]:
+        (TRUST_QUERY, TRUST_CANDIDATES),
+        (ID_TRUST_QUERY, ID_TRUST_CANDIDATES),
+    ]:
         ranked = bge_reranker.rerank(query, candidates)
         order = [r["passage_id"] for r in ranked]
         assert order[-1] == "p-fraud"
@@ -290,12 +290,13 @@ def test_bge_scores_are_deterministic(bge_reranker):
     assert first > 0.0
     ranked_once = bge_reranker.rerank(QUERY, CANDIDATES)
     ranked_twice = bge_reranker.rerank(QUERY, CANDIDATES)
-    assert [r["rerank_score"] for r in ranked_once] == [
-        r["rerank_score"] for r in ranked_twice]
+    assert [r["rerank_score"] for r in ranked_once] == [r["rerank_score"] for r in ranked_twice]
     # And in Indonesian too.
     id_answer = ID_CANDIDATES[0]["text"]
-    assert bge_reranker.score(ID_QUERY, id_answer)["score"] == (
-        bge_reranker.score(ID_QUERY, id_answer)["score"])
+    assert (
+        bge_reranker.score(ID_QUERY, id_answer)["score"]
+        == (bge_reranker.score(ID_QUERY, id_answer)["score"])
+    )
 
 
 def test_bge_batch_scores_match_single_scores(bge_reranker):
@@ -308,16 +309,12 @@ def test_bge_batch_scores_match_single_scores(bge_reranker):
     # padding differs between the batch and the single-pair
     # call and the floats differ in the last bits.
     for candidate in CANDIDATES:
-        single = bge_reranker.score(
-            QUERY, candidate["text"])["score"]
-        assert by_id[candidate["passage_id"]] == pytest.approx(
-            single, abs=1e-4)
+        single = bge_reranker.score(QUERY, candidate["text"])["score"]
+        assert by_id[candidate["passage_id"]] == pytest.approx(single, abs=1e-4)
     # And with a direct call to the underlying model.
-    direct = bge_reranker.model.compute_score(
-        [(QUERY, c["text"]) for c in CANDIDATES])
+    direct = bge_reranker.model.compute_score([(QUERY, c["text"]) for c in CANDIDATES])
     for candidate, value in zip(CANDIDATES, direct):
-        assert by_id[candidate["passage_id"]] == pytest.approx(
-            float(value), abs=1e-4)
+        assert by_id[candidate["passage_id"]] == pytest.approx(float(value), abs=1e-4)
 
 
 def test_bge_factory_reuses_the_loaded_model(bge_reranker):
@@ -336,33 +333,30 @@ def test_bge_factory_reuses_the_loaded_model(bge_reranker):
 
 def test_bge_is_the_default_cross_encoder_backend(bge_reranker):
     # No model load needed: the signature default says so.
-    assert inspect.signature(
-        make_reranker).parameters["backend"].default == "bge"
-    assert inspect.signature(
-        CrossEncoderReranker.from_flagembedding
-    ).parameters["model_name"].default == BGE_MODEL_NAME
+    assert inspect.signature(make_reranker).parameters["backend"].default == "bge"
+    assert (
+        inspect.signature(CrossEncoderReranker.from_flagembedding).parameters["model_name"].default
+        == BGE_MODEL_NAME
+    )
     assert DEFAULT_BGE_RERANKER_MODEL == BGE_MODEL_NAME
     # And the default factory call really builds the bge
     # backend (reusing the already loaded model).
     built = make_reranker("cross_encoder")
     assert built.model is bge_reranker.model
     assert built.model_name == BGE_MODEL_NAME
-    assert built.rerank(ID_QUERY, ID_CANDIDATES)[0][
-        "passage_id"] == "p-answer"
+    assert built.rerank(ID_QUERY, ID_CANDIDATES)[0]["passage_id"] == "p-answer"
 
 
-def test_bge_missing_model_fails_loudly_and_fallback_works(
-        bge_reranker):
+def test_bge_missing_model_fails_loudly_and_fallback_works(bge_reranker):
     with pytest.raises(RerankerUnavailable) as excinfo:
-        CrossEncoderReranker.from_flagembedding(
-            "BAAI/does-not-exist-xyz")
+        CrossEncoderReranker.from_flagembedding("BAAI/does-not-exist-xyz")
     assert "does-not-exist-xyz" in str(excinfo.value)
     # The deterministic fallback is a separate, explicit
     # choice that still works.
     fallback = make_reranker("deterministic")
     assert isinstance(fallback, DeterministicReranker)
     ranked = fallback.rerank(QUERY, CANDIDATES)
-    assert [r["passage_id"] for r in ranked][0] == "p-stuffed"
+    assert next(r["passage_id"] for r in ranked) == "p-stuffed"
 
 
 def test_bge_missing_library_fails_loudly(monkeypatch):
@@ -372,6 +366,5 @@ def test_bge_missing_library_fails_loudly(monkeypatch):
     # lookup and into the import.
     monkeypatch.setitem(sys.modules, "FlagEmbedding", None)
     with pytest.raises(RerankerUnavailable) as excinfo:
-        CrossEncoderReranker.from_flagembedding(
-            "BAAI/bge-reranker-v2-m3-missing-lib")
+        CrossEncoderReranker.from_flagembedding("BAAI/bge-reranker-v2-m3-missing-lib")
     assert "FlagEmbedding" in str(excinfo.value)

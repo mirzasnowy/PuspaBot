@@ -36,8 +36,9 @@ def byte_len(text: str) -> int:
     return len(text.encode("utf-8"))
 
 
-def check_narrative(text: str, *, max_lines: int = MEMORY_MAX_LINES,
-                    max_bytes: int = MEMORY_MAX_BYTES) -> dict:
+def check_narrative(
+    text: str, *, max_lines: int = MEMORY_MAX_LINES, max_bytes: int = MEMORY_MAX_BYTES
+) -> dict:
     """Check narrative text against the size caps.
 
     Returns ``{"ok": bool, "lines": int, "bytes": int,
@@ -50,13 +51,10 @@ def check_narrative(text: str, *, max_lines: int = MEMORY_MAX_LINES,
     size = byte_len(text)
     violations = []
     if lines > max_lines:
-        violations.append(
-            f"narrative has {lines} lines, cap is {max_lines}")
+        violations.append(f"narrative has {lines} lines, cap is {max_lines}")
     if size > max_bytes:
-        violations.append(
-            f"narrative has {size} bytes, cap is {max_bytes}")
-    return {"ok": not violations, "lines": lines, "bytes": size,
-            "violations": violations}
+        violations.append(f"narrative has {size} bytes, cap is {max_bytes}")
+    return {"ok": not violations, "lines": lines, "bytes": size, "violations": violations}
 
 
 def check_memory_file(text: str) -> dict:
@@ -66,16 +64,13 @@ def check_memory_file(text: str) -> dict:
     size = byte_len(text)
     violations = []
     if size > MEMORY_FILE_MAX_BYTES:
-        violations.append(
-            f"memory file has {size} bytes, cap is "
-            f"{MEMORY_FILE_MAX_BYTES}")
-    return {"ok": not violations, "bytes": size,
-            "violations": violations}
+        violations.append(f"memory file has {size} bytes, cap is {MEMORY_FILE_MAX_BYTES}")
+    return {"ok": not violations, "bytes": size, "violations": violations}
 
 
-def truncate_narrative(text: str, *,
-                       max_lines: int = MEMORY_MAX_LINES,
-                       max_bytes: int = MEMORY_MAX_BYTES) -> str:
+def truncate_narrative(
+    text: str, *, max_lines: int = MEMORY_MAX_LINES, max_bytes: int = MEMORY_MAX_BYTES
+) -> str:
     """Trim narrative text to the caps, keeping the newest lines.
 
     Lines are dropped from the top (oldest first) until both caps
@@ -85,11 +80,9 @@ def truncate_narrative(text: str, *,
     """
     if not isinstance(text, str):
         raise ValueError("text must be a string")
-    if check_narrative(text, max_lines=max_lines,
-                       max_bytes=max_bytes)["ok"]:
+    if check_narrative(text, max_lines=max_lines, max_bytes=max_bytes)["ok"]:
         return text
-    header = ("[trimmed to memory size limits: "
-              f"max {max_lines} lines / {max_bytes} bytes]")
+    header = f"[trimmed to memory size limits: max {max_lines} lines / {max_bytes} bytes]"
     # Reserve one line for the header so the result still fits.
     lines = text.split("\n")
     while len(lines) > max_lines - 1:

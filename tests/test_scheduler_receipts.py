@@ -21,6 +21,7 @@ DSN = os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
 
 # --- in-memory --------------------------------------------------------------
 
+
 def test_first_claim_wins_second_is_duplicate():
     store = InMemoryReceiptStore()
     assert store.claim("evt-1", {"kind": "webhook"}) is True
@@ -34,13 +35,13 @@ def test_first_claim_wins_second_is_duplicate():
 def test_process_once_runs_handler_only_once():
     store = InMemoryReceiptStore()
     calls = []
-    first = process_once(store, "evt-1",
-                         lambda payload: calls.append(payload) or "done",
-                         {"amount": 50000})
+    first = process_once(
+        store, "evt-1", lambda payload: calls.append(payload) or "done", {"amount": 50000}
+    )
     assert first == {"ran": True, "result": "done"}
-    second = process_once(store, "evt-1",
-                          lambda payload: calls.append(payload) or "done",
-                          {"amount": 50000})
+    second = process_once(
+        store, "evt-1", lambda payload: calls.append(payload) or "done", {"amount": 50000}
+    )
     assert second == {"ran": False, "result": None}
     assert calls == [{"amount": 50000}]
 
@@ -53,6 +54,7 @@ def test_different_keys_are_independent():
 
 
 # --- postgres ---------------------------------------------------------------
+
 
 def test_postgres_receipt_duplicate_is_rejected():
     ensure_receipts_schema(DSN)
@@ -68,10 +70,8 @@ def test_postgres_process_once_runs_handler_only_once():
     store = PostgresReceiptStore(DSN)
     calls = []
     key = f"evt-pg-test-{uuid.uuid4().hex[:8]}"
-    first = process_once(store, key,
-                         lambda payload: calls.append(1) or "paid")
+    first = process_once(store, key, lambda payload: calls.append(1) or "paid")
     assert first == {"ran": True, "result": "paid"}
-    second = process_once(store, key,
-                          lambda payload: calls.append(1) or "paid")
+    second = process_once(store, key, lambda payload: calls.append(1) or "paid")
     assert second == {"ran": False, "result": None}
     assert calls == [1]

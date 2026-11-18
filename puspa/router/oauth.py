@@ -92,17 +92,17 @@ from __future__ import annotations
 import threading
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 __all__ = [
     "DEFAULT_REFRESH_LEEWAY_SECONDS",
     "DEFAULT_TOKEN_TTL_SECONDS",
     "OAuthProviderConfig",
+    "RefreshEvent",
+    "TokenRefreshError",
+    "TokenRefresher",
     "TokenSet",
     "TokenStore",
-    "TokenRefreshError",
-    "RefreshEvent",
-    "TokenRefresher",
 ]
 
 #: Refresh a token this many seconds before it expires, by default.
@@ -120,7 +120,7 @@ _MAX_EVENTS = 200
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class TokenRefreshError(Exception):
@@ -135,10 +135,15 @@ class TokenRefreshError(Exception):
     provider's error code.
     """
 
-    def __init__(self, provider: str, reason: str, *,
-                 status: int | None = None,
-                 error_code: str | None = None,
-                 reauth_required: bool = False) -> None:
+    def __init__(
+        self,
+        provider: str,
+        reason: str,
+        *,
+        status: int | None = None,
+        error_code: str | None = None,
+        reauth_required: bool = False,
+    ) -> None:
         self.provider = provider
         self.reason = reason
         self.status = status
@@ -249,8 +254,10 @@ class RefreshEvent:
     reason: str = ""
 
     def __repr__(self) -> str:
-        return (f"RefreshEvent(provider={self.provider!r}, at={self.at!r}, "
-                f"outcome={self.outcome!r}, reason={self.reason!r})")
+        return (
+            f"RefreshEvent(provider={self.provider!r}, at={self.at!r}, "
+            f"outcome={self.outcome!r}, reason={self.reason!r})"
+        )
 
 
 class TokenStore:
@@ -303,8 +310,7 @@ class TokenRefresher:
     a short-lived httpx client is used (only for a real refresh).
     """
 
-    def __init__(self, *, store: TokenStore | None = None,
-                 now_fn=None) -> None:
+    def __init__(self, *, store: TokenStore | None = None, now_fn=None) -> None:
         self.store = store if store is not None else TokenStore()
         self._now_fn = now_fn or _utcnow
         self._configs: dict[str, OAuthProviderConfig] = {}
@@ -326,8 +332,8 @@ class TokenRefresher:
             raise ValueError("provider name must not be empty")
         if config.token_url is not None and not config.token_url.startswith("https://"):
             raise ValueError(
-                f"token_url for {config.provider!r} must be https, "
-                f"got {config.token_url!r}")
+                f"token_url for {config.provider!r} must be https, got {config.token_url!r}"
+            )
         if config.refresh_leeway_seconds < 0:
             raise ValueError("refresh_leeway_seconds must not be negative")
         with self._config_lock:
@@ -335,19 +341,31 @@ class TokenRefresher:
             self._provider_locks.setdefault(config.provider, threading.Lock())
         return config
 
-    def register_simulated(self, provider: str, *, token_url: str | None,
-                           client_id: str | None, scope=(),
-                           notes: str = "") -> OAuthProviderConfig:
+    def register_simulated(
+        self,
+        provider: str,
+        *,
+        token_url: str | None,
+        client_id: str | None,
+        scope=(),
+        notes: str = "",
+    ) -> OAuthProviderConfig:
         """Register a provider with no live credentials behind it.
 
         For tests and for named providers whose real registration
         (client id / secret / token URL) is not wired yet. Refreshes
         against it only make sense with a fake token endpoint.
         """
-        return self.register(OAuthProviderConfig(
-            provider=provider, token_url=token_url, client_id=client_id,
-            scope=tuple(scope), simulated=True, notes=notes,
-        ))
+        return self.register(
+            OAuthProviderConfig(
+                provider=provider,
+                token_url=token_url,
+                client_id=client_id,
+                scope=tuple(scope),
+                simulated=True,
+                notes=notes,
+            )
+        )
 
     def config(self, provider: str) -> OAuthProviderConfig | None:
         with self._config_lock:
@@ -376,13 +394,12 @@ class TokenRefresher:
         """
         config = self.config(provider)
         if config is None:
-            raise TokenRefreshError(
-                provider, "provider is not registered for OAuth refresh")
+            raise TokenRefreshError(provider, "provider is not registered for OAuth refresh")
         stored = self.store.get(provider)
         if stored is None:
             raise TokenRefreshError(
-                provider, "no token stored; interactive login required",
-                reauth_required=True)
+                provider, "no token stored; interactive login required", reauth_required=True
+            )
         lock = self._provider_lock(provider)
         with lock:
             # Re-read inside the lock: another thread may have
@@ -391,37 +408,34 @@ class TokenRefresher:
             stored = self.store.get(provider)
             if stored is None:  # removed while waiting
                 raise TokenRefreshError(
-                    provider, "no token stored; interactive login required",
-                    reauth_required=True)
+                    provider, "no token stored; interactive login required", reauth_required=True
+                )
             now = self.now()
             if not stored.needs_refresh(now, config.refresh_leeway_seconds):
-                self._record(provider, "skipped",
-                             "token still valid; no refresh needed")
+                self._record(provider, "skipped", "token still valid; no refresh needed")
                 return stored.access_token
             fresh = self._refresh(config, stored, http_client, now)
             self.store.put(provider, fresh)
-            self._record(provider, "refreshed",
-                         "access token renewed before expiry")
+            self._record(provider, "refreshed", "access token renewed before expiry")
             return fresh.access_token
 
     def refresh_now(self, provider: str, http_client=None) -> TokenSet:
         """Force a refresh now, regardless of expiry. For ops/tests."""
         config = self.config(provider)
         if config is None:
-            raise TokenRefreshError(
-                provider, "provider is not registered for OAuth refresh")
+            raise TokenRefreshError(provider, "provider is not registered for OAuth refresh")
         stored = self.store.get(provider)
         if stored is None:
             raise TokenRefreshError(
-                provider, "no token stored; interactive login required",
-                reauth_required=True)
+                provider, "no token stored; interactive login required", reauth_required=True
+            )
         lock = self._provider_lock(provider)
         with lock:
             stored = self.store.get(provider)
             if stored is None:
                 raise TokenRefreshError(
-                    provider, "no token stored; interactive login required",
-                    reauth_required=True)
+                    provider, "no token stored; interactive login required", reauth_required=True
+                )
             fresh = self._refresh(config, stored, http_client, self.now())
             self.store.put(provider, fresh)
             self._record(provider, "refreshed", "forced refresh")
@@ -438,11 +452,13 @@ class TokenRefresher:
             return lock
 
     def _record(self, provider: str, outcome: str, reason: str) -> None:
-        self._events.append(RefreshEvent(
-            provider=provider, at=self.now(), outcome=outcome, reason=reason))
+        self._events.append(
+            RefreshEvent(provider=provider, at=self.now(), outcome=outcome, reason=reason)
+        )
 
-    def _refresh(self, config: OAuthProviderConfig, old: TokenSet,
-                 http_client, now: datetime) -> TokenSet:
+    def _refresh(
+        self, config: OAuthProviderConfig, old: TokenSet, http_client, now: datetime
+    ) -> TokenSet:
         """One refresh-token grant against the provider's token endpoint.
 
         Raises ``TokenRefreshError`` on every failure path. The
@@ -456,20 +472,22 @@ class TokenRefresher:
                 provider,
                 "no token URL registered for this provider; "
                 "register its token endpoint first"
-                + (f" ({config.notes})" if config.notes else ""))
+                + (f" ({config.notes})" if config.notes else ""),
+            )
         if not config.client_id:
             self._record(provider, "failed", "no client id registered")
             raise TokenRefreshError(
                 provider,
                 "no client id registered for this provider; "
-                "register its OAuth client first"
-                + (f" ({config.notes})" if config.notes else ""))
+                "register its OAuth client first" + (f" ({config.notes})" if config.notes else ""),
+            )
         if not old.refresh_token:
             self._record(provider, "failed", "no refresh token stored")
             raise TokenRefreshError(
                 provider,
                 "no refresh token stored; interactive login required",
-                reauth_required=True)
+                reauth_required=True,
+            )
         data: dict[str, str] = {
             "grant_type": "refresh_token",
             "refresh_token": old.refresh_token,
@@ -484,19 +502,21 @@ class TokenRefresher:
         except TokenRefreshError:
             raise
         except Exception as exc:
-            self._record(provider, "failed",
-                         f"token endpoint unreachable: {type(exc).__name__}")
+            self._record(provider, "failed", f"token endpoint unreachable: {type(exc).__name__}")
             raise TokenRefreshError(
                 provider,
                 f"token endpoint unreachable: {type(exc).__name__}",
             ) from exc
         if response.status_code != 200:
             error_code = self._error_code(response)
-            reason = (f"token endpoint refused the refresh"
-                      + (f" ({error_code})" if error_code else ""))
+            reason = "token endpoint refused the refresh" + (
+                f" ({error_code})" if error_code else ""
+            )
             self._record(provider, "failed", reason)
             raise TokenRefreshError(
-                provider, reason, status=response.status_code,
+                provider,
+                reason,
+                status=response.status_code,
                 error_code=error_code,
                 reauth_required=(error_code == "invalid_grant"),
             )
@@ -505,18 +525,17 @@ class TokenRefresher:
         except Exception as exc:
             self._record(provider, "failed", "token endpoint returned bad JSON")
             raise TokenRefreshError(
-                provider, "token endpoint returned a response that is not JSON",
+                provider,
+                "token endpoint returned a response that is not JSON",
             ) from exc
         if not isinstance(payload, dict) or not payload.get("access_token"):
-            self._record(provider, "failed",
-                         "token endpoint returned no access_token")
+            self._record(provider, "failed", "token endpoint returned no access_token")
             raise TokenRefreshError(
-                provider,
-                "token endpoint answered 200 but returned no access_token")
+                provider, "token endpoint answered 200 but returned no access_token"
+            )
         expires_in = payload.get("expires_in")
         try:
-            lifetime = int(expires_in) if expires_in is not None \
-                else DEFAULT_TOKEN_TTL_SECONDS
+            lifetime = int(expires_in) if expires_in is not None else DEFAULT_TOKEN_TTL_SECONDS
         except (TypeError, ValueError):
             lifetime = DEFAULT_TOKEN_TTL_SECONDS
         if lifetime <= 0:

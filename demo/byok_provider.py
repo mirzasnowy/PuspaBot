@@ -253,6 +253,7 @@ register_provider("together", "https://api.together.xyz/v1")
 # Kunci: surrogate OpenRouter (dipakai ulang) + vault per provider
 # ---------------------------------------------------------------------------
 
+
 def get_openrouter_surrogate() -> str:
     """Surrogate segar OpenRouter — dipakai ulang dari openrouter_provider.
 
@@ -293,7 +294,9 @@ def get_provider_key(user_id, provider: str, dsn: str | None = None) -> str:
     return vault_get(user_id, vault_key_name(provider), dsn=dsn)
 
 
-def resolve_key(provider: str, key: str | None, *, user_id=None, dsn: str | None = None) -> str | None:
+def resolve_key(
+    provider: str, key: str | None, *, user_id=None, dsn: str | None = None
+) -> str | None:
     """Tentukan kunci untuk satu provider, urutan: argumen -> vault -> env.
 
     - OpenRouter: surrogate segar (bukan dari vault/env).
@@ -358,8 +361,14 @@ def _spec_for(provider: str):
 # Factory utama
 # ---------------------------------------------------------------------------
 
-def build_byok_provider(provider: str | None, model: str, key: str | None = None,
-                        base_url: str | None = None, **kwargs: Any):
+
+def build_byok_provider(
+    provider: str | None,
+    model: str,
+    key: str | None = None,
+    base_url: str | None = None,
+    **kwargs: Any,
+):
     """Bangun provider nanobot (``LLMProvider``) untuk provider + model apa pun.
 
     Args:
@@ -435,7 +444,9 @@ def build_byok_provider(provider: str | None, model: str, key: str | None = None
             )
         key = resolve_key(provider_name, key, user_id=user_id, dsn=dsn)
         return AzureOpenAIProvider(
-            api_key=key, api_base=endpoint, default_model=model,
+            api_key=key,
+            api_base=endpoint,
+            default_model=model,
             provider_name="azure_openai",
         )
     if provider_name == "bedrock":
@@ -454,13 +465,12 @@ def build_byok_provider(provider: str | None, model: str, key: str | None = None
     # --- OpenAI-compatible (jalur umum: registry nanobot / custom) ---
     key = resolve_key(provider_name, key, user_id=user_id, dsn=dsn)
     spec = _spec_for(provider_name)
-    if spec is None and provider_name not in ("openai_compatible",):
+    if spec is None and provider_name != "openai_compatible":
         raise ValueError(
             f"provider {provider_name!r} tidak dikenal (tidak ada di registry nanobot "
             "dan bukan provider custom terdaftar). Daftarkan dulu lewat "
             "register_provider(name, base_url), atau pakai 'openai_compatible' "
-            "dengan base_url bebas. Didukung: "
-            + ", ".join(SUPPORTED_PROVIDERS)
+            "dengan base_url bebas. Didukung: " + ", ".join(SUPPORTED_PROVIDERS)
         )
     base = (base_url or "").strip() or None
     if base is None:
@@ -476,7 +486,7 @@ def build_byok_provider(provider: str | None, model: str, key: str | None = None
     if base is None:
         if provider_name == "openai":
             base = "https://api.openai.com/v1"  # eksplisit (sama dengan default SDK)
-        elif provider_name in ("ollama",):
+        elif provider_name == "ollama":
             base = "http://localhost:11434/v1"
         else:
             raise ValueError(

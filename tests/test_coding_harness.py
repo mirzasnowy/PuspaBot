@@ -13,6 +13,7 @@ directory, including this one; that fixture cannot be opted out of
 from here.
 """
 
+import contextlib
 import time
 
 import pytest
@@ -113,7 +114,7 @@ class _CountingExecutor(Executor):
     def __init__(self, inner: Executor) -> None:
         self.inner = inner
         self.calls = 0
-        self.codes = []
+        self.codes: list[str] = []
 
     def run(self, code: str, *, timeout_s: int = 30) -> ExecutionResult:
         self.calls += 1
@@ -232,10 +233,8 @@ def test_real_sandbox_never_executes_on_host(tmp_path):
     probe = tmp_path / "host-probe.txt"
     code = f"open({str(probe)!r}, 'w').write('host-executed')\n"
     executor = SandboxExecutor(Sandbox())
-    try:
+    with contextlib.suppress(SandboxUnavailable):
         executor.run(code, timeout_s=30)
-    except SandboxUnavailable:
-        pass
     assert not probe.exists()
 
 
@@ -302,9 +301,7 @@ def test_harness_constructor_rejects_bad_limits(tmp_path):
 
 
 def test_tool_permission_levels():
-    payload = _harness_payload(
-        tool_permissions={"run_tests": "ask", "deploy": "deny"}
-    )
+    payload = _harness_payload(tool_permissions={"run_tests": "ask", "deploy": "deny"})
     assert tool_permission(payload, "write_code") == "allow"
     assert tool_permission(payload, "run_tests") == "ask"
     assert tool_permission(payload, "deploy") == "deny"
@@ -341,7 +338,9 @@ def test_is_subset_per_tool_cannot_widen():
     assert is_subset(child_widens, parent_denied) is False
     # Old behaviour unchanged when no tool_permissions are present.
     assert is_subset(_harness_payload(tools=["write_code"]), _harness_payload()) is True
-    assert is_subset(_harness_payload(tools=["write_code", "delete_all"]), _harness_payload()) is False
+    assert (
+        is_subset(_harness_payload(tools=["write_code", "delete_all"]), _harness_payload()) is False
+    )
 
 
 def test_gate_authorize_tool(stub_log):
@@ -360,8 +359,11 @@ def test_gate_deploy_kind(ephemeral_keys, stub_log):
     gate = Gate(log=stub_log, public_key=pk)
     token = issue_token(_harness_payload(), sk)
     request = gate.request_approval(
-        user_id="user-1", agent_id="agent-puspa", token=token,
-        kind="deploy", content={"task_id": "task-add"},
+        user_id="user-1",
+        agent_id="agent-puspa",
+        token=token,
+        kind="deploy",
+        content={"task_id": "task-add"},
     )
     assert request.kind == "deploy"
     assert request.status == "requested"
@@ -369,8 +371,11 @@ def test_gate_deploy_kind(ephemeral_keys, stub_log):
     token_no_deploy = issue_token(_harness_payload(tools=["write_code", "run_tests"]), sk)
     with pytest.raises(GateDenied):
         gate.request_approval(
-            user_id="user-1", agent_id="agent-puspa", token=token_no_deploy,
-            kind="deploy", content={"task_id": "task-add"},
+            user_id="user-1",
+            agent_id="agent-puspa",
+            token=token_no_deploy,
+            kind="deploy",
+            content={"task_id": "task-add"},
         )
 
 
@@ -387,8 +392,11 @@ def test_gate_deploy_ask_level_can_request_approval(ephemeral_keys, stub_log):
         sk,
     )
     request = gate.request_approval(
-        user_id="user-1", agent_id="agent-puspa", token=token,
-        kind="deploy", content={"task_id": "task-add"},
+        user_id="user-1",
+        agent_id="agent-puspa",
+        token=token,
+        kind="deploy",
+        content={"task_id": "task-add"},
     )
     assert request.status == "requested"
 
@@ -454,7 +462,7 @@ def test_deploy_needs_user_approval(tmp_path, stub_log):
 
     calls = []
     with pytest.raises(GateDenied):
-        harness.deploy(request.request_id, executor=lambda content: calls.append(content))
+        harness.deploy(request.request_id, executor=calls.append)
     assert calls == []
 
     gate.approve(request.request_id, "user-1")
@@ -466,7 +474,7 @@ def test_deploy_needs_user_approval(tmp_path, stub_log):
     # Second deploy call returns the same result without re-running.
     again = harness.deploy(
         request.request_id,
-        executor=lambda content: calls.append(content),
+        executor=calls.append,
     )
     assert again == {"deployed_task": "task-add"}
     assert calls == []

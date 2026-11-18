@@ -72,8 +72,8 @@ from puspa.evidence.bfcl_checker import (
 from puspa.evidence.eval_harness import EvalReport, EvalTask
 
 __all__ = [
-    "BFCL_TASK_IDS",
     "BFCL_TASKS",
+    "BFCL_TASK_IDS",
     "FUNCTION_CATALOG",
     "BFCLTask",
     "BFCLTurn",
@@ -118,103 +118,135 @@ FUNCTION_CATALOG: dict[str, FunctionSpec] = {
     "read_price": FunctionSpec(
         name="read_price",
         description="Read the current price of a product from a marketplace.",
-        parameters={"type": "object", "properties": {
-            "product": {"type": "string"},
-            "max_price": {"type": "integer"},
-        }},
+        parameters={
+            "type": "object",
+            "properties": {
+                "product": {"type": "string"},
+                "max_price": {"type": "integer"},
+            },
+        },
         required=("product",),
     ),
     "read_bill": FunctionSpec(
         name="read_bill",
         description="Read the current bill for a provider and customer number.",
-        parameters={"type": "object", "properties": {
-            "provider": {"type": "string"},
-            "customer_number": {"type": "string"},
-        }},
+        parameters={
+            "type": "object",
+            "properties": {
+                "provider": {"type": "string"},
+                "customer_number": {"type": "string"},
+            },
+        },
         required=("provider", "customer_number"),
     ),
     "prepare_payment": FunctionSpec(
         name="prepare_payment",
         description="Prepare a payment draft for a provider bill. Does not send money.",
-        parameters={"type": "object", "properties": {
-            "provider": {"type": "string"},
-            "amount": {"type": "integer"},
-            "purpose": {"type": "string"},
-        }},
+        parameters={
+            "type": "object",
+            "properties": {
+                "provider": {"type": "string"},
+                "amount": {"type": "integer"},
+                "purpose": {"type": "string"},
+            },
+        },
         required=("provider", "amount"),
     ),
     "watch_prices": FunctionSpec(
         name="watch_prices",
         description="Watch a product and notify when its price drops below a threshold.",
-        parameters={"type": "object", "properties": {
-            "product_id": {"type": "string"},
-            "price_threshold": {"type": "number"},
-        }},
+        parameters={
+            "type": "object",
+            "properties": {
+                "product_id": {"type": "string"},
+                "price_threshold": {"type": "number"},
+            },
+        },
         required=("product_id", "price_threshold"),
     ),
     "create_trigger": FunctionSpec(
         name="create_trigger",
         description="Create a recurring reminder trigger.",
-        parameters={"type": "object", "properties": {
-            "name": {"type": "string"},
-            "condition": {"type": "string"},
-            "note": {"type": "string"},
-        }},
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "condition": {"type": "string"},
+                "note": {"type": "string"},
+            },
+        },
         required=("name", "condition"),
     ),
     "gmail_search": FunctionSpec(
         name="gmail_search",
         description="Search the mailbox for messages matching a query.",
-        parameters={"type": "object", "properties": {
-            "query": {"type": "string"},
-            "max_results": {"type": "integer"},
-        }},
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "max_results": {"type": "integer"},
+            },
+        },
         required=("query",),
     ),
     "gmail_read": FunctionSpec(
         name="gmail_read",
         description="Read one message by its id.",
-        parameters={"type": "object", "properties": {
-            "message_id": {"type": "string"},
-        }},
+        parameters={
+            "type": "object",
+            "properties": {
+                "message_id": {"type": "string"},
+            },
+        },
         required=("message_id",),
     ),
     "gmail_create_draft": FunctionSpec(
         name="gmail_create_draft",
         description="Create an email draft. Does not send it.",
-        parameters={"type": "object", "properties": {
-            "recipient": {"type": "string"},
-            "subject": {"type": "string"},
-            "content": {"type": "string"},
-            "cc": {"type": "string"},
-        }},
+        parameters={
+            "type": "object",
+            "properties": {
+                "recipient": {"type": "string"},
+                "subject": {"type": "string"},
+                "content": {"type": "string"},
+                "cc": {"type": "string"},
+            },
+        },
         required=("recipient", "subject", "content"),
     ),
     "calendar_create_event": FunctionSpec(
         name="calendar_create_event",
         description="Create a calendar event.",
-        parameters={"type": "object", "properties": {
-            "title": {"type": "string"},
-            "start_time": {"type": "string"},
-            "attendees": {"type": "array",
-                          "items": {"type": "string"}},
-        }},
+        parameters={
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "start_time": {"type": "string"},
+                "attendees": {"type": "array", "items": {"type": "string"}},
+            },
+        },
         required=("title", "start_time"),
     ),
     "drive_search": FunctionSpec(
         name="drive_search",
         description="Search Drive files by query.",
-        parameters={"type": "object", "properties": {
-            "query": {"type": "string"},
-        }},
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+            },
+        },
         required=("query",),
     ),
     "read_memory": FunctionSpec(
         name="read_memory",
         description="Read a stored preference or fact by topic.",
-        parameters={"type": "object", "properties": {
-            "topic": {"type": "string"},
-        }},
+        parameters={
+            "type": "object",
+            "properties": {
+                "topic": {"type": "string"},
+            },
+        },
         required=("topic",),
     ),
 }
@@ -251,8 +283,7 @@ def _call(tool_name: str, **arguments) -> ToolCall:
     return ToolCall(name=tool_name, arguments=dict(arguments))
 
 
-def _bfcl_task(task_id: str, prompt: str, functions: list[str],
-               turns: list[BFCLTurn]) -> EvalTask:
+def _bfcl_task(task_id: str, prompt: str, functions: list[str], turns: list[BFCLTurn]) -> EvalTask:
     """Build one held-out task as an ``EvalTask`` with an inline cassette.
 
     The inline cassette records one entry per reference call, in
@@ -262,7 +293,9 @@ def _bfcl_task(task_id: str, prompt: str, functions: list[str],
     ``bfcl_task`` so the solver and scorer can find it.
     """
     bfcl = BFCLTask(
-        task_id=task_id, name=task_id, prompt=prompt,
+        task_id=task_id,
+        name=task_id,
+        prompt=prompt,
         functions=[FUNCTION_CATALOG[name] for name in functions],
         turns=turns,
     )
@@ -270,16 +303,17 @@ def _bfcl_task(task_id: str, prompt: str, functions: list[str],
     for turn in turns:
         for call, output in zip(turn.expected_calls, turn.tool_outputs):
             recording.append({"tool": call.name, "output": output})
-    cassette = {"task_id": task_id, "name": task_id,
-                "recording": recording, "bfcl_task": bfcl}
+    cassette = {"task_id": task_id, "name": task_id, "recording": recording, "bfcl_task": bfcl}
     return EvalTask(
         task_id=task_id,
         name=task_id,
         prompt=prompt,
         cassette_name=task_id,
         expected_state={},
-        policy=["never execute an outbound action without approval",
-                "never present a number without an evidence record"],
+        policy=[
+            "never execute an outbound action without approval",
+            "never present a number without an evidence record",
+        ],
         environment=ENVIRONMENT,
         cassette=cassette,
     )
@@ -291,204 +325,238 @@ def _build_tasks() -> list[EvalTask]:
         # -- Single turn, single call --------------------------------
         _bfcl_task(
             task_id="bfcl-price-single",
-            prompt=("What is the current price of Laptop X? Only report "
-                    "it if it costs at most Rp15000000."),
+            prompt=(
+                "What is the current price of Laptop X? Only report "
+                "it if it costs at most Rp15000000."
+            ),
             functions=["read_price"],
-            turns=[BFCLTurn(
-                user_message=("What is the current price of Laptop X? "
-                              "Only report it if it costs at most "
-                              "Rp15000000."),
-                expected_calls=[_call("read_price", product="Laptop X",
-                                      max_price=15000000)],
-                tool_outputs=[{"product": "Laptop X", "value": 14250000,
-                               "source": "tokopedia.com"}],
-            )],
+            turns=[
+                BFCLTurn(
+                    user_message=(
+                        "What is the current price of Laptop X? "
+                        "Only report it if it costs at most "
+                        "Rp15000000."
+                    ),
+                    expected_calls=[_call("read_price", product="Laptop X", max_price=15000000)],
+                    tool_outputs=[
+                        {"product": "Laptop X", "value": 14250000, "source": "tokopedia.com"}
+                    ],
+                )
+            ],
         ),
         # -- Single turn, two calls, order matters -------------------
         _bfcl_task(
             task_id="bfcl-bills-two-calls",
-            prompt=("Check my PLN electricity bill and my PDAM water "
-                    "bill for this month, in that order."),
+            prompt=(
+                "Check my PLN electricity bill and my PDAM water "
+                "bill for this month, in that order."
+            ),
             functions=["read_bill"],
-            turns=[BFCLTurn(
-                user_message=("Check my PLN electricity bill and my "
-                              "PDAM water bill for this month, in that "
-                              "order."),
-                expected_calls=[
-                    _call("read_bill", provider="PLN",
-                          customer_number="512345678901"),
-                    _call("read_bill", provider="PDAM",
-                          customer_number="0099887766"),
-                ],
-                tool_outputs=[
-                    {"provider": "PLN", "value": 287500,
-                     "due_date": "2026-11-20"},
-                    {"provider": "PDAM", "value": 142000,
-                     "due_date": "2026-11-25"},
-                ],
-            )],
+            turns=[
+                BFCLTurn(
+                    user_message=(
+                        "Check my PLN electricity bill and my "
+                        "PDAM water bill for this month, in that "
+                        "order."
+                    ),
+                    expected_calls=[
+                        _call("read_bill", provider="PLN", customer_number="512345678901"),
+                        _call("read_bill", provider="PDAM", customer_number="0099887766"),
+                    ],
+                    tool_outputs=[
+                        {"provider": "PLN", "value": 287500, "due_date": "2026-11-20"},
+                        {"provider": "PDAM", "value": 142000, "due_date": "2026-11-25"},
+                    ],
+                )
+            ],
         ),
         # -- Three turns: watch, pay, remind (empty-string note) -----
         _bfcl_task(
             task_id="bfcl-watch-pay-remind",
-            prompt=("Watch the price of laptop-x-14 and tell me when it "
-                    "drops below Rp12000000."),
+            prompt=("Watch the price of laptop-x-14 and tell me when it drops below Rp12000000."),
             functions=["watch_prices", "prepare_payment", "create_trigger"],
             turns=[
                 BFCLTurn(
-                    user_message=("Watch the price of laptop-x-14 and "
-                                  "tell me when it drops below "
-                                  "Rp12000000."),
-                    expected_calls=[_call(
-                        "watch_prices", product_id="laptop-x-14",
-                        price_threshold=12000000)],
-                    tool_outputs=[{"product_id": "laptop-x-14",
-                                   "watching": True,
-                                   "current_price": 13499000}],
+                    user_message=(
+                        "Watch the price of laptop-x-14 and tell me when it drops below Rp12000000."
+                    ),
+                    expected_calls=[
+                        _call("watch_prices", product_id="laptop-x-14", price_threshold=12000000)
+                    ],
+                    tool_outputs=[
+                        {"product_id": "laptop-x-14", "watching": True, "current_price": 13499000}
+                    ],
                 ),
                 BFCLTurn(
-                    user_message=("The price dropped. Now pay my PLN bill "
-                                  "of Rp250000 for the electricity token."),
-                    expected_calls=[_call(
-                        "prepare_payment", provider="PLN", amount=250000,
-                        purpose="electricity token")],
-                    tool_outputs=[{"payment_draft_id": "pay-2201",
-                                   "status": "draft"}],
+                    user_message=(
+                        "The price dropped. Now pay my PLN bill "
+                        "of Rp250000 for the electricity token."
+                    ),
+                    expected_calls=[
+                        _call(
+                            "prepare_payment",
+                            provider="PLN",
+                            amount=250000,
+                            purpose="electricity token",
+                        )
+                    ],
+                    tool_outputs=[{"payment_draft_id": "pay-2201", "status": "draft"}],
                 ),
                 BFCLTurn(
                     user_message="Also remind me about bills every week.",
-                    expected_calls=[_call(
-                        "create_trigger", name="weekly bill reminder",
-                        condition="every Monday 08:00", note="")],
-                    tool_outputs=[{"trigger_id": "trg-77",
-                                   "status": "active"}],
+                    expected_calls=[
+                        _call(
+                            "create_trigger",
+                            name="weekly bill reminder",
+                            condition="every Monday 08:00",
+                            note="",
+                        )
+                    ],
+                    tool_outputs=[{"trigger_id": "trg-77", "status": "active"}],
                 ),
             ],
         ),
         # -- Tricky numbers: odd int amount, float threshold ---------
         _bfcl_task(
             task_id="bfcl-tricky-numbers",
-            prompt=("Pay my PLN bill of Rp499999 and watch keyboard-k68 "
-                    "until it costs less than Rp899999.50."),
+            prompt=(
+                "Pay my PLN bill of Rp499999 and watch keyboard-k68 "
+                "until it costs less than Rp899999.50."
+            ),
             functions=["prepare_payment", "watch_prices"],
-            turns=[BFCLTurn(
-                user_message=("Pay my PLN bill of Rp499999 and watch "
-                              "keyboard-k68 until it costs less than "
-                              "Rp899999.50."),
-                expected_calls=[
-                    _call("prepare_payment", provider="PLN",
-                          amount=499999),
-                    _call("watch_prices", product_id="keyboard-k68",
-                          price_threshold=899999.5),
-                ],
-                tool_outputs=[
-                    {"payment_draft_id": "pay-2202", "status": "draft"},
-                    {"product_id": "keyboard-k68", "watching": True,
-                     "current_price": 949000},
-                ],
-            )],
+            turns=[
+                BFCLTurn(
+                    user_message=(
+                        "Pay my PLN bill of Rp499999 and watch "
+                        "keyboard-k68 until it costs less than "
+                        "Rp899999.50."
+                    ),
+                    expected_calls=[
+                        _call("prepare_payment", provider="PLN", amount=499999),
+                        _call("watch_prices", product_id="keyboard-k68", price_threshold=899999.5),
+                    ],
+                    tool_outputs=[
+                        {"payment_draft_id": "pay-2202", "status": "draft"},
+                        {"product_id": "keyboard-k68", "watching": True, "current_price": 949000},
+                    ],
+                )
+            ],
         ),
         # -- Digit string must stay a string -------------------------
         _bfcl_task(
             task_id="bfcl-string-not-number",
-            prompt=("My PLN customer number is 512345678901. Check that "
-                    "bill, then search my email for the November PLN "
-                    "invoice."),
+            prompt=(
+                "My PLN customer number is 512345678901. Check that "
+                "bill, then search my email for the November PLN "
+                "invoice."
+            ),
             functions=["read_bill", "gmail_search"],
-            turns=[BFCLTurn(
-                user_message=("My PLN customer number is 512345678901. "
-                              "Check that bill, then search my email for "
-                              "the November PLN invoice."),
-                expected_calls=[
-                    _call("read_bill", provider="PLN",
-                          customer_number="512345678901"),
-                    _call("gmail_search", query="PLN invoice November",
-                          max_results=5),
-                ],
-                tool_outputs=[
-                    {"provider": "PLN", "value": 312000,
-                     "due_date": "2026-11-20"},
-                    {"emails": ["inv-pln-nov"], "count": 1},
-                ],
-            )],
+            turns=[
+                BFCLTurn(
+                    user_message=(
+                        "My PLN customer number is 512345678901. "
+                        "Check that bill, then search my email for "
+                        "the November PLN invoice."
+                    ),
+                    expected_calls=[
+                        _call("read_bill", provider="PLN", customer_number="512345678901"),
+                        _call("gmail_search", query="PLN invoice November", max_results=5),
+                    ],
+                    tool_outputs=[
+                        {"provider": "PLN", "value": 312000, "due_date": "2026-11-20"},
+                        {"emails": ["inv-pln-nov"], "count": 1},
+                    ],
+                )
+            ],
         ),
         # -- Optional arguments omitted entirely ---------------------
         _bfcl_task(
             task_id="bfcl-optional-omitted",
-            prompt=("Find the price of a wireless mouse with no price "
-                    "limit, then draft an email to ana@example.com "
-                    "about it."),
+            prompt=(
+                "Find the price of a wireless mouse with no price "
+                "limit, then draft an email to ana@example.com "
+                "about it."
+            ),
             functions=["read_price", "gmail_create_draft"],
-            turns=[BFCLTurn(
-                user_message=("Find the price of a wireless mouse with no "
-                              "price limit, then draft an email to "
-                              "ana@example.com about it."),
-                expected_calls=[
-                    _call("read_price", product="Wireless Mouse"),
-                    _call("gmail_create_draft",
-                          recipient="ana@example.com",
-                          subject="Wireless mouse price",
-                          content="The wireless mouse costs Rp189000."),
-                ],
-                tool_outputs=[
-                    {"product": "Wireless Mouse", "value": 189000,
-                     "source": "shopee.co.id"},
-                    {"draft_id": "draft-331", "status": "created"},
-                ],
-            )],
+            turns=[
+                BFCLTurn(
+                    user_message=(
+                        "Find the price of a wireless mouse with no "
+                        "price limit, then draft an email to "
+                        "ana@example.com about it."
+                    ),
+                    expected_calls=[
+                        _call("read_price", product="Wireless Mouse"),
+                        _call(
+                            "gmail_create_draft",
+                            recipient="ana@example.com",
+                            subject="Wireless mouse price",
+                            content="The wireless mouse costs Rp189000.",
+                        ),
+                    ],
+                    tool_outputs=[
+                        {"product": "Wireless Mouse", "value": 189000, "source": "shopee.co.id"},
+                        {"draft_id": "draft-331", "status": "created"},
+                    ],
+                )
+            ],
         ),
         # -- Multi-turn with a user correction -----------------------
         _bfcl_task(
             task_id="bfcl-user-correction",
-            prompt=("What is the price of Laptop Y? I need the price "
-                    "before deciding which one to buy."),
+            prompt=(
+                "What is the price of Laptop Y? I need the price before deciding which one to buy."
+            ),
             functions=["read_price"],
             turns=[
                 BFCLTurn(
-                    user_message=("What is the price of Laptop Y? I need "
-                                  "the price before deciding which one to "
-                                  "buy."),
-                    expected_calls=[_call("read_price", product="Laptop Y",
-                                          max_price=15000000)],
-                    tool_outputs=[{"product": "Laptop Y", "value": 15800000,
-                                   "source": "tokopedia.com"}],
+                    user_message=(
+                        "What is the price of Laptop Y? I need "
+                        "the price before deciding which one to "
+                        "buy."
+                    ),
+                    expected_calls=[_call("read_price", product="Laptop Y", max_price=15000000)],
+                    tool_outputs=[
+                        {"product": "Laptop Y", "value": 15800000, "source": "tokopedia.com"}
+                    ],
                 ),
                 BFCLTurn(
                     user_message="Not that one, I meant Laptop X.",
-                    expected_calls=[_call("read_price", product="Laptop X",
-                                          max_price=15000000)],
-                    tool_outputs=[{"product": "Laptop X", "value": 14250000,
-                                   "source": "tokopedia.com"}],
+                    expected_calls=[_call("read_price", product="Laptop X", max_price=15000000)],
+                    tool_outputs=[
+                        {"product": "Laptop X", "value": 14250000, "source": "tokopedia.com"}
+                    ],
                 ),
             ],
         ),
         # -- Search, then schedule with a list argument --------------
         _bfcl_task(
             task_id="bfcl-draft-and-event",
-            prompt=("Search my email for meeting invitations, at most 3 "
-                    "results."),
+            prompt=("Search my email for meeting invitations, at most 3 results."),
             functions=["gmail_search", "calendar_create_event"],
             turns=[
                 BFCLTurn(
-                    user_message=("Search my email for meeting "
-                                  "invitations, at most 3 results."),
-                    expected_calls=[_call(
-                        "gmail_search", query="meeting invitation",
-                        max_results=3)],
-                    tool_outputs=[{"emails": ["msg-101", "msg-102",
-                                              "msg-103"], "count": 3}],
+                    user_message=("Search my email for meeting invitations, at most 3 results."),
+                    expected_calls=[
+                        _call("gmail_search", query="meeting invitation", max_results=3)
+                    ],
+                    tool_outputs=[{"emails": ["msg-101", "msg-102", "msg-103"], "count": 3}],
                 ),
                 BFCLTurn(
-                    user_message=("Schedule the team meeting for 20 "
-                                  "November 2026 at 10:00 WIB with Ana "
-                                  "and Budi."),
-                    expected_calls=[_call(
-                        "calendar_create_event", title="Team meeting",
-                        start_time="2026-11-20T10:00:00+07:00",
-                        attendees=["ana@example.com",
-                                   "budi@example.com"])],
-                    tool_outputs=[{"event_id": "evt-55",
-                                   "status": "created"}],
+                    user_message=(
+                        "Schedule the team meeting for 20 "
+                        "November 2026 at 10:00 WIB with Ana "
+                        "and Budi."
+                    ),
+                    expected_calls=[
+                        _call(
+                            "calendar_create_event",
+                            title="Team meeting",
+                            start_time="2026-11-20T10:00:00+07:00",
+                            attendees=["ana@example.com", "budi@example.com"],
+                        )
+                    ],
+                    tool_outputs=[{"event_id": "evt-55", "status": "created"}],
                 ),
             ],
         ),
@@ -507,8 +575,7 @@ def load_bfcl_tasks() -> list[EvalTask]:
     return copy.deepcopy(BFCL_TASKS)
 
 
-def reference_agent(task: BFCLTask, turn_index: int,
-                    history: list[dict]) -> list[ToolCall]:
+def reference_agent(task: BFCLTask, turn_index: int, history: list[dict]) -> list[ToolCall]:
     """The agent that emits the reference calls for a turn.
 
     This is the ceiling agent: it proves the harness path works
@@ -534,16 +601,18 @@ def make_bfcl_solver(agent=None):
     """
     agent = agent or reference_agent
 
-    def bfcl_solver(task: EvalTask, player: CassettePlayer, *,
-                    user=None) -> dict:
+    def bfcl_solver(task: EvalTask, player: CassettePlayer, *, user=None) -> dict:
+        if task.cassette is None:
+            raise ValueError(f"task {task.task_id} has no cassette")
         bfcl: BFCLTask = task.cassette["bfcl_task"]
         history: list[dict] = []
         agent_turns: list[list[ToolCall]] = []
         tool_outputs: list[list] = []
         for index, turn in enumerate(bfcl.turns):
             raw_calls = agent(bfcl, index, history)
-            calls = [parse_tool_call(raw) if not isinstance(raw, ToolCall)
-                     else raw for raw in raw_calls]
+            calls = [
+                parse_tool_call(raw) if not isinstance(raw, ToolCall) else raw for raw in raw_calls
+            ]
             agent_turns.append(calls)
             outputs = []
             for call in calls:
@@ -552,11 +621,9 @@ def make_bfcl_solver(agent=None):
                 except CassetteError:
                     outputs.append(None)
             tool_outputs.append(outputs)
-            history.append({"user": turn.user_message, "calls": calls,
-                            "outputs": outputs})
+            history.append({"user": turn.user_message, "calls": calls, "outputs": outputs})
         return {
-            "tools_used": [call.name for turn in agent_turns
-                           for call in turn],
+            "tools_used": [call.name for turn in agent_turns for call in turn],
             "agent_calls": agent_turns,
             "tool_outputs": tool_outputs,
             "turns": len(bfcl.turns),
@@ -578,12 +645,13 @@ def score_bfcl(task: EvalTask, final_state: dict) -> tuple[bool, dict]:
     per-turn breakdown and every failure, so a failure is
     diagnosable, not just a 0.
     """
+    if task.cassette is None:
+        raise ValueError(f"task {task.task_id} has no cassette")
     bfcl: BFCLTask = task.cassette["bfcl_task"]
     specs = {spec.name: spec.parameters for spec in bfcl.functions}
     agent_turns = final_state.get("agent_calls", [])
     expected_turns = [turn.expected_calls for turn in bfcl.turns]
-    check = check_task(task.task_id, agent_turns, expected_turns,
-                       specs=specs)
+    check = check_task(task.task_id, agent_turns, expected_turns, specs=specs)
     details = {
         "score": check.turn_accuracy,
         "passed": check.passed,
@@ -592,21 +660,36 @@ def score_bfcl(task: EvalTask, final_state: dict) -> tuple[bool, dict]:
         "total_turns": check.total_turns,
         "total_calls": check.total_calls,
         "turns": [
-            {"turn": turn.turn, "passed": turn.passed,
-             "calls_checked": turn.calls_checked,
-             "calls_correct": turn.calls_correct,
-             "failures": [
-                 {"kind": failure.kind, "path": failure.path,
-                  "expected": failure.expected, "actual": failure.actual,
-                  "message": failure.message}
-                 for failure in turn.failures]}
-            for turn in check.turns],
+            {
+                "turn": turn.turn,
+                "passed": turn.passed,
+                "calls_checked": turn.calls_checked,
+                "calls_correct": turn.calls_correct,
+                "failures": [
+                    {
+                        "kind": failure.kind,
+                        "path": failure.path,
+                        "expected": failure.expected,
+                        "actual": failure.actual,
+                        "message": failure.message,
+                    }
+                    for failure in turn.failures
+                ],
+            }
+            for turn in check.turns
+        ],
         "failures": [
-            {"kind": failure.kind, "turn": failure.turn,
-             "call_index": failure.call_index, "path": failure.path,
-             "expected": failure.expected, "actual": failure.actual,
-             "message": failure.message}
-            for failure in check.failures],
+            {
+                "kind": failure.kind,
+                "turn": failure.turn,
+                "call_index": failure.call_index,
+                "path": failure.path,
+                "expected": failure.expected,
+                "actual": failure.actual,
+                "message": failure.message,
+            }
+            for failure in check.failures
+        ],
     }
     return check.passed, details
 

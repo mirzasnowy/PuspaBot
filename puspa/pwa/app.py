@@ -19,7 +19,6 @@ from __future__ import annotations
 import json
 import os
 import time
-import uuid
 from collections import defaultdict
 from pathlib import Path
 
@@ -36,21 +35,24 @@ SCREENS = ("chat", "tasks", "modules", "connectors", "memory", "settings", "offi
 
 
 def _jinja(template_dir=None):
-    return Environment(loader=FileSystemLoader(str(template_dir or TEMPLATE_DIR)),
-                       autoescape=True)
+    return Environment(loader=FileSystemLoader(str(template_dir or TEMPLATE_DIR)), autoescape=True)
 
 
 def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     """Bangun aplikasi FastAPI PWA."""
     app = FastAPI(title="Puspa")
     jinja = _jinja(template_dir)
-    app.state.dsn = dsn or os.environ.get("PUSPA_TEST_DSN",
-                                          "dbname=puspa_test user=root host=/var/run/postgresql")
+    app.state.dsn = dsn or os.environ.get(
+        "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql"
+    )
     app.state.test_user_id = test_user_id
-    app.state.chat: dict[str, list[dict]] = defaultdict(list)
-    app.state.event: list[dict] = []
-    app.state.approval: dict[str, dict] = {}
-    app.state.time_onboarding: list[dict] = []
+    # Anotasi tipe tidak bisa ditulis pada atribut non-self
+    # (app.state.*), jadi tipenya dicatat di variabel lokal dulu.
+    chat_state: dict[str, list[dict]] = defaultdict(list)
+    app.state.chat = chat_state
+    app.state.event = []
+    app.state.approval = {}
+    app.state.time_onboarding = []
 
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -103,28 +105,39 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
         from puspa.auth.google_oauth import build_auth_url
 
         client_id = os.environ.get("PUSPA_GOOGLE_CLIENT_ID", "")
-        redirect = os.environ.get("PUSPA_GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
+        redirect = os.environ.get(
+            "PUSPA_GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback"
+        )
         if not client_id:
-            return JSONResponse({"error": "login Google belum dikonfigurasi (PUSPA_GOOGLE_CLIENT_ID kosong)"},
-                                status_code=503)
+            return JSONResponse(
+                {"error": "login Google belum dikonfigurasi (PUSPA_GOOGLE_CLIENT_ID kosong)"},
+                status_code=503,
+            )
         url, _state, _verifier = build_auth_url(client_id, redirect)
         return RedirectResponse(url)
 
     @app.get("/auth/google/callback")
     def auth_callback(request: Request, code: str = "", state: str = ""):
-        return JSONResponse({"notes": "callback login Google ditangani lengkap di Fase 1"
-                                       " (complete_google_login); pasang client_id + client_secret"
-                                       " lalu lanjutkan di sini.",
-                             "code_accepted": bool(code)})
+        return JSONResponse(
+            {
+                "notes": "callback login Google ditangani lengkap di Fase 1"
+                " (complete_google_login); pasang client_id + client_secret"
+                " lalu lanjutkan di sini.",
+                "code_accepted": bool(code),
+            }
+        )
 
     for screen in SCREENS:
+
         def _create_page(screen=screen):
             def page(request: Request):
                 user_id = need_user(request)
                 if user_id is None:
                     return RedirectResponse("/masuk")
                 return render(f"{screen}.html", request, _context_screen(screen, user_id))
+
             return page
+
         app.get(f"/{screen}", response_class=HTMLResponse)(_create_page())
 
     def _context_screen(screen: str, user_id: str) -> dict:
@@ -135,18 +148,22 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
             ctx["message"] = app.state.chat[user_id]
         elif screen == "office":
             ctx["office"] = office_projection(app.state.event)
-            ctx["handoffs"] = [e for e in app.state.event if e.get("type", "").startswith("handoff_")]
+            ctx["handoffs"] = [
+                e for e in app.state.event if e.get("type", "").startswith("handoff_")
+            ]
         elif screen == "tasks":
             ctx["approval"] = list(app.state.approval.values())
         elif screen == "memory":
             try:
                 from puspa.memory.profile import list_facts
+
                 ctx["profile"] = list_facts(user_id, dsn=app.state.dsn)
             except Exception:
                 ctx["profile"] = []
         elif screen == "connectors":
             try:
                 from puspa.runtime.agents import list_agents
+
                 ctx["agents"] = list_agents(user_id, dsn=app.state.dsn)
             except Exception:
                 ctx["agents"] = []
@@ -165,8 +182,9 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
             yield f"data: {json.dumps({'type': 'office', 'content': office_projection(app.state.event)}, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'heartbeat', 'created_at': time.time()}, ensure_ascii=False)}\n\n"
 
-        return StreamingResponse(aliran(), media_type="text/event-stream",
-                                 headers={"Cache-Control": "no-cache"})
+        return StreamingResponse(
+            aliran(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"}
+        )
 
     # -- panel Bukti -----------------------------------------------------
     @app.get("/bukti/{evidence_id}", response_class=HTMLResponse)
@@ -174,11 +192,23 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
         user_id = need_user(request)
         if user_id is None:
             return RedirectResponse("/masuk")
-        evidence = next((b for b in app.state.event
-                      if b.get("type") == "evidence_recorded"
-                      and (b.get("content") or {}).get("evidence_id") == evidence_id), None)
-        return render("panel_evidence.html", request, {"evidence": (evidence or {}).get("content") if evidence else None,
-                                                    "evidence_id": evidence_id})
+        evidence = next(
+            (
+                b
+                for b in app.state.event
+                if b.get("type") == "evidence_recorded"
+                and (b.get("content") or {}).get("evidence_id") == evidence_id
+            ),
+            None,
+        )
+        return render(
+            "panel_evidence.html",
+            request,
+            {
+                "evidence": (evidence or {}).get("content") if evidence else None,
+                "evidence_id": evidence_id,
+            },
+        )
 
     # -- API -------------------------------------------------------------
     @app.post("/api/chat")
@@ -188,13 +218,21 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
             return JSONResponse({"error": "belum masuk"}, status_code=401)
         message = {"sender": "users", "text": text, "created_at": time.time()}
         app.state.chat[user_id].append(message)
-        app.state.event.append({"type": "user_message", "task_id": "", "agent_id": "puspa",
-                                   "content": {"sender": user_id, "text": text}, "created_at": time.time()})
+        app.state.event.append(
+            {
+                "type": "user_message",
+                "task_id": "",
+                "agent_id": "puspa",
+                "content": {"sender": user_id, "text": text},
+                "created_at": time.time(),
+            }
+        )
         return {"ok": True, "message": message}
 
     @app.post("/api/agen")
-    async def api_create_agent(request: Request, name: str = Form(...),
-                            role: str = Form(""), purpose: str = Form("")):
+    async def api_create_agent(
+        request: Request, name: str = Form(...), role: str = Form(""), purpose: str = Form("")
+    ):
         user_id = need_user(request)
         if user_id is None:
             return JSONResponse({"error": "belum masuk"}, status_code=401)
@@ -223,17 +261,30 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
         user_id = need_user(request)
         if user_id is None:
             return JSONResponse({"error": "belum masuk"}, status_code=401)
-        from puspa.runtime.agents import list_agents, ensure_puspa_agent
+        from puspa.runtime.agents import ensure_puspa_agent
         from puspa.runtime.tasks import Task, TaskRunner, create_task_id
 
         agent_id = ensure_puspa_agent(user_id, dsn=app.state.dsn)
-        runner = TaskRunner(sink=lambda event_type, content: app.state.event.append(
-            {"type": event_type, "task_id": content.get("task_id", ""), "agent_id": agent_id,
-             "content": content, "created_at": time.time()}))
-        task = runner.run(Task(task_id=create_task_id(), user_id=user_id,
-                                    agent_id=agent_id, purpose=purpose))
-        return {"task_id": task.task_id, "status": task.status, "stage": task.stage,
-                "question": task.question}
+        runner = TaskRunner(
+            sink=lambda event_type, content: app.state.event.append(
+                {
+                    "type": event_type,
+                    "task_id": content.get("task_id", ""),
+                    "agent_id": agent_id,
+                    "content": content,
+                    "created_at": time.time(),
+                }
+            )
+        )
+        task = runner.run(
+            Task(task_id=create_task_id(), user_id=user_id, agent_id=agent_id, purpose=purpose)
+        )
+        return {
+            "task_id": task.task_id,
+            "status": task.status,
+            "stage": task.stage,
+            "question": task.question,
+        }
 
     @app.post("/api/tugas/{task_id}/hentikan")
     async def api_stop(request: Request, task_id: str):
@@ -244,9 +295,15 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
 
         pool = app.state.__dict__.setdefault("pool", SubagentPool())
         result = pool.stop_task(task_id)
-        app.state.event.append({"type": "task_stopped", "task_id": task_id,
-                                   "agent_id": "puspa", "content": {"reason": "dihentikan user"},
-                                   "created_at": time.time()})
+        app.state.event.append(
+            {
+                "type": "task_stopped",
+                "task_id": task_id,
+                "agent_id": "puspa",
+                "content": {"reason": "dihentikan user"},
+                "created_at": time.time(),
+            }
+        )
         return result
 
     @app.post("/api/persetujuan/{request_id}")
@@ -259,14 +316,20 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
             return JSONResponse({"error": "permintaan tidak dikenal"}, status_code=404)
         item["status"] = "approved" if approve == "ya" else "rejected"
         app.state.event.append(
-            {"type": "approval_granted" if approve == "ya" else "approval_rejected",
-             "task_id": item.get("task_id", ""), "agent_id": "puspa",
-             "content": {"request_id": request_id}, "created_at": time.time()})
+            {
+                "type": "approval_granted" if approve == "ya" else "approval_rejected",
+                "task_id": item.get("task_id", ""),
+                "agent_id": "puspa",
+                "content": {"request_id": request_id},
+                "created_at": time.time(),
+            }
+        )
         return {"ok": True, "status": item["status"]}
 
     @app.post("/api/konektor/{konektor}")
-    async def api_connector(request: Request, connector: str,
-                           agent_id: str = Form(...), action: str = Form(...)):
+    async def api_connector(
+        request: Request, connector: str, agent_id: str = Form(...), action: str = Form(...)
+    ):
         user_id = need_user(request)
         if user_id is None:
             return JSONResponse({"error": "belum masuk"}, status_code=401)
@@ -289,8 +352,12 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
         from puspa.push.push import save_subscription
 
         subscription_id = save_subscription(
-            user_id, endpoint=data["endpoint"], p256dh=data["keys"]["p256dh"],
-            auth=data["keys"]["auth"], dsn=app.state.dsn)
+            user_id,
+            endpoint=data["endpoint"],
+            p256dh=data["keys"]["p256dh"],
+            auth=data["keys"]["auth"],
+            dsn=app.state.dsn,
+        )
         return {"ok": True, "subscription_id": subscription_id}
 
     @app.post("/api/onboarding/waktu")
@@ -299,20 +366,30 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
         if user_id is None:
             return JSONResponse({"error": "belum masuk"}, status_code=401)
         data = await request.json()
-        app.state.time_onboarding.append({"user_id": user_id, "seconds": data.get("seconds"),
-                                           "created_at": time.time()})
+        app.state.time_onboarding.append(
+            {"user_id": user_id, "seconds": data.get("seconds"), "created_at": time.time()}
+        )
         return {"ok": True}
 
     @app.get("/manifest.json")
     def manifest():
-        return {"name": "Puspa", "short_name": "Puspa", "start_url": "/chat",
-                "display": "standalone", "background_color": "#ffffff",
-                "theme_color": "#0f766e",
-                "icons": [{"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"}]}
+        return {
+            "name": "Puspa",
+            "short_name": "Puspa",
+            "start_url": "/chat",
+            "display": "standalone",
+            "background_color": "#ffffff",
+            "theme_color": "#0f766e",
+            "icons": [{"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"}],
+        }
 
     @app.get("/sw.js")
     def service_worker():
-        sw = (STATIC_DIR / "sw.js").read_text(encoding="utf-8") if (STATIC_DIR / "sw.js").exists() else ""
+        sw = (
+            (STATIC_DIR / "sw.js").read_text(encoding="utf-8")
+            if (STATIC_DIR / "sw.js").exists()
+            else ""
+        )
         return HTMLResponse(sw, media_type="application/javascript")
 
     return app

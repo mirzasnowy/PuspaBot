@@ -29,19 +29,19 @@ import os
 from .native import ConnectorDefinition, CuratedDirectory, Operation
 
 __all__ = [
+    "FAKE_BILL_RESULTS",
+    "FAKE_PRICE_RESULTS",
     "LIVE_EXECUTION_ENV",
-    "LiveExecutionError",
-    "LiveExecutionDisabledError",
-    "ApprovalRequiredError",
-    "live_execution_enabled",
-    "LiveExecutionGate",
     "WEDGE_CONNECTOR_IDS",
+    "ApprovalRequiredError",
+    "FakeBillProvider",
+    "FakeMarketplaceProvider",
+    "LiveExecutionDisabledError",
+    "LiveExecutionError",
+    "LiveExecutionGate",
     "build_wedge_definitions",
     "curated_wedge_directory",
-    "FakeMarketplaceProvider",
-    "FakeBillProvider",
-    "FAKE_PRICE_RESULTS",
-    "FAKE_BILL_RESULTS",
+    "live_execution_enabled",
 ]
 
 #: Env var that enables live wedge execution. Default OFF.
@@ -60,22 +60,36 @@ WEDGE_CONNECTOR_IDS = (
 
 #: Deterministic sample price results returned by fake providers.
 FAKE_PRICE_RESULTS = (
-    {"title": "Sample Wireless Earbuds X1", "price_idr": 299000,
-     "seller": "sample-store", "url": "https://example.id/product/x1"},
-    {"title": "Sample Wireless Earbuds X2", "price_idr": 349000,
-     "seller": "sample-store-2", "url": "https://example.id/product/x2"},
+    {
+        "title": "Sample Wireless Earbuds X1",
+        "price_idr": 299000,
+        "seller": "sample-store",
+        "url": "https://example.id/product/x1",
+    },
+    {
+        "title": "Sample Wireless Earbuds X2",
+        "price_idr": 349000,
+        "seller": "sample-store-2",
+        "url": "https://example.id/product/x2",
+    },
 )
 
 #: Deterministic sample bill results returned by fake providers.
 FAKE_BILL_RESULTS = {
-    "pln": {"customer_number": "12345678901", "amount_idr": 132500,
-            "period": "2026-11", "status": "unpaid"},
-    "pdam": {"customer_number": "7654321", "amount_idr": 87500,
-             "period": "2026-11", "status": "unpaid"},
-    "pulsa": {"phone_number": "081200000000", "amount_idr": 50000,
-              "status": "unpaid"},
-    "data": {"phone_number": "081200000000", "amount_idr": 75000,
-             "status": "unpaid"},
+    "pln": {
+        "customer_number": "12345678901",
+        "amount_idr": 132500,
+        "period": "2026-11",
+        "status": "unpaid",
+    },
+    "pdam": {
+        "customer_number": "7654321",
+        "amount_idr": 87500,
+        "period": "2026-11",
+        "status": "unpaid",
+    },
+    "pulsa": {"phone_number": "081200000000", "amount_idr": 50000, "status": "unpaid"},
+    "data": {"phone_number": "081200000000", "amount_idr": 75000, "status": "unpaid"},
 }
 
 
@@ -267,9 +281,7 @@ class FakeMarketplaceProvider:
         return {
             "connector": self.connector_id,
             "query": query,
-            "results": [
-                dict(result) for result in FAKE_PRICE_RESULTS[:max_results]
-            ],
+            "results": [dict(result) for result in FAKE_PRICE_RESULTS[:max_results]],
         }
 
 
@@ -298,9 +310,7 @@ class FakeBillProvider:
     def pay_bill(self, customer_number: str, amount_idr: int, *, approved=False) -> dict:
         """Fake payment: approval required, receipt is deterministic."""
         if not approved:
-            raise ApprovalRequiredError(
-                "paying a bill needs user approval (single gate)"
-            )
+            raise ApprovalRequiredError("paying a bill needs user approval (single gate)")
         return {
             "receipt_id": f"fake-{self.connector_id}-{customer_number}",
             "status": "paid (fake)",
@@ -309,9 +319,7 @@ class FakeBillProvider:
     def top_up(self, phone_number: str, amount_idr: int, *, approved=False) -> dict:
         """Fake top-up: approval required, receipt is deterministic."""
         if not approved:
-            raise ApprovalRequiredError(
-                "topping up needs user approval (single gate)"
-            )
+            raise ApprovalRequiredError("topping up needs user approval (single gate)")
         return {
             "receipt_id": f"fake-{self.connector_id}-{phone_number}",
             "status": "topped up (fake)",

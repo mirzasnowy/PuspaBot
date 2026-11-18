@@ -19,7 +19,7 @@ for _p in (str(_FASE0), str(_DEMO_DIR)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from byok_provider import (  # noqa: E402
+from byok_provider import (
     MOCK_KEY,
     build_byok_provider,
     get_provider_key,
@@ -28,7 +28,7 @@ from byok_provider import (  # noqa: E402
     resolve_provider_name,
     vault_key_name,
 )
-from mock_provider_server import (  # noqa: E402
+from mock_provider_server import (
     FakeBedrockClient,
     MockProviderServer,
     check_anthropic,
@@ -37,7 +37,7 @@ from mock_provider_server import (  # noqa: E402
     check_openai_compat,
     run_mock_checks,
 )
-from nanobot.providers.base import LLMProvider  # noqa: E402
+from nanobot.providers.base import LLMProvider
 
 
 @pytest.fixture(autouse=True)
@@ -49,16 +49,20 @@ def _no_proxy(monkeypatch):
 
 # --- resolusi nama / prefix ---------------------------------------------------
 
-@pytest.mark.parametrize("model,provider", [
-    ("openai/gpt-4o-mini", "openai"),
-    ("anthropic/claude-sonnet-4-6", "anthropic"),
-    ("gemini/gemini-2.5-flash", "gemini"),
-    ("deepseek/deepseek-chat", "deepseek"),
-    ("groq/llama-3.1-8b-instant", "groq"),
-    ("gpt-4o-mini", "openai"),
-    ("claude-sonnet-4-6", "anthropic"),
-    ("gemini-2.5-flash", "gemini"),
-])
+
+@pytest.mark.parametrize(
+    "model,provider",
+    [
+        ("openai/gpt-4o-mini", "openai"),
+        ("anthropic/claude-sonnet-4-6", "anthropic"),
+        ("gemini/gemini-2.5-flash", "gemini"),
+        ("deepseek/deepseek-chat", "deepseek"),
+        ("groq/llama-3.1-8b-instant", "groq"),
+        ("gpt-4o-mini", "openai"),
+        ("claude-sonnet-4-6", "anthropic"),
+        ("gemini-2.5-flash", "gemini"),
+    ],
+)
 def test_resolve_provider_from_prefix_model(model, provider):
     assert resolve_provider_name(None, model) == provider
 
@@ -78,6 +82,7 @@ def test_resolve_provider_alias():
 
 
 # --- konstruksi factory (tanpa jaringan) --------------------------------------
+
 
 def test_build_openai_mock_key():
     prov = build_byok_provider("openai", "gpt-4o-mini", key=MOCK_KEY)
@@ -136,8 +141,9 @@ def test_build_ollama_without_key():
 def test_build_openai_compatible_generic_need_base_url():
     with pytest.raises(ValueError, match="butuh base_url"):
         build_byok_provider("openai_compatible", "m", key=MOCK_KEY)
-    prov = build_byok_provider("openai_compatible", "m", key=MOCK_KEY,
-                               base_url="https://api.x.ai/v1")
+    prov = build_byok_provider(
+        "openai_compatible", "m", key=MOCK_KEY, base_url="https://api.x.ai/v1"
+    )
     assert prov.api_base == "https://api.x.ai/v1"
 
 
@@ -164,11 +170,15 @@ def test_build_empty_model_fails():
 
 # --- OAuth + Bedrock: konstruksi tanpa kredensial ------------------------------
 
-@pytest.mark.parametrize("name,model,klass", [
-    ("xai", "xai-grok/grok-4.6", "XAIGrokProvider"),
-    ("github_copilot", "github-copilot/gpt-4.1", "GitHubCopilotProvider"),
-    ("openai_codex", "openai-codex/gpt-5.6-sol", "OpenAICodexProvider"),
-])
+
+@pytest.mark.parametrize(
+    "name,model,klass",
+    [
+        ("xai", "xai-grok/grok-4.6", "XAIGrokProvider"),
+        ("github_copilot", "github-copilot/gpt-4.1", "GitHubCopilotProvider"),
+        ("openai_codex", "openai-codex/gpt-5.6-sol", "OpenAICodexProvider"),
+    ],
+)
 def test_build_oauth_construction_without_credentials(name, model, klass):
     prov = build_byok_provider(name, model)
     assert isinstance(prov, LLMProvider)
@@ -183,13 +193,15 @@ def test_build_bedrock_without_boto3_fails_in_construction():
 
 
 def test_build_bedrock_with_fake_client():
-    prov = build_byok_provider("bedrock", "anthropic.claude-sonnet-4-6",
-                               region="us-east-1", client=FakeBedrockClient())
+    prov = build_byok_provider(
+        "bedrock", "anthropic.claude-sonnet-4-6", region="us-east-1", client=FakeBedrockClient()
+    )
     assert prov.provider_name == "bedrock"
     assert prov.get_default_model() == "anthropic.claude-sonnet-4-6"
 
 
 # --- vault per provider --------------------------------------------------------
+
 
 def test_vault_key_name():
     assert vault_key_name("openai") == "byok:openai"
@@ -212,6 +224,7 @@ def test_vault_put_get_provider_key(vault_master_key, test_dsn):
 
 # --- wrapper lama tetap jalan --------------------------------------------------
 
+
 def test_wrapper_openrouter_provider():
     from openrouter_provider import build_openrouter_provider
 
@@ -222,6 +235,7 @@ def test_wrapper_openrouter_provider():
 
 
 # --- mock harness: satu tes per format protokol -------------------------------
+
 
 def test_mock_openai_chat_completions():
     with MockProviderServer() as server:
@@ -238,20 +252,29 @@ def test_mock_gemini_via_compat():
 
 def test_mock_groq_deepseek():
     with MockProviderServer() as server:
-        assert asyncio.run(check_openai_compat("groq", "llama-3.1-8b-instant", server))["result"] == "mock passed"
-        assert asyncio.run(check_openai_compat("deepseek", "deepseek-chat", server))["result"] == "mock passed"
+        assert (
+            asyncio.run(check_openai_compat("groq", "llama-3.1-8b-instant", server))["result"]
+            == "mock passed"
+        )
+        assert (
+            asyncio.run(check_openai_compat("deepseek", "deepseek-chat", server))["result"]
+            == "mock passed"
+        )
 
 
 def test_mock_together_one_row_config():
     with MockProviderServer() as server:
-        summarize = asyncio.run(check_openai_compat(
-            "together", "meta-llama/Llama-3.1-8b-Instruct", server))
+        summarize = asyncio.run(
+            check_openai_compat("together", "meta-llama/Llama-3.1-8b-Instruct", server)
+        )
     assert summarize["result"] == "mock passed"
 
 
 def test_mock_openai_compatible_generic():
     with MockProviderServer() as server:
-        summarize = asyncio.run(check_openai_compat("openai_compatible", "model-generik-mock", server))
+        summarize = asyncio.run(
+            check_openai_compat("openai_compatible", "model-generik-mock", server)
+        )
     assert summarize["result"] == "mock passed"
 
 
@@ -285,6 +308,14 @@ def test_mock_all_providers_at_once(tmp_path):
     assert len(result) == 10
     assert all("passed" in h["result"] for h in result)
     assert {h["provider"] for h in result} == {
-        "openai", "gemini", "groq", "deepseek", "together", "ollama",
-        "openai_compatible", "anthropic", "azure_openai", "bedrock",
+        "openai",
+        "gemini",
+        "groq",
+        "deepseek",
+        "together",
+        "ollama",
+        "openai_compatible",
+        "anthropic",
+        "azure_openai",
+        "bedrock",
     }

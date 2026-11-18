@@ -32,23 +32,17 @@ def test_import_only_takes_skill_md_text(tmp_path):
 
 def test_origins_are_kept_apart(tmp_path):
     registry = MarketplaceRegistry()
-    builtin = make_skill_dir(tmp_path, skill_id="builtin-one", origin="builtin",
-                             source="puspa-builtin")
-    user = make_skill_dir(tmp_path, skill_id="user-one", origin="user",
-                          source="user")
+    builtin = make_skill_dir(
+        tmp_path, skill_id="builtin-one", origin="builtin", source="puspa-builtin"
+    )
+    user = make_skill_dir(tmp_path, skill_id="user-one", origin="user", source="user")
     library = make_skill_dir(tmp_path, skill_id="library-one", origin="library")
     registry.import_skill(builtin)
     registry.import_skill(user)
     registry.import_skill(library)
-    assert [e.skill_id for e in registry.list_entries(origin="builtin")] == [
-        "builtin-one"
-    ]
-    assert [e.skill_id for e in registry.list_entries(origin="user")] == [
-        "user-one"
-    ]
-    assert [e.skill_id for e in registry.list_entries(origin="library")] == [
-        "library-one"
-    ]
+    assert [e.skill_id for e in registry.list_entries(origin="builtin")] == ["builtin-one"]
+    assert [e.skill_id for e in registry.list_entries(origin="user")] == ["user-one"]
+    assert [e.skill_id for e in registry.list_entries(origin="library")] == ["library-one"]
 
 
 def test_import_invalid_folder_raises(tmp_path):
@@ -67,9 +61,7 @@ def test_index_byte_limit_rejects_huge_index(tmp_path):
     # before importing more: installed entries still count in the
     # index, only staged ones count toward the staged cap.
     registry = MarketplaceRegistry(
-        trust_scorer=lambda manifest, skill_id: TrustScore(
-            total=100, signals={}, reasons=[]
-        )
+        trust_scorer=lambda manifest, skill_id: TrustScore(total=100, signals={}, reasons=[])
     )
     ids = [f"{'k' * 55}-{i:02d}" for i in range(27)]
     for skill_id in ids[:20]:
@@ -98,9 +90,7 @@ def test_max_30_skills_enforced(tmp_path):
     # The 20-staged cap binds first, so install some skills (freeing
     # staged slots) before filling the index to 30.
     registry = MarketplaceRegistry(
-        trust_scorer=lambda manifest, skill_id: TrustScore(
-            total=100, signals={}, reasons=[]
-        )
+        trust_scorer=lambda manifest, skill_id: TrustScore(total=100, signals={}, reasons=[])
     )
     for i in range(20):
         registry.import_skill(make_skill_dir(tmp_path, skill_id=f"skill-{i:02d}"))

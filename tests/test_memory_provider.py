@@ -8,6 +8,7 @@ database, like every other DB test in this repo).
 """
 
 import uuid
+from typing import ClassVar
 
 import pytest
 
@@ -16,6 +17,7 @@ from puspa.memory.provider import (
     DefaultPgVectorProvider,
     MemoryProvider,
     ProviderConfigError,
+    ProviderError,
     ProviderRegistry,
     ProviderShadowError,
     UnknownProviderError,
@@ -29,7 +31,7 @@ class _InMemoryProvider(MemoryProvider):
     """Tiny test provider: records live in a dict, no database."""
 
     name = "mem"
-    config_schema = {
+    config_schema: ClassVar[dict] = {
         "capacity": {"type": "integer", "required": False, "default": 10},
     }
 
@@ -79,7 +81,7 @@ def test_registry_rejects_shadowing():
 
 def test_registry_rejects_non_provider():
     registry = ProviderRegistry()
-    with pytest.raises(Exception):
+    with pytest.raises(ProviderError):
         registry.register(object)
 
 
@@ -200,17 +202,27 @@ def test_pgvector_provider_round_trip():
     user_id = str(uuid.uuid4())
     provider = DefaultPgVectorProvider()
     try:
-        stored = provider.store(user_id, {
-            "content": "user compared prices for a rice cooker across shops",
-            "status": "active",
-            "source": "episodic",
-        })
+        stored = provider.store(
+            user_id,
+            {
+                "content": "user compared prices for a rice cooker across shops",
+                "status": "active",
+                "source": "episodic",
+            },
+        )
         assert stored["layer"] == "episodic"
         assert stored["status"] == "active"
         assert stored["id"]
         assert set(stored) >= {
-            "id", "content", "status", "valid_from", "valid_until",
-            "superseded_by", "source", "created_at", "updated_at",
+            "id",
+            "content",
+            "status",
+            "valid_from",
+            "valid_until",
+            "superseded_by",
+            "source",
+            "created_at",
+            "updated_at",
         }
         found = provider.query(user_id, "rice cooker prices")
         assert any(item["id"] == stored["id"] for item in found)
@@ -220,9 +232,7 @@ def test_pgvector_provider_round_trip():
             "dbname=puspa_test user=root host=/var/run/postgresql",
             autocommit=True,
         ) as conn:
-            conn.execute(
-                "DELETE FROM episodic WHERE user_id = %s", (user_id,)
-            )
+            conn.execute("DELETE FROM episodic WHERE user_id = %s", (user_id,))
 
 
 def test_pgvector_provider_rejects_bad_records():
@@ -237,8 +247,7 @@ def test_pgvector_provider_rejects_bad_records():
     with pytest.raises(ValueError):
         provider.store(
             user_id,
-            {"content": "x", "layer": "profile", "key": "k",
-             "status": "expired"},
+            {"content": "x", "layer": "profile", "key": "k", "status": "expired"},
         )
     with pytest.raises(ValueError):
         provider.store(

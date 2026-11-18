@@ -20,7 +20,7 @@ import os
 import re
 import subprocess
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from cryptography.fernet import Fernet
@@ -84,7 +84,7 @@ def create_backup(dsn=None, backup_dir=None, pg_dump_cmd="pg_dump", now=None):
     dsn = resolve_dsn(dsn)
     backup_dir = Path(backup_dir or Path(__file__).resolve().parent.parent.parent / "backups")
     backup_dir.mkdir(parents=True, exist_ok=True)
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     stamp = now.strftime("%Y%m%d-%H%M%S")
     db = _db_name(dsn)
     path = backup_dir / f"{BACKUP_PREFIX}{stamp}{BACKUP_SUFFIX}"
@@ -93,7 +93,11 @@ def create_backup(dsn=None, backup_dir=None, pg_dump_cmd="pg_dump", now=None):
     try:
         proc = subprocess.run(
             [pg_dump_cmd, "-Fc", "-d", db, "-f", tmp_path],
-            env=_pg_env(dsn), capture_output=True, text=True, timeout=300,
+            env=_pg_env(dsn),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=300,
         )
         if proc.returncode != 0:
             raise BackupError(f"pg_dump gagal: {proc.stderr.strip()[:500]}")
@@ -127,7 +131,8 @@ def list_backups(backup_dir=None):
         manifest_path = Path(str(path) + ".json")
         manifest = (
             json.loads(manifest_path.read_text(encoding="utf-8"))
-            if manifest_path.exists() else {"file": path.name}
+            if manifest_path.exists()
+            else {"file": path.name}
         )
         out.append({"path": str(path), "manifest": manifest})
     return out
@@ -136,7 +141,7 @@ def list_backups(backup_dir=None):
 def prune_backups(backup_dir=None, retention_days=RETENTION_DAYS, now=None):
     """Hapus cadangan lebih tua dari retensi. Kembalikan nama yang dihapus."""
     backup_dir = Path(backup_dir or Path(__file__).resolve().parent.parent.parent / "backups")
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     cutoff = now - timedelta(days=retention_days)
     deleted = []
     if not backup_dir.exists():
@@ -145,9 +150,9 @@ def prune_backups(backup_dir=None, retention_days=RETENTION_DAYS, now=None):
         match = re.search(r"(\d{8})-(\d{6})", path.name)
         if not match:
             continue
-        stamp = datetime.strptime(
-            match.group(1) + match.group(2), "%Y%m%d%H%M%S"
-        ).replace(tzinfo=timezone.utc)
+        stamp = datetime.strptime(match.group(1) + match.group(2), "%Y%m%d%H%M%S").replace(
+            tzinfo=UTC
+        )
         if stamp < cutoff:
             path.unlink(missing_ok=True)
             Path(str(path) + ".json").unlink(missing_ok=True)
@@ -168,9 +173,12 @@ def restore_backup(backup_path, target_dsn, pg_restore_cmd="pg_restore"):
         tmp_path = tmp.name
     try:
         proc = subprocess.run(
-            [pg_restore_cmd, "-d", _db_name(target_dsn), "--clean",
-             "--if-exists", tmp_path],
-            env=_pg_env(target_dsn), capture_output=True, text=True, timeout=300,
+            [pg_restore_cmd, "-d", _db_name(target_dsn), "--clean", "--if-exists", tmp_path],
+            env=_pg_env(target_dsn),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=300,
         )
         if proc.returncode != 0:
             raise BackupError(f"pg_restore gagal: {proc.stderr.strip()[:500]}")
@@ -178,13 +186,11 @@ def restore_backup(backup_path, target_dsn, pg_restore_cmd="pg_restore"):
         Path(tmp_path).unlink(missing_ok=True)
     import psycopg
 
-    with psycopg.connect(target_dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
-                "ORDER BY tablename"
-            )
-            tables = [r[0] for r in cur.fetchall()]
+    with psycopg.connect(target_dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename"
+        )
+        tables = [r[0] for r in cur.fetchall()]
     return {"database": _db_name(target_dsn), "table": tables}
 
 
@@ -193,9 +199,8 @@ def verify_restored_counts(target_dsn, tables):
     import psycopg
 
     out = {}
-    with psycopg.connect(resolve_dsn(target_dsn)) as conn:
-        with conn.cursor() as cur:
-            for table in tables:
-                cur.execute(f"SELECT COUNT(*) FROM {table}")
-                out[table] = cur.fetchone()[0]
+    with psycopg.connect(resolve_dsn(target_dsn)) as conn, conn.cursor() as cur:
+        for table in tables:
+            cur.execute(f"SELECT COUNT(*) FROM {table}")
+            out[table] = cur.fetchone()[0]
     return out

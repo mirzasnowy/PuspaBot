@@ -32,13 +32,14 @@ Catatan lingkungan (VM dev ini, 17 Nov 2026):
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 import subprocess
 import uuid
 
-from .allowlist import Allowlist, DEFAULT_ALLOWLIST
+from .allowlist import DEFAULT_ALLOWLIST, Allowlist
 
-__all__ = ["Sandbox", "SandboxUnavailable", "DEFAULT_IMAGE", "DEFAULT_PYTHON_BIN"]
+__all__ = ["DEFAULT_IMAGE", "DEFAULT_PYTHON_BIN", "Sandbox", "SandboxUnavailable"]
 
 DEFAULT_IMAGE = "puspa-sandbox:3.12-local"
 DEFAULT_PYTHON_BIN = "/usr/bin/python3.12"
@@ -89,6 +90,7 @@ class Sandbox:
         try:
             proc = subprocess.run(
                 [*cmd, "info", "--format", "{{.ServerVersion}}"],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -103,6 +105,7 @@ class Sandbox:
         try:
             proc = subprocess.run(
                 [*cmd, "image", "inspect", self.image],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -117,6 +120,7 @@ class Sandbox:
         try:
             proc = subprocess.run(
                 [*cmd, "pull", self.image],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=300,
@@ -128,7 +132,11 @@ class Sandbox:
     def _probe_container(self) -> bool:
         """Jalankan satu container `print` untuk membuktikan eksekusi bisa."""
         result = self._run_container(_PROBE_CODE, timeout_s=30, name="puspa-probe")
-        return result is not None and result.get("ok") and result.get("stdout", "").strip() == "puspa-ok"
+        return bool(
+            result is not None
+            and result.get("ok")
+            and result.get("stdout", "").strip() == "puspa-ok"
+        )
 
     def check_available(self) -> bool:
         """True hanya bila Docker + daemon + container benar-benar bisa jalan.
@@ -149,9 +157,7 @@ class Sandbox:
 
     # -- eksekusi ------------------------------------------------------------
 
-    def _run_container(
-        self, code: str, *, timeout_s: int, name: str
-    ) -> dict | None:
+    def _run_container(self, code: str, *, timeout_s: int, name: str) -> dict | None:
         """Satu percobaan `docker run`. None bila container gagal start.
 
         Mengembalikan dict hasil bila container sempat jalan (berapa pun
@@ -196,6 +202,7 @@ class Sandbox:
                 capture_output=True,
                 text=True,
                 timeout=timeout_s + 15,
+                check=False,
             )
         except subprocess.TimeoutExpired:
             self._kill_container(container_name)
@@ -224,14 +231,13 @@ class Sandbox:
         cmd = self._docker_cmd()
         if cmd is None:
             return
-        try:
+        with contextlib.suppress(OSError, subprocess.TimeoutExpired):
             subprocess.run(
                 [*cmd, "kill", container_name],
+                check=False,
                 capture_output=True,
                 timeout=10,
             )
-        except (OSError, subprocess.TimeoutExpired):
-            pass
 
     def run(self, code: str, *, timeout_s: int = 30) -> dict:
         """Jalankan ``code`` Python di container sekali pakai.
@@ -261,7 +267,6 @@ class Sandbox:
             # di tengah jalan): tetap fail-closed.
             self._available_cache = False
             raise SandboxUnavailable(
-                "container gagal start; menolak eksekusi "
-                "(fail-closed, tidak ada fallback host)"
+                "container gagal start; menolak eksekusi (fail-closed, tidak ada fallback host)"
             )
         return result

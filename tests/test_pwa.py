@@ -24,7 +24,15 @@ def test_seven_screens_exist_and_200(client):
 
 def test_no_eighth_screen_exists():
     assert len(SCREENS) == 7
-    assert set(SCREENS) == {"chat", "tasks", "modules", "connectors", "memory", "settings", "office"}
+    assert set(SCREENS) == {
+        "chat",
+        "tasks",
+        "modules",
+        "connectors",
+        "memory",
+        "settings",
+        "office",
+    }
 
 
 def test_without_login_redirected_to_login():
@@ -47,7 +55,9 @@ def test_send_chat_and_sse(client):
 
 
 def test_api_agent_create_and_delete_puspa_rejected(client, make_user):
-    resp = client.post("/api/agen", data={"name": "Agen Riset", "role": "riset", "purpose": "search"})
+    resp = client.post(
+        "/api/agen", data={"name": "Agen Riset", "role": "riset", "purpose": "search"}
+    )
     assert resp.status_code == 200
     agent_id = resp.json()["agent_id"]
     resp2 = client.post("/api/agen", data={"name": "Agen Ketiga"})

@@ -87,7 +87,9 @@ class Executor(abc.ABC):
         not a backend failure.
         """
 
-    def write_file(self, path: str | Path, content: str, *, profile: str = "workspace_write") -> Path:
+    def write_file(
+        self, path: str | Path, content: str, *, profile: str = "workspace_write"
+    ) -> Path:
         """Write ``content`` to ``path`` under this executor.
 
         The default refuses: only executors with a writable
@@ -96,8 +98,7 @@ class Executor(abc.ABC):
         :func:`puspa.harness.sandbox_profiles.check_write_path`.
         """
         raise NotImplementedError(
-            f"{type(self).__name__} has no writable filesystem; "
-            "edits run through run() only"
+            f"{type(self).__name__} has no writable filesystem; edits run through run() only"
         )
 
 
@@ -153,7 +154,9 @@ class LocalTestExecutor(Executor):
             env["TMPDIR"] = os.environ["TMPDIR"]
         return env
 
-    def write_file(self, path: str | Path, content: str, *, profile: str = "workspace_write") -> Path:
+    def write_file(
+        self, path: str | Path, content: str, *, profile: str = "workspace_write"
+    ) -> Path:
         """Write a file under the executor workdir, profile-enforced.
 
         ``read_only`` refuses every write with :class:`ProfileDenied`;
@@ -178,11 +181,20 @@ class LocalTestExecutor(Executor):
                 text=True,
                 timeout=timeout_s,
                 cwd=str(self.workdir),
+                check=False,
                 env=self._clean_env(),
             )
         except subprocess.TimeoutExpired as exc:
-            stdout = exc.stdout.decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-            stderr = exc.stderr.decode("utf-8", "replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+            stdout = (
+                exc.stdout.decode("utf-8", "replace")
+                if isinstance(exc.stdout, bytes)
+                else (exc.stdout or "")
+            )
+            stderr = (
+                exc.stderr.decode("utf-8", "replace")
+                if isinstance(exc.stderr, bytes)
+                else (exc.stderr or "")
+            )
             return ExecutionResult(
                 ok=False,
                 stdout=stdout[:_MAX_OUTPUT_CHARS],

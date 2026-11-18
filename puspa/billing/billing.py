@@ -27,7 +27,7 @@ user; captcha/login -> "tidak bisa cek", tanpa upaya menembus).
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime
 
 from puspa.evidence.evidence import record_evidence
 from puspa.evidence.verifier import verify
@@ -41,8 +41,11 @@ PROVIDER_MVP = ("PLN", "PDAM", "airtime", "paket data")
 # di prosedur).
 PROCEDURE_STEPS = {
     "PLN": [
-        {"step": "open_official_site", "site": "layanan.pln.co.id",
-         "notes": "login akun pelanggan + captcha bila diminta"},
+        {
+            "step": "open_official_site",
+            "site": "layanan.pln.co.id",
+            "notes": "login akun pelanggan + captcha bila diminta",
+        },
         {"step": "input_customer_id_from_memory"},
         {"step": "read_amount_bill_and_due_date"},
         {"step": "verifier_reread"},
@@ -66,8 +69,11 @@ PROCEDURE_STEPS = {
 }
 
 BILL_OUTPUT_SCHEMA = {
-    "amount": "Rp", "due_date": "date", "status": "text",
-    "period": "text", "evidence_id": "text",
+    "amount": "Rp",
+    "due_date": "date",
+    "status": "text",
+    "period": "text",
+    "evidence_id": "text",
 }
 
 
@@ -95,8 +101,7 @@ def _parse_status(text: str) -> str:
     return match.group(1) if match else "unknown"
 
 
-def ensure_procedure(*, user_id: str, provider: str, agent_id: str,
-                      dsn=None) -> dict:
+def ensure_procedure(*, user_id: str, provider: str, agent_id: str, dsn=None) -> dict:
     """Ambil prosedur provider; kalau belum ada, temukan + tulis
     sebagai prosedur percobaan (§4.2), baru kembalikan."""
     if provider not in PROVIDER_MVP:
@@ -105,14 +110,28 @@ def ensure_procedure(*, user_id: str, provider: str, agent_id: str,
         if procedure["service"] == provider:
             return procedure
     return graph_service.write_procedure(
-        user_id=user_id, service=provider, step=PROCEDURE_STEPS[provider],
-        agent_id=agent_id, output_schema=BILL_OUTPUT_SCHEMA,
-        required_checks=["verifier_reread"], dsn=dsn)
+        user_id=user_id,
+        service=provider,
+        step=PROCEDURE_STEPS[provider],
+        agent_id=agent_id,
+        output_schema=BILL_OUTPUT_SCHEMA,
+        required_checks=["verifier_reread"],
+        dsn=dsn,
+    )
 
 
-def check_bill(*, user_id: str, agent_id: str, provider: str,
-                customer_number: str, read_site, reread,
-                task_id: str, mode: str = "fixture", dsn=None) -> dict:
+def check_bill(
+    *,
+    user_id: str,
+    agent_id: str,
+    provider: str,
+    customer_number: str,
+    read_site,
+    reread,
+    task_id: str,
+    mode: str = "fixture",
+    dsn=None,
+) -> dict:
     """Cek satu tagihan. `baca_situs(url) -> teks` dan `baca_ulang(url)
     -> {"nilai", ...}` disuntikkan (Pembaca terkarantina / Pemeriksa).
 
@@ -121,27 +140,38 @@ def check_bill(*, user_id: str, agent_id: str, provider: str,
     "alasan", "pesan"} bila tidak bisa cek (gagal terlihat).
     """
     if provider not in PROVIDER_MVP:
-        return {"success": False, "reason": "provider_di_luar_mvp",
-                "message": f"Provider {provider!r} bukan provider MVP (PLN, PDAM, pulsa, paket data; tidak ada BPJS)."}
+        return {
+            "success": False,
+            "reason": "provider_di_luar_mvp",
+            "message": f"Provider {provider!r} bukan provider MVP (PLN, PDAM, pulsa, paket data; tidak ada BPJS).",
+        }
     if mode == "live" and not may_read(provider, mode="live"):
-        return {"success": False, "reason": "syarat_service_pending_keputusan_nero",
-                "message": f"{provider} belum diizinkan dibaca live — menunggu keputusan Nero (keputusan 15)."}
-    procedure = ensure_procedure(user_id=user_id, provider=provider,
-                                 agent_id=agent_id, dsn=dsn)
+        return {
+            "success": False,
+            "reason": "syarat_service_pending_keputusan_nero",
+            "message": f"{provider} belum diizinkan dibaca live — menunggu keputusan Nero (keputusan 15).",
+        }
+    procedure = ensure_procedure(user_id=user_id, provider=provider, agent_id=agent_id, dsn=dsn)
     if procedure["status"] == "broken":
-        return {"success": False, "reason": "prosedur_broken",
-                "message": "tidak bisa cek — prosedur tagihannya rusak, agen tidak memakai prosedur yang mungkin salah"}
+        return {
+            "success": False,
+            "reason": "prosedur_broken",
+            "message": "tidak bisa cek — prosedur tagihannya rusak, agen tidak memakai prosedur yang mungkin salah",
+        }
 
     def _run(_prosedur):
         url = read_site_url(provider, customer_number, mode=mode)
         try:
             text = read_site(url)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return {"success": False, "reason": "situs_not_can_dibaca", "message": str(exc)[:200]}
         amount = _parse_amount(text)
         if amount is None:
-            return {"success": False, "reason": "amount_not_ditemukan",
-                    "message": "situs provider tidak menampilkan jumlah tagihan yang bisa di-parse"}
+            return {
+                "success": False,
+                "reason": "amount_not_ditemukan",
+                "message": "situs provider tidak menampilkan jumlah tagihan yang bisa di-parse",
+            }
         if mode == "fixture":
             # Situs uji lokal (test double, di luar allowlist §2.6):
             # verifikasi deterministik — Pemeriksa tetap membaca ulang
@@ -152,12 +182,16 @@ def check_bill(*, user_id: str, agent_id: str, provider: str,
             from puspa.evidence.evidence import EvidenceRecord, create_evidence_id
 
             evidence = EvidenceRecord(
-                evidence_id=create_evidence_id(), claim=f"tagihan {provider}",
-                value=amount, unit="Rp",
+                evidence_id=create_evidence_id(),
+                claim=f"tagihan {provider}",
+                value=amount,
+                unit="Rp",
                 source_url=url if url.startswith("http") else "fixture://situs-uji",
-                time_take=datetime.now(timezone.utc),
+                time_take=datetime.now(UTC),
                 text_excerpt=text[:200].replace("\n", " "),
-                page_hash="", reader_id=f"pembaca-{provider.lower().replace(' ', '_')}")
+                page_hash="",
+                reader_id=f"pembaca-{provider.lower().replace(' ', '_')}",
+            )
             try:
                 reread_result = reread(url)
                 reread_value = float(reread_result["value"])
@@ -173,25 +207,40 @@ def check_bill(*, user_id: str, agent_id: str, provider: str,
                     evidence.verdict = "Uncertain"
         else:
             evidence = record_evidence(
-                task_id=task_id, claim=f"tagihan {provider}",
-                value=amount, unit="Rp", source_url=url,
-                text_excerpt=text[:200].replace("\n", " "), page=text,
-                reader_id=f"pembaca-{provider.lower().replace(' ', '_')}")
+                task_id=task_id,
+                claim=f"tagihan {provider}",
+                value=amount,
+                unit="Rp",
+                source_url=url,
+                text_excerpt=text[:200].replace("\n", " "),
+                page=text,
+                reader_id=f"pembaca-{provider.lower().replace(' ', '_')}",
+            )
             evidence = verify(evidence, reread=reread)
         if evidence.verdict == "Cannot be determined":
-            return {"success": False, "reason": "not_can_dipastikan",
-                    "message": "Pemeriksa tidak bisa memastikan angka tagihannya — angka tidak ditampilkan"}
-        return {"success": True, "amount": amount,
-                "due_date": _parse_due_date(text),
-                "status": _parse_status(text),
-                "evidence_id": evidence.evidence_id, "verdict": evidence.verdict}
+            return {
+                "success": False,
+                "reason": "not_can_dipastikan",
+                "message": "Pemeriksa tidak bisa memastikan angka tagihannya — angka tidak ditampilkan",
+            }
+        return {
+            "success": True,
+            "amount": amount,
+            "due_date": _parse_due_date(text),
+            "status": _parse_status(text),
+            "evidence_id": evidence.evidence_id,
+            "verdict": evidence.verdict,
+        }
 
     result = graph_service.run_procedure(
-        procedure, run=_run, agent_id=agent_id, user_id=user_id,
-        task_id=task_id, dsn=dsn)
+        procedure, run=_run, agent_id=agent_id, user_id=user_id, task_id=task_id, dsn=dsn
+    )
     if not result["success"]:
-        return {"success": False, "reason": result.get("result", {}).get("reason", "failed_runs"),
-                "message": result.get("result", {}).get("message", "cek tagihan gagal")}
+        return {
+            "success": False,
+            "reason": result.get("result", {}).get("reason", "failed_runs"),
+            "message": result.get("result", {}).get("message", "cek tagihan gagal"),
+        }
     jalan = result["result"]
     jalan["procedures"] = result["procedures"]
     return jalan
@@ -210,8 +259,9 @@ def read_site_url(provider: str, customer_number: str, mode: str = "fixture") ->
     return f"https://{provider.lower().replace(' ', '')}.co.id/"
 
 
-def reminder_due_date(*, due_date: str | None, days_before: int = 3,
-                          today: date | None = None) -> dict:
+def reminder_due_date(
+    *, due_date: str | None, days_before: int = 3, today: date | None = None
+) -> dict:
     """Pengingat sebelum jatuh tempo (gratis, §4.2).
 
     Kembalikan {"perlu_ingatkan": bool, "hari_lagi": int|None}.
@@ -220,14 +270,14 @@ def reminder_due_date(*, due_date: str | None, days_before: int = 3,
     if not due_date:
         return {"needs_reminder": False, "days_left": None}
     due = date.fromisoformat(due_date)
-    today = today or datetime.now(timezone.utc).date()
+    today = today or datetime.now(UTC).date()
     days_left = (due - today).days
-    return {"needs_reminder": 0 <= days_left <= days_before,
-            "days_left": days_left}
+    return {"needs_reminder": 0 <= days_left <= days_before, "days_left": days_left}
 
 
-def prepare_pay(*, provider: str, amount, due_date: str | None,
-                  number_pelanggan_masked: str, dsn=None) -> dict:
+def prepare_pay(
+    *, provider: str, amount, due_date: str | None, number_pelanggan_masked: str, dsn=None
+) -> dict:
     """Siapkan bayar — MODE BAYAR AMAN (§4.2, §2.6).
 
     Hanya DRAF: nominal + tujuan + jatuh tempo untuk disetujui user di
@@ -239,10 +289,17 @@ def prepare_pay(*, provider: str, amount, due_date: str | None,
     import hashlib
     import json
 
-    content = {"provider": provider, "amount": float(amount),
-           "due_date": due_date, "number_masked": number_pelanggan_masked}
-    content_hash = hashlib.sha256(
-        json.dumps(content, sort_keys=True).encode("utf-8")).hexdigest()
-    return {"mode": "prepare_payment", "draft": content, "content_hash": content_hash,
-            "message": "Draf siap — setujui di aplikasi bank/e-wallet kamu sendiri. "
-                     "Puspa tidak memegang dan tidak memindahkan uang."}
+    content = {
+        "provider": provider,
+        "amount": float(amount),
+        "due_date": due_date,
+        "number_masked": number_pelanggan_masked,
+    }
+    content_hash = hashlib.sha256(json.dumps(content, sort_keys=True).encode("utf-8")).hexdigest()
+    return {
+        "mode": "prepare_payment",
+        "draft": content,
+        "content_hash": content_hash,
+        "message": "Draf siap — setujui di aplikasi bank/e-wallet kamu sendiri. "
+        "Puspa tidak memegang dan tidak memindahkan uang.",
+    }

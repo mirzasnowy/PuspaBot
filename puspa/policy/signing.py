@@ -165,9 +165,7 @@ def sign_skill(skill_bytes: bytes, identity: str) -> dict:
         "payloadType": PAYLOAD_TYPE,
         "signatures": [
             {
-                "keyid": _b64url_encode(
-                    public_key.public_bytes_raw()
-                ),
+                "keyid": _b64url_encode(public_key.public_bytes_raw()),
                 "sig": _b64_encode(signature),
             }
         ],
@@ -184,7 +182,10 @@ def decode_envelope_payload(envelope: dict) -> dict:
         raise SigningError("envelope must be a JSON object")
     if envelope.get("payloadType") != PAYLOAD_TYPE:
         raise SigningError(f"unsupported payloadType: {envelope.get('payloadType')!r}")
-    body = _b64_decode(envelope.get("payload"))
+    payload_b64 = envelope.get("payload")
+    if not isinstance(payload_b64, str):
+        raise SigningError("envelope payload must be a base64 string")
+    body = _b64_decode(payload_b64)
     try:
         payload = json.loads(body.decode("utf-8"))
     except Exception as exc:
@@ -377,17 +378,15 @@ class TransparencyLog:
         """Load and verify the whole file. Raises SigningError on any
         corruption (bad JSON, broken hash chain, bad leaf hash)."""
         entries = []
-        with open(self._path, "r", encoding="utf-8") as fh:
+        with open(self._path, encoding="utf-8") as fh:
             for line_no, line in enumerate(fh, start=1):
-                line = line.strip()
-                if not line:
+                stripped = line.strip()
+                if not stripped:
                     continue
                 try:
                     entry = json.loads(line)
                 except json.JSONDecodeError as exc:
-                    raise SigningError(
-                        f"log file corrupt at line {line_no}: not JSON"
-                    ) from exc
+                    raise SigningError(f"log file corrupt at line {line_no}: not JSON") from exc
                 if not isinstance(entry, dict):
                     raise SigningError(f"log file corrupt at line {line_no}")
                 entries.append(entry)
@@ -433,9 +432,7 @@ class TransparencyLog:
         """
         payload = decode_envelope_payload(envelope)
         leaf_hash = envelope_leaf_hash(envelope)
-        prev_hash = (
-            self._entries[-1]["entry_hash"] if self._entries else _GENESIS_PREV_HASH
-        )
+        prev_hash = self._entries[-1]["entry_hash"] if self._entries else _GENESIS_PREV_HASH
         entry = {
             "envelope": envelope,
             "envelope_sha256": hashlib.sha256(canonical_json(envelope)).hexdigest(),
@@ -493,6 +490,9 @@ class TransparencyLog:
         if index is None:
             return False, "envelope not recorded in transparency log"
         proof = self.inclusion_proof(index)
-        if verify_inclusion_proof(proof["leaf_hash"], proof, self.root()):
+        root = self.root()
+        if root is None:
+            return False, "transparency log is empty"
+        if verify_inclusion_proof(proof["leaf_hash"], proof, root):
             return True, "ok"
         return False, "inclusion proof failed"

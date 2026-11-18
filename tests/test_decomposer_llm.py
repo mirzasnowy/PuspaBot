@@ -32,8 +32,7 @@ from puspa.retrieval.reranker import (
     retrieve_with_decomposition,
 )
 
-QUERY = ("cheap Galaxy S24 deal trustworthy and compare with "
-         "official store price")
+QUERY = "cheap Galaxy S24 deal trustworthy and compare with official store price"
 
 #: What the stub LLM returns for QUERY: three self-contained
 #: sub-questions, each repeating the shared context (Galaxy S24)
@@ -41,8 +40,7 @@ QUERY = ("cheap Galaxy S24 deal trustworthy and compare with "
 STUB_SUBQUESTIONS = [
     "Is the cheap Galaxy S24 deal trustworthy?",
     "What is the price of the Galaxy S24 at the official store?",
-    "How does the cheap Galaxy S24 deal price compare with the "
-    "official store price?",
+    ("How does the cheap Galaxy S24 deal price compare with the official store price?"),
 ]
 
 
@@ -90,10 +88,8 @@ def test_llm_decomposer_returns_self_contained_subquestions():
 
 
 def test_llm_decomposer_keeps_a_simple_query_whole():
-    stub = StubDecomposerLLM(
-        json_reply(["What is the price of Galaxy S24?"]))
-    result = LLMQueryDecomposer(stub.complete).decompose(
-        "What is the price of Galaxy S24?")
+    stub = StubDecomposerLLM(json_reply(["What is the price of Galaxy S24?"]))
+    result = LLMQueryDecomposer(stub.complete).decompose("What is the price of Galaxy S24?")
     assert result.subquestions == ["What is the price of Galaxy S24?"]
     assert result.source == "llm"
 
@@ -120,12 +116,16 @@ def test_llm_decomposer_rejects_a_non_callable():
 
 
 def test_llm_decomposer_drops_duplicate_subquestions():
-    stub = StubDecomposerLLM(json_reply([
-        "Is the cheap Galaxy S24 deal trustworthy?",
-        "is the cheap galaxy s24 deal trustworthy?",
-        "What is the price of the Galaxy S24 at the official store?",
-        "Is the cheap Galaxy S24 deal trustworthy?",
-    ]))
+    stub = StubDecomposerLLM(
+        json_reply(
+            [
+                "Is the cheap Galaxy S24 deal trustworthy?",
+                "is the cheap galaxy s24 deal trustworthy?",
+                "What is the price of the Galaxy S24 at the official store?",
+                "Is the cheap Galaxy S24 deal trustworthy?",
+            ]
+        )
+    )
     result = LLMQueryDecomposer(stub.complete).decompose(QUERY)
     assert result.subquestions == [
         "Is the cheap Galaxy S24 deal trustworthy?",
@@ -134,11 +134,15 @@ def test_llm_decomposer_drops_duplicate_subquestions():
 
 
 def test_llm_decomposer_drops_overlapping_subquestions():
-    stub = StubDecomposerLLM(json_reply([
-        "What is the price of the Galaxy S24?",
-        "What is the price of the Galaxy S24 at the official store?",
-        "Is the cheap Galaxy S24 deal trustworthy?",
-    ]))
+    stub = StubDecomposerLLM(
+        json_reply(
+            [
+                "What is the price of the Galaxy S24?",
+                "What is the price of the Galaxy S24 at the official store?",
+                "Is the cheap Galaxy S24 deal trustworthy?",
+            ]
+        )
+    )
     result = LLMQueryDecomposer(stub.complete).decompose(QUERY)
     # The short "price" part is fully contained in the longer,
     # self-contained one, so only the longer survives.
@@ -149,10 +153,10 @@ def test_llm_decomposer_drops_overlapping_subquestions():
 
 
 def test_llm_decomposer_caps_at_max_subquestions():
-    stub = StubDecomposerLLM(json_reply(
-        [f"Sub-question {index} about Galaxy S24?" for index in range(6)]))
-    result = LLMQueryDecomposer(
-        stub.complete, max_subquestions=2).decompose(QUERY)
+    stub = StubDecomposerLLM(
+        json_reply([f"Sub-question {index} about Galaxy S24?" for index in range(6)])
+    )
+    result = LLMQueryDecomposer(stub.complete, max_subquestions=2).decompose(QUERY)
     assert len(result.subquestions) == 2
     assert result.subquestions[0].startswith("Sub-question 0")
 
@@ -160,17 +164,20 @@ def test_llm_decomposer_caps_at_max_subquestions():
 # --- Invalid LLM replies are rejected, not silently regexed -----
 
 
-@pytest.mark.parametrize("reply", [
-    "",
-    "this is not json",
-    "[]",
-    "{}",
-    json.dumps({"subquestions": []}),
-    json.dumps({"subquestions": "not a list"}),
-    json.dumps({"subquestions": ["ok?", "", "also ok?"]}),
-    json.dumps({"subquestions": [42, "ok?"]}),
-    json.dumps({"other_key": ["ok?"]}),
-])
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "",
+        "this is not json",
+        "[]",
+        "{}",
+        json.dumps({"subquestions": []}),
+        json.dumps({"subquestions": "not a list"}),
+        json.dumps({"subquestions": ["ok?", "", "also ok?"]}),
+        json.dumps({"subquestions": [42, "ok?"]}),
+        json.dumps({"other_key": ["ok?"]}),
+    ],
+)
 def test_llm_decomposer_rejects_invalid_replies(reply):
     stub = StubDecomposerLLM(reply)
     with pytest.raises(DecomposerError):
@@ -182,8 +189,7 @@ def test_parse_decompose_reply_rejects_invalid_replies_directly():
         parse_decompose_reply("not json")
     with pytest.raises(DecomposerError):
         parse_decompose_reply(json.dumps({"subquestions": []}))
-    assert parse_decompose_reply(
-        json_reply(["a?", "b?"])) == ["a?", "b?"]
+    assert parse_decompose_reply(json_reply(["a?", "b?"])) == ["a?", "b?"]
 
 
 def test_llm_decomposer_rejects_a_failing_llm_call():
@@ -201,9 +207,7 @@ def test_invalid_llm_reply_is_not_silently_replaced_by_regex():
     # from the model.
     stub = StubDecomposerLLM("not json at all")
     with pytest.raises(DecomposerError):
-        retrieve_with_decomposition(
-            lambda sub, top_k: [], QUERY,
-            llm_complete=stub.complete)
+        retrieve_with_decomposition(lambda sub, top_k: [], QUERY, llm_complete=stub.complete)
 
 
 # --- The regex fallback, with its source recorded ---------------
@@ -239,20 +243,20 @@ def test_retrieve_with_llm_decomposer_uses_every_subquestion():
         # "compare" is checked before "official store": the third
         # sub-question contains both phrases.
         if "compare" in sub_query:
-            return [{"passage_id": "p-compare", "score": 0.9},
-                    {"passage_id": "p-trust", "score": 0.8}]
+            return [
+                {"passage_id": "p-compare", "score": 0.9},
+                {"passage_id": "p-trust", "score": 0.8},
+            ]
         if "official store" in sub_query:
             return [{"passage_id": "p-official", "score": 0.9}]
         raise AssertionError(f"unexpected sub-question: {sub_query!r}")
 
     stub = StubDecomposerLLM(json_reply(STUB_SUBQUESTIONS))
-    merged = retrieve_with_decomposition(
-        fake_retrieve, QUERY, top_k=3, llm_complete=stub.complete)
+    merged = retrieve_with_decomposition(fake_retrieve, QUERY, top_k=3, llm_complete=stub.complete)
     # Every sub-question was retrieved, not just the whole query:
     # each leg contributes its own passage to the merge.
     assert seen == STUB_SUBQUESTIONS
-    assert [r["passage_id"] for r in merged] == [
-        "p-trust", "p-compare", "p-official"]
+    assert [r["passage_id"] for r in merged] == ["p-trust", "p-compare", "p-official"]
     assert all(r["decomposition_source"] == "llm" for r in merged)
     assert all("rrf_score" in r for r in merged)
     trust = next(r for r in merged if r["passage_id"] == "p-trust")
@@ -267,12 +271,16 @@ def test_retrieve_with_decomposer_object_uses_it():
         return [{"passage_id": "p-one", "score": 0.9}]
 
     decomposer = LLMQueryDecomposer(
-        StubDecomposerLLM(json_reply(
-            ["Is the Galaxy S24 deal trustworthy?",
-             "What is the Galaxy S24 official store price?"])
-        ).complete)
-    merged = retrieve_with_decomposition(
-        fake_retrieve, QUERY, top_k=2, decomposer=decomposer)
+        StubDecomposerLLM(
+            json_reply(
+                [
+                    "Is the Galaxy S24 deal trustworthy?",
+                    "What is the Galaxy S24 official store price?",
+                ]
+            )
+        ).complete
+    )
+    merged = retrieve_with_decomposition(fake_retrieve, QUERY, top_k=2, decomposer=decomposer)
     assert seen == [
         "Is the Galaxy S24 deal trustworthy?",
         "What is the Galaxy S24 official store price?",
@@ -296,8 +304,7 @@ def test_retrieve_rejects_both_decomposer_and_llm_complete():
     decomposer = RegexQueryDecomposer()
     with pytest.raises(ValueError):
         retrieve_with_decomposition(
-            lambda sub, top_k: [], QUERY, decomposer=decomposer,
-            llm_complete=lambda prompt: "{}")
+            lambda sub, top_k: [], QUERY, decomposer=decomposer, llm_complete=lambda prompt: "{}"
+        )
     with pytest.raises(ValueError):
-        retrieve_with_decomposition(
-            lambda sub, top_k: [], QUERY, top_k=0)
+        retrieve_with_decomposition(lambda sub, top_k: [], QUERY, top_k=0)

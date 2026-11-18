@@ -21,9 +21,7 @@ from psycopg import errors as pg_errors
 from puspa.ledger import APP_ROLE, EVENT_TYPES, GENESIS, Ledger
 from puspa.ledger.errors import InvalidEventTypeError
 
-DSN = os.environ.get(
-    "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql"
-)
+DSN = os.environ.get("PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
 AGEN = "agen-tes"
 
 
@@ -92,7 +90,9 @@ def test_hash_chain_intact(ledger, task_id):
 
 def test_verify_chain_detects_silent_changes(ledger, task_id):
     _append(ledger, task_id, event_type="task_created", content={"a": 1})
-    stopped_subagents = _append(ledger, task_id, event_type="evidence_recorded", content={"price": 100})
+    stopped_subagents = _append(
+        ledger, task_id, event_type="evidence_recorded", content={"price": 100}
+    )
     _append(ledger, task_id, event_type="task_completed", content={"ok": True})
 
     ok, _ = ledger.verify_chain(task_id)
@@ -130,9 +130,7 @@ def test_update_delete_rejected_for_application_role(ledger, task_id):
         conn.execute(f"SET ROLE {APP_ROLE}")
         try:
             # SELECT dan INSERT diizinkan untuk peran aplikasi.
-            row = conn.execute(
-                "SELECT id FROM events WHERE id = %s", (ev["id"],)
-            ).fetchone()
+            row = conn.execute("SELECT id FROM events WHERE id = %s", (ev["id"],)).fetchone()
             assert row is not None
             conn.execute(
                 "INSERT INTO events "
@@ -183,9 +181,7 @@ def test_two_tasks_have_independent_chains(ledger, task_id):
 def test_tombstone_delete_task_without_update(ledger, task_id):
     _append(ledger, task_id, event_type="task_created", content={"purpose": "dropped"})
     _append(ledger, task_id, event_type="heartbeat", content={"n": 1})
-    kubur = _append(
-        ledger, task_id, event_type="task_stopped", content={"deleted": True}
-    )
+    kubur = _append(ledger, task_id, event_type="task_stopped", content={"deleted": True})
 
     # Hapus = append tombstone; rantai hash tetap utuh, tidak ada UPDATE.
     ok, _ = ledger.verify_chain(task_id)

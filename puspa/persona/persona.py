@@ -83,9 +83,7 @@ def choose_style(user_id, style, dsn=None):
     """Pilih 1 dari 3 contoh gaya; simpan sebagai fakta profil."""
     if style not in STYLES:
         raise ValueError(f"gaya tidak dikenal: {style!r} (pilih: {sorted(STYLES)})")
-    return profile.add_fact(
-        user_id, "speaking_style", style, "user_confirmed", dsn=dsn
-    )
+    return profile.add_fact(user_id, "speaking_style", style, "user_confirmed", dsn=dsn)
 
 
 def add_style_samples(user_id, messages, dsn=None):
@@ -126,13 +124,12 @@ def add_style_samples(user_id, messages, dsn=None):
 
 def list_style_samples(user_id, dsn=None):
     """Contoh pesan user, urut tertua dulu."""
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT text FROM style_examples WHERE user_id = %s ORDER BY created_at ASC",
-                (user_id,),
-            )
-            return [r["text"] for r in cur.fetchall()]
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT text FROM style_examples WHERE user_id = %s ORDER BY created_at ASC",
+            (user_id,),
+        )
+        return [r["text"] for r in cur.fetchall()]
 
 
 def apply_correction(user_id, correction_text, dsn=None):
@@ -151,9 +148,7 @@ def apply_correction(user_id, correction_text, dsn=None):
             directives = name
             break
     value = directives or text
-    fact = profile.add_fact(
-        user_id, "style_correction", value, "user_confirmed", dsn=dsn
-    )
+    fact = profile.add_fact(user_id, "style_correction", value, "user_confirmed", dsn=dsn)
     fact["directive"] = directives
     fact["original_text"] = text
     return fact
@@ -168,7 +163,8 @@ def get_persona(user_id, dsn=None):
     profile_data = profile.get_profile(user_id, dsn=dsn)
     style = profile_data.get("speaking_style", "santai")
     corrections = [
-        f for f in profile.list_facts(user_id, key="style_correction", dsn=dsn)
+        f
+        for f in profile.list_facts(user_id, key="style_correction", dsn=dsn)
         if f["status"] == "active"
     ]
     directives = [f["value"] for f in corrections]

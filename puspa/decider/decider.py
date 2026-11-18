@@ -37,7 +37,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-from .backends import BackendError, RuleBackend
+from .backends import RuleBackend
 from .jobs import get_seam
 from .keycheck import check_backend
 from .log import DecisionLog, state_hash
@@ -129,8 +129,14 @@ class Decider:
     fake clock. ``log`` is an optional :class:`DecisionLog`.
     """
 
-    def __init__(self, backends=None, *, timeout_ms: int = DEFAULT_TIMEOUT_MS,
-                 clock=None, log: DecisionLog | None = None) -> None:
+    def __init__(
+        self,
+        backends=None,
+        *,
+        timeout_ms: int = DEFAULT_TIMEOUT_MS,
+        clock=None,
+        log: DecisionLog | None = None,
+    ) -> None:
         if timeout_ms <= 0:
             raise ValueError("timeout_ms must be positive")
         self.backends = list(backends) if backends else [RuleBackend()]
@@ -149,28 +155,33 @@ class Decider:
         started = self.clock()
         attempts: list[dict] = []
 
-        def finish(ok, *, value=None, reason=None, backend=None,
-                   question=None) -> Decision:
+        def finish(ok, *, value=None, reason=None, backend=None, question=None) -> Decision:
             latency = (self.clock() - started) * 1000.0
-            digest = state_hash(job=job, question=question,
-                                backend=backend, value=value,
-                                reason=reason)
+            digest = state_hash(
+                job=job, question=question, backend=backend, value=value, reason=reason
+            )
             decision = Decision(
-                ok=ok, job=job, value=value, reason=reason,
-                backend=backend, latency_ms=latency,
-                state_hash=digest, attempts=attempts)
+                ok=ok,
+                job=job,
+                value=value,
+                reason=reason,
+                backend=backend,
+                latency_ms=latency,
+                state_hash=digest,
+                attempts=attempts,
+            )
             if self.log is not None:
                 self.log.record(decision.to_dict(), question)
             return decision
 
         try:
             seam = get_seam(job)
-        except Exception as exc:  # noqa: BLE001 - decide never throws
+        except Exception as exc:
             reason = getattr(exc, "reason", "unknown_job")
             return finish(False, reason=reason)
         try:
             question = seam.build_question(payload)
-        except Exception as exc:  # noqa: BLE001 - decide never throws
+        except Exception as exc:
             reason = getattr(exc, "reason", "invalid_payload")
             return finish(False, reason=reason)
 
@@ -179,35 +190,28 @@ class Decider:
             budget_ms = getattr(backend, "timeout_ms", None) or self.timeout_ms
             ready = check_backend(backend)
             if not ready["ok"]:
-                attempts.append({"backend": name, "ok": False,
-                                 "reason": ready["reason"]})
+                attempts.append({"backend": name, "ok": False, "reason": ready["reason"]})
                 continue
-            outcome, answer = self._ask_with_timeout(
-                backend, question, budget_ms)
+            outcome, answer = self._ask_with_timeout(backend, question, budget_ms)
             if outcome == "timeout":
-                attempts.append({"backend": name, "ok": False,
-                                 "reason": "timeout"})
+                attempts.append({"backend": name, "ok": False, "reason": "timeout"})
                 continue
             if outcome == "error":
                 reason = getattr(answer, "reason", "backend_error")
-                attempts.append({"backend": name, "ok": False,
-                                 "reason": reason})
+                attempts.append({"backend": name, "ok": False, "reason": reason})
                 continue
             expected = _ANSWER_TYPES.get(question.kind)
             if expected is not None and not isinstance(answer, expected):
-                attempts.append({"backend": name, "ok": False,
-                                 "reason": "answer_type_mismatch"})
+                attempts.append({"backend": name, "ok": False, "reason": "answer_type_mismatch"})
                 continue
             try:
                 value = seam.interpret(answer, payload)
-            except Exception as exc:  # noqa: BLE001 - decide never throws
+            except Exception as exc:
                 reason = getattr(exc, "reason", "interpret_failed")
-                attempts.append({"backend": name, "ok": False,
-                                 "reason": reason})
+                attempts.append({"backend": name, "ok": False, "reason": reason})
                 continue
             attempts.append({"backend": name, "ok": True, "reason": None})
-            return finish(True, value=value, backend=name,
-                          question=question)
+            return finish(True, value=value, backend=name, question=question)
         last_reason = attempts[-1]["reason"] if attempts else "no_backends"
         return finish(False, reason=last_reason, question=question)
 
@@ -227,7 +231,7 @@ class Decider:
         def run() -> None:
             try:
                 box["answer"] = backend.ask(question)
-            except BaseException as exc:  # noqa: BLE001 - captured, not raised
+            except BaseException as exc:
                 box["error"] = exc
 
         thread = threading.Thread(target=run, daemon=True)

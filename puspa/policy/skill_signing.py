@@ -50,7 +50,6 @@ signature covers that declaration too, so it cannot be added or
 changed after signing without breaking the local check.
 """
 
-import base64
 import hashlib
 import json
 from pathlib import Path
@@ -60,11 +59,13 @@ from cryptography.exceptions import InvalidSignature
 from .signing import (
     SigningError,
     decode_envelope_payload,
+    verify_skill_envelope,
+)
+from .signing import (
     sign_skill as sign_skill_envelope,
 )
-from .signing import verify_skill_envelope
 from .sigstore_verify import verify_sigstore_bundle
-from .tokens import TokenError, _b64url_decode, _b64url_encode, canonical_json
+from .tokens import _b64url_decode, _b64url_encode, canonical_json
 
 __all__ = [
     "SkillRejected",
@@ -95,7 +96,7 @@ def _manifest_path(dirpath) -> Path:
 def _read_manifest(dirpath) -> dict:
     path = _manifest_path(dirpath)
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             manifest = json.load(fh)
     except FileNotFoundError as exc:
         raise SkillRejected(f"manifest tidak ditemukan di {path}") from exc
@@ -146,8 +147,16 @@ def sign_skill(dirpath, signing_key) -> dict:
     return manifest
 
 
-def verify_skill(dirpath, public_key, transparency_log=None, expected_identity=None,
-                 *, sigstore_identity=None, sigstore_issuer=None, sigstore_trust_root=None) -> bool:
+def verify_skill(
+    dirpath,
+    public_key,
+    transparency_log=None,
+    expected_identity=None,
+    *,
+    sigstore_identity=None,
+    sigstore_issuer=None,
+    sigstore_trust_root=None,
+) -> bool:
     """True when the manifest exists, is signed, and the signature is valid.
 
     Never raises for a damaged skill: returns False instead. When
@@ -172,9 +181,10 @@ def verify_skill(dirpath, public_key, transparency_log=None, expected_identity=N
         return False
     if not _verify_manifest_dict(manifest, public_key):
         return False
-    if transparency_log is not None:
-        if not _verify_provenance(dirpath, manifest, transparency_log, expected_identity):
-            return False
+    if transparency_log is not None and not _verify_provenance(
+        dirpath, manifest, transparency_log, expected_identity
+    ):
+        return False
     return _verify_sigstore(
         dirpath, manifest, sigstore_identity, sigstore_issuer, sigstore_trust_root
     )
@@ -211,9 +221,7 @@ def _verify_sigstore(dirpath, manifest, identity, issuer, trust_root) -> bool:
         return True
     if not isinstance(declaration, dict):
         return False
-    bundle_path = _skill_file(
-        dirpath, declaration.get("bundle", SIGSTORE_BUNDLE_FILENAME)
-    )
+    bundle_path = _skill_file(dirpath, declaration.get("bundle", SIGSTORE_BUNDLE_FILENAME))
     artifact_path = _skill_file(dirpath, declaration.get("artifact", "manifest.json"))
     if bundle_path is None or artifact_path is None:
         return False
@@ -249,7 +257,7 @@ def _verify_provenance(dirpath, manifest, transparency_log, expected_identity) -
     if not isinstance(expected_identity, str) or not expected_identity:
         return False
     try:
-        with open(Path(dirpath) / ENVELOPE_FILENAME, "r", encoding="utf-8") as fh:
+        with open(Path(dirpath) / ENVELOPE_FILENAME, encoding="utf-8") as fh:
             envelope = json.load(fh)
     except (OSError, json.JSONDecodeError):
         return False
@@ -257,9 +265,7 @@ def _verify_provenance(dirpath, manifest, transparency_log, expected_identity) -
         payload = decode_envelope_payload(envelope)
     except SigningError:
         return False
-    skill_sha256 = hashlib.sha256(
-        canonical_json(_unsigned_manifest(manifest))
-    ).hexdigest()
+    skill_sha256 = hashlib.sha256(canonical_json(_unsigned_manifest(manifest))).hexdigest()
     if payload.get("skill_sha256") != skill_sha256:
         return False
     ok, _reason = verify_skill_envelope(envelope, expected_identity, transparency_log)
@@ -324,9 +330,7 @@ def check_tool(skill, tool: str, public_key=None) -> bool:
     bagian dari ``check_tool`` sendiri, bukan aturan pemanggil.
     """
     if public_key is None:
-        raise SkillRejected(
-            "check_tool butuh public_key untuk memverifikasi signature skill"
-        )
+        raise SkillRejected("check_tool butuh public_key untuk memverifikasi signature skill")
     if isinstance(skill, (str, Path)):
         manifest = _read_manifest(skill)
     elif isinstance(skill, dict):
@@ -334,9 +338,7 @@ def check_tool(skill, tool: str, public_key=None) -> bool:
     else:
         raise SkillRejected("skill harus manifes dict atau path direktori")
     if not _verify_manifest_dict(manifest, public_key):
-        raise SkillRejected(
-            f"signature skill {manifest.get('name')!r} tidak valid atau tidak ada"
-        )
+        raise SkillRejected(f"signature skill {manifest.get('name')!r} tidak valid atau tidak ada")
     tools = manifest.get("tools", [])
     if tool not in tools:
         raise SkillRejected(f"tool {tool!r} di luar manifes skill {manifest.get('name')!r}")

@@ -35,35 +35,48 @@ BLOCK_DOMAINS = {
 BLOCKS = {
     "check_bill": {
         "inputs": {"provider": "choice", "customer_number": "text"},
-        "output": {"amount": "money", "due_date": "date",
-                     "status": "choice", "evidence_id": "text", "verdict": "choice"},
+        "output": {
+            "amount": "money",
+            "due_date": "date",
+            "status": "choice",
+            "evidence_id": "text",
+            "verdict": "choice",
+        },
         "permission_class": "Pembaca",
-        "permission": {"connectors": [], "scope": [], "domain": ["site_provider_bill"],
-                 "spending_limit": 0},
+        "permission": {
+            "connectors": [],
+            "scope": [],
+            "domain": ["site_provider_bill"],
+            "spending_limit": 0,
+        },
         "outbound_action": False,
         "cost_rp": 0,
         "description": "Cek jumlah + jatuh tempo + status tagihan satu provider.",
     },
     "compare_prices": {
         "inputs": {"name_product": "text"},
-        "output": {"cheapest": "money", "price": "items", "spread": "money",
-                     "verdict": "choice"},
+        "output": {"cheapest": "money", "price": "items", "spread": "money", "verdict": "choice"},
         "permission_class": "Pembaca",
-        "permission": {"connectors": [], "scope": [],
-                 "domain": ["tokopedia.com", "shopee.co.id", "blibli.com"],
-                 "spending_limit": 0},
+        "permission": {
+            "connectors": [],
+            "scope": [],
+            "domain": ["tokopedia.com", "shopee.co.id", "blibli.com"],
+            "spending_limit": 0,
+        },
         "outbound_action": False,
         "cost_rp": 0,
         "description": "Bandingkan harga barang baru di Tokopedia, Shopee, Blibli.",
     },
     "watch_prices": {
         "inputs": {"product_id": "text", "price_threshold": "money"},
-        "output": {"current_price": "money", "below_threshold": "boolean",
-                     "evidence_id": "text"},
+        "output": {"current_price": "money", "below_threshold": "boolean", "evidence_id": "text"},
         "permission_class": "Pembaca",
-        "permission": {"connectors": [], "scope": [],
-                 "domain": ["tokopedia.com", "shopee.co.id", "blibli.com"],
-                 "spending_limit": 0},
+        "permission": {
+            "connectors": [],
+            "scope": [],
+            "domain": ["tokopedia.com", "shopee.co.id", "blibli.com"],
+            "spending_limit": 0,
+        },
         "outbound_action": False,
         "cost_rp": 0,
         "description": "Baca harga barang di watchlist; benar bila di bawah ambang.",
@@ -72,8 +85,12 @@ BLOCKS = {
         "inputs": {"keywords": "text"},
         "output": {"email": "items"},
         "permission_class": "Pembaca",
-        "permission": {"connectors": ["gmail"], "scope": ["gmail.readonly"],
-                 "domain": [], "spending_limit": 0},
+        "permission": {
+            "connectors": ["gmail"],
+            "scope": ["gmail.readonly"],
+            "domain": [],
+            "spending_limit": 0,
+        },
         "outbound_action": False,
         "cost_rp": 0,
         "description": "Cari email berdasarkan kata kunci (hanya metadata + ringkasan).",
@@ -82,8 +99,12 @@ BLOCKS = {
         "inputs": {"email_id": "text"},
         "output": {"sender": "text", "subject": "text", "content": "text"},
         "permission_class": "Pembaca",
-        "permission": {"connectors": ["gmail"], "scope": ["gmail.readonly"],
-                 "domain": [], "spending_limit": 0},
+        "permission": {
+            "connectors": ["gmail"],
+            "scope": ["gmail.readonly"],
+            "domain": [],
+            "spending_limit": 0,
+        },
         "outbound_action": False,
         "cost_rp": 0,
         "description": "Baca satu email lewat Pembaca terkarantina (§2.6).",
@@ -92,8 +113,12 @@ BLOCKS = {
         "inputs": {"recipient": "text", "subject": "text", "content": "text"},
         "output": {"draft_id": "text"},
         "permission_class": "Pelaksana",
-        "permission": {"connectors": ["gmail"], "scope": ["gmail.compose"],
-                 "domain": [], "spending_limit": 0},
+        "permission": {
+            "connectors": ["gmail"],
+            "scope": ["gmail.compose"],
+            "domain": [],
+            "spending_limit": 0,
+        },
         "outbound_action": False,
         "cost_rp": 0,
         "description": "Buat draf balasan email. Draf BUKAN kirim; kirim tetap butuh persetujuan.",
@@ -102,8 +127,12 @@ BLOCKS = {
         "inputs": {"title": "text", "created_at": "date", "attendees": "items"},
         "output": {"event_id": "text"},
         "permission_class": "Pelaksana",
-        "permission": {"connectors": ["calendar"], "scope": ["calendar.events"],
-                 "domain": [], "spending_limit": 0},
+        "permission": {
+            "connectors": ["calendar"],
+            "scope": ["calendar.events"],
+            "domain": [],
+            "spending_limit": 0,
+        },
         "outbound_action": True,
         "cost_rp": 0,
         "description": "Buat event Calendar. Aksi keluar: masuk antrean persetujuan.",
@@ -112,8 +141,7 @@ BLOCKS = {
         "inputs": {"provider": "choice", "amount": "money", "purpose": "text"},
         "output": {"payment_draft_id": "text", "content_hash": "text"},
         "permission_class": "Pelaksana",
-        "permission": {"connectors": [], "scope": [], "domain": [],
-                 "spending_limit": 0},
+        "permission": {"connectors": [], "scope": [], "domain": [], "spending_limit": 0},
         "outbound_action": True,
         "cost_rp": 0,
         "description": "Siapkan bayar mode aman: DRAF saja, user menyetujui di bank/e-wallet sendiri.",
@@ -254,8 +282,8 @@ def branch_depth(step: list) -> int:
             continue
         if step_item.get("block") == "condition":
             branch = max(
-                [branch_depth(step_item.get("then", [])),
-                 branch_depth(step_item.get("else", []))] or [0])
+                [branch_depth(step_item.get("then", [])), branch_depth(step_item.get("else", []))]
+            )
             depth = max(depth, 1 + branch)
         elif step_item.get("block") == "for_each":
             depth = max(depth, branch_depth(step_item.get("nested_steps", [])))
@@ -269,12 +297,10 @@ def validate_workflow(step: list) -> list[str]:
     if not isinstance(step, list) or not step:
         return ["alur harus punya minimal 1 langkah"]
     if len(step) > MAX_STEPS:
-        problems.append(
-            f"alur punya {len(step)} langkah, maks {MAX_STEPS} di MVP")
+        problems.append(f"alur punya {len(step)} langkah, maks {MAX_STEPS} di MVP")
     for step_item in step:
         problems += validate_step(step_item)
     branch = branch_depth(step)
     if branch > MAX_BRANCHES:
-        problems.append(
-            f"percabangan {branch} tingkat, maks {MAX_BRANCHES} di MVP")
+        problems.append(f"percabangan {branch} tingkat, maks {MAX_BRANCHES} di MVP")
     return problems

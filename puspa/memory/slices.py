@@ -30,8 +30,7 @@ def _connect(dsn=None):
     return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
-def grant_slice(user_id, agent_id, subagent_id, query, columns, token_ref,
-                dsn=None):
+def grant_slice(user_id, agent_id, subagent_id, query, columns, token_ref, dsn=None):
     """Beri irisan memori ke satu sub-agen; kembalikan data irisannya.
 
     - `kolom`: subset dari {profil, episodik, prosedur}.
@@ -56,7 +55,8 @@ def grant_slice(user_id, agent_id, subagent_id, query, columns, token_ref,
         profile_data = profile.get_profile(user_id, agent_id=agent_id, dsn=dsn)
         query_lower = query.lower()
         data["profile"] = {
-            k: v for k, v in profile_data.items()
+            k: v
+            for k, v in profile_data.items()
             if query_lower in k.lower() or query_lower in v.lower()
         } or profile_data
     if "episodic" in columns:
@@ -68,9 +68,7 @@ def grant_slice(user_id, agent_id, subagent_id, query, columns, token_ref,
 
         all_procedures = procedural.list_procedures(user_id, dsn=dsn)
         query_lower = query.lower()
-        data["procedures"] = [
-            p for p in all_procedures if query_lower in p["service"].lower()
-        ]
+        data["procedures"] = [p for p in all_procedures if query_lower in p["service"].lower()]
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -88,25 +86,24 @@ def grant_slice(user_id, agent_id, subagent_id, query, columns, token_ref,
 
 def list_grants(user_id, dsn=None):
     """Daftar pemberian irisan milik user, terbaru dulu."""
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, user_id, agent_id, subagent_id, query, kolom, "
-                "token_ref, event_id, created_at FROM slice_grants "
-                "WHERE user_id = %s ORDER BY created_at DESC",
-                (user_id,),
-            )
-            return [
-                {
-                    "id": str(r["id"]),
-                    "user_id": str(r["user_id"]),
-                    "agent_id": str(r["agent_id"]) if r["agent_id"] else None,
-                    "subagent_id": str(r["subagent_id"]) if r["subagent_id"] else None,
-                    "query": r["query"],
-                    "columns": list(r["kolom"]),
-                    "token_ref": r["token_ref"],
-                    "event_id": str(r["event_id"]) if r["event_id"] else None,
-                    "created_at": r["created_at"],
-                }
-                for r in cur.fetchall()
-            ]
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, user_id, agent_id, subagent_id, query, kolom, "
+            "token_ref, event_id, created_at FROM slice_grants "
+            "WHERE user_id = %s ORDER BY created_at DESC",
+            (user_id,),
+        )
+        return [
+            {
+                "id": str(r["id"]),
+                "user_id": str(r["user_id"]),
+                "agent_id": str(r["agent_id"]) if r["agent_id"] else None,
+                "subagent_id": str(r["subagent_id"]) if r["subagent_id"] else None,
+                "query": r["query"],
+                "columns": list(r["kolom"]),
+                "token_ref": r["token_ref"],
+                "event_id": str(r["event_id"]) if r["event_id"] else None,
+                "created_at": r["created_at"],
+            }
+            for r in cur.fetchall()
+        ]

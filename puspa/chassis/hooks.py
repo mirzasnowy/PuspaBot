@@ -42,7 +42,8 @@ never reaches the user).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import contextlib
+from dataclasses import dataclass
 
 from nanobot.agent.hook import AgentHook, AgentTurnHookContext
 
@@ -78,8 +79,9 @@ class PuspaHook(AgentHook):
     turn is replaced by the refusal text.
     """
 
-    def __init__(self, *, task_id: str, agent_id: str, log=None,
-                 rail_set: RailSet | None = None) -> None:
+    def __init__(
+        self, *, task_id: str, agent_id: str, log=None, rail_set: RailSet | None = None
+    ) -> None:
         super().__init__()
         self.task_id = task_id
         self.agent_id = agent_id
@@ -92,10 +94,8 @@ class PuspaHook(AgentHook):
     def _log_event(self, event_type: str, content: dict) -> None:
         if self._log is None:
             return
-        try:
+        with contextlib.suppress(Exception):
             self._log(event_type, content)
-        except Exception:
-            pass
 
     @property
     def violations(self) -> list[dict]:
@@ -113,10 +113,14 @@ class PuspaHook(AgentHook):
         if not verdict.allowed:
             self.rail_blocked = True
             self.rail_block_reason = verdict.reason
-            self._log_event("task_failed", {
-                "task_id": self.task_id, "agent_id": self.agent_id,
-                "reason": f"rail_blocked: {verdict.reason}",
-            })
+            self._log_event(
+                "task_failed",
+                {
+                    "task_id": self.task_id,
+                    "agent_id": self.agent_id,
+                    "reason": f"rail_blocked: {verdict.reason}",
+                },
+            )
         return verdict
 
     def check_output(self, text: str, *, evidence_ids=None) -> RailVerdict:
@@ -126,10 +130,14 @@ class PuspaHook(AgentHook):
             return RailVerdict.allow("", "output")
         verdict = self.rail_set.check_output(text, evidence_ids=evidence_ids)
         if not verdict.allowed:
-            self._log_event("verification_completed", {
-                "task_id": self.task_id, "passed": False,
-                "reason": f"rail_blocked: {verdict.reason}",
-            })
+            self._log_event(
+                "verification_completed",
+                {
+                    "task_id": self.task_id,
+                    "passed": False,
+                    "reason": f"rail_blocked: {verdict.reason}",
+                },
+            )
         return verdict
 
     def check_action(self, action: dict, **extra) -> RailVerdict:
@@ -141,11 +149,15 @@ class PuspaHook(AgentHook):
             return RailVerdict.allow("", "action")
         verdict = self.rail_set.check_action(action, **extra)
         if not verdict.allowed:
-            self._log_event("approval_rejected", {
-                "task_id": self.task_id, "agent_id": self.agent_id,
-                "kind": action.get("kind", ""),
-                "reason": f"rail_blocked: {verdict.reason}",
-            })
+            self._log_event(
+                "approval_rejected",
+                {
+                    "task_id": self.task_id,
+                    "agent_id": self.agent_id,
+                    "kind": action.get("kind", ""),
+                    "reason": f"rail_blocked: {verdict.reason}",
+                },
+            )
         return verdict
 
     def finalize_content(self, context, content: str | None) -> str | None:
@@ -222,13 +234,11 @@ class PuspaHook(AgentHook):
         )
 
 
-def make_puspa_hook_factory(task_id: str, agent_id: str, log=None,
-                            rail_set: RailSet | None = None):
+def make_puspa_hook_factory(task_id: str, agent_id: str, log=None, rail_set: RailSet | None = None):
     """Factory per-turn (``AgentTurnHookFactory``) untuk ``PuspaHook``."""
 
     def factory(turn_ctx: AgentTurnHookContext) -> AgentHook | None:
-        return PuspaHook(task_id=task_id, agent_id=agent_id, log=log,
-                         rail_set=rail_set)
+        return PuspaHook(task_id=task_id, agent_id=agent_id, log=log, rail_set=rail_set)
 
     return factory
 
@@ -259,13 +269,15 @@ HOOK_SKILL_APPROVED = "skill_approved"
 HOOK_SKILL_REJECTED = "skill_rejected"
 HOOK_SKILL_BLOCKED = "skill_blocked"
 
-SKILL_HOOK_POINTS = frozenset({
-    HOOK_SKILL_INSTALLED,
-    HOOK_SKILL_USED,
-    HOOK_SKILL_APPROVED,
-    HOOK_SKILL_REJECTED,
-    HOOK_SKILL_BLOCKED,
-})
+SKILL_HOOK_POINTS = frozenset(
+    {
+        HOOK_SKILL_INSTALLED,
+        HOOK_SKILL_USED,
+        HOOK_SKILL_APPROVED,
+        HOOK_SKILL_REJECTED,
+        HOOK_SKILL_BLOCKED,
+    }
+)
 
 
 class SkillHookRegistry:
@@ -370,36 +382,39 @@ class LearnedSkillStore:
     def __init__(self, skills: list | None = None) -> None:
         self._skills: dict[str, LearnedSkill] = {}
         for record in skills or []:
-            skill = record if isinstance(record, LearnedSkill) else LearnedSkill(
-                name=record["name"],
-                source=record.get("source", "learning_loop"),
-                status=record.get("status", "pending_approval"),
-                tools=tuple(record.get("tools", ())),
-                created_from_task_id=record.get("created_from_task_id", ""),
-                approved_by=record.get("approved_by", ""),
+            skill = (
+                record
+                if isinstance(record, LearnedSkill)
+                else LearnedSkill(
+                    name=record["name"],
+                    source=record.get("source", "learning_loop"),
+                    status=record.get("status", "pending_approval"),
+                    tools=tuple(record.get("tools", ())),
+                    created_from_task_id=record.get("created_from_task_id", ""),
+                    approved_by=record.get("approved_by", ""),
+                )
             )
             self._skills[skill.name] = skill
 
     @classmethod
-    def from_procedures(cls, rows: list[dict]) -> "LearnedSkillStore":
+    def from_procedures(cls, rows: list[dict]) -> LearnedSkillStore:
         """Build a read-only view from ``procedures`` rows (no writes)."""
-        status_map = {"trial": "pending_approval", "verified": "approved",
-                      "broken": "rejected"}
+        status_map = {"trial": "pending_approval", "verified": "approved", "broken": "rejected"}
         skills = []
         for row in rows:
             step = row.get("step") or []
             tools = tuple(
-                item.get("tool", "") for item in step
-                if isinstance(item, dict) and item.get("tool")
+                item.get("tool", "") for item in step if isinstance(item, dict) and item.get("tool")
             )
-            skills.append(LearnedSkill(
-                name=str(row.get("service", "")),
-                source="procedural",
-                status=status_map.get(str(row.get("status", "trial")),
-                                      "pending_approval"),
-                tools=tools,
-                created_from_task_id=str(row.get("source_event_id") or ""),
-            ))
+            skills.append(
+                LearnedSkill(
+                    name=str(row.get("service", "")),
+                    source="procedural",
+                    status=status_map.get(str(row.get("status", "trial")), "pending_approval"),
+                    tools=tools,
+                    created_from_task_id=str(row.get("source_event_id") or ""),
+                )
+            )
         return cls(skills)
 
     def get(self, name: str) -> LearnedSkill | None:
@@ -432,19 +447,19 @@ def load_learned_skills_from_procedures(dsn, user_id: str) -> LearnedSkillStore:
 
     from puspa.memory.schema import resolve_dsn
 
-    with psycopg.connect(resolve_dsn(dsn), row_factory=dict_row) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT service, step, status, source_event_id FROM procedures "
-                "WHERE user_id = %s ORDER BY created_at DESC",
-                (user_id,),
-            )
-            rows = [dict(row) for row in cur.fetchall()]
+    with psycopg.connect(resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT service, step, status, source_event_id FROM procedures "
+            "WHERE user_id = %s ORDER BY created_at DESC",
+            (user_id,),
+        )
+        rows = [dict(row) for row in cur.fetchall()]
     return LearnedSkillStore.from_procedures(rows)
 
 
-def check_skill_use(store: LearnedSkillStore, skill_name: str, *,
-                    registry: SkillHookRegistry | None = None) -> bool:
+def check_skill_use(
+    store: LearnedSkillStore, skill_name: str, *, registry: SkillHookRegistry | None = None
+) -> bool:
     """Allow a learned skill to be used only if the user approved it.
 
     Emits ``skill_used`` when allowed and ``skill_blocked`` when the
@@ -457,4 +472,3 @@ def check_skill_use(store: LearnedSkillStore, skill_name: str, *,
     point = HOOK_SKILL_USED if active else HOOK_SKILL_BLOCKED
     hook_registry.emit(point, {"skill": skill_name, "active": active})
     return active
-

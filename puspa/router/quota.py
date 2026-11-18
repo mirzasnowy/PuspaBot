@@ -26,8 +26,8 @@ with the ledger's per-task cost events) is a follow-up, not done here.
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 __all__ = [
     "ProviderQuota",
@@ -40,14 +40,14 @@ DEFAULT_BLOCK_SECONDS = 60
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
-def _cost_rp(rp_per_1k_input: int, rp_per_1k_output: int,
-             input_tokens: int, output_tokens: int) -> int:
+def _cost_rp(
+    rp_per_1k_input: int, rp_per_1k_output: int, input_tokens: int, output_tokens: int
+) -> int:
     """Cost in Rupiah. Same formula as ``router.compute_cost``."""
-    return (input_tokens * rp_per_1k_input
-            + output_tokens * rp_per_1k_output) // 1000
+    return (input_tokens * rp_per_1k_input + output_tokens * rp_per_1k_output) // 1000
 
 
 @dataclass
@@ -131,11 +131,9 @@ class ProviderQuota:
 
     def estimate_cost_rp(self, input_tokens: int, output_tokens: int) -> int:
         """Estimated Rupiah cost of a call of this size on this entry."""
-        return _cost_rp(self.rp_per_1k_input, self.rp_per_1k_output,
-                        input_tokens, output_tokens)
+        return _cost_rp(self.rp_per_1k_input, self.rp_per_1k_output, input_tokens, output_tokens)
 
-    def record_usage(self, input_tokens: int, output_tokens: int,
-                     now: datetime) -> int:
+    def record_usage(self, input_tokens: int, output_tokens: int, now: datetime) -> int:
         """Record one completed call; return its Rupiah cost.
 
         Rolls the window first, so usage after a reset starts a fresh
@@ -148,9 +146,9 @@ class ProviderQuota:
         self.requests_used += 1
         return self.estimate_cost_rp(input_tokens, output_tokens)
 
-    def mark_rate_limited(self, now: datetime,
-                          retry_after_seconds: int | None = None,
-                          reason: str | None = None) -> None:
+    def mark_rate_limited(
+        self, now: datetime, retry_after_seconds: int | None = None, reason: str | None = None
+    ) -> None:
         """Block the provider after a 429 / quota-exhausted response.
 
         Blocked until Retry-After when given, else until the current
@@ -204,9 +202,16 @@ class QuotaStore:
     def now(self) -> datetime:
         return self._now_fn()
 
-    def register(self, provider_key: str, *, tier: str, limit_tokens: int,
-                 reset_after_seconds: int, rp_per_1k_input: int,
-                 rp_per_1k_output: int) -> ProviderQuota:
+    def register(
+        self,
+        provider_key: str,
+        *,
+        tier: str,
+        limit_tokens: int,
+        reset_after_seconds: int,
+        rp_per_1k_input: int,
+        rp_per_1k_output: int,
+    ) -> ProviderQuota:
         """Register (or re-register) a quota.
 
         Limits must come from the provider's actual plan; this
@@ -233,11 +238,11 @@ class QuotaStore:
                     existing.reset_at = now + timedelta(seconds=reset_after_seconds)
                 return existing
             reset_at = (
-                now + timedelta(seconds=reset_after_seconds)
-                if reset_after_seconds > 0 else None
+                now + timedelta(seconds=reset_after_seconds) if reset_after_seconds > 0 else None
             )
             quota = ProviderQuota(
-                provider_key=provider_key, tier=tier,
+                provider_key=provider_key,
+                tier=tier,
                 limit_tokens=limit_tokens,
                 reset_after_seconds=reset_after_seconds,
                 rp_per_1k_input=rp_per_1k_input,
@@ -272,8 +277,7 @@ class QuotaStore:
             return None
         return quota.seconds_until_reset(self.now())
 
-    def record_usage(self, provider_key: str, input_tokens: int,
-                     output_tokens: int) -> int | None:
+    def record_usage(self, provider_key: str, input_tokens: int, output_tokens: int) -> int | None:
         """Record a completed call; return its Rupiah cost, or None
         when the provider has no registered quota (untracked)."""
         quota = self.get(provider_key)
@@ -282,17 +286,22 @@ class QuotaStore:
         with self._lock:
             return quota.record_usage(input_tokens, output_tokens, self.now())
 
-    def estimate_cost_rp(self, provider_key: str, input_tokens: int,
-                         output_tokens: int) -> int | None:
+    def estimate_cost_rp(
+        self, provider_key: str, input_tokens: int, output_tokens: int
+    ) -> int | None:
         """Estimated Rupiah cost on this provider, or None when unknown."""
         quota = self.get(provider_key)
         if quota is None:
             return None
         return quota.estimate_cost_rp(input_tokens, output_tokens)
 
-    def apply_rate_limit(self, provider_key: str, *,
-                         retry_after_seconds: int | None = None,
-                         reason: str | None = None) -> bool:
+    def apply_rate_limit(
+        self,
+        provider_key: str,
+        *,
+        retry_after_seconds: int | None = None,
+        reason: str | None = None,
+    ) -> bool:
         """Mark a provider rate-limited from a real provider response.
 
         Returns False when the provider is unregistered (nothing to
@@ -303,13 +312,12 @@ class QuotaStore:
         if quota is None:
             return False
         with self._lock:
-            quota.mark_rate_limited(self.now(),
-                                    retry_after_seconds=retry_after_seconds,
-                                    reason=reason)
+            quota.mark_rate_limited(
+                self.now(), retry_after_seconds=retry_after_seconds, reason=reason
+            )
         return True
 
-    def apply_rate_limit_headers(self, provider_key: str,
-                                 headers: dict) -> bool:
+    def apply_rate_limit_headers(self, provider_key: str, headers: dict) -> bool:
         """Update quota state from a provider's rate-limit headers.
 
         Understood headers (case-insensitive keys):
@@ -329,8 +337,7 @@ class QuotaStore:
             reset_raw = lowered.get("x-ratelimit-reset")
             if reset_raw is not None:
                 try:
-                    reset_at = datetime.fromtimestamp(
-                        int(float(reset_raw)), tz=timezone.utc)
+                    reset_at = datetime.fromtimestamp(int(float(reset_raw)), tz=UTC)
                     if reset_at > now:
                         quota.reset_at = reset_at
                 except (TypeError, ValueError, OverflowError):
@@ -351,8 +358,8 @@ class QuotaStore:
                     remaining = None
             if retry_after is not None or remaining == 0:
                 quota.mark_rate_limited(
-                    now, retry_after_seconds=retry_after,
-                    reason="rate_limit_headers")
+                    now, retry_after_seconds=retry_after, reason="rate_limit_headers"
+                )
             return True
 
     def snapshot(self, provider_key: str) -> dict | None:

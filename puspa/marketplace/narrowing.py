@@ -101,9 +101,7 @@ def _match_scores(message: str, skills: list) -> dict[str, int]:
         hits = 0
         for term in triggers:
             term_words = _tokens(str(term))
-            if term_words and term_words & words:
-                hits += 1
-            elif str(term).lower() in message.lower():
+            if (term_words and term_words & words) or str(term).lower() in message.lower():
                 hits += 1
         if hits:
             scores[skill_id] = hits
@@ -114,13 +112,16 @@ def _llm_select(message: str, skills: list, llm_complete) -> list[str] | None:
     """Ask the LLM which skills fit. ``None`` on any failure."""
     try:
         catalog = [
-            {"id": s.get("id"), "description": s.get("description", ""),
-             "triggerTerms": s.get("triggerTerms") or []}
+            {
+                "id": s.get("id"),
+                "description": s.get("description", ""),
+                "triggerTerms": s.get("triggerTerms") or [],
+            }
             for s in skills or []
         ]
         prompt = (
             "Pick the skill ids that fit this user message. "
-            "Reply with JSON only: {\"skills\": [\"id\", ...]}.\n"
+            'Reply with JSON only: {"skills": ["id", ...]}.\n'
             f"Message: {message}\n"
             f"Skills: {json.dumps(catalog, ensure_ascii=False)}"
         )
@@ -146,9 +147,7 @@ def search_tools(query: str, overflow_tools: list) -> list[dict]:
         return list(overflow_tools)
     ranked = []
     for tool in overflow_tools:
-        haystack = _tokens(
-            f"{tool.get('name', '')} {tool.get('description', '')}"
-        )
+        haystack = _tokens(f"{tool.get('name', '')} {tool.get('description', '')}")
         hits = len(words & haystack)
         if hits:
             ranked.append((hits, tool))
@@ -156,9 +155,15 @@ def search_tools(query: str, overflow_tools: list) -> list[dict]:
     return [tool for _hits, tool in ranked]
 
 
-def narrow_tools(message: str, skills: list, tools: list, *,
-                 llm_complete=None, granted_tools: list | None = None,
-                 audit_sink=None) -> NarrowingResult:
+def narrow_tools(
+    message: str,
+    skills: list,
+    tools: list,
+    *,
+    llm_complete=None,
+    granted_tools: list | None = None,
+    audit_sink=None,
+) -> NarrowingResult:
     """Narrow the tool list for one run.
 
     ``skills`` is the catalog (manifest dicts with ``id``,
@@ -174,7 +179,7 @@ def narrow_tools(message: str, skills: list, tools: list, *,
     """
     tools = list(tools or [])
     granted = list(granted_tools or [])
-    granted_names = {t.get("name") for t in granted}
+    {t.get("name") for t in granted}
     audit: list[dict] = []
 
     def _audit(event: str, detail: dict) -> None:
@@ -183,16 +188,20 @@ def narrow_tools(message: str, skills: list, tools: list, *,
         if audit_sink is not None:
             audit_sink(record)
 
-    if len(tools) + len([g for g in granted if g.get("name") not in
-                         {t.get("name") for t in tools}]) > MAX_TOOLS:
-        _audit(TOOL_LIMIT_REFUSED_EVENT, {
-            "tool_count": len(tools),
-            "limit": MAX_TOOLS,
-            "message": message[:200],
-        })
-        raise ToolLimitError(
-            f"run refused: {len(tools)} tools exceed the {MAX_TOOLS} limit"
+    if (
+        len(tools)
+        + len([g for g in granted if g.get("name") not in {t.get("name") for t in tools}])
+        > MAX_TOOLS
+    ):
+        _audit(
+            TOOL_LIMIT_REFUSED_EVENT,
+            {
+                "tool_count": len(tools),
+                "limit": MAX_TOOLS,
+                "message": message[:200],
+            },
         )
+        raise ToolLimitError(f"run refused: {len(tools)} tools exceed the {MAX_TOOLS} limit")
 
     selected: list[str] | None = None
     if llm_complete is not None:
@@ -202,15 +211,18 @@ def narrow_tools(message: str, skills: list, tools: list, *,
         selected = sorted(scores, key=lambda sid: -scores[sid]) if scores else None
 
     narrowed = selected is not None and len(selected) > 0
-    if narrowed:
+    if selected:
         chosen = [t for t in tools if t.get("skill") in set(selected)]
     else:
         # Fail-open: narrowing found nothing -> offer the whole catalog.
         chosen = list(tools)
-        _audit("narrowing_fail_open", {
-            "message": message[:200],
-            "tool_count": len(chosen),
-        })
+        _audit(
+            "narrowing_fail_open",
+            {
+                "message": message[:200],
+                "tool_count": len(chosen),
+            },
+        )
 
     # Granted tools are always present.
     names = {t.get("name") for t in chosen}
@@ -223,19 +235,24 @@ def narrow_tools(message: str, skills: list, tools: list, *,
     if len(chosen) > MAX_DIRECT_TOOLS:
         direct = chosen[:MAX_DIRECT_TOOLS]
         overflow = chosen[MAX_DIRECT_TOOLS:]
-        direct.append({
-            "name": SEARCH_TOOLS_NAME,
-            "description": (
-                "Search the remaining tools by keyword. "
-                f"{len(overflow)} more tools are available through this tool."
-            ),
-            "skill": None,
-        })
+        direct.append(
+            {
+                "name": SEARCH_TOOLS_NAME,
+                "description": (
+                    "Search the remaining tools by keyword. "
+                    f"{len(overflow)} more tools are available through this tool."
+                ),
+                "skill": None,
+            }
+        )
         chosen = direct
-        _audit("tool_overflow_search", {
-            "direct_tools": MAX_DIRECT_TOOLS,
-            "overflow_tools": len(overflow),
-        })
+        _audit(
+            "tool_overflow_search",
+            {
+                "direct_tools": MAX_DIRECT_TOOLS,
+                "overflow_tools": len(overflow),
+            },
+        )
 
     return NarrowingResult(
         tools=chosen,

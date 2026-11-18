@@ -48,12 +48,15 @@ class FakeHttp:
         if "oauth2.googleapis.com/token" in url:
             if data.get("grant_type") == "refresh_token":
                 return FakeResponse(200, {"access_token": "access-baru", "expires_in": 3600})
-            return FakeResponse(200, {
-                "access_token": "access-1",
-                "refresh_token": "refresh-1",
-                "id_token": self.id_token,
-                "expires_in": 3600,
-            })
+            return FakeResponse(
+                200,
+                {
+                    "access_token": "access-1",
+                    "refresh_token": "refresh-1",
+                    "id_token": self.id_token,
+                    "expires_in": 3600,
+                },
+            )
         if "oauth2.googleapis.com/revoke" in url:
             return FakeResponse(200, {})
         return FakeResponse(404, {})
@@ -74,23 +77,27 @@ def _create_jwt_and_jwks():
     e = _b64url(public.e.to_bytes((public.e.bit_length() + 7) // 8, "big"))
     jwks = {"keys": [{"kid": "kunci-tes-1", "kty": "RSA", "n": n, "e": e}]}
     header = _b64url(json.dumps({"alg": "RS256", "kid": "kunci-tes-1"}).encode())
-    payload = _b64url(json.dumps({
-        "iss": "https://accounts.google.com",
-        "aud": "client-id-tes",
-        "sub": "google-sub-1",
-        "email": "nero@contoh.id",
-        "exp": int(time.time()) + 3600,
-    }).encode())
-    signature = private.sign(
-        f"{header}.{payload}".encode(), padding.PKCS1v15(), hashes.SHA256()
+    payload = _b64url(
+        json.dumps(
+            {
+                "iss": "https://accounts.google.com",
+                "aud": "client-id-tes",
+                "sub": "google-sub-1",
+                "email": "nero@contoh.id",
+                "exp": int(time.time()) + 3600,
+            }
+        ).encode()
     )
+    signature = private.sign(f"{header}.{payload}".encode(), padding.PKCS1v15(), hashes.SHA256())
     return f"{header}.{payload}.{_b64url(signature)}", jwks
 
 
 def test_auth_url_pkce_state_and_challenge():
     result = build_auth_url(
-        "client-id-tes", "https://contoh.id/callback",
-        state="state-tetap", code_verifier="v" * 50,
+        "client-id-tes",
+        "https://contoh.id/callback",
+        state="state-tetap",
+        code_verifier="v" * 50,
     )
     assert "accounts.google.com" in result["url"]
     assert "code_challenge_method=S256" in result["url"]
@@ -110,7 +117,11 @@ def test_auth_url_pkce_state_and_challenge():
 def test_exchange_refresh_revoke_with_http_mock():
     http = FakeHttp()
     tokens = exchange_code(
-        "code-1", "v" * 50, "cid", "secret", "https://contoh.id/callback",
+        "code-1",
+        "v" * 50,
+        "cid",
+        "secret",
+        "https://contoh.id/callback",
         http_client=http,
     )
     assert tokens["access_token"] == "access-1"
@@ -131,15 +142,19 @@ def test_verify_id_token_real_and_fake():
         verify_id_token("bukan.jwt", jwks, "client-id-tes")
 
 
-def test_login_google_complete_create_user_and_session(
-    make_user, test_dsn, vault_master_key
-):
+def test_login_google_complete_create_user_and_session(make_user, test_dsn, vault_master_key):
     jwt, jwks = _create_jwt_and_jwks()
     http = FakeHttp(id_token=jwt)
     result = complete_google_login(
-        "code-1", "v" * 50, "client-id-tes", "secret",
-        "https://contoh.id/callback", jwks,
-        device_label="laptop", http_client=http, dsn=test_dsn,
+        "code-1",
+        "v" * 50,
+        "client-id-tes",
+        "secret",
+        "https://contoh.id/callback",
+        jwks,
+        device_label="laptop",
+        http_client=http,
+        dsn=test_dsn,
     )
     assert result["email"] == "nero@contoh.id"
     assert result["new"] is True
@@ -147,9 +162,15 @@ def test_login_google_complete_create_user_and_session(
     # Token tersimpan terenkripsi di vault; login kedua memakai user sama.
     assert load_tokens(result["user_id"], dsn=test_dsn)["refresh_token"] == "refresh-1"
     hasil2 = complete_google_login(
-        "code-2", "v" * 50, "client-id-tes", "secret",
-        "https://contoh.id/callback", jwks,
-        device_label="phone", http_client=http, dsn=test_dsn,
+        "code-2",
+        "v" * 50,
+        "client-id-tes",
+        "secret",
+        "https://contoh.id/callback",
+        jwks,
+        device_label="phone",
+        http_client=http,
+        dsn=test_dsn,
     )
     assert hasil2["user_id"] == result["user_id"] and hasil2["new"] is False
     assert find_user_by_email("NERO@contoh.id", dsn=test_dsn) == result["user_id"]
@@ -176,6 +197,7 @@ def test_token_vault_can_deleted(make_user, test_dsn, vault_master_key):
 
 # --- Tautan email -----------------------------------------------------------
 
+
 def test_link_email_single_use(email_link_secret, test_dsn):
     url = create_email_link("nero@contoh.id", "https://contoh.id/masuk", secret=email_link_secret)
     token = url.split("token=")[1]
@@ -186,8 +208,10 @@ def test_link_email_single_use(email_link_secret, test_dsn):
 
 def test_link_email_expired_and_forged(email_link_secret, test_dsn):
     url = create_email_link(
-        "nero@contoh.id", "https://contoh.id/masuk",
-        secret=email_link_secret, ttl_seconds=-10,
+        "nero@contoh.id",
+        "https://contoh.id/masuk",
+        secret=email_link_secret,
+        ttl_seconds=-10,
     )
     token = url.split("token=")[1]
     with pytest.raises(EmailLinkError):

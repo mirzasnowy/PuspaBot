@@ -82,9 +82,13 @@ from puspa.router.complete import (
 )
 from tests.test_hipporag_llm_filter import (
     QUERY as CHAIN_QUERY,
+)
+from tests.test_hipporag_llm_filter import (
     STUB_DECISIONS,
-    TRIPLES as CHAIN_TRIPLES,
     build_chain_graph,
+)
+from tests.test_hipporag_llm_filter import (
+    TRIPLES as CHAIN_TRIPLES,
 )
 from tests.test_retrieval_eval import QUERIES
 from tests.test_retrieval_hipporag import build_price_graph
@@ -156,23 +160,30 @@ RECORDED_LIVE_REPLY_QUERY_1 = """{
 #: Measured numbers, locked in (see the module docstring).
 MEASURED = {
     # Deterministic filter, offline, reproducible.
-    "deterministic": {"recall@1": 0.125, "recall@3": 0.375,
-                      "recall@10": 1.0},
+    "deterministic": {"recall@1": 0.125, "recall@3": 0.375, "recall@10": 1.0},
     # Live judge, shipped prompt, full eval (7 calls).
-    "live": {"recall@1": 0.125, "recall@3": 0.25,
-             "recall@10": 1.0, "calls": 7,
-             "input_tokens": 4330, "output_tokens": 2920,
-             "cost_rp": 6, "mean_latency_s": 12.5,
-             "max_latency_s": 16.8, "llm_decisions": 132,
-             "total_decisions": 154, "fallback_batches": 1},
+    "live": {
+        "recall@1": 0.125,
+        "recall@3": 0.25,
+        "recall@10": 1.0,
+        "calls": 7,
+        "input_tokens": 4330,
+        "output_tokens": 2920,
+        "cost_rp": 6,
+        "mean_latency_s": 12.5,
+        "max_latency_s": 16.8,
+        "llm_decisions": 132,
+        "total_decisions": 154,
+        "fallback_batches": 1,
+    },
     # Live judge, chain graph, shipped prompt (3 runs).
     "live_chain_agreement": 5,
     "live_chain_triples": 6,
 }
 
 live_only = pytest.mark.skipif(
-    os.environ.get(LIVE_ENV) != "1",
-    reason=f"live model call; set {LIVE_ENV}=1 to run")
+    os.environ.get(LIVE_ENV) != "1", reason=f"live model call; set {LIVE_ENV}=1 to run"
+)
 
 
 class Meter:
@@ -195,8 +206,7 @@ class Meter:
         import time
 
         start = time.monotonic()
-        result = complete_detailed(
-            prompt, role="reader", model=LIVE_MODEL, max_tokens=1024)
+        result = complete_detailed(prompt, role="reader", model=LIVE_MODEL, max_tokens=1024)
         self.latencies.append(time.monotonic() - start)
         self.calls += 1
         self.input_tokens += result.input_tokens
@@ -225,8 +235,7 @@ def _recalls(ranked_lists):
 
 def _pipeline(question, *, llm_complete=None):
     graph = build_price_graph()
-    retriever = HippoRAGRetriever(
-        graph, embedder=EMBEDDER, llm_complete=llm_complete)
+    retriever = HippoRAGRetriever(graph, embedder=EMBEDDER, llm_complete=llm_complete)
     reranker = DeterministicReranker(embedder=EMBEDDER)
     return retriever.retrieve(question, top_k=10, reranker=reranker)
 
@@ -240,12 +249,12 @@ def _skip_when_live_unavailable(exc):
 # The shipped prompt: compact replies, and reports count for trust
 # ---------------------------------------------------------------------------
 
+
 def test_judge_prompt_asks_for_short_reasons():
     # A 22-triple reply with one-sentence reasons ran past the
     # default 1024-token budget and truncated mid-JSON; five-word
     # reasons fit in ~500 output tokens.
-    prompt = build_judge_prompt(
-        QUERY_1, sorted(build_price_graph().edges))
+    prompt = build_judge_prompt(QUERY_1, sorted(build_price_graph().edges))
     assert "at most five words" in prompt
     assert "JSON only" in prompt
     assert QUERY_1 in prompt
@@ -265,20 +274,19 @@ def test_judge_prompt_says_reports_count_for_trust():
 # Replay: the recorded live reply, through the real judge (offline)
 # ---------------------------------------------------------------------------
 
+
 def test_recorded_live_reply_parses_and_covers_every_triple():
     parsed = parse_judge_reply(RECORDED_LIVE_REPLY_QUERY_1, 22)
     assert len(parsed) == 22
     assert set(parsed) == set(range(22))
-    assert all(isinstance(keep, bool)
-               for keep, _ in parsed.values())
+    assert all(isinstance(keep, bool) for keep, _ in parsed.values())
 
 
 def test_recorded_live_reply_keeps_the_fraud_triples():
     triples = sorted(build_price_graph().edges)
     parsed = parse_judge_reply(RECORDED_LIVE_REPLY_QUERY_1, 22)
-    kept = {triples[index] for index, (keep, _) in parsed.items()
-            if keep}
-    assert FRAUD_TRIPLES_QUERY_1 <= kept
+    kept = {triples[index] for index, (keep, _) in parsed.items() if keep}
+    assert kept >= FRAUD_TRIPLES_QUERY_1
     assert not (IRRELEVANT_TRIPLES_QUERY_1 & kept)
 
 
@@ -288,16 +296,13 @@ def test_recorded_live_reply_replayed_through_the_judge():
     # verdicts the model gave live are what the judge applies.
     judge = LLMTripleJudge(lambda prompt: RECORDED_LIVE_REPLY_QUERY_1)
     graph = build_price_graph()
-    retriever = HippoRAGRetriever(
-        graph, embedder=EMBEDDER, triple_filter=judge)
+    retriever = HippoRAGRetriever(graph, embedder=EMBEDDER, triple_filter=judge)
     results = retriever.retrieve(QUERY_1, top_k=10)
     assert judge.calls == 1
     assert judge.fallback_batches == 0
-    assert all(d.source == "llm"
-               for d in retriever.last_filter_decisions)
-    kept = {d.triple for d in retriever.last_filter_decisions
-            if d.keep}
-    assert FRAUD_TRIPLES_QUERY_1 <= kept
+    assert all(d.source == "llm" for d in retriever.last_filter_decisions)
+    kept = {d.triple for d in retriever.last_filter_decisions if d.keep}
+    assert kept >= FRAUD_TRIPLES_QUERY_1
     assert not (IRRELEVANT_TRIPLES_QUERY_1 & kept)
     # The fraud report passage is reachable through the kept
     # chain, as the stub judge achieves on the chain graph.
@@ -307,6 +312,7 @@ def test_recorded_live_reply_replayed_through_the_judge():
 # ---------------------------------------------------------------------------
 # Deterministic baseline recalls (offline, reproducible)
 # ---------------------------------------------------------------------------
+
 
 def test_deterministic_baseline_recalls_are_as_measured():
     ranked = [_pipeline(question) for question, _ in QUERIES]
@@ -320,13 +326,13 @@ def test_deterministic_baseline_recalls_are_as_measured():
 # Live: the real model, through the real wiring (opt-in only)
 # ---------------------------------------------------------------------------
 
+
 @live_only
 def test_live_judge_keeps_the_fraud_triples_on_query_1():
     meter = Meter()
     try:
         graph = build_price_graph()
-        retriever = HippoRAGRetriever(
-            graph, embedder=EMBEDDER, llm_complete=meter.complete)
+        retriever = HippoRAGRetriever(graph, embedder=EMBEDDER, llm_complete=meter.complete)
         retriever.retrieve(QUERY_1, top_k=10)
     except (KeyError, CompletionError) as exc:
         _skip_when_live_unavailable(exc)
@@ -337,7 +343,7 @@ def test_live_judge_keeps_the_fraud_triples_on_query_1():
     llm_sourced = sum(1 for d in decisions if d.source == "llm")
     assert llm_sourced >= len(decisions) // 2
     kept = {d.triple for d in decisions if d.keep}
-    assert FRAUD_TRIPLES_QUERY_1 <= kept
+    assert kept >= FRAUD_TRIPLES_QUERY_1
     assert not (IRRELEVANT_TRIPLES_QUERY_1 & kept)
     # Cheap and fast enough to run inside retrieval: the measured
     # query-1 call cost Rp1 and took 1.3s; the bounds below are
@@ -351,15 +357,14 @@ def test_live_judge_chain_graph_agreement_with_the_stub():
     meter = Meter()
     try:
         graph = build_chain_graph()
-        retriever = HippoRAGRetriever(
-            graph, embedder=EMBEDDER, llm_complete=meter.complete)
+        retriever = HippoRAGRetriever(graph, embedder=EMBEDDER, llm_complete=meter.complete)
         results = retriever.retrieve(CHAIN_QUERY, top_k=10)
     except (KeyError, CompletionError) as exc:
         _skip_when_live_unavailable(exc)
-    decisions = {d.triple: d
-                 for d in retriever.last_filter_decisions}
-    agree = sum(1 for triple in CHAIN_TRIPLES
-                if decisions[triple].keep is STUB_DECISIONS[triple][0])
+    decisions = {d.triple: d for d in retriever.last_filter_decisions}
+    agree = sum(
+        1 for triple in CHAIN_TRIPLES if decisions[triple].keep is STUB_DECISIONS[triple][0]
+    )
     # Measured 5/6 in 3 runs with the shipped prompt (the old
     # prompt scored 3/6, then 2/6). The threshold is below the
     # measured value because the model varies run to run.
@@ -376,12 +381,12 @@ def test_live_judge_eval_recalls_cost_and_latency():
     try:
         for question, _ in QUERIES:
             graph = build_price_graph()
-            retriever = HippoRAGRetriever(
-                graph, embedder=EMBEDDER,
-                llm_complete=meter.complete)
-            ranked.append(retriever.retrieve(
-                question, top_k=10,
-                reranker=DeterministicReranker(embedder=EMBEDDER)))
+            retriever = HippoRAGRetriever(graph, embedder=EMBEDDER, llm_complete=meter.complete)
+            ranked.append(
+                retriever.retrieve(
+                    question, top_k=10, reranker=DeterministicReranker(embedder=EMBEDDER)
+                )
+            )
             for decision in retriever.last_filter_decisions:
                 total_decisions += 1
                 if decision.source == "llm":

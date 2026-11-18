@@ -25,9 +25,9 @@ from __future__ import annotations
 import os
 
 __all__ = [
-    "MAX_ENV_BYTES",
     "ENV_ALLOWED_TOOLS",
     "ENV_SERVICE_SLUGS",
+    "MAX_ENV_BYTES",
     "AllowlistError",
     "ToolAllowlist",
     "parse_env_list",
@@ -83,24 +83,16 @@ class ToolAllowlist:
     """
 
     def __init__(self, allowed_tools=None, allowed_services=None):
-        self.allowed_tools = (
-            None if allowed_tools is None else frozenset(allowed_tools)
-        )
-        self.allowed_services = (
-            None if allowed_services is None else frozenset(allowed_services)
-        )
+        self.allowed_tools = None if allowed_tools is None else frozenset(allowed_tools)
+        self.allowed_services = None if allowed_services is None else frozenset(allowed_services)
 
     @classmethod
     def from_env(cls, environ=None):
         """Build an allowlist from the environment (or a mapping)."""
         env = os.environ if environ is None else environ
         return cls(
-            allowed_tools=parse_env_list(
-                env.get(ENV_ALLOWED_TOOLS), ENV_ALLOWED_TOOLS
-            ),
-            allowed_services=parse_env_list(
-                env.get(ENV_SERVICE_SLUGS), ENV_SERVICE_SLUGS
-            ),
+            allowed_tools=parse_env_list(env.get(ENV_ALLOWED_TOOLS), ENV_ALLOWED_TOOLS),
+            allowed_services=parse_env_list(env.get(ENV_SERVICE_SLUGS), ENV_SERVICE_SLUGS),
         )
 
     def is_advertised(self, tool_name: str, service: str | None = None) -> bool:
@@ -113,9 +105,7 @@ class ToolAllowlist:
             and service not in self.allowed_services
         ):
             return False
-        if self.allowed_services is not None and service is None:
-            return False
-        return True
+        return not (self.allowed_services is not None and service is None)
 
     def advertise(self, tools):
         """Filter a tool list down to what the engine may see.
@@ -150,6 +140,4 @@ class ToolAllowlist:
         allowed_names = set(self.advertised_names(tools))
         leaked = sorted(advertised_names - allowed_names)
         if leaked:
-            raise AllowlistError(
-                f"tools leaked past the allowlist: {', '.join(leaked)}"
-            )
+            raise AllowlistError(f"tools leaked past the allowlist: {', '.join(leaked)}")

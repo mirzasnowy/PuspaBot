@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 
 __all__ = [
@@ -98,14 +99,13 @@ def _normalize_layer(value: str | object | None) -> str:
         return ""
     if isinstance(value, str):
         parts = [value]
+    elif isinstance(value, Iterable):
+        parts = list(value)
     else:
-        try:
-            parts = list(value)  # type: ignore[arg-type]
-        except TypeError:
-            raise ValueError(
-                "a prompt layer must be a string, an iterable of "
-                f"strings, or None, not {type(value).__name__}"
-            ) from None
+        raise ValueError(
+            "a prompt layer must be a string, an iterable of "
+            f"strings, or None, not {type(value).__name__}"
+        )
     texts = []
     for part in parts:
         if not isinstance(part, str):
@@ -123,7 +123,10 @@ def _normalize_layer(value: str | object | None) -> str:
 def _canonical_json(value: object) -> str:
     """Canonical JSON for hashing: sorted keys, compact, stable."""
     return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
         default=repr,
     )
 
@@ -144,15 +147,11 @@ def _validate_messages(messages: list) -> None:
             raise ValueError(f"{where} must be a dict, not {type(message).__name__}")
         role = message.get("role")
         if role not in MESSAGE_ROLES:
-            raise ValueError(
-                f"{where}.role must be one of {MESSAGE_ROLES}, not {role!r}"
-            )
+            raise ValueError(f"{where}.role must be one of {MESSAGE_ROLES}, not {role!r}")
         if "content" not in message:
             if not (role == "assistant" and message.get("tool_calls")):
                 raise ValueError(f"{where} is missing 'content'")
-        elif message["content"] is not None and not isinstance(
-            message["content"], (str, list)
-        ):
+        elif message["content"] is not None and not isinstance(message["content"], (str, list)):
             raise ValueError(
                 f"{where}.content must be a string, a list of blocks, "
                 f"or None, not {type(message['content']).__name__}"
@@ -266,8 +265,7 @@ class DeferredChange:
     def __post_init__(self) -> None:
         if self.kind not in CHANGE_KINDS:
             raise ValueError(
-                f"unknown deferred-change kind {self.kind!r}; "
-                f"expected one of {CHANGE_KINDS}"
+                f"unknown deferred-change kind {self.kind!r}; expected one of {CHANGE_KINDS}"
             )
         if not isinstance(self.detail, dict):
             raise ValueError("DeferredChange.detail must be a dict")
@@ -349,11 +347,11 @@ class PromptBuilder:
         """Stable-layer changes this builder refused mid-session."""
         return list(self._deferred)
 
-    def with_tools(self, tools: list | None) -> "PromptBuilder":
+    def with_tools(self, tools: list | None) -> PromptBuilder:
         """A fresh builder with a different tool list (next session)."""
         return PromptBuilder(tools=tools)
 
-    def new_session(self) -> "PromptBuilder":
+    def new_session(self) -> PromptBuilder:
         """A fresh builder with the same tools and no frozen stable."""
         return PromptBuilder(tools=self._tools)
 
@@ -430,9 +428,7 @@ class PromptSession:
         model: str | None = None,
     ) -> None:
         base = _normalize_layer(stable)
-        self._parts: list[tuple[str, str]] = (
-            [("base", base)] if base else []
-        )
+        self._parts: list[tuple[str, str]] = [("base", base)] if base else []
         self._tools: list = [dict(tool) for tool in (tools or [])]
         self.model = model
         self.changes = DeferredChangeQueue()
@@ -485,7 +481,7 @@ class PromptSession:
             self._apply(change)
         return outcome
 
-    def next_session(self) -> "PromptSession":
+    def next_session(self) -> PromptSession:
         """Start the next session with every queued change applied.
 
         The queue drains in order; the new session freezes the
@@ -509,10 +505,7 @@ class PromptSession:
             text = str(change.detail.get("text", "")).strip()
             if not name:
                 raise ValueError("add_skill needs detail['skill']")
-            self._parts = [
-                (tag, text_) for tag, text_ in self._parts
-                if tag != f"skill:{name}"
-            ]
+            self._parts = [(tag, text_) for tag, text_ in self._parts if tag != f"skill:{name}"]
             if text:
                 self._parts.append((f"skill:{name}", f"# Skill: {name}\n\n{text}"))
             self._builder = PromptBuilder(tools=self._tools)
@@ -520,10 +513,7 @@ class PromptSession:
             name = str(change.detail.get("skill", "")).strip()
             if not name:
                 raise ValueError("remove_skill needs detail['skill']")
-            self._parts = [
-                (tag, text) for tag, text in self._parts
-                if tag != f"skill:{name}"
-            ]
+            self._parts = [(tag, text) for tag, text in self._parts if tag != f"skill:{name}"]
             self._builder = PromptBuilder(tools=self._tools)
         elif change.kind == "set_model":
             model = str(change.detail.get("model", "")).strip()

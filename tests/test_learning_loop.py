@@ -65,6 +65,7 @@ def _verified_draft(loop, task="check_pln"):
 
 # --- seam: record_misprediction -----------------------------------------
 
+
 def test_record_misprediction_requires_all_keys():
     loop = LearningLoop()
     with pytest.raises(ValueError):
@@ -106,6 +107,7 @@ def test_module_level_seam_delegates_to_default_loop():
 
 # --- curriculum -----------------------------------------------------------
 
+
 def test_curriculum_proposes_retry_for_worst_gap_first():
     loop = LearningLoop()
     loop.record_misprediction(_record(task="compare_price"))
@@ -132,6 +134,7 @@ def test_curriculum_empty_when_nothing_to_learn():
 
 # --- skill library: draft, verify, approve, activate ----------------------
 
+
 def test_drafted_skill_is_inactive_until_approved():
     loop = LearningLoop()
     skill = loop.draft_skill("check_pln", code=lambda x: x)
@@ -143,12 +146,17 @@ def test_drafted_skill_is_inactive_until_approved():
 def test_verify_callable_skill_all_cases_pass():
     loop = LearningLoop()
     skill = loop.draft_skill("double", code=lambda x: x * 2)
-    result = loop.verify_skill(skill["id"], [
-        {"args": [2], "expected": 4},
-        {"args": [3], "expected": 6},
-    ])
+    result = loop.verify_skill(
+        skill["id"],
+        [
+            {"args": [2], "expected": 4},
+            {"args": [3], "expected": 6},
+        ],
+    )
     assert result == {
-        "skill_id": skill["id"], "passed": 2, "failed": 0,
+        "skill_id": skill["id"],
+        "passed": 2,
+        "failed": 0,
         "verified": True,
         "details": [
             {"case": {"args": [2], "expected": 4}, "result": 4, "passed": True},
@@ -174,8 +182,7 @@ def test_verify_string_code_with_sandbox_executor():
         assert "def run" in code
         return case["args"][0] * 2
 
-    result = loop.verify_skill(
-        skill["id"], [{"args": [2], "expected": 4}], executor=fake_sandbox)
+    result = loop.verify_skill(skill["id"], [{"args": [2], "expected": 4}], executor=fake_sandbox)
     assert result["verified"] is True
 
 
@@ -194,7 +201,9 @@ def test_activate_with_real_gate_approval_then_reusable():
     assert loop.find_reusable_skill("check_pln") is None
     gate, request = _gate_approval(skill_id=skill["id"])
     activated = loop.activate_skill(
-        skill["id"], user_id="user-1", gate=gate,
+        skill["id"],
+        user_id="user-1",
+        gate=gate,
         approval_request_id=request.request_id,
     )
     assert activated["status"] == "active"
@@ -211,7 +220,9 @@ def test_activate_with_wrong_user_gate_request_denied():
     gate, request = _gate_approval(user_id="user-1", skill_id=skill["id"])
     with pytest.raises(PermissionError):
         loop.activate_skill(
-            skill["id"], user_id="user-2", gate=gate,
+            skill["id"],
+            user_id="user-2",
+            gate=gate,
             approval_request_id=request.request_id,
         )
 
@@ -221,18 +232,28 @@ def test_activate_with_unapproved_gate_request_denied():
     skill = _verified_draft(loop)
     now = int(time.time())
     token = {
-        "user_id": "user-1", "agent_id": "agent-puspa", "tools": ["send"],
-        "domains": [], "connectors": {}, "budget": {},
-        "exp": now + 3600, "iat": now,
+        "user_id": "user-1",
+        "agent_id": "agent-puspa",
+        "tools": ["send"],
+        "domains": [],
+        "connectors": {},
+        "budget": {},
+        "exp": now + 3600,
+        "iat": now,
     }
     gate = Gate(log=None, spending=None)
     request = gate.request_approval(
-        user_id="user-1", agent_id="agent-puspa", token=token, kind="send",
+        user_id="user-1",
+        agent_id="agent-puspa",
+        token=token,
+        kind="send",
         content={"action": "activate_learned_skill", "skill_id": skill["id"]},
     )
     with pytest.raises(PermissionError):
         loop.activate_skill(
-            skill["id"], user_id="user-1", gate=gate,
+            skill["id"],
+            user_id="user-1",
+            gate=gate,
             approval_request_id=request.request_id,
         )
 
@@ -240,8 +261,7 @@ def test_activate_with_unapproved_gate_request_denied():
 def test_activate_with_explicit_user_approval():
     loop = LearningLoop()
     skill = _verified_draft(loop)
-    activated = loop.activate_skill(
-        skill["id"], user_id="user-1", approved_by="user-1")
+    activated = loop.activate_skill(skill["id"], user_id="user-1", approved_by="user-1")
     assert activated["status"] == "active"
 
 
@@ -269,6 +289,7 @@ def test_misprediction_marks_active_skill_suspect():
 
 # --- manual edits are never overwritten ------------------------------------
 
+
 def test_manual_edit_blocks_activation_and_flags_draft():
     loop = LearningLoop()
     loop.note_manual_edit("check_pln", ["open pln site", "read bill"])
@@ -288,13 +309,19 @@ def test_draft_without_manual_edit_has_no_conflict_flag():
 
 # --- durable drafts ---------------------------------------------------------
 
+
 class _FakeProcedureStore:
     def __init__(self):
         self.recorded = []
 
     def record_successful_task(self, user_id, service, step, **kwargs):
-        proc = {"id": "proc-1", "user_id": user_id, "service": service,
-                "step": step, "status": "trial"}
+        proc = {
+            "id": "proc-1",
+            "user_id": user_id,
+            "service": service,
+            "step": step,
+            "status": "trial",
+        }
         self.recorded.append(proc)
         return proc
 

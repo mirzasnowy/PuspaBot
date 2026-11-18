@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import psycopg
 from psycopg.rows import dict_row
@@ -45,8 +45,15 @@ from puspa.memory.episodic import extract_concepts, extract_entities
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 CATEGORIES = (
-    "phone", "laptop", "tablet", "smartwatch", "earphones/TWS", "TV",
-    "game console", "camera", "branded home appliances",
+    "phone",
+    "laptop",
+    "tablet",
+    "smartwatch",
+    "earphones/TWS",
+    "TV",
+    "game console",
+    "camera",
+    "branded home appliances",
 )
 MARKETPLACE = ("Tokopedia", "Shopee", "Blibli")
 LINK_STATUSES = ("automatic", "user_confirmed", "user_rejected")
@@ -58,7 +65,8 @@ class IdentityError(Exception):
 
 def _connect(dsn=None):
     return psycopg.connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
+        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
+    )
 
 
 def normalize_model_number(model_number: str) -> str:
@@ -81,28 +89,45 @@ def normalize_variant(variant: dict | None) -> dict:
 
 
 def _row_product(row) -> dict:
-    return {"id": str(row["id"]), "brand": row["brand"], "series": row["series"],
-            "model_number": row["model_number"], "category": row["category"],
-            "variant": row["variant"], "created_at": row["created_at"]}
+    return {
+        "id": str(row["id"]),
+        "brand": row["brand"],
+        "series": row["series"],
+        "model_number": row["model_number"],
+        "category": row["category"],
+        "variant": row["variant"],
+        "created_at": row["created_at"],
+    }
 
 
 def _row_link(row) -> dict:
-    return {"id": str(row["id"]), "product_id": str(row["product_id"]),
-            "user_id": str(row["user_id"]), "marketplace": row["marketplace"],
-            "listing_url": row["listing_url"], "status": row["status"],
-            "created_at": row["created_at"]}
+    return {
+        "id": str(row["id"]),
+        "product_id": str(row["product_id"]),
+        "user_id": str(row["user_id"]),
+        "marketplace": row["marketplace"],
+        "listing_url": row["listing_url"],
+        "status": row["status"],
+        "created_at": row["created_at"],
+    }
 
 
-def add_product(*, brand: str, model_number: str, category: str,
-                  series: str = "", variant: dict | None = None, dsn=None) -> dict:
+def add_product(
+    *,
+    brand: str,
+    model_number: str,
+    category: str,
+    series: str = "",
+    variant: dict | None = None,
+    dsn=None,
+) -> dict:
     """Tambah (atau ambil yang sudah ada) produk kanonik.
 
     Kategori di luar 9 kategori §4.1 ditolak — fashion dan barang
     non-standar bukan scope wedge.
     """
     if category not in CATEGORIES:
-        raise IdentityError(
-            f"kategori di luar scope wedge (9 kategori §4.1): {category!r}")
+        raise IdentityError(f"kategori di luar scope wedge (9 kategori §4.1): {category!r}")
     if not brand or not model_number:
         raise IdentityError("merek dan model_number wajib diisi")
     key = normalize_model_number(model_number)
@@ -110,13 +135,15 @@ def add_product(*, brand: str, model_number: str, category: str,
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM canonical_products WHERE brand = %s AND model_number = %s",
-                (brand, key))
+                (brand, key),
+            )
             row = cur.fetchone()
             if row is None:
                 cur.execute(
                     "INSERT INTO canonical_products (brand, series, model_number, category, variant)"
                     " VALUES (%s, %s, %s, %s, %s) RETURNING *",
-                    (brand, series, key, category, Jsonb(normalize_variant(variant))))
+                    (brand, series, key, category, Jsonb(normalize_variant(variant))),
+                )
                 row = cur.fetchone()
         conn.commit()
     return _row_product(row)
@@ -124,18 +151,23 @@ def add_product(*, brand: str, model_number: str, category: str,
 
 def search_product(model_number: str, dsn=None) -> dict | None:
     """Cari produk kanonik lewat kunci model deterministik."""
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM canonical_products WHERE model_number = %s",
-                (normalize_model_number(model_number),))
-            row = cur.fetchone()
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT * FROM canonical_products WHERE model_number = %s",
+            (normalize_model_number(model_number),),
+        )
+        row = cur.fetchone()
     return _row_product(row) if row else None
 
 
-def identity_candidates(*, brand: str | None = None, series: str | None = None,
-                       model_number: str | None = None, category: str | None = None,
-                       dsn=None) -> list[dict]:
+def identity_candidates(
+    *,
+    brand: str | None = None,
+    series: str | None = None,
+    model_number: str | None = None,
+    category: str | None = None,
+    dsn=None,
+) -> list[dict]:
     """Kandidat identitas untuk ditampilkan ke user saat ragu (§3.2
     langkah 2). TIDAK PERNAH memilih sendiri — pemanggil yang bertanya.
     """
@@ -154,16 +186,25 @@ def identity_candidates(*, brand: str | None = None, series: str | None = None,
         values.append(category)
     if not conditions:
         return []
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM canonical_products WHERE " + " AND ".join(conditions)
-                + " ORDER BY brand, model_number LIMIT 10", values)
-            return [_row_product(r) for r in cur.fetchall()]
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT * FROM canonical_products WHERE "
+            + " AND ".join(conditions)
+            + " ORDER BY brand, model_number LIMIT 10",
+            values,
+        )
+        return [_row_product(r) for r in cur.fetchall()]
 
 
-def link_listing(*, product_id: str, user_id: str, marketplace: str,
-                    listing_url: str, status: str = "automatic", dsn=None) -> dict:
+def link_listing(
+    *,
+    product_id: str,
+    user_id: str,
+    marketplace: str,
+    listing_url: str,
+    status: str = "automatic",
+    dsn=None,
+) -> dict:
     """Tautkan listing ke produk kanonik dengan status tautan."""
     if marketplace not in MARKETPLACE:
         raise IdentityError(f"marketplace tidak dikenal: {marketplace!r}")
@@ -173,13 +214,15 @@ def link_listing(*, product_id: str, user_id: str, marketplace: str,
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM listing_links WHERE marketplace = %s AND listing_url = %s",
-                (marketplace, listing_url))
+                (marketplace, listing_url),
+            )
             row = cur.fetchone()
             if row is None:
                 cur.execute(
                     "INSERT INTO listing_links (product_id, user_id, marketplace, listing_url, status)"
                     " VALUES (%s, %s, %s, %s, %s) RETURNING *",
-                    (product_id, user_id, marketplace, listing_url, status))
+                    (product_id, user_id, marketplace, listing_url, status),
+                )
                 row = cur.fetchone()
         conn.commit()
     return _row_link(row)
@@ -193,7 +236,8 @@ def confirm_link(link_id: str, *, user_id: str, accepted: bool, dsn=None) -> dic
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE listing_links SET status = %s WHERE id = %s AND user_id = %s RETURNING *",
-                (status, link_id, user_id))
+                (status, link_id, user_id),
+            )
             row = cur.fetchone()
             if row is None:
                 raise KeyError(f"tautan tidak ditemukan: {link_id}")
@@ -201,9 +245,18 @@ def confirm_link(link_id: str, *, user_id: str, accepted: bool, dsn=None) -> dic
     return _row_link(row)
 
 
-def record_price(*, link_id: str, user_id: str, price, shipping=0,
-                store_rating=None, stock: str = "unknown",
-                evidence_id: str, created_at: datetime | None = None, dsn=None) -> dict:
+def record_price(
+    *,
+    link_id: str,
+    user_id: str,
+    price,
+    shipping=0,
+    store_rating=None,
+    stock: str = "unknown",
+    evidence_id: str,
+    created_at: datetime | None = None,
+    dsn=None,
+) -> dict:
     """Tulis satu titik deret waktu harga. Angka tanpa bukti_id DITOLAK
     (§3.2: tidak ada angka di graf tanpa bukti_id)."""
     if not evidence_id:
@@ -218,8 +271,17 @@ def record_price(*, link_id: str, user_id: str, price, shipping=0,
                 "INSERT INTO price_series (tautan_id, user_id, created_at, price, shipping,"
                 " store_rating, stock, evidence_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
                 " RETURNING id, created_at",
-                (link_id, user_id, created_at or datetime.now(timezone.utc),
-                 price_f, float(shipping), store_rating, stock, evidence_id))
+                (
+                    link_id,
+                    user_id,
+                    created_at or datetime.now(UTC),
+                    price_f,
+                    float(shipping),
+                    store_rating,
+                    stock,
+                    evidence_id,
+                ),
+            )
             row = cur.fetchone()
         conn.commit()
     return {"id": str(row["id"]), "created_at": row["created_at"]}
@@ -227,43 +289,57 @@ def record_price(*, link_id: str, user_id: str, price, shipping=0,
 
 def current_prices(product_id: str, dsn=None) -> list[dict]:
     """Harga terkini tiap marketplace untuk satu produk kanonik."""
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT DISTINCT ON (t.marketplace) t.marketplace, t.listing_url,"
-                " t.status AS link_status, h.price, h.shipping, h.store_rating,"
-                " h.stock, h.evidence_id, h.created_at"
-                " FROM listing_links t JOIN price_series h ON h.tautan_id = t.id"
-                " WHERE t.product_id = %s AND t.status <> 'user_rejected'"
-                " ORDER BY t.marketplace, h.created_at DESC",
-                (product_id,))
-            return [{"marketplace": r["marketplace"], "listing_url": r["listing_url"],
-                     "link_status": r["link_status"], "price": float(r["price"]),
-                     "shipping": float(r["shipping"]),
-                     "store_rating": float(r["store_rating"]) if r["store_rating"] is not None else None,
-                     "stock": r["stock"], "evidence_id": r["evidence_id"],
-                     "created_at": r["created_at"]} for r in cur.fetchall()]
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT DISTINCT ON (t.marketplace) t.marketplace, t.listing_url,"
+            " t.status AS link_status, h.price, h.shipping, h.store_rating,"
+            " h.stock, h.evidence_id, h.created_at"
+            " FROM listing_links t JOIN price_series h ON h.tautan_id = t.id"
+            " WHERE t.product_id = %s AND t.status <> 'user_rejected'"
+            " ORDER BY t.marketplace, h.created_at DESC",
+            (product_id,),
+        )
+        return [
+            {
+                "marketplace": r["marketplace"],
+                "listing_url": r["listing_url"],
+                "link_status": r["link_status"],
+                "price": float(r["price"]),
+                "shipping": float(r["shipping"]),
+                "store_rating": float(r["store_rating"]) if r["store_rating"] is not None else None,
+                "stock": r["stock"],
+                "evidence_id": r["evidence_id"],
+                "created_at": r["created_at"],
+            }
+            for r in cur.fetchall()
+        ]
 
 
 def history_price(product_id: str, *, day: int = 30, dsn=None) -> list[dict]:
     """Riwayat harga 30 hari (API baca §3.2)."""
-    since = datetime.now(timezone.utc) - timedelta(days=day)
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT t.marketplace, h.created_at, h.price, h.shipping, h.store_rating, h.evidence_id"
-                " FROM listing_links t JOIN price_series h ON h.tautan_id = t.id"
-                " WHERE t.product_id = %s AND t.status <> 'user_rejected' AND h.created_at >= %s"
-                " ORDER BY h.created_at ASC",
-                (product_id, since))
-            return [{"marketplace": r["marketplace"], "created_at": r["created_at"],
-                     "price": float(r["price"]), "shipping": float(r["shipping"]),
-                     "store_rating": float(r["store_rating"]) if r["store_rating"] is not None else None,
-                     "evidence_id": r["evidence_id"]} for r in cur.fetchall()]
+    since = datetime.now(UTC) - timedelta(days=day)
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT t.marketplace, h.created_at, h.price, h.shipping, h.store_rating, h.evidence_id"
+            " FROM listing_links t JOIN price_series h ON h.tautan_id = t.id"
+            " WHERE t.product_id = %s AND t.status <> 'user_rejected' AND h.created_at >= %s"
+            " ORDER BY h.created_at ASC",
+            (product_id, since),
+        )
+        return [
+            {
+                "marketplace": r["marketplace"],
+                "created_at": r["created_at"],
+                "price": float(r["price"]),
+                "shipping": float(r["shipping"]),
+                "store_rating": float(r["store_rating"]) if r["store_rating"] is not None else None,
+                "evidence_id": r["evidence_id"],
+            }
+            for r in cur.fetchall()
+        ]
 
 
-def match_automatic(*, model_number: str, brand: str | None = None,
-                      dsn=None) -> dict:
+def match_automatic(*, model_number: str, brand: str | None = None, dsn=None) -> dict:
     """Pencocokan bertingkat (§3.2).
 
     Kembalikan {"cocok": produk | None, "kandidat": [...],
@@ -280,6 +356,7 @@ def match_automatic(*, model_number: str, brand: str | None = None,
 
 
 # --- Dual-level retrieval (LightRAG pattern, rewritten) ------------
+
 
 def rank_products(products, query):
     """Rank canonical products by dual-level retrieval (pure).
@@ -307,19 +384,20 @@ def rank_products(products, query):
         )
         concept_words = set()
         for field in ("brand", "series", "category"):
-            concept_words.update(
-                extract_concepts(str(product.get(field) or "")))
+            concept_words.update(extract_concepts(str(product.get(field) or "")))
         concept_overlap = (
-            len(query_concepts & concept_words) / len(query_concepts)
-            if query_concepts else 0.0
+            len(query_concepts & concept_words) / len(query_concepts) if query_concepts else 0.0
         )
         if entity_hit:
             ranked.append({"product": product, "level": "entity", "score": 1.0})
         elif concept_overlap > 0:
-            ranked.append({
-                "product": product, "level": "concept",
-                "score": round(concept_overlap, 4),
-            })
+            ranked.append(
+                {
+                    "product": product,
+                    "level": "concept",
+                    "score": round(concept_overlap, 4),
+                }
+            )
     ranked.sort(key=lambda r: (r["level"] != "entity", -r["score"]))
     return ranked
 
@@ -337,15 +415,16 @@ def product_passages(products):
             str(product.get(field) or "")
             for field in ("brand", "series", "model_number", "category")
         ).strip()
-        passages.append({
-            "id": f"product:{product.get('id')}",
-            "content": text,
-        })
+        passages.append(
+            {
+                "id": f"product:{product.get('id')}",
+                "content": text,
+            }
+        )
     return passages
 
 
-def rank_products_pipeline(products, query, mode="local", top_k=5,
-                           embedder=None):
+def rank_products_pipeline(products, query, mode="local", top_k=5, embedder=None):
     """Rank products through the retrieval pipeline (pure).
 
     The products are indexed into a knowledge graph and read back
@@ -365,8 +444,7 @@ def rank_products_pipeline(products, query, mode="local", top_k=5,
     graph = KnowledgeGraph()
     for passage in product_passages(products):
         graph.add_document(passage["id"], passage["content"])
-    ranked = mode_query(graph, query, mode=mode, embedder=embedder,
-                        top_k=top_k)
+    ranked = mode_query(graph, query, mode=mode, embedder=embedder, top_k=top_k)
     by_id = {f"product:{p.get('id')}": p for p in products}
     out = []
     for result in ranked:
@@ -374,13 +452,15 @@ def rank_products_pipeline(products, query, mode="local", top_k=5,
         product = by_id.get(product_id)
         if product is None:
             continue
-        out.append({
-            "product": product,
-            "level": result.get("level", "concept"),
-            "score": result["score"],
-            "mode": result.get("mode", mode),
-            "evidence_ids": [],
-        })
+        out.append(
+            {
+                "product": product,
+                "level": result.get("level", "concept"),
+                "score": result["score"],
+                "mode": result.get("mode", mode),
+                "evidence_ids": [],
+            }
+        )
     return out
 
 
@@ -398,10 +478,7 @@ def search_products_dual(query, *, dsn=None):
     """
     if not isinstance(query, str) or query == "":
         raise ValueError("query must be a non-empty string")
-    entity_codes = [
-        e for e in extract_entities(query)
-        if any(ch.isdigit() for ch in e)
-    ]
+    entity_codes = [e for e in extract_entities(query) if any(ch.isdigit() for ch in e)]
     concept_tokens = extract_concepts(query)
     candidates = []
     seen = set()

@@ -13,12 +13,27 @@ from puspa.graphs.identity import product_passages, rank_products_pipeline
 from puspa.memory.episodic import episodes_to_graph
 
 PRODUCTS = [
-    {"id": "p1", "brand": "Samsung", "series": "Galaxy S24",
-     "model_number": "SM-S921B", "category": "phone"},
-    {"id": "p2", "brand": "Samsung", "series": "Galaxy A55",
-     "model_number": "SM-A556E", "category": "phone"},
-    {"id": "p3", "brand": "Asus", "series": "Vivobook 14",
-     "model_number": "VIVOBOOK14", "category": "laptop"},
+    {
+        "id": "p1",
+        "brand": "Samsung",
+        "series": "Galaxy S24",
+        "model_number": "SM-S921B",
+        "category": "phone",
+    },
+    {
+        "id": "p2",
+        "brand": "Samsung",
+        "series": "Galaxy A55",
+        "model_number": "SM-A556E",
+        "category": "phone",
+    },
+    {
+        "id": "p3",
+        "brand": "Asus",
+        "series": "Vivobook 14",
+        "model_number": "VIVOBOOK14",
+        "category": "laptop",
+    },
 ]
 
 

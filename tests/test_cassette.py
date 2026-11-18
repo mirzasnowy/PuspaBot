@@ -1,14 +1,19 @@
 """Tes uji kaset (§2.11) + 10 kaset acuan."""
 
-import json
 from pathlib import Path
 
 import pytest
 
-from puspa.cassette.cassette import (CassetteError, CassettePlayer,
-                                     TASK_REFERENCE, delete_cassette_task,
-                                     load_cassette, record_from_ledger,
-                                     save_cassette, inject_price_wrong)
+from puspa.cassette.cassette import (
+    TASK_REFERENCE,
+    CassetteError,
+    CassettePlayer,
+    delete_cassette_task,
+    inject_price_wrong,
+    load_cassette,
+    record_from_ledger,
+    save_cassette,
+)
 
 CASSETTE_DIR = Path(__file__).resolve().parent.parent / "cassettes"
 
@@ -25,10 +30,16 @@ def test_ten_reference_cassettes_exist():
 
 def test_record_from_ledger_and_replay_identically(tmp_path):
     event = [
-        {"type": "tool_completed", "task_id": "t1",
-         "content": {"tool": "read_price", "output": {"type": "price", "value": 12500000}}},
-        {"type": "tool_completed", "task_id": "t1",
-         "content": {"tool": "read_price", "output": {"type": "price", "value": 11999000}}},
+        {
+            "type": "tool_completed",
+            "task_id": "t1",
+            "content": {"tool": "read_price", "output": {"type": "price", "value": 12500000}},
+        },
+        {
+            "type": "tool_completed",
+            "task_id": "t1",
+            "content": {"tool": "read_price", "output": {"type": "price", "value": 11999000}},
+        },
         {"type": "agent_message", "task_id": "t1", "content": {"text": "bukan tool"}},
     ]
     cassette = record_from_ledger(event, "t1")
@@ -42,8 +53,10 @@ def test_record_from_ledger_and_replay_identically(tmp_path):
 
 
 def test_injected_wrong_price_caught_by_verifier(tmp_path):
-    cassette = {"task_id": "t1", "recording": [
-        {"tool": "read_price", "output": {"type": "price", "value": 12500000}}]}
+    cassette = {
+        "task_id": "t1",
+        "recording": [{"tool": "read_price", "output": {"type": "price", "value": 12500000}}],
+    }
     disuntik = inject_price_wrong(cassette, tool="read_price", value_new=1000)
     assert cassette["recording"][0]["output"]["value"] == 12500000  # asli tidak diubah
     player = CassettePlayer(disuntik)
@@ -52,9 +65,15 @@ def test_injected_wrong_price_caught_by_verifier(tmp_path):
     from puspa.evidence.evidence import record_evidence
     from puspa.evidence.verifier import verify
 
-    b = record_evidence(task_id="t1", claim="Laptop X", value=1000, unit="Rp",
-                    source_url="https://tokopedia.com/produk/laptop-x",
-                    text_excerpt="Laptop X Rp1.000", reader_id="sub-1")
+    b = record_evidence(
+        task_id="t1",
+        claim="Laptop X",
+        value=1000,
+        unit="Rp",
+        source_url="https://tokopedia.com/produk/laptop-x",
+        text_excerpt="Laptop X Rp1.000",
+        reader_id="sub-1",
+    )
     verify(b, reread=lambda url: {"value": 12500000, "name": "Laptop X"})
     assert b.verdict != "Verified"
 
@@ -80,8 +99,11 @@ def test_replay_cassette_reference_numbers_identical_9_of_10():
             output = player.play(recording["tool"])
             if isinstance(output, dict) and "value" in output:
                 value_start.append(output["value"])
-        value_asli = [r["output"]["value"] for r in data["recording"]
-                      if isinstance(r["output"], dict) and "value" in r["output"]]
+        value_asli = [
+            r["output"]["value"]
+            for r in data["recording"]
+            if isinstance(r["output"], dict) and "value" in r["output"]
+        ]
         if value_start == value_asli:
             identik += 1
     assert identik >= 9

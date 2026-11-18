@@ -71,8 +71,9 @@ def _choice(rows) -> ChoiceModel:
 
 
 def _cheapest(candidates) -> ChoiceModel:
-    return min((_choice(b) for b in candidates),
-               key=lambda p: p.rp_per_1k_input + p.rp_per_1k_output)
+    return min(
+        (_choice(b) for b in candidates), key=lambda p: p.rp_per_1k_input + p.rp_per_1k_output
+    )
 
 
 def choose(role: str, *, creator_family: str | None = None) -> ChoiceModel | None:
@@ -88,7 +89,9 @@ def choose(role: str, *, creator_family: str | None = None) -> ChoiceModel | Non
     if role in ("pembaca", "pencari"):
         return _cheapest(CATALOG)
     if role == "pemeriksa":
-        candidates = [b for b in CATALOG if b[2] != creator_family] if creator_family else list(CATALOG)
+        candidates = (
+            [b for b in CATALOG if b[2] != creator_family] if creator_family else list(CATALOG)
+        )
         if not candidates:  # hanya satu keluarga di katalog: pakai termurah
             candidates = list(CATALOG)
         return _cheapest(candidates)
@@ -103,8 +106,13 @@ def compute_cost(choice: ChoiceModel, input_tokens: int, output_tokens: int) -> 
     return (input_tokens * choice.rp_per_1k_input + output_tokens * choice.rp_per_1k_output) // 1000
 
 
-def build_provider(role: str, *, creator_family: str | None = None,
-                   user_id: str | None = None, dsn: str | None = None):
+def build_provider(
+    role: str,
+    *,
+    creator_family: str | None = None,
+    user_id: str | None = None,
+    dsn: str | None = None,
+):
     """Bangun provider nanobot untuk peran lewat factory BYOK Fase 0.
 
     Kunci diambil dari vault per provider (`put_provider_key` Fase 0)
@@ -121,10 +129,9 @@ def build_provider(role: str, *, creator_family: str | None = None,
     demo_dir = Path(__file__).resolve().parent.parent.parent.parent / "demo"
     if str(demo_dir) not in sys.path:
         sys.path.insert(0, str(demo_dir))
-    from demo.byok_provider import build_byok_provider  # noqa: E402
+    from demo.byok_provider import build_byok_provider
 
-    return build_byok_provider(choice.provider, choice.model,
-                               user_id=user_id, dsn=dsn)
+    return build_byok_provider(choice.provider, choice.model, user_id=user_id, dsn=dsn)
 
 
 def default_chain(role: str, *, creator_family: str | None = None):
@@ -138,8 +145,7 @@ def default_chain(role: str, *, creator_family: str | None = None):
     return build_chain(role, creator_family=creator_family)
 
 
-def choose_with_quota(role: str, quota_store, *,
-                      creator_family: str | None = None):
+def choose_with_quota(role: str, quota_store, *, creator_family: str | None = None):
     """Pilih model untuk satu peran dengan memperhatikan kuota terlacak.
 
     Delegasi ke `puspa.router.fallback.choose_with_quota`: tier pertama
@@ -148,8 +154,7 @@ def choose_with_quota(role: str, quota_store, *,
     """
     from .fallback import choose_with_quota as _choose_with_quota
 
-    entry = _choose_with_quota(role, quota_store,
-                               creator_family=creator_family)
+    entry = _choose_with_quota(role, quota_store, creator_family=creator_family)
     return entry.choice if entry is not None else None
 
 
@@ -190,25 +195,28 @@ def register_known_oauth_providers(refresher=None):
     """
     refresher = refresher if refresher is not None else oauth_refresher()
     refresher.register_simulated(
-        "xai", token_url="https://auth.x.ai/oauth2/token",
+        "xai",
+        token_url="https://auth.x.ai/oauth2/token",
         client_id="b1a00492-073a-47ea-816f-4c329264a828",
         scope=("openid", "profile", "email", "offline_access"),
         notes="public client id from nanobot source; interactive login "
-              "still via nanobot (`nanobot provider login xai`); "
-              "no client secret is used by this public client",
+        "still via nanobot (`nanobot provider login xai`); "
+        "no client secret is used by this public client",
     )
     refresher.register_simulated(
         "github_copilot",
         token_url="https://github.com/login/oauth/access_token",
         client_id=None,
         notes="no client id wired yet; interactive login still via "
-              "nanobot (`nanobot provider login github-copilot`)",
+        "nanobot (`nanobot provider login github-copilot`)",
     )
     refresher.register_simulated(
-        "openai_codex", token_url=None, client_id=None,
+        "openai_codex",
+        token_url=None,
+        client_id=None,
         notes="token endpoint not verified from nanobot source; "
-              "interactive login still via nanobot "
-              "(`nanobot provider login openai-codex`)",
+        "interactive login still via nanobot "
+        "(`nanobot provider login openai-codex`)",
     )
     return ["xai", "github_copilot", "openai_codex"]
 

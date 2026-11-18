@@ -19,10 +19,21 @@ import psycopg
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 TABLES = (
-    "canonical_products", "listing_links", "price_series", "watchlist",
-    "read_budgets", "evidence_cache", "source_readings", "procedure_versions",
-    "procedure_uses", "canary_runs", "false_reports",
-    "monthly_credits", "token_metrics", "workflow_library", "block_requests",
+    "canonical_products",
+    "listing_links",
+    "price_series",
+    "watchlist",
+    "read_budgets",
+    "evidence_cache",
+    "source_readings",
+    "procedure_versions",
+    "procedure_uses",
+    "canary_runs",
+    "false_reports",
+    "monthly_credits",
+    "token_metrics",
+    "workflow_library",
+    "block_requests",
     "tos_checks",
 )
 
@@ -30,7 +41,9 @@ TABLES = (
 def create_schema(dsn: str | None = None) -> None:
     """Jalankan `infra/schema_graphs.sql` (idempotent)."""
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    sql = (Path(__file__).resolve().parent.parent.parent / "infra" / "schema_graphs.sql").read_text(encoding="utf-8")
+    sql = (Path(__file__).resolve().parent.parent.parent / "infra" / "schema_graphs.sql").read_text(
+        encoding="utf-8"
+    )
     with psycopg.connect(dsn, autocommit=True) as conn:
         conn.execute(sql)
 

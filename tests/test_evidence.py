@@ -1,28 +1,35 @@
 """Tes Pemeriksa + Buku Bukti + renderer angka yatim (§2.5) + proyeksi (§2.3)."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from puspa.evidence.evidence import (record_evidence, verdict_summary,
-                                      reliability_score, EvidenceError)
-from puspa.evidence.projections import (audit, cost, items_evidence, office,
-                                        thread_chat)
-from puspa.evidence.renderer import find_orphan_numbers, render, present
+from puspa.evidence.evidence import (
+    EvidenceError,
+    record_evidence,
+    reliability_score,
+    verdict_summary,
+)
+from puspa.evidence.projections import audit, cost, items_evidence, office, thread_chat
+from puspa.evidence.renderer import find_orphan_numbers, present, render
 from puspa.evidence.verifier import verify, verify_injection
 
 
 def _evidence(value=12500000, url="https://tokopedia.com/produk/laptop-x"):
-    return record_evidence(task_id="tugas-1", claim="Laptop X di Tokopedia",
-                       value=value, unit="Rp", source_url=url,
-                       text_excerpt="Laptop X Rp12.500.000 toko resmi",
-                       page="<html>Laptop X Rp12.500.000</html>",
-                       reader_id="sub-1")
+    return record_evidence(
+        task_id="tugas-1",
+        claim="Laptop X di Tokopedia",
+        value=value,
+        unit="Rp",
+        source_url=url,
+        text_excerpt="Laptop X Rp12.500.000 toko resmi",
+        page="<html>Laptop X Rp12.500.000</html>",
+        reader_id="sub-1",
+    )
 
 
 def _read_ulang_correct(url):
-    return {"value": 12500000, "name": "Laptop X di Tokopedia",
-            "time_take": datetime.now(timezone.utc)}
+    return {"value": 12500000, "name": "Laptop X di Tokopedia", "time_take": datetime.now(UTC)}
 
 
 def test_record_evidence_validation():
@@ -31,13 +38,25 @@ def test_record_evidence_validation():
     assert len(b.text_excerpt) <= 200
     assert b.verdict == "Uncertain"
     with pytest.raises(EvidenceError):
-        record_evidence(task_id="t", claim="x", value="bukan angka", unit="Rp",
-                    source_url="https://tokopedia.com/x", text_excerpt="x",
-                    reader_id="s")
+        record_evidence(
+            task_id="t",
+            claim="x",
+            value="bukan angka",
+            unit="Rp",
+            source_url="https://tokopedia.com/x",
+            text_excerpt="x",
+            reader_id="s",
+        )
     with pytest.raises(EvidenceError):
-        record_evidence(task_id="t", claim="x", value=100, unit="Rp",
-                    source_url="https://situs-asing.example/x", text_excerpt="x",
-                    reader_id="s")
+        record_evidence(
+            task_id="t",
+            claim="x",
+            value=100,
+            unit="Rp",
+            source_url="https://situs-asing.example/x",
+            text_excerpt="x",
+            reader_id="s",
+        )
 
 
 def test_verifier_marks_verified_when_value_same():
@@ -61,9 +80,14 @@ def test_verifier_cannot_confirm_when_source_unreadable():
 
 def test_verifier_uncertain_when_value_differs_but_source_changes():
     b = _evidence()
+
     def read_new(url):
-        return {"value": 12900000, "name": "Laptop X di Tokopedia",
-                "time_take": datetime.now(timezone.utc) + timedelta(minutes=5)}
+        return {
+            "value": 12900000,
+            "name": "Laptop X di Tokopedia",
+            "time_take": datetime.now(UTC) + timedelta(minutes=5),
+        }
+
     verify(b, reread=read_new)
     assert b.verdict == "Uncertain"
 
@@ -71,16 +95,20 @@ def test_verifier_uncertain_when_value_differs_but_source_changes():
 def test_renderer_content_marker_from_evidence():
     b = _evidence()
     b.verdict = "Verified"
-    text, missing = render("Harga laptop {harga:" + b.evidence_id + "} di Tokopedia.",
-                         {b.evidence_id: b})
+    text, missing = render(
+        "Harga laptop {harga:" + b.evidence_id + "} di Tokopedia.", {b.evidence_id: b}
+    )
     assert text == "Harga laptop Rp12.500.000 di Tokopedia."
     assert missing == []
 
 
 def test_number_orphan_held_then_discarded():
     # 3 dari 3 angka yatim yang disuntikkan harus ditahan/dibuang.
-    for teks_yatim in ("Harganya Rp9.999.000.", "Tagihan Rp132.500 jatuh tempo 20 Nov.",
-                       "Selisihnya 15% lebih murah."):
+    for teks_yatim in (
+        "Harganya Rp9.999.000.",
+        "Tagihan Rp132.500 jatuh tempo 20 Nov.",
+        "Selisihnya 15% lebih murah.",
+    ):
         result = present(teks_yatim, {})
         assert result["held"] is True
         assert result["dropped"]
@@ -91,8 +119,10 @@ def test_number_orphan_held_then_discarded():
 def test_number_orphan_fixed_once():
     b = _evidence()
     b.verdict = "Verified"
+
     def perbaiki(text):
         return text.replace("Rp9.999.000", "{harga:" + b.evidence_id + "}")
+
     result = present("Harganya Rp9.999.000.", {b.evidence_id: b}, fix=perbaiki)
     assert result["held"] is True
     assert result["dropped"] == []
@@ -116,18 +146,48 @@ def test_summary_verdict_badge_office():
 
 def test_projection_from_ledger():
     event = [
-        {"type": "user_message", "task_id": "t1", "agent_id": "puspa",
-         "content": {"sender": "users", "text": "halo"}, "created_at": "2026-11-17"},
-        {"type": "task_created", "task_id": "t1", "agent_id": "puspa",
-         "content": {"cost_rp": 500}, "created_at": "2026-11-17"},
-        {"type": "handoff_proposed", "task_id": "t1", "agent_id": "puspa",
-         "content": {"sender": "puspa", "to": "sub-1", "purpose": "search"}, "created_at": "2026-11-17"},
-        {"type": "evidence_recorded", "task_id": "t1", "agent_id": "puspa",
-         "content": {"evidence_id": "bukti-1", "claim": "price", "value": 100}, "created_at": "2026-11-17"},
-        {"type": "verification_completed", "task_id": "t1", "agent_id": "puspa",
-         "content": {"evidence_id": "bukti-1", "verdict": "Verified"}, "created_at": "2026-11-17"},
-        {"type": "task_completed", "task_id": "t1", "agent_id": "puspa",
-         "content": {"cost_rp": 300}, "created_at": "2026-11-17"},
+        {
+            "type": "user_message",
+            "task_id": "t1",
+            "agent_id": "puspa",
+            "content": {"sender": "users", "text": "halo"},
+            "created_at": "2026-11-17",
+        },
+        {
+            "type": "task_created",
+            "task_id": "t1",
+            "agent_id": "puspa",
+            "content": {"cost_rp": 500},
+            "created_at": "2026-11-17",
+        },
+        {
+            "type": "handoff_proposed",
+            "task_id": "t1",
+            "agent_id": "puspa",
+            "content": {"sender": "puspa", "to": "sub-1", "purpose": "search"},
+            "created_at": "2026-11-17",
+        },
+        {
+            "type": "evidence_recorded",
+            "task_id": "t1",
+            "agent_id": "puspa",
+            "content": {"evidence_id": "bukti-1", "claim": "price", "value": 100},
+            "created_at": "2026-11-17",
+        },
+        {
+            "type": "verification_completed",
+            "task_id": "t1",
+            "agent_id": "puspa",
+            "content": {"evidence_id": "bukti-1", "verdict": "Verified"},
+            "created_at": "2026-11-17",
+        },
+        {
+            "type": "task_completed",
+            "task_id": "t1",
+            "agent_id": "puspa",
+            "content": {"cost_rp": 300},
+            "created_at": "2026-11-17",
+        },
     ]
     assert len(thread_chat(event)) == 3
     assert office(event)["agents"][0]["status"] == "idle"

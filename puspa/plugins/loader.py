@@ -123,8 +123,7 @@ class PluginRecord:
             "hooks": [hook.event for hook in self.hooks],
             "commands": sorted(self.commands),
             "single_select": [
-                {"kind": kind, "name": name}
-                for kind, name in self.single_select_names
+                {"kind": kind, "name": name} for kind, name in self.single_select_names
             ],
         }
 
@@ -135,9 +134,7 @@ class LoadResult:
 
     records: list[PluginRecord] = field(default_factory=list)
     failures: list[tuple[PluginSource, Exception]] = field(default_factory=list)
-    single_select: SingleSelectRegistry = field(
-        default_factory=SingleSelectRegistry
-    )
+    single_select: SingleSelectRegistry = field(default_factory=SingleSelectRegistry)
 
     @property
     def loaded_ids(self) -> list[str]:
@@ -149,8 +146,7 @@ class LoadResult:
         if self.failures:
             source, exc = self.failures[0]
             raise PluginError(
-                f"failed to load plugin from {source.origin} "
-                f"({source.location}): {exc}"
+                f"failed to load plugin from {source.origin} ({source.location}): {exc}"
             ) from exc
 
     def get(self, plugin_id) -> PluginRecord:
@@ -172,8 +168,9 @@ def plugin_id_of(module: ModuleType) -> str:
 # ---------------------------------------------------------------- discovery
 
 
-def discover_plugins(*, user_dir=None, project_dir=None,
-                     entry_points=True, extra_dirs=None) -> list[PluginSource]:
+def discover_plugins(
+    *, user_dir=None, project_dir=None, entry_points=True, extra_dirs=None
+) -> list[PluginSource]:
     """Discover plugins from the three sources, in order.
 
     ``user_dir`` / ``project_dir`` are directories to scan (a
@@ -189,9 +186,7 @@ def discover_plugins(*, user_dir=None, project_dir=None,
     """
     sources: list[PluginSource] = []
     user = _resolve_dir(user_dir, "PUSPA_PLUGIN_DIR", DEFAULT_USER_PLUGIN_DIR)
-    project = _resolve_dir(
-        project_dir, "PUSPA_PROJECT_PLUGIN_DIR", DEFAULT_PROJECT_PLUGIN_DIR
-    )
+    project = _resolve_dir(project_dir, "PUSPA_PROJECT_PLUGIN_DIR", DEFAULT_PROJECT_PLUGIN_DIR)
     sources.extend(_scan_dir(user, "user"))
     sources.extend(_scan_dir(project, "project"))
     for extra in extra_dirs or []:
@@ -219,15 +214,9 @@ def _scan_dir(directory: Path, origin: str) -> list[PluginSource]:
     for child in sorted(directory.iterdir()):
         if child.name.startswith((".", "_")):
             continue
-        if child.is_file() and child.suffix == ".py":
-            found.append(
-                PluginSource(
-                    origin=origin,
-                    location=str(child),
-                    path=child,
-                )
-            )
-        elif child.is_dir() and (child / "__init__.py").is_file():
+        if (child.is_file() and child.suffix == ".py") or (
+            child.is_dir() and (child / "__init__.py").is_file()
+        ):
             found.append(
                 PluginSource(
                     origin=origin,
@@ -241,7 +230,7 @@ def _scan_dir(directory: Path, origin: str) -> list[PluginSource]:
 def _scan_entry_points() -> list[PluginSource]:
     try:
         points = importlib.metadata.entry_points(group=ENTRY_POINT_GROUP)
-    except Exception:  # noqa: BLE001 - no distribution metadata, no plugins
+    except Exception:
         return []
     return [
         PluginSource(
@@ -271,18 +260,16 @@ def _import_file(path: Path) -> ModuleType:
     sys.modules[module_name] = module
     try:
         spec.loader.exec_module(module)
-    except Exception as exc:  # noqa: BLE001 - wrapped with plugin context
+    except Exception as exc:
         sys.modules.pop(module_name, None)
-        raise PluginStructureError(
-            f"plugin file {path} failed to import: {exc}"
-        ) from exc
+        raise PluginStructureError(f"plugin file {path} failed to import: {exc}") from exc
     return module
 
 
 def _import_module(module_name: str) -> ModuleType:
     try:
         return importlib.import_module(module_name)
-    except Exception as exc:  # noqa: BLE001 - wrapped with plugin context
+    except Exception as exc:
         raise PluginStructureError(
             f"plugin module {module_name!r} failed to import: {exc}"
         ) from exc
@@ -291,13 +278,9 @@ def _import_module(module_name: str) -> ModuleType:
 def _call_register(module: ModuleType, context: PluginContext):
     register = getattr(module, "register", None)
     if register is None:
-        raise PluginStructureError(
-            f"plugin {plugin_id_of(module)!r} has no register(ctx) function"
-        )
+        raise PluginStructureError(f"plugin {plugin_id_of(module)!r} has no register(ctx) function")
     if not callable(register):
-        raise PluginStructureError(
-            f"plugin {plugin_id_of(module)!r}: register is not callable"
-        )
+        raise PluginStructureError(f"plugin {plugin_id_of(module)!r}: register is not callable")
     try:
         sig = inspect.signature(register)
     except (TypeError, ValueError):
@@ -313,8 +296,7 @@ def _call_register(module: ModuleType, context: PluginContext):
             )
         ]
         has_var_positional = any(
-            p.kind == inspect.Parameter.VAR_POSITIONAL
-            for p in sig.parameters.values()
+            p.kind == inspect.Parameter.VAR_POSITIONAL for p in sig.parameters.values()
         )
         if not has_var_positional and len(params) != 1:
             raise PluginStructureError(
@@ -325,15 +307,13 @@ def _call_register(module: ModuleType, context: PluginContext):
         register(context)
     except PluginError:
         raise
-    except Exception as exc:  # noqa: BLE001 - wrapped with plugin context
+    except Exception as exc:
         raise PluginStructureError(
             f"plugin {plugin_id_of(module)!r}: register(ctx) raised: {exc}"
         ) from exc
     problems = context.validate_handler_signatures()
     if problems:
-        raise PluginStructureError(
-            f"plugin {plugin_id_of(module)!r}: " + "; ".join(problems)
-        )
+        raise PluginStructureError(f"plugin {plugin_id_of(module)!r}: " + "; ".join(problems))
 
 
 def load_plugin(source, *, single_select=None) -> PluginRecord:
@@ -385,8 +365,9 @@ def load_plugin(source, *, single_select=None) -> PluginRecord:
     )
 
 
-def load_plugins(sources=None, *, user_dir=None, project_dir=None,
-                 entry_points=True, extra_dirs=None) -> LoadResult:
+def load_plugins(
+    sources=None, *, user_dir=None, project_dir=None, entry_points=True, extra_dirs=None
+) -> LoadResult:
     """Discover (when ``sources`` is None) and load plugins.
 
     Returns a ``LoadResult`` with the loaded records and one
@@ -408,7 +389,7 @@ def load_plugins(sources=None, *, user_dir=None, project_dir=None,
     for source in sources:
         try:
             record = load_plugin(source, single_select=registry)
-        except Exception as exc:  # noqa: BLE001 - collected, not raised
+        except Exception as exc:
             result.failures.append((_as_source(source), exc))
             continue
         if record.plugin_id in seen_ids:
@@ -416,8 +397,7 @@ def load_plugins(sources=None, *, user_dir=None, project_dir=None,
                 (
                     _as_source(source),
                     PluginShadowError(
-                        f"plugin {record.plugin_id!r} is already loaded; "
-                        "shadowing is rejected"
+                        f"plugin {record.plugin_id!r} is already loaded; shadowing is rejected"
                     ),
                 )
             )
@@ -432,9 +412,7 @@ def _as_source(source) -> PluginSource:
     if isinstance(source, PluginSource):
         return source
     if isinstance(source, ModuleType):
-        return PluginSource(
-            origin="module", location=source.__name__, module_name=source.__name__
-        )
+        return PluginSource(origin="module", location=source.__name__, module_name=source.__name__)
     if isinstance(source, (str, Path)):
         return PluginSource(origin="module", location=str(source))
     return PluginSource(origin="unknown", location=str(source))

@@ -5,7 +5,7 @@ against httpx MockTransport, so the single validation call is
 exercised without touching the network.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -43,9 +43,7 @@ def test_validate_token_live_accepts_2xx_rejects_401_and_fails_on_no_network():
         "https://api.example.id/me", "good-token", http_client=_client(401)
     ) == {"valid": False, "status": 401}
     with pytest.raises(TokenValidationError, match="unexpectedly"):
-        validate_token_live(
-            "https://api.example.id/me", "good-token", http_client=_client(500)
-        )
+        validate_token_live("https://api.example.id/me", "good-token", http_client=_client(500))
 
     def failing_handler(request):
         raise httpx.ConnectError("no network", request=request)
@@ -85,15 +83,17 @@ def test_attach_checks_live_first_then_seals_and_never_stores_bad_tokens():
 def test_refresh_ten_minutes_before_expiry_checked_every_five_minutes():
     assert CHECK_INTERVAL_SECONDS == 300
     assert REFRESH_BEFORE_SECONDS == 600
-    now = datetime.now(timezone.utc)
-    far = TokenApp("a", "A", "https://api.example.id/me", "token_app:a",
-                   expires_at=now + timedelta(hours=2))
-    soon = TokenApp("b", "B", "https://api.example.id/me", "token_app:b",
-                    expires_at=now + timedelta(minutes=9))
-    past = TokenApp("c", "C", "https://api.example.id/me", "token_app:c",
-                    expires_at=now - timedelta(minutes=1))
-    never = TokenApp("d", "D", "https://api.example.id/me", "token_app:d",
-                     expires_at=None)
+    now = datetime.now(UTC)
+    far = TokenApp(
+        "a", "A", "https://api.example.id/me", "token_app:a", expires_at=now + timedelta(hours=2)
+    )
+    soon = TokenApp(
+        "b", "B", "https://api.example.id/me", "token_app:b", expires_at=now + timedelta(minutes=9)
+    )
+    past = TokenApp(
+        "c", "C", "https://api.example.id/me", "token_app:c", expires_at=now - timedelta(minutes=1)
+    )
+    never = TokenApp("d", "D", "https://api.example.id/me", "token_app:d", expires_at=None)
     assert needs_refresh(far, now=now) is False
     assert needs_refresh(soon, now=now) is True
     assert needs_refresh(past, now=now) is True
@@ -110,9 +110,14 @@ def test_refresh_ten_minutes_before_expiry_checked_every_five_minutes():
 
 def test_refresh_token_app_replaces_sealed_token_only_when_due():
     store = InMemorySealStore()
-    now = datetime.now(timezone.utc)
-    app = TokenApp("notes", "Notes", "https://api.example.id/me", "token_app:notes",
-                   expires_at=now + timedelta(minutes=5))
+    now = datetime.now(UTC)
+    app = TokenApp(
+        "notes",
+        "Notes",
+        "https://api.example.id/me",
+        "token_app:notes",
+        expires_at=now + timedelta(minutes=5),
+    )
     store.put("token_app:notes", "old-token")
 
     def refresher(old_token):

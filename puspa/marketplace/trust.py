@@ -38,9 +38,9 @@ from .errors import TrustError
 from .manifest import KNOWN_LICENSES, validate_manifest
 
 __all__ = [
+    "DENIED_SOURCES",
     "MIN_TRUST_SCORE",
     "TRUSTED_SOURCES",
-    "DENIED_SOURCES",
     "TrustScore",
     "can_install_without_approval",
     "score_module",
@@ -94,9 +94,14 @@ def can_install_without_approval(score) -> bool:
     return total >= MIN_TRUST_SCORE
 
 
-def score_module(*, manifest: dict, signature_ok: bool | None = None,
-                 source: str | None = None, clean_installs: int = 0,
-                 incidents: int = 0) -> TrustScore:
+def score_module(
+    *,
+    manifest: dict,
+    signature_ok: bool | None = None,
+    source: str | None = None,
+    clean_installs: int = 0,
+    incidents: int = 0,
+) -> TrustScore:
     """Score a module from checkable signals.
 
     ``manifest`` is the raw manifest dict. ``signature_ok`` is the
@@ -167,8 +172,9 @@ def score_module(*, manifest: dict, signature_ok: bool | None = None,
     return TrustScore(total=total, signals=signals, reasons=reasons)
 
 
-def score_skill_dir(dirpath, public_key, *, clean_installs: int = 0,
-                    incidents: int = 0, **verify_kwargs) -> TrustScore:
+def score_skill_dir(
+    dirpath, public_key, *, clean_installs: int = 0, incidents: int = 0, **verify_kwargs
+) -> TrustScore:
     """Score a skill folder on disk, running the real signature check.
 
     ``verify_skill`` never raises for a damaged skill (it returns
@@ -197,8 +203,7 @@ def score_skill_dir(dirpath, public_key, *, clean_installs: int = 0,
     )
 
 
-def require_trust(score, *, explicit_approval: bool = False,
-                  skill_id: str = "") -> None:
+def require_trust(score, *, explicit_approval: bool = False, skill_id: str = "") -> None:
     """Raise :class:`TrustError` unless the score passes or the user
     explicitly approved this install."""
     if can_install_without_approval(score):

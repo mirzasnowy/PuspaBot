@@ -53,14 +53,19 @@ def record_from_ledger(event: list[dict], task_id: str) -> dict:
         if ev.get("type") != "tool_completed" or ev.get("task_id") != task_id:
             continue
         content = ev.get("content") or {}
-        recording.append({"tool": content.get("tool", "unknown"),
-                        "output": content.get("output")})
+        recording.append({"tool": content.get("tool", "unknown"), "output": content.get("output")})
     return {"task_id": task_id, "recording": recording}
 
 
-def save_cassette(cassette: dict, name: str, *, cassette_dir: Path | None = None,
-                 dsn=None, user_id: str | None = None,
-                 task_id: str | None = None) -> Path:
+def save_cassette(
+    cassette: dict,
+    name: str,
+    *,
+    cassette_dir: Path | None = None,
+    dsn=None,
+    user_id: str | None = None,
+    task_id: str | None = None,
+) -> Path:
     """Simpan kaset sebagai file JSON lokal. Kembalikan path berkas."""
     folder = Path(cassette_dir or CASSETTE_DIR_DEFAULT)
     folder.mkdir(parents=True, exist_ok=True)
@@ -71,7 +76,9 @@ def save_cassette(cassette: dict, name: str, *, cassette_dir: Path | None = None
 
         import psycopg
 
-        dsn = dsn or os.environ.get("PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
+        dsn = dsn or os.environ.get(
+            "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql"
+        )
         with psycopg.connect(dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -140,8 +147,7 @@ def inject_price_wrong(cassette: dict, *, tool: str, value_new) -> dict:
     raise CassetteError(f"tidak ada angka yang bisa disuntik di tool {tool!r}")
 
 
-def delete_cassette_task(task_id: str, *, cassette_dir: Path | None = None,
-                      dsn=None) -> dict:
+def delete_cassette_task(task_id: str, *, cassette_dir: Path | None = None, dsn=None) -> dict:
     """Hapus semua kaset satu tugas (file + baris DB). Kembalikan
     {"dihapus": [nama, ...]}. Dipanggil saat tugas dihapus (tombstone
     Buku Kerja ditulis pemanggil lewat `tugas_dihentikan`)."""
@@ -152,7 +158,9 @@ def delete_cassette_task(task_id: str, *, cassette_dir: Path | None = None,
 
         import psycopg
 
-        dsn = dsn or os.environ.get("PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
+        dsn = dsn or os.environ.get(
+            "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql"
+        )
         with psycopg.connect(dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT name, berkas FROM cassettes WHERE task_id = %s", (task_id,))

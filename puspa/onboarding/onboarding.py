@@ -25,7 +25,7 @@ BATAS YANG JUJUR (dicatat di STATUS_FASE1.md):
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import psycopg
 from psycopg.rows import dict_row
@@ -57,7 +57,7 @@ class StubNotifier:
 
     def test_send(self, user_id):
         """Kembalikan (terkirim, detail)."""
-        self.trial.append({"user_id": str(user_id), "created_at": datetime.now(timezone.utc)})
+        self.trial.append({"user_id": str(user_id), "created_at": datetime.now(UTC)})
         return False, "Web Push belum ada (Fase 2); uji kirim dicatat sebagai percobaan"
 
 
@@ -94,16 +94,17 @@ def _row(row):
         "first_result_verified": row["first_result_verified"],
         "started_at": row["started_at"],
         "completed_at": row["completed_at"],
-        "duration_seconds": float(row["duration_seconds"]) if row["duration_seconds"] is not None else None,
+        "duration_seconds": float(row["duration_seconds"])
+        if row["duration_seconds"] is not None
+        else None,
     }
 
 
 def get_status(user_id, dsn=None):
     """Status onboarding user; None kalau belum mulai."""
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM onboarding WHERE user_id = %s", (user_id,))
-            row = cur.fetchone()
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute("SELECT * FROM onboarding WHERE user_id = %s", (user_id,))
+        row = cur.fetchone()
     return _row(row) if row else None
 
 
@@ -191,15 +192,20 @@ def run_first_task(user_id, event_type, target, dsn=None, ledger=None, agent_id=
     if ledger is not None and agent_id is not None:
         for event_kind in ("task_created", "task_completed"):
             ev = ledger.append_event(
-                task_id=task_id, agent_id=agent_id, event_type=event_kind,
+                task_id=task_id,
+                agent_id=agent_id,
+                event_type=event_kind,
                 content={"tasks": event_type, "target": target, "stub": True},
             )
             event_ids.append(str(ev["id"]))
     episodic.record_episode(
         user_id,
         f"tugas pertama ({event_type}): {target} — stub, menunggu wedge Fase 3",
-        "task_completed", agent_id=agent_id, task_id=task_id,
-        event_id=event_ids[-1] if event_ids else None, dsn=dsn,
+        "task_completed",
+        agent_id=agent_id,
+        task_id=task_id,
+        event_id=event_ids[-1] if event_ids else None,
+        dsn=dsn,
     )
     duration = time.monotonic() - start
     with _connect(dsn) as conn:

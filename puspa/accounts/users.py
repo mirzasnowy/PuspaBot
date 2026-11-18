@@ -60,8 +60,8 @@ def create_user(email, password, dsn=None):
                     (email_n, password_hash),
                 )
                 user_id = cur.fetchone()[0]
-            except pg_errors.UniqueViolation:
-                raise DuplicateEmailError(f"email sudah terdaftar: {email_n}")
+            except pg_errors.UniqueViolation as err:
+                raise DuplicateEmailError(f"email sudah terdaftar: {email_n}") from err
         conn.commit()
     return str(user_id)
 
@@ -74,20 +74,19 @@ def authenticate(email, password, dsn=None):
     mana yang salah).
     """
     email_n = _normalize_email(email)
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, password_hash FROM users WHERE email = %s",
-                (email_n,),
-            )
-            row = cur.fetchone()
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, password_hash FROM users WHERE email = %s",
+            (email_n,),
+        )
+        row = cur.fetchone()
     if row is None:
         raise AuthError("email atau password salah")
     user_id, password_hash = row
     try:
         _PASSWORD_HASHER.verify(password_hash, password)
-    except (VerifyMismatchError, VerificationError, InvalidHash):
-        raise AuthError("email atau password salah")
+    except (VerifyMismatchError, VerificationError, InvalidHash) as err:
+        raise AuthError("email atau password salah") from err
     return str(user_id)
 
 

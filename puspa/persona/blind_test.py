@@ -41,9 +41,7 @@ def build_blind_test(user_id, base_replies, dsn=None, seed=7):
     persona = get_persona(user_id, dsn=dsn)
     asli = persona["example"]
     if len(asli) < AMOUNT_ASLI:
-        raise ValueError(
-            f"butuh minimal {AMOUNT_ASLI} contoh pesan user, baru ada {len(asli)}"
-        )
+        raise ValueError(f"butuh minimal {AMOUNT_ASLI} contoh pesan user, baru ada {len(asli)}")
     items = []
     for text in asli[:AMOUNT_ASLI]:
         items.append({"text": text, "source": "asli"})
@@ -121,9 +119,7 @@ def score_blind_test(test, guesses):
     test["jawaban_juri"].append({"tebakan": list(guesses), "result": result})
     test["amount_juri"] = len(test["jawaban_juri"])
     if test["amount_juri"] >= 5:
-        rata = sum(
-            j["result"]["akurasi"] for j in test["jawaban_juri"]
-        ) / test["amount_juri"]
+        rata = sum(j["result"]["akurasi"] for j in test["jawaban_juri"]) / test["amount_juri"]
         test["result"] = {
             "rata_akurasi": rata,
             "passed": rata <= AMBANG_GERBANG,

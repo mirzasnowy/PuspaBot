@@ -31,18 +31,19 @@ closed in revision 7, so no new event type is invented here).
 
 from __future__ import annotations
 
+import contextlib
 import re
 
 from puspa.runtime.hierarchy import HierarchicalPlan, HierarchicalRunner
 from puspa.runtime.tasks import Step, Task, TaskRunner, create_plan
 
 __all__ = [
+    "ROLE_FOR_STEP",
     "Planner",
     "PlannerError",
     "decompose",
     "decompose_for_reference_task",
     "decompose_hierarchical",
-    "ROLE_FOR_STEP",
     "step_tool",
 ]
 
@@ -93,8 +94,13 @@ class PlannerError(Exception):
     """Planner cannot decompose or replan a task."""
 
 
-def _step(name: str, *, permission_class: str = "Pembaca",
-          outbound: bool = False, inputs_type: str = "request") -> Step:
+def _step(
+    name: str,
+    *,
+    permission_class: str = "Pembaca",
+    outbound: bool = False,
+    inputs_type: str = "request",
+) -> Step:
     return Step(
         name=name,
         inputs={"type": inputs_type},
@@ -105,8 +111,13 @@ def _step(name: str, *, permission_class: str = "Pembaca",
     )
 
 
-def decompose(purpose: str, *, include_verify: bool = True,
-              include_present: bool = True, max_price_reads: int = 3) -> list[Step]:
+def decompose(
+    purpose: str,
+    *,
+    include_verify: bool = True,
+    include_present: bool = True,
+    max_price_reads: int = 3,
+) -> list[Step]:
     """Decompose a purpose into steps (deterministic, no model call).
 
     Keyword templates, checked in order. The generic fallback is a
@@ -145,8 +156,10 @@ def decompose(purpose: str, *, include_verify: bool = True,
         steps += present_step("summarize")
         return steps
     if "meeting" in text:
-        return [_step("gmail_read"),
-                _step("calendar_create_event", permission_class="Pelaksana", outbound=True)]
+        return [
+            _step("gmail_read"),
+            _step("calendar_create_event", permission_class="Pelaksana", outbound=True),
+        ]
     if "email" in text:
         steps = [_step("gmail_search"), _step("gmail_read")]
         if "draft" in text:
@@ -158,7 +171,7 @@ def decompose(purpose: str, *, include_verify: bool = True,
         steps += present_step("summarize")
         return steps
     if "remember" in text or "preference" in text:
-        return [_step("read_memory")] + present_step()
+        return [_step("read_memory"), *present_step()]
     if "remind" in text or "trigger" in text:
         return [_step("read_bill"), _step("create_trigger", permission_class="Pelaksana")]
     steps = [_step("gather")]
@@ -208,8 +221,9 @@ def _role_for_step(step_name: str) -> str | None:
     return None
 
 
-def decompose_hierarchical(purpose: str, *, composition: str = "sequential",
-                            max_iterations: int = 3, **kwargs) -> HierarchicalPlan:
+def decompose_hierarchical(
+    purpose: str, *, composition: str = "sequential", max_iterations: int = 3, **kwargs
+) -> HierarchicalPlan:
     """Decompose a purpose into a hierarchical plan.
 
     Same steps as ``decompose``; each step is assigned to a role
@@ -224,9 +238,9 @@ def decompose_hierarchical(purpose: str, *, composition: str = "sequential",
         role = _role_for_step(step.name)
         if role is not None:
             assignments[step.name] = role
-    return HierarchicalPlan(steps=steps, assignments=assignments,
-                            composition=composition,
-                            max_iterations=max_iterations)
+    return HierarchicalPlan(
+        steps=steps, assignments=assignments, composition=composition, max_iterations=max_iterations
+    )
 
 
 def _failed_step_name(reason: str) -> str | None:
@@ -249,15 +263,25 @@ class Planner:
     are None the planner behaves exactly as before.
     """
 
-    def __init__(self, *, sink=None, executor=None, verifier=None,
-                 max_replans: int = DEFAULT_MAX_REPLANS,
-                 world_model=None, learning_loop=None) -> None:
+    def __init__(
+        self,
+        *,
+        sink=None,
+        executor=None,
+        verifier=None,
+        max_replans: int = DEFAULT_MAX_REPLANS,
+        world_model=None,
+        learning_loop=None,
+    ) -> None:
         if max_replans < 0:
             raise PlannerError("max_replans must be 0 or more")
         self.max_replans = max_replans
         self._events: list[dict] = []
-        self.sink = sink or (lambda event_type, content: self._events.append(
-            {"type": event_type, "content": content}))
+        self.sink = sink or (
+            lambda event_type, content: self._events.append(
+                {"type": event_type, "content": content}
+            )
+        )
         self.executor = executor
         self.verifier = verifier
         self.world_model = world_model
@@ -271,24 +295,27 @@ class Planner:
         return list(self._events)
 
     def _record(self, event_type: str, content: dict) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.sink(event_type, content)
-        except Exception:
-            pass
 
     def _run_once(self, task: Task, plan: list[Step]) -> Task:
         attempt_task = Task(
-            task_id=task.task_id, user_id=task.user_id,
-            agent_id=task.agent_id, purpose=task.purpose, plan=list(plan),
+            task_id=task.task_id,
+            user_id=task.user_id,
+            agent_id=task.agent_id,
+            purpose=task.purpose,
+            plan=list(plan),
         )
-        runner = TaskRunner(sink=self.sink, executor=self.executor,
-                            verifier=self.verifier,
-                            world_model=self.world_model,
-                            learning_loop=self.learning_loop)
+        runner = TaskRunner(
+            sink=self.sink,
+            executor=self.executor,
+            verifier=self.verifier,
+            world_model=self.world_model,
+            learning_loop=self.learning_loop,
+        )
         return runner.run(attempt_task)
 
-    def _replan(self, plan: list[Step], failed_step: str | None,
-                attempt: int) -> list[Step] | None:
+    def _replan(self, plan: list[Step], failed_step: str | None, attempt: int) -> list[Step] | None:
         """Next plan after a failure, or None if no replan is possible.
 
         Attempt 1: retry the failed step with a narrower input.
@@ -306,15 +333,18 @@ class Planner:
                     inputs = dict(step.inputs)
                     inputs["retry"] = True
                     inputs["attempt"] = 2
-                    revised.append(Step(
-                        name=step.name, inputs=inputs,
-                        expected_output=dict(step.expected_output),
-                        permission_class=step.permission_class,
-                        budget=dict(step.budget),
-                        completion_condition=step.completion_condition,
-                        outbound_action=step.outbound_action,
-                        parallel_with=list(step.parallel_with),
-                    ))
+                    revised.append(
+                        Step(
+                            name=step.name,
+                            inputs=inputs,
+                            expected_output=dict(step.expected_output),
+                            permission_class=step.permission_class,
+                            budget=dict(step.budget),
+                            completion_condition=step.completion_condition,
+                            outbound_action=step.outbound_action,
+                            parallel_with=list(step.parallel_with),
+                        )
+                    )
                 else:
                     revised.append(step)
             return revised
@@ -325,10 +355,7 @@ class Planner:
 
     def run(self, task: Task) -> Task:
         """Run a task: plan, execute, replan on failure (bounded)."""
-        if task.plan:
-            plan = create_plan(task.purpose, list(task.plan))
-        else:
-            plan = decompose(task.purpose)
+        plan = create_plan(task.purpose, list(task.plan)) if task.plan else decompose(task.purpose)
         self.attempts = 0
         self.replans = 0
         self.last_failure_reason = ""
@@ -352,17 +379,30 @@ class Planner:
             if revised is None:
                 return result
             self.replans += 1
-            self._record("plan_created", {
-                "task_id": task.task_id, "attempt": attempt + 2,
-                "replan": True, "reason": reason,
-                "step": [step.name for step in revised],
-            })
+            self._record(
+                "plan_created",
+                {
+                    "task_id": task.task_id,
+                    "attempt": attempt + 2,
+                    "replan": True,
+                    "reason": reason,
+                    "step": [step.name for step in revised],
+                },
+            )
             plan = revised
         return result
 
-    def run_hierarchical(self, task: Task, root, *, composition: str = "sequential",
-                         state=None, runner: HierarchicalRunner | None = None,
-                         max_iterations: int = 3, **kwargs):
+    def run_hierarchical(
+        self,
+        task: Task,
+        root,
+        *,
+        composition: str = "sequential",
+        state=None,
+        runner: HierarchicalRunner | None = None,
+        max_iterations: int = 3,
+        **kwargs,
+    ):
         """Run a task as a hierarchical plan through ``root``.
 
         Builds the plan with ``decompose_hierarchical`` and runs
@@ -372,16 +412,20 @@ class Planner:
         the tool resolver). Returns the runner's ``RunResult``.
         The flat ``run`` path above is untouched.
         """
-        plan = decompose_hierarchical(task.purpose, composition=composition,
-                                      max_iterations=max_iterations, **kwargs)
+        plan = decompose_hierarchical(
+            task.purpose, composition=composition, max_iterations=max_iterations, **kwargs
+        )
         if runner is None:
             executor = self.executor
             adapted = None
             if executor is not None:
+
                 def adapted(node_name, step_name, inputs, state):
                     return executor(step_name, inputs)
-            runner = HierarchicalRunner(root, executor=adapted, sink=self.sink,
-                                        tool_resolver=step_tool)
+
+            runner = HierarchicalRunner(
+                root, executor=adapted, sink=self.sink, tool_resolver=step_tool
+            )
         result = runner.run(plan, state=state, task_id=task.task_id)
         task.result.update(result.results)
         task.status = "failed" if result.blocked else "completed"

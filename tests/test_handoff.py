@@ -1,19 +1,27 @@
 """Tes kontrak handoff + mesin status + detak (§2.4)."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import pytest
 
-from puspa.runtime.handoff import (Handoff, HandoffContract, HandoffError,
-                                   check_handoff_limit_between_agents,
-                                   reject_cycle)
+from puspa.runtime.handoff import (
+    Handoff,
+    HandoffContract,
+    HandoffError,
+    check_handoff_limit_between_agents,
+    reject_cycle,
+)
 
 
 def _kontrak(**kw):
-    dasar = {"from_id": "agen-a", "to_id": "agen-b", "purpose": "cari harga",
-             "inputs": {"type": "search_price", "product": "laptop"},
-             "expected_output": {"type": "price"},
-             "completion_definition": "harga + toko + tautan ditemukan"}
+    dasar = {
+        "from_id": "agen-a",
+        "to_id": "agen-b",
+        "purpose": "cari harga",
+        "inputs": {"type": "search_price", "product": "laptop"},
+        "expected_output": {"type": "price"},
+        "completion_definition": "harga + toko + tautan ditemukan",
+    }
     dasar.update(kw)
     return HandoffContract(**dasar)
 

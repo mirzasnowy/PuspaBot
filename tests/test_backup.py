@@ -1,7 +1,6 @@
 """Tes Cadangan terenkripsi + restore (C126, gerbang 15 parsial)."""
 
-import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import psycopg
@@ -22,13 +21,17 @@ RESTORE_DSN = "dbname=puspa_test_restore user=root host=/var/run/postgresql"
 
 
 def _create_db_restore():
-    with psycopg.connect("dbname=postgres user=root host=/var/run/postgresql", autocommit=True) as conn:
+    with psycopg.connect(
+        "dbname=postgres user=root host=/var/run/postgresql", autocommit=True
+    ) as conn:
         conn.execute("DROP DATABASE IF EXISTS puspa_test_restore")
         conn.execute("CREATE DATABASE puspa_test_restore OWNER root")
 
 
 def _delete_db_restore():
-    with psycopg.connect("dbname=postgres user=root host=/var/run/postgresql", autocommit=True) as conn:
+    with psycopg.connect(
+        "dbname=postgres user=root host=/var/run/postgresql", autocommit=True
+    ) as conn:
         conn.execute("DROP DATABASE IF EXISTS puspa_test_restore")
 
 
@@ -52,11 +55,11 @@ def test_create_and_backup_items(make_user, test_dsn, backup_key, tmp_path):
 
 
 def test_retention_14_day_deletes_older_ones(backup_key, tmp_path):
-    old = datetime.now(timezone.utc) - timedelta(days=15)
+    datetime.now(UTC) - timedelta(days=15)
     (tmp_path / "puspa-20200101-000000.dump.enc").write_bytes(b"x")
-    new = tmp_path / f"puspa-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.dump.enc"
+    new = tmp_path / f"puspa-{datetime.now(UTC):%Y%m%d-%H%M%S}.dump.enc"
     new.write_bytes(b"x")
-    deleted = prune_backups(tmp_path, now=datetime.now(timezone.utc))
+    deleted = prune_backups(tmp_path, now=datetime.now(UTC))
     assert deleted == ["puspa-20200101-000000.dump.enc"]
     assert new.exists()
 
@@ -67,7 +70,9 @@ def test_restore_to_clean_db_and_verify(make_user, test_dsn, backup_key, tmp_pat
     profile.add_fact(u["user_id"], "name", "Nero", "user_stated", dsn=test_dsn)
     task_id = "11111111-1111-1111-1111-111111111111"
     ledger.append_event(
-        task_id=task_id, agent_id=u["agent_id"], event_type="task_created",
+        task_id=task_id,
+        agent_id=u["agent_id"],
+        event_type="task_created",
         content={"tasks": "uji restore"},
     )
     result = create_backup(dsn=test_dsn, backup_dir=tmp_path)

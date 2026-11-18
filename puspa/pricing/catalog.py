@@ -42,31 +42,88 @@ SEED_CATALOG: list[tuple[str, str, str, str, dict]] = [
 
 # 10 barang uji default (keputusan 7) — satu per kategori, HP dua.
 PRODUCT_TEST_DEFAULT: list[dict] = [
-    {"brand": "Samsung", "series": "Galaxy S24", "model_number": "SM-S921B",
-     "category": "phone", "variant": {"storage": "256GB", "color": "hitam"}},
-    {"brand": "Apple", "series": "iPhone 15", "model_number": "A3090",
-     "category": "phone", "variant": {"storage": "128GB", "color": "hitam"}},
-    {"brand": "Apple", "series": "MacBook Air M3", "model_number": "MQKP3ID/A",
-     "category": "laptop", "variant": {"storage": "256GB", "color": "silver"}},
-    {"brand": "Samsung", "series": "Galaxy Tab A9", "model_number": "SM-X110",
-     "category": "tablet", "variant": {"storage": "64GB", "color": "abu-abu"}},
-    {"brand": "Apple", "series": "Watch SE 2", "model_number": "A2729",
-     "category": "smartwatch", "variant": {"color": "hitam"}},
-    {"brand": "Samsung", "series": "Galaxy Buds2 Pro", "model_number": "SM-R510",
-     "category": "earphones/TWS", "variant": {"color": "putih"}},
-    {"brand": "LG", "series": "UHD 4K 55 inci", "model_number": "55UR7500PSC",
-     "category": "TV", "variant": {}},
-    {"brand": "Sony", "series": "PlayStation 5 Slim", "model_number": "CFI-2018A01",
-     "category": "game console", "variant": {"storage": "1TB"}},
-    {"brand": "Canon", "series": "EOS R50", "model_number": "EOSR50",
-     "category": "camera", "variant": {}},
-    {"brand": "Daikin", "series": "AC Split 1 PK", "model_number": "FTKQ25",
-     "category": "branded home appliances", "variant": {}},
+    {
+        "brand": "Samsung",
+        "series": "Galaxy S24",
+        "model_number": "SM-S921B",
+        "category": "phone",
+        "variant": {"storage": "256GB", "color": "hitam"},
+    },
+    {
+        "brand": "Apple",
+        "series": "iPhone 15",
+        "model_number": "A3090",
+        "category": "phone",
+        "variant": {"storage": "128GB", "color": "hitam"},
+    },
+    {
+        "brand": "Apple",
+        "series": "MacBook Air M3",
+        "model_number": "MQKP3ID/A",
+        "category": "laptop",
+        "variant": {"storage": "256GB", "color": "silver"},
+    },
+    {
+        "brand": "Samsung",
+        "series": "Galaxy Tab A9",
+        "model_number": "SM-X110",
+        "category": "tablet",
+        "variant": {"storage": "64GB", "color": "abu-abu"},
+    },
+    {
+        "brand": "Apple",
+        "series": "Watch SE 2",
+        "model_number": "A2729",
+        "category": "smartwatch",
+        "variant": {"color": "hitam"},
+    },
+    {
+        "brand": "Samsung",
+        "series": "Galaxy Buds2 Pro",
+        "model_number": "SM-R510",
+        "category": "earphones/TWS",
+        "variant": {"color": "putih"},
+    },
+    {
+        "brand": "LG",
+        "series": "UHD 4K 55 inci",
+        "model_number": "55UR7500PSC",
+        "category": "TV",
+        "variant": {},
+    },
+    {
+        "brand": "Sony",
+        "series": "PlayStation 5 Slim",
+        "model_number": "CFI-2018A01",
+        "category": "game console",
+        "variant": {"storage": "1TB"},
+    },
+    {
+        "brand": "Canon",
+        "series": "EOS R50",
+        "model_number": "EOSR50",
+        "category": "camera",
+        "variant": {},
+    },
+    {
+        "brand": "Daikin",
+        "series": "AC Split 1 PK",
+        "model_number": "FTKQ25",
+        "category": "branded home appliances",
+        "variant": {},
+    },
 ]
 
 CATEGORY_SCOPE = (
-    "phone", "laptop", "tablet", "smartwatch", "earphones/TWS", "TV",
-    "game console", "camera", "branded home appliances",
+    "phone",
+    "laptop",
+    "tablet",
+    "smartwatch",
+    "earphones/TWS",
+    "TV",
+    "game console",
+    "camera",
+    "branded home appliances",
 )
 
 # Kategori yang ditolak tegas (§4.1, §5.2): bot menolak/menyesuaikan
@@ -97,8 +154,16 @@ def seed_catalog(dsn=None) -> dict:
 
     added = 0
     for brand, series, model_number, category, variant in SEED_CATALOG:
-        add_product(brand=brand, series=series, model_number=model_number,
-                      category=category, variant=variant, dsn=dsn)
+        add_product(
+            brand=brand,
+            series=series,
+            model_number=model_number,
+            category=category,
+            variant=variant,
+            dsn=dsn,
+        )
         added += 1
-    return {"bibit_ditulis": added,
-            "product_unik": len({(m, n) for m, _s, n, _k, _v in SEED_CATALOG})}
+    return {
+        "bibit_ditulis": added,
+        "product_unik": len({(m, n) for m, _s, n, _k, _v in SEED_CATALOG}),
+    }

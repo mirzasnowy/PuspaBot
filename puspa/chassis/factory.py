@@ -26,9 +26,10 @@ menimpanya dengan builtin bernama sama.
 
 from __future__ import annotations
 
+import contextlib
+import os
 from dataclasses import dataclass, field
 from typing import Any
-import os
 
 from .context import make_ledger_sink
 from .hooks import PuspaHook, make_puspa_hook_factory
@@ -60,8 +61,12 @@ class PuspaChassis:
     learning_loop: Any = None  # puspa.memory.learning_loop.LearningLoop atau None
     rail_set: Any = None  # puspa.guardrails.RailSet or None (None = no rails in bare build_hook; assemble() builds the default set)
     plugin_dirs: tuple = ()  # extra plugin directories (G27); PUSPA_PLUGIN_DIRS (colon-separated) is also read at load time
-    plugins: list = field(default_factory=list)  # loaded PluginRecord list (G27); pre-load it or let assemble() fill it
-    plugin_failures: list = field(default_factory=list)  # (source, exception) pairs for plugins that failed to load
+    plugins: list = field(
+        default_factory=list
+    )  # loaded PluginRecord list (G27); pre-load it or let assemble() fill it
+    plugin_failures: list = field(
+        default_factory=list
+    )  # (source, exception) pairs for plugins that failed to load
 
     def brain(self):
         """The session brain for this chassis, or None.
@@ -83,9 +88,7 @@ class PuspaChassis:
         if self.log is not None:
             return self.log
         if self.ledger is not None:
-            return make_ledger_sink(
-                self.ledger, task_id=self.task_id, agent_id=self.agent_id
-            )
+            return make_ledger_sink(self.ledger, task_id=self.task_id, agent_id=self.agent_id)
         return None
 
 
@@ -126,11 +129,7 @@ def load_chassis_plugins(chassis: PuspaChassis):
     """
     from puspa.plugins.loader import load_plugins
 
-    env_dirs = [
-        item
-        for item in os.environ.get("PUSPA_PLUGIN_DIRS", "").split(":")
-        if item
-    ]
+    env_dirs = [item for item in os.environ.get("PUSPA_PLUGIN_DIRS", "").split(":") if item]
     extra_dirs = [str(item) for item in chassis.plugin_dirs] + env_dirs
     result = load_plugins(extra_dirs=extra_dirs)
     chassis.plugins = result.records
@@ -138,7 +137,7 @@ def load_chassis_plugins(chassis: PuspaChassis):
     sink = chassis.sink()
     if sink is not None:
         for source, exc in result.failures:
-            try:
+            with contextlib.suppress(Exception):
                 sink(
                     "plugin_load_failed",
                     {
@@ -147,8 +146,6 @@ def load_chassis_plugins(chassis: PuspaChassis):
                         "error": str(exc),
                     },
                 )
-            except Exception:
-                pass
     return result
 
 
@@ -182,15 +179,12 @@ def assemble(chassis: PuspaChassis, config, *, bus=None):
 
     from puspa.guardrails import default_rail_set
 
-    rail_set = (
-        chassis.rail_set if chassis.rail_set is not None else default_rail_set()
-    )
+    rail_set = chassis.rail_set if chassis.rail_set is not None else default_rail_set()
     # G27: load plugins only when the chassis asks for them
     # (plugin_dirs / PUSPA_PLUGIN_DIRS) or already carries loaded
     # records. With no plugins configured, nothing changes.
-    if chassis.plugin_dirs or os.environ.get("PUSPA_PLUGIN_DIRS"):
-        if not chassis.plugins:
-            load_chassis_plugins(chassis)
+    if (chassis.plugin_dirs or os.environ.get("PUSPA_PLUGIN_DIRS")) and not chassis.plugins:
+        load_chassis_plugins(chassis)
     registry = build_registry(chassis)
     hooks = [build_hook(chassis, rail_set=rail_set)]
     if chassis.plugins:
@@ -199,11 +193,10 @@ def assemble(chassis: PuspaChassis, config, *, bus=None):
         plugin_hook = build_plugin_hook(chassis.plugins)
         if plugin_hook is not None:
             hooks.append(plugin_hook)
-    loop = AgentLoop.from_config(
+    return AgentLoop.from_config(
         config,
         bus=bus,
         tool_registry=registry,
         hooks=hooks,
         hook_factories=[build_hook_factory(chassis, rail_set=rail_set)],
     )
-    return loop
