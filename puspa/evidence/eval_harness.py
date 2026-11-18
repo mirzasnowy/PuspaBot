@@ -61,6 +61,7 @@ __all__ = [
     "cassette_solver",
     "derive_expected_state",
     "load_reference_tasks",
+    "run_bfcl_eval",
     "run_heldout_eval",
     "run_price_injection_eval",
     "run_reference_eval",
@@ -307,6 +308,31 @@ def run_heldout_eval(cassette_dir: Path | str | None = None, **kwargs) -> EvalRe
     harness = EvalHarness(cassette_dir=cassette_dir, solver=heldout_solver,
                           scorer=score_agentbench, **kwargs)
     return harness.run(load_heldout_tasks())
+
+
+def run_bfcl_eval(agent=None, **kwargs) -> EvalReport:
+    """Run the BFCL-style held-out tasks and return their own report.
+
+    The BFCL set is disjoint from the 10 dev cassettes and from the
+    AgentBench held-out set (see ``puspa/evidence/bfcl_tasks.py``)
+    and is scored separately: this report's score is the BFCL
+    score only, never mixed with the dev score from
+    ``run_reference_eval`` or the AgentBench score from
+    ``run_heldout_eval``. ``agent`` is a callable
+    ``(bfcl_task, turn_index, history) -> list of calls``; the
+    default is the reference agent, which emits the reference
+    calls. The import is lazy because ``bfcl_tasks`` imports this
+    module.
+    """
+    from puspa.evidence.bfcl_tasks import (
+        load_bfcl_tasks,
+        make_bfcl_solver,
+        score_bfcl,
+    )
+
+    harness = EvalHarness(solver=make_bfcl_solver(agent),
+                          scorer=score_bfcl, **kwargs)
+    return harness.run(load_bfcl_tasks())
 
 
 def run_price_injection_eval(
