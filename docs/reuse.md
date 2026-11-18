@@ -885,6 +885,55 @@ schedule yet); tool output is simulated from inline cassettes,
 not live tools (deliberate, consistent with AgentBench); float
 comparison is exact, no epsilon tolerance yet.
 
+### 9Router: RTK tool_result compression (mechanism 1 of 3)
+
+Pattern: decolua/9router (MIT) + RTK (rtk-ai/rtk, Apache-2.0
+for the CLI, verified from the RTK README 18 Nov 2026: the
+`rtk` CLI is Apache-2.0, covering the hook core and all filter
+commands; the `rtk-engine` and `rtk-proxy` daemon are BUSL-1.1
+and were NOT used). No code copied, no fork.
+`puspa/router/compression.py` (new, 736 lines): lossless
+compression of tool results before they reach the model,
+rewritten from scratch from the RTK pattern. `detect_kind`
+auto-detects from the first 1KB; 10 filters per kind (`diff`,
+`status`, `grep`, `find`, `ls`, `tree`, `log`, `read`, `search`,
+`generic` smart-truncate); fail-safe returns the raw text when
+a filter fails or the result grows (`filter_error`,
+`no_savings`, `too_short`); `count_tokens` uses tiktoken
+`cl100k_base` when available, otherwise a chars/4 estimate
+clearly labeled as an estimate. Wiring in
+`puspa/chassis/tools.py` (about 24 lines, 2 blocks):
+`PuspaTool.execute` compresses after the injection scan and
+before returning to nanobot/the model (error results are not
+compressed, `error_code` is kept), and `McpClientWrapper.call_
+tool` compresses string results. The ledger only records tool
+name/status, not content, so the evidence the Checker / Evidence
+Book reads is unchanged. Tests:
+`tests/test_tool_result_compression.py`, 53 cases from 26
+functions, 53 passed. Measured savings with tiktoken
+`cl100k_base` on realistic noisy fixtures: log 94.1% tokens,
+diff 48.2%, generic 56.4%, grep 40.3%, search 20.0%, status
+17.5%, find 16.5%, ls 3.3%, read 7.3%, tree 0.2%. On real tool
+output (smaller/cleaner): `git diff -U10` 57.4% tokens, `find`
+15.2%, `ls -la` 2.3%, `tree` 0.1%, `cat -n` 0.0%, small `git
+diff` 0.5%, `grep` without duplicates 0.2% (an early 64%
+figure was a fixture artifact from triplicating the fixture,
+honestly corrected). Honest limits: diff context lines are the
+ONE exception to the orphan-number rule (numbers that only
+appear in folded unchanged context lines are not kept
+literally, only their line count in the marker; every `+`/`-`
+line is kept whole with its numbers, because unchanged lines
+can be re-read from the file); small/clean output barely saves
+and the fail-safe returns raw text, which is the correct
+behavior, not a failure; tree saves only 0.2% tokens (box-
+drawing characters cost almost the same tokenized); this is
+tool_result only, no conversation-history compression or prompt
+caching (that is G20, separate work). Two real bugs were found
+and fixed by the tests (the `ls` filter dropped the link-count
+column, the `tree` filter had a global dedup that dropped
+`model.py` in different modules). No new dependency: tiktoken
+was already pinned in `requirements.txt` (0.14.0).
+
 ### mem0: extraction quality + ranked recall
 
 Pattern: mem0ai/mem0 (Apache-2.0). No code copied, no fork.

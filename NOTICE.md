@@ -244,6 +244,12 @@ to be included here because no third-party code is vendored.
   `puspa/evidence/bfcl_checker.py` and
   `puspa/evidence/bfcl_tasks.py`; all Puspa task data is
   original, no BFCL task data was copied.
+- **rtk-ai/rtk** (Apache License 2.0) - pattern: per-command
+  output filters with fail-safe to raw output ("never blocks,
+  never worse"). Used as a pattern in
+  `puspa/router/compression.py` and the wiring in
+  `puspa/chassis/tools.py`. The BUSL-1.1 engine and proxy were
+  not used; no RTK code was copied.
 
 ## Puspa license
 
