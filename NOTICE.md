@@ -278,6 +278,36 @@ to be included here because no third-party code is vendored.
   `puspa/router/oauth.py` and `puspa/router/translate.py`;
   no 9Router code was copied.
 
+# NOTICE - Puspa Brain deepening, rework 1 follow-up: bge reranker swap (18 Nov 2026)
+
+## New dependency: FlagEmbedding (MIT License)
+
+- **Source:** https://github.com/FlagOpen/FlagEmbedding
+- **Version:** `FlagEmbedding==1.4.2`, installed via pip (see
+  `requirements.txt`), with its direct dependencies
+  `datasets==5.2.0`, `accelerate==1.16.0`, `peft==0.21.3`,
+  `ir-datasets==0.6.3`, `sentencepiece==0.2.3`. The package is
+  a pip dependency, not vendored.
+- **License:** MIT License (verified from the GitHub repo
+  LICENSE file, "MIT License, Copyright (c) 2022 staoxiao",
+  and the GitHub API SPDX tag `MIT`, 18 Nov 2026)
+- **Use in this repo:** the multilingual cross-encoder
+  backend in `puspa/retrieval/reranker.py`
+  (`CrossEncoderReranker.from_flagembedding`, default backend
+  of `make_reranker(kind="cross_encoder")`), scoring
+  (query, passage) pairs through `FlagReranker.compute_score`.
+
+## Model: BAAI/bge-reranker-v2-m3 (Apache License 2.0)
+
+- **Source:** https://huggingface.co/BAAI/bge-reranker-v2-m3
+- **License:** Apache License 2.0 (verified from the
+  HuggingFace API tag `license:apache-2.0`, 18 Nov 2026)
+- **Use in this repo:** the default cross-encoder model
+  (`DEFAULT_BGE_RERANKER_MODEL`); weights about 2.3 GB
+  (fp32), downloaded from HuggingFace at first use and cached
+  locally in `~/.cache/huggingface`. No model code is vendored
+  and no BAAI code was copied.
+
 ## Puspa license
 
 The code in this directory is Puspa's own work (Nero / Luna). The Puspa
