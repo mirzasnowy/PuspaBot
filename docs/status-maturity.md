@@ -1555,3 +1555,52 @@ G1's `package-lock.json` (3,201 lines) and `generated-types.ts`
 from the ratchet (lockfiles, `generated-*`, `dist/`,
 `node_modules/` — commit c499e487). Re-run: **2,463 passed, 9
 skipped, 1 warning, 14m24s, EXIT 0** — Wave 10 green.
+
+## Wave 11: G1 (full PWA, TypeScript, DONE 18 Nov 2026)
+
+### G1 Full PWA (commit be76d3e3)
+
+React 19 + Vite app in `apps/pwa/` (51 files pushed), 7 live
+screens + login, OpenAPI contract + generated client. `docs/
+openapi-pwa.yaml` (contract for every PWA route: 7 screens, /sse,
+/bukti, all /api/*); `src/api/generated-types.ts` (1,299 lines,
+openapi-typescript 7.13.0 output, never edited by hand);
+`src/api/client.ts` (thin typed fetch wrapper: chat, tasks, stop,
+one-tap approval, agents, connectors, push, onboarding, SSE
+parse); `src/state/` (one store per screen: chat, tasks,
+approvals, memory, connectors, office, modules); `src/components/`
+(ApprovalCard locks after deciding and shows the content hash the
+decision binds to, Nav, WorkStrip); 7 live screens. Server wiring
+in `puspa/pwa/app.py`: serves the built SPA from `apps/pwa/dist`
+with a server bootstrap (`window.__PUSPA_BOOTSTRAP__`, JSON
+escaped against script breakout) and falls back to the Jinja
+templates when `dist` has not been built; no API route or auth
+behaviour changed. Also fixes the login fallback, which rendered
+`masuk.html` — a template that never existed (the real one is
+`login.html`). Docs: `docs/pwa.md` (architecture, hermes
+checklist mapping, honest limits). New npm deps, all MIT/
+Apache-2.0: react, react-dom, vite, typescript, vitest, jsdom,
+@testing-library, openapi-typescript. `node_modules/` and `dist/`
+are build outputs, excluded from the push (and from the ratchet);
+a fresh checkout runs `npm install && npm run build` in
+`apps/pwa/` first. `.gitignore` gains `node_modules/` + `dist/`
+(coordinator fix — the worker did not add them). Verified by the
+coordinator: `npm run build` green (tsc + vite, 1.86s), 37 vitest
+tests pass (8 files), Python PWA tests 7 pass (`tests/test_pwa.py`,
+app.py wiring intact). Honest limits (from `docs/pwa.md`): no read
+endpoints for lists — the SPA hydrates from the server bootstrap
+on each navigation, so connector grant state is session-local
+(resets on reload), Tasks shows only tasks created in the
+session, and memory confirm/correct/delete/export run through
+chat until those endpoints land (follow-up: add the read
+endpoints, then switch the screens to refresh from them); login
+callback not final (`/auth/google/callback` still returns the
+Fase 1 note; no live Google login verified — no client
+credentials in scope); no live browser check (build + unit tests
++ server smoke only; a live render + click-through is still
+open); chat messages do not yet carry per-number Bukti buttons
+(evidence panel route unchanged); push needs a VAPID key (no
+push round-trip verified live); no photo upload in the chat
+composer yet (text only). Wave 11 central SOLO suite: pending at
+docs time (runs after this commit; number lands here once it is
+green).
