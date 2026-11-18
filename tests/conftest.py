@@ -55,6 +55,32 @@ def test_dsn():
     return os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_app_role(test_dsn):
+    """Pastikan peran puspa_app ada SEBELUM tes apa pun berjalan.
+
+    (create_schema di bawah memberi GRANT ke puspa_app hanya kalau
+    peran sudah ada, jadi peran harus ada dulu. Sama seperti yang
+    dilakukan infra/schema_core.sql.)
+
+    Dulu fixture ini tinggal di tests/test_rls.py, jadi peran baru
+    dibuat saat file itu berjalan. pytest menjalankan file menurut
+    abjad, dan tests/test_ledger.py (yang juga memakai SET ROLE
+    puspa_app) berjalan SEBELUM test_rls.py: di DB baru (mis. setelah
+    VM diganti) test ledger itu gagal dengan "role puspa_app does not
+    exist", lalu lolos di run berikutnya karena peran sudah dibuat.
+    Di conftest, peran dijamin ada sebelum file tes mana pun.
+    """
+    with psycopg.connect(test_dsn) as conn:
+        conn.execute(
+            "DO $$ BEGIN "
+            "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'puspa_app') THEN "
+            "CREATE ROLE puspa_app NOLOGIN; "
+            "END IF; END $$"
+        )
+        conn.commit()
+
+
 @pytest.fixture(autouse=True)
 def _reset_tables(test_dsn):
     create_account_schema(test_dsn)
