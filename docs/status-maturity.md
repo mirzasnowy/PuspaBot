@@ -1661,3 +1661,51 @@ one home volume are not refused at open (G26 single-writer is
 process-wide — the file-lock follow-up). Wave 12 central SOLO
 suite: **2,575 passed, 9 skipped, 1 warning, 16m51s, EXIT 0** —
 Wave 12 green (+112 from G13).
+
+## Wave 13: G14 (Telegram/WhatsApp channels, DONE 18 Nov 2026)
+
+### G14 Channels (commit 181a545e)
+
+New package `puspa/channels/` (16 modules, 1,986 lines) + 4
+test files (914 lines), 61 passed (verified by the coordinator),
+ruff check + format clean, mypy clean (16 source files).
+`run.py` (GatewayRunner facade, process-wide single-writer
+registry, lazy adapters, webhook + long-poll paths, offset
+restore/persist, drop-backlog option); `telegram.py` (raw Bot API
+over pinned `httpx==0.28.1`, no new dependency —
+python-telegram-bot is LGPL; `getUpdates` with offset as query
+params, webhook secret verify, `sendMessage` bounded retry +
+backoff); `whatsapp.py` (raw Cloud API over pinned httpx, webhook
+handshake + HMAC signature); `authz.py` (allowlist + DM pairing:
+6-digit codes, hash-only, 5-min TTL, 5 wrong → 10-min lock);
+`inbound.py` (bot-loop guard, pairing command, dedup, silent drop
+of unauthorised chats with a ledger record, agent then reply via
+origin adapter); `ledger.py` (own `channel_deliveries` table, not
+the core ledger — no new core event type); `delivery.py`,
+`agent.py` (TaskRunner seam: one message = one Task with a
+`respond` step), `notify.py` (bot name only, never message
+content), `heartbeat.py`, `config.py` (tokens from env only,
+never hardcoded), `schema.py`. Schema:
+`infra/schema_channels.sql` (one table). Docs: `docs/channels.md`
++ `docs/adding-a-platform.md` (guide for a third adapter).
+Coordinator fixes during verification (worker code, not worker
+report): the Postgres ledger `record()` RETURNED only
+id/created_at/updated_at but built the record from
+`row["status"]` etc. — KeyError on every Postgres write (now
+`RETURNING *`); `poll_once` sent the `getUpdates` offset in the
+JSON body, but the conventional call (and the test) puts
+offset/timeout in the query string — `_post` now takes query
+params (plus a `ruff format` wrap on the longer signature). First
+run: 5 failed, 56 passed; after fixes: 61 passed. Honest limits
+(from `docs/channels.md`): NO live bot verified (no real token,
+no real message sent; all HTTP in tests goes through
+`httpx.MockTransport`). Groups are DM-only in this iteration
+(group messages dropped). The production agent executor is NOT
+wired yet — `TaskRunnerAgent` with no executor raises
+`ChannelError` fail-closed (follow-up, named in `agent.py`:
+wire the executor that calls the model via `puspa.chassis`).
+Pairing bindings are in-memory (durable home is a follow-up with
+its own migration). Channel bindings/session keys are not yet
+wired to the PWA; the gateway is not yet connected to a live
+scheduler run. Wave 13 central SOLO suite: pending at docs time
+(runs after this commit; number lands here once it is green).
