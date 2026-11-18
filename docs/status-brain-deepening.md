@@ -230,6 +230,20 @@ as trust hardening along the way, then onboarding + insights
 (G28), then computer use (G16) explicitly after MVP, then i18n
 (G18) at global expansion.
 
+Nero's order on this list (18 Nov 2026 11:55 WIB): address ALL
+28 gaps independently, one commit each. The maturity phase works
+the list item by item, each item its own iteration with its own
+commit + push, without asking approval per item. The order
+follows the report's §6 priority above, with G15 (CI/docs)
+allowed first because it is cheap. Two exceptions: items that
+need Nero's decision (the LICENSE choice, and the billing model:
+credits vs subscription vs selling compute) must NOT be guessed.
+Build the mechanism, make the choice a config / decision point,
+and report it to the parent agent so it can be asked to Nero.
+Order is unchanged: Tier 2 first, then the 4 rework items,
+then this phase. Do not start this phase before the rework is
+done.
+
 License notes from the report: DuskBot PolyForm Noncommercial
 1.0.0 (study only). OpenBot repo is MIT, but its
 memory/learning/governance lives in separately licensed
