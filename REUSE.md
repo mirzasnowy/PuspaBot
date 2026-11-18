@@ -434,6 +434,36 @@ fakes); the production chassis executor is not wired; the todo
 store is in-memory only; the Responses API has no live caller;
 compression is a seam, not a wired feature.
 
+## Maturity phase (G4 + G5 + G6 — approvals taxonomy + fail-closed gateway + audit trail with initiator)
+
+No new dependency. Only PATTERNS adapted (rewritten, not copied):
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| Approval taxonomy: kinds that always ask (delete, send to another person, share, post, pay, change password/account settings); tiered answers Allow once / for this conversation / always (24h expiry); admin closure per kind (Ask every time / Members do it themselves); rules from own / admin / conversation owners, strictest wins; auto-review; extra vigilant switch (default off); check-in tasks ask before every change | OpenBot (MIT; Intelligence separately licensed, enforcement server image closed — neither used) | The taxonomy shape, the tiered-answer scopes, the closure modes, the strictest-wins order, the auto-review idea, the extra-vigilant and check-in rules | `puspa/policy/approvals.py` (`ApprovalPolicy` + `ApprovalStore` + `ApprovalRule` + `ApprovalAnswer` with 24h expiry and content-hash binding for "once", `classify_action`, `auto_review`, `ASKING_GUIDANCE` marker + `GuidanceState`, destructive-tool marking) + `docs/approvals.md`; wired to the existing `Gate` (`ApprovalPolicy.request` files + approves from a stored answer, or files pending; credential changes raise `GateDenied` before reaching the gate) and to `kind_for_tool` (`puspa/chassis/tools.py` falls back to the G4 classifier for tool names outside the gate's table) |
+| Action recognition from the tool name's first verb and the button label, never the content; payment from the word `payment` anywhere in the action/page, tool names transfer/payout/order/payroll/plan upgrade/subscription, buttons Transfer/Withdraw/Pay/Buy/Place your order/Subscribe; credential changes never approvable by any answer | OpenBot (MIT) | The recognition signals and the never-approvable credential rule | `classify_action` / `is_credential_change` / `_is_payment` in `puspa/policy/approvals.py` (whole-word matching so `recorder` does not match `order`; underscored names folded, so `change_password` matches `change password`); known gaps documented honestly in `docs/approvals.md` |
+| Fail-closed gateway as the single action boundary: (1) resolve target from the server snapshot, (2) evaluate the action policy, (3) audit the decision, (4) call the computer only when forwarded, (5) audit a second line when a forwarded action fails; deny before allow; missing/empty policy allows nothing; broken deny rule denies; broken allow rule does not allow; malformed policy halts startup; dry-run decides + records but still forwards; snapshot via Postgres LISTEN/NOTIFY; never-loaded snapshot refuses everything | OpenBot (MIT) — pattern from `docs/architecture.md` + `app/src/lib/boundaries/rules.ts`; the enforcing CEL code is NOT in the OpenBot repo, so the evaluator is Puspa's own, written from the documented semantics | The five-step shape, the deny-before-allow order, every fail-closed case, the dry-run semantics, the snapshot + LISTEN/NOTIFY shape, the explicit default `deny: []`, `allow: ["true"]` | `puspa/policy/gateway.py` (`Gateway` + `GatewayDecision` with separate policy verdict vs effective forwarding, `PolicySnapshot` with injected refresh hook + stale marking, `PostgresPolicyWatcher` with injectable connection factory, `make_ledger_gateway_sink` mapping decisions/failures to existing `tool_called` / `tool_completed` ledger events) + `puspa/policy/rules.py` (own tokenizer + recursive-descent parser + evaluator, never `eval()`; `contains()` / `matches()` case-insensitive over the 20 documented attributes; bad regex / unknown attribute are load errors) |
+| Rule templates carrying their cost, shown before the rule is added | OpenBot (MIT) | The cost-per-template idea and the two traps (Enter/Space form-submit rule; `contains(page.host, "x.com")` also catching dropbox.com/netflix.com) | `BUILTIN_TEMPLATES` in `puspa/policy/gateway.py` (5 templates: never_submit_form, block_host_substring, block_payment_tools, deny_credential_changes, allow_own_bot_only) + `list_templates` / `describe_template` / `template_cost`; every template rule parses (tested) |
+| Audit trail with initiator (`person`, `deployment`, `routine`, `responsibility`, `memory`, `handoff`); "Nobody watching" = routine+handoff+responsibility+memory; handover audited as control events; bot actions rejected (not queued) while a human controls the browser; CSV export capped at 5,000 rows with truncation marker, `'` prefix on `= + - @` cells, every export itself recorded; retention via env var, unset = forever; secrets redacted; saved files contribute path + size, never content | OpenBot (MIT) | The initiator kinds, the "Nobody watching" filter, the handover steps, the export guards, the retention env var | `puspa/ledger/audit.py` (`Initiator` + `attach_initiator` + `filter_nobody_watching`, `ControlState` with handover mapped to existing `handoff_proposed` / `handoff_handed_over` / `handoff_accepted` types — no 32nd event type, still 31 — `export_events_csv` with the guards, `AuditExportLog` hash-chained JSONL export log kept OUTSIDE the core ledger by design, `audit_retention_days` from `AUDIT_RETENTION_DAYS`) + `Ledger.append_event(initiator=...)` storing the initiator attribute inside event content + `docs/audit-trail.md` |
+
+No OpenBot code was copied; only the documented patterns above
+were followed. No new pip dependency was added for G4+G5+G6.
+Wiring: G4 into `Gate` + `kind_for_tool`; G5 audit into the
+ledger via `make_ledger_gateway_sink` (no new event types); G6
+initiator into `Ledger.append_event`. Tests:
+`tests/test_approvals_taxonomy.py`,
+`tests/test_gateway.py`, `tests/test_audit_trail.py` (written,
+verified standalone by this worker with a no-pytest runner — 117
+cases pass; the coordinator runs the suite). Docs:
+`docs/approvals.md`, `docs/gateway.md`, `docs/audit-trail.md`.
+Honest limits: no live computer is wired to the gateway yet (the
+`computer_call` is injected by the caller); recognition gaps are
+documented in `docs/approvals.md` (unlabeled buttons, hidden
+verbs, unlisted payment names); the approval store, control
+state, and export log are in-memory / plain files, not durable
+shared stores; the export log's hash chain anchors at the oldest
+kept record after retention pruning.
+
 ## Glosarium istilah baru Fase 4 (bukan dari revisi 7)
 
 - `eksekutor_fixture` — NAMA TEKNIS internal (eksekutor data uji:

@@ -45,6 +45,7 @@ from typing import Any
 
 from nanobot.agent.tools.base import Tool, ToolResult
 
+from puspa.policy.approvals import classify_gate_kind
 from puspa.policy.gate import KIND_TOOLS, GateDenied
 from puspa.policy.skill_signing import SkillRejected, check_tool
 from puspa.quarantine.injection import scan
@@ -67,8 +68,18 @@ _TOOL_TO_KIND: dict[str, str] = {tool: kind for kind, tools in KIND_TOOLS.items(
 
 
 def kind_for_tool(tool_name: str) -> str | None:
-    """Kind aksi keluar untuk nama tool, atau None kalau bukan aksi keluar."""
-    return _TOOL_TO_KIND.get(tool_name)
+    """Kind aksi keluar untuk nama tool, atau None kalau bukan aksi keluar.
+
+    The gate's own table wins; anything outside it falls back to
+    the G4 approval taxonomy (``puspa.policy.approvals``), which
+    recognizes payment tools by name (transfer / payout / order /
+    payroll / subscription) and other outbound verbs. A tool the
+    taxonomy also does not recognize is not an outbound action.
+    """
+    kind = _TOOL_TO_KIND.get(tool_name)
+    if kind is not None:
+        return kind
+    return classify_gate_kind(tool_name)
 
 
 class PuspaTool(Tool):
