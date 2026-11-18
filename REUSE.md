@@ -405,6 +405,35 @@ above were followed. No new pip dependency was added for G14
 live bot was verified (no real token, no real message sent); all
 HTTP in tests goes through `httpx.MockTransport`.
 
+## Maturity phase (G21 — interruptible turn loop + layered fallback + budget)
+
+No new dependency. Only PATTERNS adapted (rewritten, not copied):
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| Thin facade + one module per turn phase (iteration prep, API call, API error, overflow, truncation, recovery); the loop split out of the agent runner instead of a second parallel loop | NousResearch/hermes-agent (MIT) | The facade + per-phase module shape (`run_agent.py` + `agent/turn_*.py`), and the decision to split Puspa's own `TaskRunner` loop rather than build a second one | `puspa/turns/` (14 modules: `__init__.py`, `loop.py`, `messages.py`, `config.py`, `budget.py`, `interrupt.py`, `turn_prepare.py`, `turn_api.py`, `turn_api_error.py`, `turn_overflow.py`, `turn_truncate.py`, `turn_recover.py`, `intercepts.py`, `todos.py`) + `docs/turn-loop.md`; the split loop is the model-call engine inside `TaskRunner`'s `run` stage via `make_task_executor`, reached from every surface through the existing `TaskRunnerAgent` seam — no `tasks.py` change was needed and zero nanobot lines were touched |
+| Interruptible model call: request on a background thread, main thread waits for response / interrupt event / timeout; on interrupt the API thread is abandoned and the reply discarded, no partial response enters history | NousResearch/hermes-agent (MIT) | The background-thread + event + timeout shape and the discard-on-interrupt rule | `puspa/turns/interrupt.py` (`run_interruptible`, `TurnInterrupted`, `TurnTimeout`) + `puspa/turns/turn_recover.py` (checkpoint before every call, restore on interrupt/timeout/failure) |
+| Three API modes (chat completions / Responses / Anthropic Messages) meet in one internal message format, so the rest of the system never cares which provider is behind the call | NousResearch/hermes-agent (MIT) | The single-internal-format idea | `puspa/turns/messages.py` (`InternalMessage` blocks, converters per mode with a dropped/notes report, `enforce_alternation` / `validate_alternation`); Anthropic conversion reuses the router's existing wire translator (`puspa/router/translate.py`), Responses converters are new |
+| Layered fallback: backup providers tried in order on 429/5xx; auth errors try a credential refresh first; auxiliary tasks (vision, compression, title) have their own independent fallback chain | NousResearch/hermes-agent (MIT) | The ordered-chain + refresh-first + independent-auxiliary-chain shape | `puspa/router/chains.py` (`FallbackChainConfig`, config-driven main + auxiliary chains from the router catalog) + `puspa/router/fallback.py` (`auth_error` as a retryable kind, `AuthError`) + `puspa/turns/turn_api.py` (chain execution through the existing `call_with_fallback`) + `puspa/turns/turn_api_error.py` (refresh-first wrapper over the router's existing `TokenRefresher` — no second refresher written) |
+| Iteration budget per agent (default 500) + a separate per-subagent budget with its own cap (default 50); over budget the turn stops with a clear message | NousResearch/hermes-agent (MIT) | The 500 / 50 defaults and the separate-cap shape | `puspa/turns/budget.py` (`IterationBudget`, `SubagentIterationBudget` narrowed by the parent's remaining iterations, `TurnBudgetExceeded`); the Rupiah budget (`puspa.runtime.budget`) is NOT duplicated — the iteration budget is a second, independent guard |
+| Message alternation enforced in code, never trusted from the model; tools intercepted before the registry (`todo`, `memory`, `session_search`, `delegate_task`) because they change agent state directly and return synthetic results | NousResearch/hermes-agent (MIT) | The enforce-in-code rule and the intercept-before-registry shape | `puspa/turns/messages.py` (`enforce_alternation`: deterministic merge repairs, reported) + `puspa/turns/intercepts.py` (real stores: in-memory todo store, `puspa.memory.facts`, `SessionGateway.search_messages`, `SubagentPool.spawn` / injected delegate) + `puspa/turns/todos.py` (in-memory: Puspa has no durable todo store — see `docs/turn-loop.md`) |
+
+No hermes-agent code was copied; only the documented shapes
+above were followed. No new pip dependency was added for G21.
+Router additions: `puspa/router/chains.py` (new),
+`puspa/router/complete.py` (`complete_messages` message-list
+entry point + tool calls on `CompletionResult`, refactored from
+`complete_detailed`), `puspa/router/fallback.py` (`auth_error`
+kind + `AuthError`). Tests: `tests/test_turn_messages.py`,
+`tests/test_turn_loop.py`, `tests/test_turn_fallback.py`,
+`tests/test_turn_intercepts.py` (written, not run by this
+worker — the central suite was running; the coordinator runs
+them). Docs: `docs/turn-loop.md`. Honest limits: no live
+provider call is proven (all model calls in tests are injected
+fakes); the production chassis executor is not wired; the todo
+store is in-memory only; the Responses API has no live caller;
+compression is a seam, not a wired feature.
+
 ## Glosarium istilah baru Fase 4 (bukan dari revisi 7)
 
 - `eksekutor_fixture` — NAMA TEKNIS internal (eksekutor data uji:
