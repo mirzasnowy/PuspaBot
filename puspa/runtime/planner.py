@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import re
 
+from puspa.runtime.hierarchy import HierarchicalPlan, HierarchicalRunner
 from puspa.runtime.tasks import Step, Task, TaskRunner, create_plan
 
 __all__ = [
@@ -40,6 +41,8 @@ __all__ = [
     "PlannerError",
     "decompose",
     "decompose_for_reference_task",
+    "decompose_hierarchical",
+    "ROLE_FOR_STEP",
     "step_tool",
 ]
 
@@ -174,6 +177,58 @@ def decompose_for_reference_task(name: str, **kwargs) -> list[Step]:
     return decompose(purpose, **kwargs)
 
 
+#: Step-name prefix to the hierarchy role that owns the step.
+#: Read/search steps belong to the researcher, checks to the
+#: checker, presentation to the writer, outbound preparation to
+#: the executor. Anything else stays with the root.
+ROLE_FOR_STEP = (
+    ("read_price", "researcher"),
+    ("search_listings", "researcher"),
+    ("search_artikel", "researcher"),
+    ("read_artikel", "researcher"),
+    ("drive_search", "researcher"),
+    ("drive_read", "researcher"),
+    ("gmail_search", "researcher"),
+    ("gmail_read", "researcher"),
+    ("read_bill", "researcher"),
+    ("read_memory", "researcher"),
+    ("verify", "checker"),
+    ("present", "writer"),
+    ("summarize", "writer"),
+    ("prepare_payment", "executor"),
+    ("calendar_create_event", "executor"),
+    ("create_trigger", "executor"),
+)
+
+
+def _role_for_step(step_name: str) -> str | None:
+    for prefix, role in ROLE_FOR_STEP:
+        if step_name.startswith(prefix):
+            return role
+    return None
+
+
+def decompose_hierarchical(purpose: str, *, composition: str = "sequential",
+                            max_iterations: int = 3, **kwargs) -> HierarchicalPlan:
+    """Decompose a purpose into a hierarchical plan.
+
+    Same steps as ``decompose``; each step is assigned to a role
+    by ``ROLE_FOR_STEP``. Steps with no role run on the root.
+    ``composition`` picks the runner shape (sequential, parallel,
+    loop, delegate); ``loop`` repeats until the caller's exit
+    condition holds or ``max_iterations`` is reached.
+    """
+    steps = decompose(purpose, **kwargs)
+    assignments = {}
+    for step in steps:
+        role = _role_for_step(step.name)
+        if role is not None:
+            assignments[step.name] = role
+    return HierarchicalPlan(steps=steps, assignments=assignments,
+                            composition=composition,
+                            max_iterations=max_iterations)
+
+
 def _failed_step_name(reason: str) -> str | None:
     """Extract the step name from a TaskRunner failure reason, if any."""
     match = re.search(r"langkah '([^']+)'", reason or "")
@@ -303,4 +358,31 @@ class Planner:
                 "step": [step.name for step in revised],
             })
             plan = revised
+        return result
+
+    def run_hierarchical(self, task: Task, root, *, composition: str = "sequential",
+                         state=None, runner: HierarchicalRunner | None = None,
+                         max_iterations: int = 3, **kwargs):
+        """Run a task as a hierarchical plan through ``root``.
+
+        Builds the plan with ``decompose_hierarchical`` and runs
+        it through a ``HierarchicalRunner`` (given, or built here
+        with this planner's executor adapted to the runner's
+        ``(node, step, inputs, state)`` shape and ``step_tool`` as
+        the tool resolver). Returns the runner's ``RunResult``.
+        The flat ``run`` path above is untouched.
+        """
+        plan = decompose_hierarchical(task.purpose, composition=composition,
+                                      max_iterations=max_iterations, **kwargs)
+        if runner is None:
+            executor = self.executor
+            adapted = None
+            if executor is not None:
+                def adapted(node_name, step_name, inputs, state):
+                    return executor(step_name, inputs)
+            runner = HierarchicalRunner(root, executor=adapted, sink=self.sink,
+                                        tool_resolver=step_tool)
+        result = runner.run(plan, state=state, task_id=task.task_id)
+        task.result.update(result.results)
+        task.status = "failed" if result.blocked else "completed"
         return result

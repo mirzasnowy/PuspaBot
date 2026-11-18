@@ -37,6 +37,7 @@ class Subagent:
     permission_class: str
     token_id: str = ""
     status: str = "active"  # aktif | antre | selesai | dihentikan
+    role: str = ""  # peran hierarki ("" = tanpa peran khusus)
 
 
 class SubagentPool:
@@ -48,12 +49,14 @@ class SubagentPool:
 
     def spawn(self, *, agent_id: str, task_id: str, permission_class: str,
               agent_token: dict, subagent_token: dict,
-              creator_is_subagent: bool = False) -> Subagent:
+              creator_is_subagent: bool = False, role: str = "") -> Subagent:
         """Buat sub-agen baru (atau antrekan bila kolam penuh).
 
         `token_agen` / `token_subagen` adalah payload dict yang sudah
         diverifikasi. Token sub-agen yang bukan subset token agen
-        ditolak sebelum apa pun dibuat.
+        ditolak sebelum apa pun dibuat. `role` mencatat peran
+        hierarki sub-agen (mis. "researcher"); "" berarti tanpa
+        peran khusus dan tidak mengubah perilaku lama.
         """
         if creator_is_subagent:
             raise SubagentError("sub-agen tidak bisa membuat sub-agen (satu level saja)")
@@ -64,6 +67,7 @@ class SubagentPool:
         sub = Subagent(
             subagent_id=f"sub-{uuid.uuid4().hex[:12]}",
             agent_id=agent_id, task_id=task_id, permission_class=permission_class,
+            role=role,
         )
         per_agent = sum(1 for s in self._active.values() if s.agent_id == agent_id)
         if per_agent >= MAX_SUB_PER_AGENT or len(self._active) >= MAX_SUBSYSTEM:
@@ -99,6 +103,11 @@ class SubagentPool:
 
     def active_per_agent(self, agent_id: str) -> list[Subagent]:
         return [s for s in self._active.values() if s.agent_id == agent_id]
+
+    def active_by_role(self, agent_id: str, role: str) -> list[Subagent]:
+        """Sub-agen aktif satu agen dengan peran hierarki tertentu."""
+        return [s for s in self._active.values()
+                if s.agent_id == agent_id and s.role == role]
 
     def count_active(self) -> int:
         return len(self._active)
