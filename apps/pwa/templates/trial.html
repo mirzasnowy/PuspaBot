@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Coba Puspa</h1>
+{% if error == "trial_unavailable" %}
+<p class="pesan-sub">Trial tidak bisa dimulai di server ini (entitlement secret belum dikonfigurasi). Coba lagi nanti atau hubungi operator.</p>
+{% elif error == "trial_already_used" %}
+<p class="pesan-sub">Masa trial kamu sudah dipakai. Upgrade untuk lanjut memakai Puspa.</p>
+{% endif %}
+{% if trial.status == "active" or trial.status == "grace" %}
+<div class="kartu"><strong>{% if trial.is_trial %}Trial {{ trial.tier | capitalize }}{% else %}{{ trial.tier | capitalize }}{% endif %}</strong>
+{% if trial.status == "grace" %}
+<p class="pesan-sub">Trial kamu sudah berakhir, tapi masih dalam masa tenggang.</p>
+{% elif trial.days_left is not none %}
+<p class="pesan-sub">Sisa {{ trial.days_left }} hari (berakhir {{ trial.expires_at }}).</p>
+{% endif %}
+<p><a href="{{ upgrade_url }}"><button type="button">Upgrade</button></a></p></div>
+<h2>Chat</h2>
+<div id="riwayat">
+{% for p in message %}
+<div class="kartu"><strong>{{ p.sender }}</strong>: {{ p.text }}</div>
+{% else %}
+<p class="pesan-sub">Belum ada pesan. Sapa Puspa dulu.</p>
+{% endfor %}
+</div>
+<form action="/trial/chat" method="post">
+<input name="text" placeholder="Tulis pesan ke Puspa..." required style="width:70%">
+<button type="submit">Kirim</button>
+</form>
+{% elif trial.status == "expired" %}
+<div class="kartu"><strong>Trial kamu berakhir {{ trial.expires_at }}</strong>
+<p>Upgrade untuk lanjut memakai Puspa dengan akses penuh.</p>
+<p><a href="{{ upgrade_url }}"><button type="button">Upgrade</button></a></p></div>
+{% else %}
+<div class="kartu"><strong>Coba Puspa gratis selama 14 hari</strong>
+<p>Chat dengan Puspa tanpa install apa pun. Trial memberi akses Pro selama 14 hari.</p>
+<form action="/trial/start" method="post"><button type="submit">Mulai trial gratis</button></form>
+<p><a href="{{ upgrade_url }}"><button type="button">Upgrade</button></a></p></div>
+{% endif %}
+{% endblock %}

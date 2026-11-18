@@ -2,16 +2,16 @@
 {% block content %}
 <h1>Konektor</h1>
 <p class="pesan-sub">Hubungkan dan cabut Gmail, Drive, Calendar per agen. Lihat scope tiap konektor. Puspa mulai dengan ketiganya; agen baru mulai kosong.</p>
-{% for a in agent %}
+{% for a in agents %}
 <div class="kartu"><strong>{{ a.name }}</strong> ({{ a.agent_id }})
 {% for k in ["gmail", "drive", "calendar"] %}
 <form hx-post="/api/konektor/{{ k }}" hx-swap="none" method="post" style="display:inline">
-<input type="hidden" name="agen_id" value="{{ a.agent_id }}">
-<input type="hidden" name="aksi" value="beri"><button type="submit">Hubungkan {{ k }}</button>
+<input type="hidden" name="agent_id" value="{{ a.agent_id }}">
+<input type="hidden" name="action" value="beri"><button type="submit">Hubungkan {{ k }}</button>
 </form>
 <form hx-post="/api/konektor/{{ k }}" hx-swap="none" method="post" style="display:inline">
-<input type="hidden" name="agen_id" value="{{ a.agent_id }}">
-<input type="hidden" name="aksi" value="cabut"><button type="submit">Cabut {{ k }}</button>
+<input type="hidden" name="agent_id" value="{{ a.agent_id }}">
+<input type="hidden" name="action" value="cabut"><button type="submit">Cabut {{ k }}</button>
 </form>
 {% endfor %}
 </div>

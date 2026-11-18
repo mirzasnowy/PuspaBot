@@ -24,12 +24,13 @@ input, select { padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; }
 <header>
 <strong>Puspa</strong>
 <a href="/chat" class="{% if screen == 'chat' %}aktif{% endif %}">Chat</a>
-<a href="/tugas" class="{% if screen == 'task' %}aktif{% endif %}">Tugas</a>
-<a href="/modul" class="{% if screen == 'module' %}aktif{% endif %}">Modul</a>
-<a href="/konektor" class="{% if screen == 'connector' %}aktif{% endif %}">Konektor</a>
-<a href="/memori" class="{% if screen == 'memory' %}aktif{% endif %}">Memori</a>
-<a href="/pengaturan" class="{% if screen == 'settings' %}aktif{% endif %}">Pengaturan</a>
-<a href="/kantor" class="{% if screen == 'office' %}aktif{% endif %}">Kantor</a>
+<a href="/tasks" class="{% if screen == 'tasks' %}aktif{% endif %}">Tugas</a>
+<a href="/modules" class="{% if screen == 'modules' %}aktif{% endif %}">Modul</a>
+<a href="/connectors" class="{% if screen == 'connectors' %}aktif{% endif %}">Konektor</a>
+<a href="/memory" class="{% if screen == 'memory' %}aktif{% endif %}">Memori</a>
+<a href="/settings" class="{% if screen == 'settings' %}aktif{% endif %}">Pengaturan</a>
+<a href="/office" class="{% if screen == 'office' %}aktif{% endif %}">Kantor</a>
+<a href="/trial" class="{% if screen == 'trial' %}aktif{% endif %}">Trial</a>
 </header>
 <main>{% block content %}{% endblock %}</main>
 <script>

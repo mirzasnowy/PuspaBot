@@ -3,18 +3,18 @@
 <h1>Kantor</h1>
 <p class="pesan-sub">Tim yang sedang bekerja. Sumbernya Buku Kerja, bukan animasi: status, progress, biaya, dan log adalah proyeksi dari log kejadian.</p>
 <div id="strip-kerja" class="kartu">
-{% for a in office.agent %}
+{% for a in office.agents %}
 <strong>{{ a.agent_id }}</strong> - {{ a.status }} - biaya berjalan Rp{{ a.cost_rp }}
 {% else %}
 Tidak ada agen bekerja saat ini.
 {% endfor %}
 </div>
-{% for a in office.agent %}
-<div class="kartu"><strong>{{ a.agent_id }}</strong><br>Status: {{ a.status }}<br>Tugas: {{ a.task_terakhir }}<br>Biaya: Rp{{ a.cost_rp }} dari plafon Rp2000<br>Sub-agen: {{ a.sub_agent | length }}</div>
+{% for a in office.agents %}
+<div class="kartu"><strong>{{ a.agent_id }}</strong><br>Status: {{ a.status }}<br>Tugas: {{ a.last_task }}<br>Biaya: Rp{{ a.cost_rp }} dari plafon Rp2000<br>Sub-agen: {{ a.subagents | length }}</div>
 {% endfor %}
 <h2>Log handoff live</h2>
-{% for h in handoff %}
-<div class="kartu">{{ h.event_type }} - {{ (h.content or {}).get('purpose', '') }}</div>
+{% for h in handoffs %}
+<div class="kartu">{{ h.type }} - {{ (h.content or {}).get('purpose', '') }}</div>
 {% else %}
 <p class="pesan-sub">Belum ada handoff.</p>
 {% endfor %}

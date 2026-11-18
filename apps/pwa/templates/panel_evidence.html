@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Panel Bukti</h1>
+{% if evidence %}
+<div class="kartu">
+<p><strong>Klaim:</strong> {{ evidence.claim }}</p>
+<p><strong>Nilai:</strong> {{ evidence.value if evidence.value is not none else '-' }}</p>
+{% if evidence.verdict %}<p><strong>Vonis:</strong> {{ evidence.verdict }}</p>{% endif %}
+{% if evidence.source_url %}<p><strong>Sumber:</strong> <a href="{{ evidence.source_url }}">{{ evidence.source_url }}</a></p>{% endif %}
+{% if evidence.retrieved_at %}<p><strong>Waktu ambil:</strong> {{ evidence.retrieved_at }}</p>{% endif %}
+{% if evidence.excerpt %}<p><strong>Potongan:</strong> {{ evidence.excerpt }}</p>{% endif %}
+{% if evidence.source_url %}<p><a href="{{ evidence.source_url }}">Buka sumbernya sendiri</a></p>{% endif %}
+</div>
+{% else %}
+<p class="pesan-sub">Bukti {{ evidence_id }} tidak ditemukan.</p>
+{% endif %}
+{% endblock %}
