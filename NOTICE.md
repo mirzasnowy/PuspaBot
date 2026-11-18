@@ -502,3 +502,35 @@ No new dependency was added for G14. Both adapters use the
 already-pinned `httpx==0.28.1`. python-telegram-bot was NOT used
 (it is LGPL); the Telegram Bot API is plain HTTPS and needs no
 library.
+
+# NOTICE - Puspa maturity phase, G21 (18 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **NousResearch/hermes-agent** (MIT License) - patterns only,
+  rewritten as Puspa Python code (nothing copied verbatim): the
+  thin facade + one module per turn phase (iteration prep, API
+  call, API error, overflow, truncation, recovery); the
+  interruptible model call (request on a background thread, main
+  thread waits for response / interrupt event / timeout, reply
+  discarded on interrupt, no partial response in history); one
+  internal message format for three API modes (chat completions /
+  Responses / Anthropic Messages); layered fallback (backup
+  providers in order on 429/5xx, auth errors refresh credentials
+  first, auxiliary tasks with their own independent chain);
+  iteration budgets (500 per agent, 50 per subagent, separate
+  cap); message alternation enforced in code; tools intercepted
+  before the registry (`todo`, `memory`, `session_search`,
+  `delegate_task`). Used as patterns in `puspa/turns/` (14
+  modules), `puspa/router/chains.py`, the `auth_error` kind in
+  `puspa/router/fallback.py`, `complete_messages` in
+  `puspa/router/complete.py`, and `docs/turn-loop.md`. The loop
+  that was split is Puspa's own `TaskRunner`, not hermes-agent's
+  agent: the turn loop is the model-call engine inside
+  `TaskRunner`'s `run` stage, wired via `make_task_executor`.
+
+## New dependency: none
+
+No new dependency was added for G21. No hermes-agent code was
+copied, vendored, or depended on; only the documented patterns
+above were followed, rewritten as Puspa's own code.

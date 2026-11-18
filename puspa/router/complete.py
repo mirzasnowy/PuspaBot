@@ -48,7 +48,7 @@ from __future__ import annotations
 
 import os
 import ssl
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import httpx
 
@@ -62,6 +62,7 @@ __all__ = [
     "CompletionResult",
     "complete",
     "complete_detailed",
+    "complete_messages",
     "default_llm_complete",
     "make_call_fn",
     "resolve_api_key",
@@ -126,6 +127,15 @@ class CompletionResult:
     input_tokens: int = 0
     output_tokens: int = 0
     cost_rp: int | None = None
+    #: Tool calls the model requested (``{"id", "name",
+    #: "arguments"}`` dicts, arguments already parsed to a dict).
+    #: Empty when the model answered with text only. A reply with
+    #: tool calls and no text has ``text == ""`` — that is a tool
+    #: turn, not an empty completion.
+    tool_calls: list[dict] = field(default_factory=list)
+    #: The provider's finish reason (``"stop"``, ``"tool_calls"``,
+    #: ``"length"``, ...), or None when the reply carried none.
+    finish_reason: str | None = None
 
 
 def resolve_role(role: str) -> str:
@@ -264,14 +274,20 @@ def _build_client(*, transport=None, timeout: float) -> httpx.Client:
     )
 
 
-def _parse_reply(payload: dict, *, provider: str, model: str) -> tuple[str, int, int]:
-    """Pull the text and token usage out of a chat-completions reply.
+def _parse_reply(
+    payload: dict, *, provider: str, model: str
+) -> tuple[str, int, int, list, str | None]:
+    """Pull the text, usage, tool calls, and finish reason out of a
+    chat-completions reply.
 
     Strict: the reply must be a JSON object with a non-empty
-    ``choices`` list whose first choice carries a non-empty
-    ``message.content`` string. Anything else is a
+    ``choices`` list whose first choice carries a message. The
+    message must carry non-empty text OR at least one tool call:
+    a textless reply that asks for no tool is a
     ``CompletionError``, never an empty string passed off as an
-    answer.
+    answer. Tool-call arguments must be a JSON object; an
+    unparsable arguments string raises ``CompletionError`` instead
+    of inventing arguments.
     """
     if not isinstance(payload, dict):
         raise CompletionError(f"{provider}/{model} returned a reply that is not a JSON object")
@@ -285,7 +301,12 @@ def _parse_reply(payload: dict, *, provider: str, model: str) -> tuple[str, int,
     if not isinstance(message, dict):
         raise CompletionError(f"{provider}/{model} returned a choice with no message")
     content = message.get("content")
-    if not isinstance(content, str) or content.strip() == "":
+    if content is None:
+        content = ""
+    if not isinstance(content, str):
+        raise CompletionError(f"{provider}/{model} returned a message content that is not text")
+    tool_calls = _parse_tool_calls(message.get("tool_calls"), provider=provider, model=model)
+    if content.strip() == "" and not tool_calls:
         raise CompletionError(f"{provider}/{model} returned an empty completion")
     usage = payload.get("usage") or {}
     if not isinstance(usage, dict):
@@ -297,11 +318,68 @@ def _parse_reply(payload: dict, *, provider: str, model: str) -> tuple[str, int,
         output_tokens = int(output_tokens)
     except (TypeError, ValueError) as exc:
         raise CompletionError(f"{provider}/{model} returned unusable token counts") from exc
-    return content, max(0, input_tokens), max(0, output_tokens)
+    finish_reason = first.get("finish_reason")
+    if finish_reason is not None and not isinstance(finish_reason, str):
+        finish_reason = str(finish_reason)
+    return content, max(0, input_tokens), max(0, output_tokens), tool_calls, finish_reason
 
 
-def complete_detailed(
-    prompt: str,
+def _parse_tool_calls(raw, *, provider: str, model: str) -> list[dict]:
+    """Parse an OpenAI ``tool_calls`` list into ``{"id", "name",
+    "arguments"}`` dicts with parsed arguments.
+
+    Returns ``[]`` when the reply carries no tool calls. A call
+    with a missing name or unparsable arguments raises
+    ``CompletionError``: the turn loop cannot dispatch a tool it
+    cannot name, and inventing arguments would be worse than
+    failing loudly.
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise CompletionError(f"{provider}/{model} returned tool_calls that are not a list")
+    import json
+
+    parsed: list[dict] = []
+    for index, call in enumerate(raw):
+        if not isinstance(call, dict):
+            raise CompletionError(f"{provider}/{model} returned a tool call that is not an object")
+        function = call.get("function")
+        if not isinstance(function, dict) or not function.get("name"):
+            raise CompletionError(f"{provider}/{model} returned a tool call with no function name")
+        arguments = function.get("arguments", "{}")
+        if isinstance(arguments, dict):
+            arguments_dict = arguments
+        elif isinstance(arguments, str):
+            try:
+                arguments_dict = json.loads(arguments) if arguments.strip() else {}
+            except ValueError as exc:
+                raise CompletionError(
+                    f"{provider}/{model} returned unparsable tool arguments "
+                    f"for {function.get('name')!r}"
+                ) from exc
+            if not isinstance(arguments_dict, dict):
+                raise CompletionError(
+                    f"{provider}/{model} returned tool arguments that are not "
+                    f"an object for {function.get('name')!r}"
+                )
+        else:
+            raise CompletionError(
+                f"{provider}/{model} returned tool arguments of an unknown "
+                f"type for {function.get('name')!r}"
+            )
+        parsed.append(
+            {
+                "id": call.get("id") or f"call_{index}",
+                "name": function["name"],
+                "arguments": arguments_dict,
+            }
+        )
+    return parsed
+
+
+def complete_messages(
+    messages: list[dict],
     *,
     role: str = "reader",
     model: str | None = None,
@@ -315,25 +393,29 @@ def complete_detailed(
     transport=None,
     client: httpx.Client | None = None,
     key_resolver=None,
+    tools: list[dict] | None = None,
+    tool_choice=None,
 ) -> CompletionResult:
-    """Complete one prompt through the router's cheapest model.
+    """Complete a full message list through the router's model.
 
-    ``role`` picks the model (see ``ROLE_ALIASES``); ``model``
-    overrides the choice with one explicit model id. ``prompt``
-    is sent as a single user message. ``temperature`` defaults
-    to 0: the judge and decomposer prompts ask for JSON, and a
-    deterministic reply is what they need. ``transport`` takes
-    an httpx transport (tests pass ``httpx.MockTransport``);
-    ``client`` takes a caller-owned ``httpx.Client`` (not
-    closed here). ``key_resolver`` takes a ``provider -> key``
-    callable (tests inject a fake key); without it the key comes
-    from the BYOK path.
-
-    Raises ``KeyError`` when no key can be found and
-    ``CompletionError`` on any transport, HTTP, or reply failure.
+    The message-list form of :func:`complete_detailed`: the turn
+    loop sends its whole (alternation-enforced) history here, and
+    the reply carries the text AND any tool calls the model
+    requested, so the loop can dispatch them. ``tools`` are
+    OpenAI-format function tools; ``tool_choice`` passes through
+    (``"auto"``, ``"none"``, ``"required"``, or a specific
+    function choice dict). ``messages`` must be a non-empty list
+    of ``{"role", "content"}`` dicts — the caller owns the
+    history; this function does not repair it. Same errors as
+    :func:`complete_detailed` (``KeyError`` for a missing key,
+    ``CompletionError`` for any call failure, ``ValueError`` for
+    a bad message list).
     """
-    if not isinstance(prompt, str) or prompt == "":
-        raise ValueError("prompt must be a non-empty string")
+    if not isinstance(messages, list) or not messages:
+        raise ValueError("messages must be a non-empty list")
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict) or "role" not in message or "content" not in message:
+            raise ValueError(f"messages[{index}] must be a dict with 'role' and 'content'")
     if max_tokens < 1:
         raise ValueError("max_tokens must be at least 1")
     if timeout <= 0:
@@ -343,12 +425,16 @@ def complete_detailed(
         choice.provider, api_key=api_key, user_id=user_id, dsn=dsn, key_resolver=key_resolver
     )
     url = (base_url or OPENROUTER_API_BASE).rstrip("/") + "/chat/completions"
-    body = {
+    body: dict = {
         "model": choice.model,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
+    if tools is not None:
+        body["tools"] = tools
+    if tool_choice is not None:
+        body["tool_choice"] = tool_choice
     own_client = client is None
     http = client if client is not None else _build_client(transport=transport, timeout=timeout)
     try:
@@ -386,7 +472,7 @@ def complete_detailed(
             raise CompletionError(
                 f"{choice.provider}/{choice.model} returned a reply that is not valid JSON"
             ) from exc
-        text, input_tokens, output_tokens = _parse_reply(
+        text, input_tokens, output_tokens, tool_calls, finish_reason = _parse_reply(
             payload, provider=choice.provider, model=choice.model
         )
         catalogued = _catalog_choice(choice.provider, choice.model)
@@ -402,10 +488,63 @@ def complete_detailed(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost_rp=cost,
+            tool_calls=tool_calls,
+            finish_reason=finish_reason,
         )
     finally:
         if own_client:
             http.close()
+
+
+def complete_detailed(
+    prompt: str,
+    *,
+    role: str = "reader",
+    model: str | None = None,
+    api_key: str | None = None,
+    user_id=None,
+    dsn: str | None = None,
+    temperature: float = 0.0,
+    max_tokens: int = 1024,
+    timeout: float = 60.0,
+    base_url: str | None = None,
+    transport=None,
+    client: httpx.Client | None = None,
+    key_resolver=None,
+) -> CompletionResult:
+    """Complete one prompt through the router's cheapest model.
+
+    ``role`` picks the model (see ``ROLE_ALIASES``); ``model``
+    overrides the choice with one explicit model id. ``prompt``
+    is sent as a single user message. ``temperature`` defaults
+    to 0: the judge and decomposer prompts ask for JSON, and a
+    deterministic reply is what they need. ``transport`` takes
+    an httpx transport (tests pass ``httpx.MockTransport``);
+    ``client`` takes a caller-owned ``httpx.Client`` (not
+    closed here). ``key_resolver`` takes a ``provider -> key``
+    callable (tests inject a fake key); without it the key comes
+    from the BYOK path.
+
+    Raises ``KeyError`` when no key can be found and
+    ``CompletionError`` on any transport, HTTP, or reply failure.
+    """
+    if not isinstance(prompt, str) or prompt == "":
+        raise ValueError("prompt must be a non-empty string")
+    return complete_messages(
+        [{"role": "user", "content": prompt}],
+        role=role,
+        model=model,
+        api_key=api_key,
+        user_id=user_id,
+        dsn=dsn,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        timeout=timeout,
+        base_url=base_url,
+        transport=transport,
+        client=client,
+        key_resolver=key_resolver,
+    )
 
 
 def complete(

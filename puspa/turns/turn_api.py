@@ -1,0 +1,237 @@
+"""Turn phase: the model call (G21).
+
+One function, :func:`call_model`, does the whole call phase:
+
+1. Convert the internal history to the provider wire format
+   (chat completions — the router's live path).
+2. Run the request through the configured fallback chain
+   (``puspa.router.fallback.call_with_fallback``): tiers are
+   tried in order, 429/5xx/auth failures fall through, and the
+   full attempt/hop audit trail comes back.
+3. Wrap each tier call with refresh-first auth handling
+   (``puspa.turns.turn_api_error``).
+4. Run the whole chain inside an interruptible call
+   (``puspa.turns.interrupt``): an interrupt abandons the
+   in-flight request and its result is discarded — no partial
+   reply ever reaches the caller.
+
+The actual HTTP call is the injected ``model_call`` seam:
+``model_call(entry, wire_messages, tools) -> ModelReply``.
+The default adapter (:func:`make_openrouter_model_call`) calls
+``puspa.router.complete.complete_messages`` — the router's live
+chat-completions caller — resolving its key per call, so a
+refreshed OAuth token is picked up by the auth retry. Tests
+inject a fake ``model_call``; nothing here touches the network
+unless the caller supplies the live adapter.
+"""
+
+from __future__ import annotations
+
+import threading
+from dataclasses import dataclass, field
+
+from puspa.router.chains import chain_entries_for
+from puspa.router.complete import CompletionError, complete_messages
+from puspa.router.fallback import (
+    AuthError,
+    CallResult,
+    ChainEntry,
+    NonRetryableError,
+    ProviderError,
+    ProviderFailure,
+    QuotaExhaustedError,
+    RateLimited,
+    call_with_fallback,
+    classify_failure,
+)
+
+from .config import TurnConfig
+from .interrupt import run_interruptible
+from .messages import InternalMessage, to_chat_completions
+from .turn_api_error import wrap_with_auth_refresh
+
+__all__ = [
+    "ModelCallOutcome",
+    "ModelReply",
+    "call_model",
+    "make_openrouter_model_call",
+]
+
+
+@dataclass
+class ModelReply:
+    """What one model call returned (already provider-neutral)."""
+
+    text: str = ""
+    tool_calls: list[dict] = field(default_factory=list)
+    input_tokens: int = 0
+    output_tokens: int = 0
+    finish_reason: str | None = None
+    provider: str = ""
+    model: str = ""
+
+
+@dataclass
+class ModelCallOutcome:
+    """A completed model call: the reply plus the audit trail."""
+
+    reply: ModelReply
+    tier_used: ChainEntry
+    attempts: list = field(default_factory=list)
+    hops: list = field(default_factory=list)
+    total_cost_rp: int = 0
+    chain_notes: list[str] = field(default_factory=list)
+
+    def as_assistant_message(self) -> InternalMessage:
+        """The reply as an internal assistant message."""
+        return InternalMessage.assistant(self.reply.text, tool_calls=list(self.reply.tool_calls))
+
+
+def _completion_error_to_failure(exc: CompletionError) -> ProviderFailure:
+    """Map a router ``CompletionError`` onto a fallback failure."""
+    kind = classify_failure(exc.status, str(exc))
+    if kind == "auth_error":
+        return AuthError(str(exc), status=exc.status)
+    if kind == "rate_limited":
+        return RateLimited(str(exc))
+    if kind == "quota_exhausted":
+        return QuotaExhaustedError(str(exc), status=exc.status)
+    if kind == "non_retryable":
+        return NonRetryableError(str(exc), status=exc.status)
+    return ProviderError(str(exc), status=exc.status)
+
+
+def make_openrouter_model_call(
+    *,
+    key_resolver=None,
+    transport=None,
+    client=None,
+    base_url: str | None = None,
+    temperature: float = 0.0,
+    max_tokens: int = 1024,
+    timeout: float = 60.0,
+):
+    """Build the default ``model_call`` adapter (live, OpenRouter).
+
+    ``model_call(entry, wire_messages, tools)`` calls
+    ``complete_messages`` with the chain entry's model. The API
+    key is resolved on EVERY call (``key_resolver`` or the BYOK
+    path), so the auth refresh-then-retry in the call phase picks
+    up a refreshed token. ``transport`` / ``client`` are the
+    httpx seams (tests pass a ``MockTransport``). The adapter
+    never invents a key: a missing key raises ``KeyError``,
+    loudly, instead of calling with a fake one.
+    """
+
+    def model_call(entry: ChainEntry, wire_messages: list[dict], tools: list[dict] | None):
+        try:
+            result = complete_messages(
+                wire_messages,
+                model=entry.model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
+                base_url=base_url,
+                transport=transport,
+                client=client,
+                key_resolver=key_resolver,
+                tools=tools,
+            )
+        except CompletionError as exc:
+            raise _completion_error_to_failure(exc) from exc
+        return ModelReply(
+            text=result.text,
+            tool_calls=list(result.tool_calls),
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            finish_reason=result.finish_reason,
+            provider=result.provider,
+            model=result.model,
+        )
+
+    return model_call
+
+
+def call_model(
+    messages: list[InternalMessage],
+    *,
+    config: TurnConfig | None = None,
+    chain: list[ChainEntry] | None = None,
+    model_call=None,
+    tools: list[dict] | None = None,
+    interrupt_event: threading.Event | None = None,
+    refresher=None,
+    quota_store=None,
+    budget=None,
+) -> ModelCallOutcome:
+    """Call the model once, through the fallback chain, interruptibly.
+
+    ``messages`` are internal messages (already alternation-
+    enforced by the prepare phase). ``chain`` overrides the
+    config's main chain; ``model_call`` overrides the default
+    OpenRouter adapter (tests inject a fake). ``budget`` is a
+    ``puspa.runtime.budget.BudgetTracker``: the Rupiah ceiling
+    is enforced by the fallback executor, never dodged.
+
+    Raises :class:`TurnInterrupted` when the user interrupts
+    (the in-flight reply is discarded), :class:`TurnTimeout`
+    when the call runs past ``config.call_timeout_seconds``,
+    :class:`AllTiersFailed` when every tier fails, or the
+    original ``ProviderFailure`` for a deterministic failure.
+    """
+    config = config or TurnConfig()
+    if chain is None:
+        fallback_config = config.effective_fallback_config()
+        chain, chain_notes = chain_entries_for(fallback_config, "main", role=config.role)
+    else:
+        chain_notes = []
+    if not chain:
+        raise ValueError("fallback chain is empty: no provider is configured for this turn")
+    wire = to_chat_completions(messages)
+    if wire.dropped:
+        # A dropped field here means the wire format lost part of
+        # the history. That is reported to the caller through the
+        # outcome notes path, not hidden: the loop records it.
+        chain_notes = [*chain_notes, *[f"wire conversion dropped: {drop}" for drop in wire.dropped]]
+    call = model_call or make_openrouter_model_call(
+        temperature=config.temperature,
+        max_tokens=config.max_tokens,
+        timeout=config.call_timeout_seconds,
+    )
+
+    def tier_call(entry: ChainEntry) -> CallResult:
+        reply = call(entry, wire.value, tools)
+        if not isinstance(reply, ModelReply):
+            raise ProviderError(
+                f"model_call for {entry.provider}/{entry.model} returned "
+                f"{type(reply).__name__}, not a ModelReply"
+            )
+        return CallResult(
+            value=reply,
+            input_tokens=reply.input_tokens,
+            output_tokens=reply.output_tokens,
+        )
+
+    wrapped_call = wrap_with_auth_refresh(
+        tier_call, refresher, provider_of=lambda entry: entry.provider
+    )
+
+    def run_chain():
+        return call_with_fallback(chain, wrapped_call, quota_store=quota_store, budget=budget)
+
+    result = run_interruptible(
+        run_chain,
+        interrupt_event=interrupt_event,
+        timeout=config.call_timeout_seconds,
+    )
+    reply = result.value
+    if not isinstance(reply, ModelReply):  # pragma: no cover - defensive
+        raise ProviderError("fallback chain returned a value that is not a ModelReply")
+    return ModelCallOutcome(
+        reply=reply,
+        tier_used=result.tier_used,
+        attempts=list(result.attempts),
+        hops=list(result.hops),
+        total_cost_rp=result.total_cost_rp,
+        chain_notes=chain_notes,
+    )

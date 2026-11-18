@@ -37,10 +37,16 @@ fails, ``AllTiersFailed`` is raised with the full attempt list in its
 message: a silent failure is impossible by construction.
 
 Only retryable failures fall through: 429 (rate limited), a quota
-exhaustion signal, 5xx, or a transport error with no status. A
-deterministic failure (any other 4xx, for example a bad request)
-raises immediately without trying the next tier, because the same
-request would fail there too.
+exhaustion signal, 5xx, an authentication failure (401, or 403 with
+an auth signal), or a transport error with no status. An auth
+failure is retryable because the next tier carries different
+credentials — but only after a credential refresh has been tried
+first (see ``puspa.turns.turn_api_error.wrap_with_auth_refresh``,
+which wraps the per-tier call: refresh, retry the same tier once,
+and only then let this executor move on). A deterministic failure
+(any other 4xx, for example a bad request) raises immediately
+without trying the next tier, because the same request would fail
+there too.
 
 Budget (revision 7 section 2.4) is never dodged by a fallback. When
 a ``BudgetTracker`` is passed, a successful call's Rupiah cost is
@@ -78,6 +84,7 @@ __all__ = [
     "TIER_FREE",
     "TIER_SUBSCRIPTION",
     "AllTiersFailed",
+    "AuthError",
     "CallResult",
     "ChainEntry",
     "FallbackAttempt",
@@ -113,17 +120,39 @@ def classify_failure(status: int | None, message: str = "") -> str:
     """Classify a provider failure from its status and message.
 
     Returns one of ``rate_limited``, ``quota_exhausted``,
-    ``provider_error``, ``non_retryable``. The message is only used to
-    tell a quota signal apart from a plain rate limit; a status on
-    its own decides the retryable / non-retryable split.
+    ``auth_error``, ``provider_error``, ``non_retryable``. The
+    message is only used to tell a quota signal apart from a plain
+    rate limit (and an auth signal apart from a quota signal on
+    403); a status on its own decides the retryable /
+    non-retryable split. A 401 is always an auth error; a 403 with
+    an auth signal is one too, while a 403 with a quota signal
+    stays quota exhaustion.
     """
     text = (message or "").lower()
     quota_words = ("quota", "insufficient_quota", "exhausted", "allowance", "usage limit", "credit")
+    auth_words = (
+        "invalid api key",
+        "invalid key",
+        "unauthorized",
+        "unauthenticated",
+        "authentication",
+        "invalid token",
+        "expired token",
+        "incorrect api key",
+    )
+    if status == 401:
+        return "auth_error"
+    if status == 403:
+        if any(word in text for word in quota_words):
+            return "quota_exhausted"
+        if any(word in text for word in auth_words):
+            return "auth_error"
+        return "non_retryable"
     if status == 429:
         if any(word in text for word in quota_words):
             return "quota_exhausted"
         return "rate_limited"
-    if status in (402, 403) and any(word in text for word in quota_words):
+    if status == 402 and any(word in text for word in quota_words):
         return "quota_exhausted"
     if status is None or status >= 500:
         return "provider_error"
@@ -157,7 +186,12 @@ class ProviderFailure(Exception):
 
     @property
     def retryable(self) -> bool:
-        return self.kind in ("rate_limited", "quota_exhausted", "provider_error")
+        return self.kind in (
+            "rate_limited",
+            "quota_exhausted",
+            "provider_error",
+            "auth_error",
+        )
 
     def __str__(self) -> str:
         status = f"status {self.status}" if self.status is not None else "no status"
@@ -181,6 +215,27 @@ class QuotaExhaustedError(ProviderFailure):
         message: str = "quota exhausted",
         *,
         status: int | None = 429,
+        retry_after_seconds: int | None = None,
+    ) -> None:
+        super().__init__(message, status=status, retry_after_seconds=retry_after_seconds)
+
+
+class AuthError(ProviderFailure):
+    """An authentication failure (401, or 403 with an auth signal).
+
+    Retryable by design: the next tier carries different
+    credentials, so the chain moves on — but only after a
+    credential refresh has been tried first (see
+    ``puspa.turns.turn_api_error.wrap_with_auth_refresh``). A
+    refresh that succeeds and a retry that still fails auth lands
+    here too, and the chain moves on with the audit trail intact.
+    """
+
+    def __init__(
+        self,
+        message: str = "authentication failed",
+        *,
+        status: int | None = 401,
         retry_after_seconds: int | None = None,
     ) -> None:
         super().__init__(message, status=status, retry_after_seconds=retry_after_seconds)
@@ -440,6 +495,8 @@ def _failure_from_exception(exc: BaseException) -> ProviderFailure:
             return QuotaExhaustedError(str(exc), status=status)
         if kind == "rate_limited":
             return RateLimited(str(exc))
+        if kind == "auth_error":
+            return AuthError(str(exc), status=status)
         return ProviderError(str(exc), status=status)
     return ProviderError(f"{type(exc).__name__}: {exc}")
 
