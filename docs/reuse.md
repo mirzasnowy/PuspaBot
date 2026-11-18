@@ -575,7 +575,15 @@ Files: `puspa/retrieval/knowledge_graph.py`, `puspa/retrieval/hipporag.py`,
   `DeterministicReranker`, the `CrossEncoderReranker` seam (any
   `score_fn` callable), `decompose_query`, and
   `retrieve_with_decomposition` (reciprocal rank fusion). No
-  LlamaIndex code or dependency is used.
+  LlamaIndex code or dependency is used. Rework 3 (18 Nov
+  2026) added the real LLM decomposer following the same
+  pattern: `LLMQueryDecomposer` takes a `complete(prompt)`
+  callable, asks for self-contained sub-questions as JSON,
+  parses strictly, dedups, and caps at `max_subquestions`;
+  `RegexQueryDecomposer` wraps the old regex split as the
+  explicit fallback, and every merged result records its
+  `decomposition_source` ("llm" or "regex"). No LlamaIndex
+  code is copied or vendored.
 
 ### Dependencies
 
@@ -626,6 +634,14 @@ is about 800 MB, larger than the 512 MB tmpfs) and
   about trust". The fraud report still does not reach top 3.
   The model is English MS MARCO only, not multilingual; a swap
   to bge-reranker-v2-m3 remains a follow-up.
+- The LLM decomposer is a seam, not a live LLM yet: rework 3
+  built `LLMQueryDecomposer` around an injected
+  `complete(prompt)` callable, but no completion function
+  exists in the repo yet (the router only picks models and
+  prices them), so the default decomposer is still the regex
+  split with `source="regex"` recorded. Follow-up: build a
+  provider-layer `complete(prompt)` (cheapest router reader
+  model) and wire it through `llm_complete`.
 # google/adk-python (hierarchical multi-agent) - REUSE fragment
 
 Pattern studied from google/adk-python (Apache License 2.0), reimplemented
