@@ -295,3 +295,89 @@ the `root` role -> run `infra/schema_core.sql`. The old
   `~/workspace/puspa-refactor/`, revision 7, `README.md`,
   `requirements.txt`, `NOTICE.md` (no new pattern or dependency
   to attribute).
+
+## Wiring gaps fixed (18 Nov 2026, after the wiring phase)
+
+Three gaps the wiring phase left open were fixed as separate
+iterations, each with its own commit and push, each verified by a
+full SOLO suite run. Full suite after both fixes: 918 passed,
+5 skipped, 1 warning.
+
+### Gap 1: learning loop corrections are persisted
+
+Before: only the world model state was stored (table
+`world_beliefs`); the learning loop started with an empty
+correction table on every restart.
+
+Now: corrections (one row per task in `loop_corrections`) and the
+experiences that carry a correction (in `loop_experiences`) are
+saved to Postgres and loaded back at startup. New module
+`puspa/memory/loop_store.py` (`save_loop_state`,
+`load_loop_state`, `load_learning_loop`, `create_schema`),
+schema `infra/schema_learning_loop.sql`,
+`loop_state()` / `restore_loop_state()` in
+`puspa/memory/learning_loop.py`, and DSN load wiring in
+`puspa/chassis/agent_session.py` (`get_session_brain(...,
+dsn=...)` loads the saved loop when a DSN is given). Proof:
+`tests/test_loop_persistence_db.py` round-trips save, builds a
+fresh loop from zero, and asserts the same predictions
+(`watch_price` 11500, `pay_bill` "paid 75000"). Commit
+279cb361fdbaa3fe22b061095d5ce1c5b7298cd5.
+
+Honest limits: only corrections and correction-carrying
+experiences are persisted (draft skills, manual edits, feedback
+proposals, and correction-less gaps are NOT stored; gaps are
+rebuilt from the corrections on restore). Load happens only
+when the caller passes a DSN; there is no automatic schema
+creation on startup. One round-trip bug was caught by the DB
+test during verification and fixed in the same iteration: the
+`feedback_source` field of a correction was dropped on save
+(the `loop_corrections` table had no such column), so the column
+was added to the schema (with an idempotent ALTER for existing
+databases) and to save/load.
+
+### Gap 2: failed steps teach the model
+
+Before: only steps that completed taught the model. A step that
+aborted the run (handoff refused, budget exhausted, run failed)
+left no trace in the model.
+
+Now: `WorldModel.ingest_step_failure` in `puspa/world/model.py`
+plus `_fold_step_failure` in `puspa/runtime/tasks.py` fold an
+aborting step into the model, on two separate paths, and the
+difference is deliberate:
+
+- `gate_rejected` (handoff refused by the schema, budget
+  exhausted): capability learns, the pending prediction is
+  discarded unscored, and no price/bill belief and no
+  learning-loop correction is touched. A refusal is policy
+  evidence, not world evidence.
+- `world_failed` (the executor raised): a pending prediction is
+  scored against the failure, so a miss is recorded as a
+  `world_misprediction` event and reported to the learning loop,
+  and capability learns.
+
+Behavior change: executor exceptions now become a failed task
+instead of propagating out of `TaskRunner.run()`. Commit
+9d11c8d12b263fc1a190db7ad989b31c9c4762b7. Tests:
+`tests/test_failed_steps_teach.py` (12 tests, including
+budget exhaustion teaching capability and not price).
+
+One regression was caught by the full suite during verification
+and fixed in the same iteration: `BudgetExhausted` raised inside
+a charging executor wrapper was caught by the generic executor
+exception handler and misclassified as `world_failed`, which
+lost the `budget_exhausted` event in the curriculum runner.
+`tasks.py` now re-raises `BudgetExhausted` from the executor
+call so it reaches the outer handler that records
+`budget_exhausted` and folds it as a gate refusal.
+
+### Gap 3: contact and habit beliefs (not done yet)
+
+The world model still has no beliefs about contacts or the
+user's habits. That is the next iteration after these two
+commits: two new belief kinds in `puspa/world/model.py`, both
+only from observation, versioned with decay and contradiction
+following `puspa/memory/procedural.py`, persisted in the world
+store. Wide-world facts stay out of scope (graph and memory
+layer, covered by the HippoRAG and LightRAG deepening).
