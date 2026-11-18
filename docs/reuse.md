@@ -370,3 +370,47 @@ Brain phase section above, and `requirements.txt` is unchanged.
 - The deterministic simulator was not changed; the noisy
   simulator is a second, separate world with the same interface.
 - No GPL, AGPL, SSPL, PolyForm, or CC BY-NC code was used.
+
+## Brain deepening phase - Wave 1 (18 Nov 2026)
+
+## Skill Signing (sigstore-shaped, local) - fragment for REUSE.md
+
+Pattern studied, rewritten as Puspa's own code, no verbatim copy,
+no fork, no new dependency (uses `cryptography`, already in the venv):
+
+- **sigstore** (sigstore/sigstore, Apache-2.0): keyless signing with
+  an ephemeral key, identity bound to the signer, DSSE envelope, and
+  an append-only transparency log (Rekor) with Merkle inclusion
+  proofs. Adapted as a LOCAL implementation in
+  `puspa/policy/signing.py`: ephemeral Ed25519 key per signature,
+  DSSE v1.0.2 pre-authentication encoding
+  (`DSSEv1 SP LEN(type) SP type SP LEN(body) SP body`, verified
+  against the spec test vector), payload
+  `{identity, skill_sha256, issued_at}`, file-backed JSONL
+  transparency log (hash-chained entries, Merkle root, inclusion
+  proof generation and verification, no delete or update path).
+  Honest scope: this is NOT the public sigstore service. There is no
+  Fulcio certificate authority, no Rekor server, and no network call.
+  Identity is a Puspa user identity string, trusted through Puspa's
+  own authentication, not through an OIDC certificate.
+- **DSSE specification** (dsse-lf/dsse, Apache-2.0): envelope shape
+  `{payloadType, payload, signatures: [{keyid, sig}]}` and the PAE
+  signing rule above. Only the specification was followed; no code
+  was taken.
+- **Rekor docs** (docs.sigstore.dev/logging/overview): the
+  append-only and consistency-checking properties the local log
+  mirrors (entries never mutated or removed, chain verified on load,
+  inclusion proof checked at verify time).
+
+Wiring: `puspa/policy/skill_signing.py` - `verify_skill` accepts
+optional `transparency_log` and `expected_identity`; with a log it
+also requires a valid `envelope.json` bound to the manifest bytes and
+recorded in the log. Without a log it keeps the old manifest
+signature check. `sign_skill_provenance` signs the provenance
+envelope and records it in the log.
+
+Not used: the `sigstore` Python client and any Rekor/Fulcio service
+(no network dependency for skill trust); no Postgres table for the
+log (file-backed by design, so trust stays verifiable without a
+database; see the persistence rationale in the `signing.py` module
+docstring).

@@ -143,6 +143,19 @@ The full license of each repo lives in its source repo (links in
 `docs/reuse.md` and `REUSE.md`). No third-party LICENSE file needs
 to be included here because no third-party code is vendored.
 
+# NOTICE - Puspa Brain deepening phase, Wave 1 (18 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **sigstore/sigstore** (Apache License 2.0) - pattern: keyless
+  signing with an ephemeral key, DSSE envelope, append-only
+  transparency log with Merkle inclusion proofs. Used as a pattern
+  in `puspa/policy/signing.py` (local implementation, not the
+  public sigstore service; no Fulcio, no Rekor, no network call).
+- **dsse-lf/dsse** (Apache License 2.0) - pattern: DSSE envelope
+  shape and the pre-authentication encoding rule. Only the
+  specification was followed; no code was taken.
+
 ## Puspa license
 
 The code in this directory is Puspa's own work (Nero / Luna). The Puspa

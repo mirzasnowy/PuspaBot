@@ -10,17 +10,42 @@ ditolak. Tool di luar manifes ditolak saat dipakai (``check_tool``).
 
 Kunci Puspa untuk skill bawaan dibuat saat runtime; kunci komunitas
 terdaftar terpisah (fase 6).
+
+Provenance (``puspa.policy.signing``): when a transparency log is
+passed to ``verify_skill``, a skill is trusted only if it also carries
+a valid DSSE envelope (``envelope.json`` in the skill directory) whose
+payload binds the manifest bytes and the expected identity, and that
+envelope is recorded in the log with a verifiable Merkle inclusion
+proof. Without a log argument, ``verify_skill`` keeps its old meaning
+(manifest signature only) so existing callers stay valid.
 """
 
 import base64
+import hashlib
 import json
 from pathlib import Path
 
 from cryptography.exceptions import InvalidSignature
 
+from .signing import (
+    SigningError,
+    decode_envelope_payload,
+    sign_skill as sign_skill_envelope,
+)
+from .signing import verify_skill_envelope
 from .tokens import TokenError, _b64url_decode, _b64url_encode, canonical_json
 
-__all__ = ["SkillRejected", "check_tool", "load_skill", "sign_skill", "verify_skill"]
+__all__ = [
+    "SkillRejected",
+    "check_tool",
+    "load_skill",
+    "sign_skill",
+    "sign_skill_provenance",
+    "verify_skill",
+]
+
+#: DSSE envelope file next to manifest.json in a skill directory.
+ENVELOPE_FILENAME = "envelope.json"
 
 
 class SkillRejected(Exception):
@@ -86,16 +111,72 @@ def sign_skill(dirpath, signing_key) -> dict:
     return manifest
 
 
-def verify_skill(dirpath, public_key) -> bool:
+def verify_skill(dirpath, public_key, transparency_log=None, expected_identity=None) -> bool:
     """Benar kalau manifes ada, punya signature, dan signature valid.
 
     Tidak pernah raise untuk skill yang rusak: kembalikan False.
+    When ``transparency_log`` is given, the skill must ALSO carry a
+    valid DSSE envelope (``envelope.json``) bound to these manifest
+    bytes and to ``expected_identity``, recorded in the log with a
+    verifiable inclusion proof; otherwise the skill is not trusted,
+    even with a valid manifest signature. Without a log, behavior is
+    exactly the old manifest-signature check.
     """
     try:
         manifest = _read_manifest(dirpath)
     except SkillRejected:
         return False
-    return _verify_manifest_dict(manifest, public_key)
+    if not _verify_manifest_dict(manifest, public_key):
+        return False
+    if transparency_log is None:
+        return True
+    return _verify_provenance(dirpath, manifest, transparency_log, expected_identity)
+
+
+def _verify_provenance(dirpath, manifest, transparency_log, expected_identity) -> bool:
+    """Provenance check: envelope valid + bound to this manifest +
+    identity matches + recorded in the transparency log. Never raises."""
+    if not isinstance(expected_identity, str) or not expected_identity:
+        return False
+    try:
+        with open(Path(dirpath) / ENVELOPE_FILENAME, "r", encoding="utf-8") as fh:
+            envelope = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return False
+    try:
+        payload = decode_envelope_payload(envelope)
+    except SigningError:
+        return False
+    skill_sha256 = hashlib.sha256(
+        canonical_json(_unsigned_manifest(manifest))
+    ).hexdigest()
+    if payload.get("skill_sha256") != skill_sha256:
+        return False
+    ok, _reason = verify_skill_envelope(envelope, expected_identity, transparency_log)
+    return ok
+
+
+def sign_skill_provenance(dirpath, identity, transparency_log) -> dict:
+    """Sign a skill directory's provenance and record it in the log.
+
+    Builds a DSSE envelope over the canonical unsigned manifest bytes
+    (the same bytes the manifest signature covers), writes it to
+    ``envelope.json`` in the skill directory, and appends it to
+    ``transparency_log``. Returns the envelope dict. This does not
+    replace the manifest signature (``sign_skill``); call both, in
+    either order, before the skill is trusted with a log. Raises
+    SkillRejected if the manifest cannot be read and SigningError if
+    the envelope cannot be built or recorded.
+    """
+    manifest = _read_manifest(dirpath)
+    skill_bytes = canonical_json(_unsigned_manifest(manifest))
+    envelope = sign_skill_envelope(skill_bytes, identity)
+    path = Path(dirpath) / ENVELOPE_FILENAME
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(envelope, fh, sort_keys=True, indent=2, ensure_ascii=False)
+        fh.write("\n")
+    transparency_log.append(envelope)
+    return envelope
 
 
 def load_skill(dirpath, public_key) -> dict:
