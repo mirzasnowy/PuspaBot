@@ -729,6 +729,117 @@ Commit b8921693816ec277ed53e148048979f18289bc9b.
   2026), not live provider bills, the same as the existing
   `compute_cost`.
 
-After 9Router mechanism 2: mechanism 3 (auto token refresh +
-format translation), then the 4 rework items, then the
-maturity phase.
+### Mechanism 3: auto token refresh + format translation (done)
+
+Commit a300c448d0321a993063f82cbfb1030f28b428a4.
+
+- `puspa/router/oauth.py` (new, 560 lines) +
+  `puspa/router/translate.py` (new, 781 lines) +
+  `puspa/router/router.py` (wiring only, about 70 lines) +
+  `tests/test_router_oauth_translate.py` (39 tests, 39 passed).
+  Generic OAuth2 refresh-token grant (RFC 6749 section 6) with
+  proactive refresh inside a 300-second leeway (the same
+  5-minute margin nanobot uses for xAI), single-flight refresh
+  per provider (lock plus re-check, two parallel callers cause
+  exactly one endpoint call), clear `TokenRefreshError`
+  (provider, status, error code, `reauth_required` on
+  `invalid_grant`), refresh-token rotation, and in-memory
+  storage only with token values never logged, printed, or
+  written (redacted `__repr__`, audit events carry outcomes
+  only). Request/response translation between the two formats
+  the BYOK path already serves, OpenAI chat-completions and
+  Anthropic Messages, with every unmapped field reported in
+  `TranslationReport` instead of silently dropped (OpenAI
+  `frequency_penalty` / `response_format` / `logit_bias` /
+  `n` / `seed`, Anthropic `thinking` blocks and
+  `cache_control`, cache-creation tokens, extra choices).
+  Wiring: `register_known_oauth_providers()` (xai,
+  github_copilot, openai_codex as simulated registrations),
+  `get_valid_oauth_token()`,
+  `translate_chat_request/response()`, all delegating with
+  lazy imports. The router catalog only has API-key providers
+  (OpenRouter + OpenAI-compatible families via
+  `demo/byok_provider.py`); auth today is API keys in the vault
+  (`byok:<provider>`), Google OAuth with manual
+  `refresh_tokens()` in `puspa/auth/google_oauth.py`, and three
+  nanobot OAuth providers (`xai`, `github_copilot`,
+  `openai_codex`) whose login is interactive with no proactive
+  refresh on Puspa's side. `get_valid_oauth_token(provider)` is
+  called before an OAuth provider token is used, and the
+  translate functions run before a payload is sent to a
+  provider with a different format. No live provider is called
+  from this code. What the tests prove (all in-memory, fake
+  token endpoint, fake clock, no real credentials): proactive
+  refresh (token with 120s left inside the 300s leeway
+  refreshes exactly once, the new token is used, the refresh
+  token rotates and is stored; expired token refreshes instead
+  of being used; token with 3600s left causes 0 refreshes;
+  the 299s / 301s leeway boundary; refresh without a new
+  `refresh_token` keeps the old one; no `expires_in` assumes
+  1 hour, the same default nanobot uses for xAI; a second call
+  after refresh causes 0 extra refreshes); refresh failures
+  (6 tests: `invalid_grant` raises `TokenRefreshError` with
+  `reauth_required=True` and the dead token is never returned,
+  HTTP 500 gives `reauth_required=False`, a 200 answer without
+  `access_token` errors, an unreachable endpoint errors
+  clearly, no stored token or no refresh token means login
+  required, an unregistered provider errors by name);
+  single-flight (2 parallel threads with a slow 0.2s endpoint
+  cause exactly 1 refresh POST, both get the new token,
+  exactly 1 `refreshed` audit event); no token leakage (2
+  tests: `repr` of TokenSet / TokenStore / config, error
+  messages, and audit events contain no fake token value);
+  registry (3 tests); translation (19 tests: OpenAI to
+  Anthropic and back, full two-way round-trip without lost
+  fields for text, tool calls, tools, temperature, max_tokens,
+  stop; two-way responses with real mappings for
+  `cached_tokens` / `cache_read_input_tokens`; unmapped fields
+  reported). Honest limits: token storage is in-memory (vault
+  persistence under `byok:oauth:<provider>` is a follow-up,
+  needs user id + DSN); the three named providers are
+  simulated (xAI carries its token URL and public client id
+  from nanobot's source, Copilot has no client id wired,
+  Codex has no token URL wired — neither was invented); no
+  interactive login flow lives here (authorization/device code
+  stays in nanobot); Azure Responses and Bedrock Converse are
+  not translated (outside the router catalog); Anthropic
+  `max_tokens` defaults to 4096 when the OpenAI request has
+  none (recorded in the report); `finish_reason=content_filter`
+  maps to `stop_reason=end_turn` as the nearest neutral
+  equivalent (reported); no retry/backoff on transport
+  failure (one attempt, then a clear error). License: 9Router
+  MIT re-confirmed by web search 18 Nov 2026; no sub-project
+  studied or used. Translation field mappings are grounded in
+  `nanobot/providers/anthropic_provider.py` (nanobot MIT, an
+  existing dependency) and the OpenAI format Puspa's own BYOK
+  factory uses, not in 9Router code.
+
+### Test harness fix: flaky ledger test (done with mechanism 3)
+
+Commit a2b54aff762e85e67fffeb81cc28c79efe1a1b41.
+
+- `tests/conftest.py` + `tests/test_rls.py` (fixture moved, no
+  product code changed). Diagnosis: the full suite failed
+  intermittently (2 of 6 runs) on
+  `test_update_delete_rejected_for_application_role` with
+  `role "puspa_app" does not exist` at `SET ROLE`. The role
+  was created only by a session-scoped autouse fixture in
+  `tests/test_rls.py`, which runs only when that module runs;
+  pytest runs files alphabetically, so `test_ledger.py` runs
+  BEFORE `test_rls.py`. On a fresh DB (after a VM replacement)
+  the role did not exist yet at ledger time; once `test_rls.py`
+  ran, the role persisted and every later run passed. That is
+  the whole pattern: it failed on the first run after each VM
+  replacement and passed on every re-run. The fix moves
+  `_ensure_app_role` into `tests/conftest.py` (session-scoped
+  autouse, idempotent `IF NOT EXISTS`), so the role is
+  guaranteed before any test file runs; it is removed from
+  `test_rls.py`. Reproduced before the fix (role dropped,
+  single test failed) and verified after (role dropped, the
+  test plus all of `test_ledger.py`, `test_rls.py`, and
+  `test_rls_memory.py` pass: 22 passed, role present
+  afterwards). The stale `infra/setup_db.sql` reference in the
+  fixture docstring was corrected to `infra/schema_core.sql`.
+
+After 9Router (all 3 mechanisms done): the 4 rework items,
+then the maturity phase.
