@@ -31,6 +31,15 @@ DEFAULT_MAX_HISTORY_MESSAGES = 100
 DEFAULT_MAX_HISTORY_CHARS = 120_000
 DEFAULT_KEEP_LAST_MESSAGES = 10
 
+#: Default tool-narrowing thresholds (G17): they mirror
+#: ``puspa.tools.narrowing`` (``DEFAULT_MAX_DIRECT_TOOLS`` etc.)
+#: as plain numbers so this config module never imports the tools
+#: package. The loop builds a ``NarrowingConfig`` from them.
+DEFAULT_MAX_DIRECT_TOOLS = 50
+DEFAULT_MAX_TOOLS = 128
+DEFAULT_MAX_OFFERED_TOOLS = 10
+DEFAULT_SEARCH_RESULT_LIMIT = 10
+
 
 @dataclass
 class TurnConfig:
@@ -56,6 +65,16 @@ class TurnConfig:
     temperature: float = 0.0
     max_tokens: int = 1024
     fallback_config: FallbackChainConfig | None = None
+    #: Tool-narrowing thresholds (G17, OpenBot starting points):
+    #: past ``max_direct_tools`` the rest wait behind
+    #: ``search_tools``; past ``max_tools`` the run is refused;
+    #: a successful narrowing offers at most ``max_offered_tools``
+    #: catalog tools directly; ``search_result_limit`` caps one
+    #: ``search_tools`` call's results.
+    max_direct_tools: int = DEFAULT_MAX_DIRECT_TOOLS
+    max_tools: int = DEFAULT_MAX_TOOLS
+    max_offered_tools: int = DEFAULT_MAX_OFFERED_TOOLS
+    search_result_limit: int = DEFAULT_SEARCH_RESULT_LIMIT
 
     def __post_init__(self) -> None:
         if self.max_iterations < 1:
@@ -74,6 +93,22 @@ class TurnConfig:
             raise ValueError("keep_last_messages must be smaller than max_history_messages")
         if self.max_tokens < 1:
             raise ValueError("max_tokens must be at least 1")
+        if self.max_direct_tools < 1:
+            raise ValueError("max_direct_tools must be at least 1")
+        if self.max_tools <= self.max_direct_tools:
+            raise ValueError(
+                f"max_tools ({self.max_tools}) must be larger than "
+                f"max_direct_tools ({self.max_direct_tools})"
+            )
+        if self.max_offered_tools < 1:
+            raise ValueError("max_offered_tools must be at least 1")
+        if self.max_offered_tools > self.max_direct_tools:
+            raise ValueError(
+                f"max_offered_tools ({self.max_offered_tools}) must not exceed "
+                f"max_direct_tools ({self.max_direct_tools})"
+            )
+        if self.search_result_limit < 1:
+            raise ValueError("search_result_limit must be at least 1")
 
     def effective_fallback_config(self) -> FallbackChainConfig:
         """The fallback chains for this config (defaults resolved)."""

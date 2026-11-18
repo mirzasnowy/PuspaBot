@@ -251,10 +251,12 @@ def test_module_level_register_decorator():
 def test_discover_imports_tool_modules():
     fresh = ToolRegistry()
     discover("puspa.tools", registry=fresh)
-    # builtin.py adapts the existing Puspa tools at import time.
+    # builtin.py adapts the existing Puspa tools at import time,
+    # and registers the G17 search_tools overflow tool.
     assert "run_code" in fresh
     assert "plugin_echo" in fresh
-    assert len(fresh.schemas()) == 2
+    assert "search_tools" in fresh
+    assert len(fresh.schemas()) == 3
 
 
 def test_discover_is_idempotent_for_fresh_registry():
