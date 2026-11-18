@@ -19,9 +19,14 @@ Extraction is done through a replaceable ``EntityExtractor``:
 - ``JsonTripleExtractor``: takes any callable returning a JSON
   string of entities and triples. That is the seam where a real
   LLM extractor plugs in (a completion function from the provider
-  layer, when a key exists). No LLM call is made by this module
-  and no key is required; without a completion function the
-  deterministic extractor is used.
+  layer, when a key exists). With no callable it defaults to the
+  router's live completion (``puspa.router.complete`` resolved
+  through ``resolve_llm_complete("default")`` — the same seam
+  the turn loop's ``turn_api`` calls through
+  ``complete_messages``), so extraction is live by default and
+  tests inject a fake callable or a fake transport instead. No
+  key is needed at construction; a missing key raises on the
+  first call, never a fake answer.
 
 Incremental update: ``add_document`` only processes the new
 document. An entity that already exists keeps its node and gains
@@ -284,14 +289,30 @@ class JsonTripleExtractor(EntityExtractor):
     ``complete(prompt)`` is any function returning a JSON string
     shaped like ``{"entities": [{"name": ..., "kind": ...}],
     "triples": [{"subject": ..., "relation": ..., "object": ...}]}``.
-    This is the seam for a real LLM extractor: pass a completion
-    function from the provider layer when a key exists. This class
-    itself makes no network call and holds no key.
+    It may also be the string ``"default"`` — or omitted
+    entirely — which resolves to the router's live completion
+    (``puspa.router.complete.default_llm_complete``, the
+    ``complete(prompt)`` callable built on
+    ``complete_messages``, the same entry point the turn loop's
+    ``turn_api`` calls). Building that callable makes no network
+    call and needs no key; the key is resolved, and a missing
+    key reported, on the first call. Extra keyword arguments
+    (``model=``, ``transport=``, ``key_resolver=``, ...) are
+    passed through to the live completion, so tests bind a fake
+    transport here once instead of touching the network or the
+    vault. A non-callable, non-``"default"`` value raises
+    ``ValueError`` instead of silently falling back.
     """
 
-    def __init__(self, complete):
+    def __init__(self, complete=None, **complete_kwargs):
+        if complete is None or (isinstance(complete, str) and complete == "default"):
+            from puspa.router.complete import resolve_llm_complete
+
+            complete = resolve_llm_complete("default", **complete_kwargs)
+        elif complete_kwargs:
+            raise ValueError("complete_kwargs need the live default, not an injected callable")
         if not callable(complete):
-            raise ValueError("complete must be a callable")
+            raise ValueError('complete must be a callable, the string "default", or None')
         self.complete = complete
 
     def extract(self, text: str, source_id: str) -> Extraction:

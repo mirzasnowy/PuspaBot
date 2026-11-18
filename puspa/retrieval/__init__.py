@@ -8,6 +8,19 @@ orders the shortlist. This package only exports the pieces;
 pipeline into live recall.
 """
 
+from .code_graph import (
+    CodeExtractor,
+    CodeGraph,
+    call_path,
+    callees_of,
+    callers_of,
+    defined_in,
+    imports_of,
+    module_name_for_path,
+    reachable_from,
+    reaches,
+    resolve_code_name,
+)
 from .hipporag import (
     HippoRAGRetriever,
     find_seed_nodes,
@@ -43,6 +56,8 @@ from .reranker import (
 
 __all__ = [
     "QUERY_MODES",
+    "CodeExtractor",
+    "CodeGraph",
     "CrossEncoderReranker",
     "DeterministicExtractor",
     "DeterministicReranker",
@@ -53,17 +68,26 @@ __all__ = [
     "KnowledgeGraph",
     "RerankerUnavailable",
     "Triple",
+    "call_path",
+    "callees_of",
+    "callers_of",
     "decompose_query",
+    "defined_in",
     "find_seed_nodes",
     "global_query",
     "hybrid_query",
+    "imports_of",
     "local_query",
     "make_reranker",
     "mix_query",
+    "module_name_for_path",
     "naive_query",
     "normalize_entity_name",
     "personalized_pagerank",
     "query",
+    "reachable_from",
+    "reaches",
+    "resolve_code_name",
     "retrieve_with_decomposition",
     "seed_weights",
 ]
