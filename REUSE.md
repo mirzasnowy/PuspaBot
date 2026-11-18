@@ -385,6 +385,26 @@ above were followed. Schema: `infra/schema_teams.sql` (seven tables
 + RLS policies following `puspa/accounts/schema.sql`); docs:
 `docs/teams.md`.
 
+## Maturity phase (G14 — Telegram / WhatsApp channels)
+
+No new dependency. Only PATTERNS adapted (rewritten, not copied):
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| One core, many adapters: platform events normalised to `MessageEvent`, then the same flow (authorise -> resolve session key -> agent -> reply through the origin adapter); `GatewayRunner` facade + one module per topic (inbound, delivery, notification, heartbeat); adapter guide `ADDING_A_PLATFORM.md` | NousResearch/hermes-agent (MIT) | The gateway shape (runner facade, per-topic sibling modules, normalised event, per-platform adapter), the delivery-ledger + bot-loop guard + heartbeat/restore ideas, the DM-pairing-as-authorisation idea, the single-writer gateway profile rule | `puspa/channels/` (16 modules: `events.py`, `base.py`, `telegram.py`, `whatsapp.py`, `authz.py`, `ledger.py`, `inbound.py`, `delivery.py`, `agent.py`, `notify.py`, `heartbeat.py`, `run.py`, `config.py`, `schema.py`, `errors.py`, `__init__.py`) + `infra/schema_channels.sql` + `docs/channels.md` + `docs/adding-a-platform.md`; Telegram adapter first (raw Bot API over pinned `httpx`, long polling + webhook), WhatsApp second (raw Cloud API over pinned `httpx`, webhook handshake + HMAC signature); own `channel_deliveries` table (not the core ledger — see `docs/channels.md`) |
+| Notifications carry only the bot name, never message content; pairing via short letter code | DuskBot (PolyForm Noncommercial — study only, no code used) | The content-free notification rule and the short-code pairing shape | `puspa/channels/notify.py` (notification text is the bot name only) + `puspa/channels/authz.py` (`ChannelPairing`: 6-digit codes, hash-only, 5-minute TTL, single use, per-chat lockout) |
+| Multi-platform channel surface (Telegram, WhatsApp, …) as access channels, not the home | OpenBot (MIT) | The channel-as-access-surface idea (the home stays the PWA) | The channel package itself; no OpenBot code or dependency |
+
+No DuskBot code was copied (its code is TypeScript; Puspa's is
+Python) and no DuskBot code is vendored or depended on. No
+hermes-agent or OpenBot code was copied; only the documented shapes
+above were followed. No new pip dependency was added for G14
+(`httpx==0.28.1`, already pinned). Schema:
+`infra/schema_channels.sql` (one table, `channel_deliveries`); docs:
+`docs/channels.md`, `docs/adding-a-platform.md`. Honest limit: no
+live bot was verified (no real token, no real message sent); all
+HTTP in tests goes through `httpx.MockTransport`.
+
 ## Glosarium istilah baru Fase 4 (bukan dari revisi 7)
 
 - `eksekutor_fixture` — NAMA TEKNIS internal (eksekutor data uji:

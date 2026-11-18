@@ -463,3 +463,42 @@ non-commercial or copyleft license was added.
 
 The code in this directory is Puspa's own work (Nero / Luna). The Puspa
 repo license follows the `mirzasnowy/puspa-ai` repo on push.
+
+# NOTICE - Puspa maturity phase, G14 (18 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **NousResearch/hermes-agent** (MIT License) - patterns only,
+  rewritten as Puspa Python code (nothing copied verbatim): the
+  multi-channel gateway shape — one core, many adapters, platform
+  events normalised to `MessageEvent`, then the same flow
+  (authorise -> resolve session key -> agent -> reply through the
+  origin adapter); the `GatewayRunner` facade with one module per
+  topic (inbound, delivery, notification, heartbeat); the
+  delivery ledger + bot-loop guard + heartbeat/restore; DM pairing
+  as authorisation; the single-writer gateway profile; and the
+  step-by-step adapter guide (`ADDING_A_PLATFORM.md`). Used as
+  patterns in `puspa/channels/` (16 modules), `docs/channels.md`,
+  and `docs/adding-a-platform.md`.
+- **DuskBot** (PolyForm Noncommercial License 1.0.0 — study only,
+  no code used, no dependency) - patterns only, rewritten as Puspa
+  Python code (nothing copied verbatim): notifications carry only
+  the bot name, never message content (`server/phones/`), and
+  pairing via a short code. Used as patterns in
+  `puspa/channels/notify.py` and `puspa/channels/authz.py`
+  (`ChannelPairing`: 6-digit codes, hash-only, 5-minute TTL,
+  single use, per-chat lockout). Because the license is PolyForm
+  Noncommercial, no DuskBot code is vendored, linked, or depended
+  on, and the patterns are not used to build a competing DuskBot
+  product — they implement Puspa's own Telegram/WhatsApp channels.
+- **OpenBot** (MIT License) - patterns only, rewritten as Puspa
+  Python code (nothing copied verbatim): channels as access
+  surfaces (the home stays the PWA). Used as a pattern for the
+  channel package itself (`puspa/channels/`).
+
+## New dependency: none
+
+No new dependency was added for G14. Both adapters use the
+already-pinned `httpx==0.28.1`. python-telegram-bot was NOT used
+(it is LGPL); the Telegram Bot API is plain HTTPS and needs no
+library.
