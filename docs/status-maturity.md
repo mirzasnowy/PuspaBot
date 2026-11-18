@@ -912,3 +912,173 @@ account choice + advertised-tool allowlist. **Wedge live execution
 is gated by a config flag, default OFF, pending Nero's ToS decision
 (decision 15 — live price execution held); the worker builds
 definitions + contracts + fake/test providers, NOT live scraping.**
+
+## Wave 7: G9+G10 (decider + layered connectors, done 18 Nov 2026)
+
+Two parallel workers, disjoint files. Central SOLO suite after the
+wave: **2,022 passed, 9 skipped, 1 warning, 12m18s** (baseline 1,955
++ 67 new: G9 34 + G10 33). Postgres stayed online (no VM replacement
+this wave; the restored cluster from Wave 6 held).
+
+### G9 Decider (commit a1281ee8)
+
+New package `puspa/decider/` (7 modules, 1,245 lines) +
+`tests/test_decider.py` (521 lines, 34 passed in 0.38 s
+`--noconftest`; also 34 passed in the normal conftest lane).
+`questions.py` (3 forms `ChoiceQuestion`/`ScoreQuestion`/
+`YesNoQuestion` + same-typed answers, validation at construction,
+`build_prompt()` asking for JSON only). `backends.py`
+(`RuleBackend` deterministic keyword overlap, confidence =
+winner-over-runner-up margin; `LLMBackend` via the router's
+`complete()`, reader role, strict JSON parsing; `UserEngineBackend`
+alternative chooser, 8,000 ms budget, fast fail `no_user_engine`
+when no engine). `decider.py` (`Decider`: sequential fallback
+chain, default timeout 1,500 ms (daemon thread + join budget, plus
+an injectable clock check), key-check before each call, NEVER throws
+to the turn — all failures become `{ok: False, reason}` + a
+per-backend `attempts` list). `jobs.py` (`DECIDER_JOBS =
+("moduleRouting", "inboxTriage")`, each job has its own seam
+building the question + interpreting the answer; `moduleRouting`
+picks 1 module from a message + candidate modules; `inboxTriage`:
+actions `act_now`/`act_later`/`ignore` + priority from sender/
+action). `keycheck.py` (`check_backend()` separate, fast fail
+`missing_api_key`/`no_user_engine`, never throws). `log.py`
+(`DecisionLog` + `state_hash` SHA-256 over canonical JSON `{job,
+question, backend, value/reason}`; stable question ids (sha256, not
+Python's per-process-randomized `hash()`), so the same decision
+always hashes the same and can be replayed). Regression:
+`test_file_size_ratchet` 3 passed; `test_router_complete` +
+`test_marketplace_narrowing` + `test_decomposer_llm` 71 passed. Live
+numbers (2 calls, cheapest reader model
+`meta-llama/llama-3.1-8b-instruct`): call 1 (1,500 ms budget) — the
+LLM timed out at 1,513 ms, the chain fell back to the rule backend
+and answered correctly (`bills`, confidence 1.0); timeout + fallback
+proven live, not just in stubs. Call 2 (30 s budget, deliberately
+loosened to measure) — the LLM answered correctly in 1,604 ms
+decision latency (1,741 ms wall). Tokens and Rp NOT measured:
+`LLMBackend` only returns text, not `CompletionResult` — follow-up:
+pass token/cost from `complete_detailed` through the backend.
+Honest limits: NO real wiring — deliberate, not negligence. No
+clean seam exists in the areas they're allowed to touch: module
+routing today is a workflow trigger in `puspa/modules/manifest.py`
+(not a message dispatcher), and the narrowing path is in
+`puspa/marketplace/narrowing.py` (another worker's area, forbidden).
+Correct call sites documented in `__init__.py`: (a) `narrow_tools`
+should ask the decider a `ScoreQuestion` over skill ids (replacing
+`_llm_select` + `_match_scores`), needs the coordinator to assign
+to the marketplace owner; (b) a future message-to-module dispatcher
+uses the `moduleRouting` job; (c) live inbox triage waits for an
+inbox polling loop (the Gmail connector is in G10's area). Live
+latency ~1.6 s > the 1,500 ms budget in this sandbox (egress proxy +
+OpenRouter). With the default budget, the LLM practically always
+loses to the rule backend here. Undecided: raise the LLM-specific
+budget, or accept rule fallback as normal behavior. The worker
+didn't change the 1,500 ms contract unilaterally.
+`UserEngineBackend` built + tested with an injected callable, but no
+engine seam exists in the repo (`engine_complete` not found
+anywhere) — live wiring is a follow-up. `DecisionLog` is in-memory
+only; persistence needs a new ledger event type (forbidden in this
+item) — follow-up. One design fix during work: rule backend
+confidence was initially a keyword-list fraction (triage `act_now`
+only 2/11 = 0.18 for a clearly urgent message) — replaced with
+winner-over-runner-up margin, and 3 failing tests were fixed on the
+implementation side, not by loosening expectations.
+
+### G10 Layered connectors (commit a29ce0c3)
+
+Seven new modules (1,593 lines) + `__init__.py` modified + 6 test
+files (715 lines, 33 passed in 0.74 s `--noconftest`; with conftest
+68 passed together with `test_connectors.py`, `test_plugin_mcp.py`,
+`test_vault.py`, 19.71 s). `allowlist.py` (FLAGSHIP: `ToolAllowlist`
++ parse env `CONNECTOR_ALLOWED_TOOLS`/`CONNECTOR_SERVICE_SLUGS`
+with a 4,096-byte cap (`MAX_ENV_BYTES`; over-long values rejected,
+not silently truncated); `advertise()` filters tools by name +
+service; `assert_no_leak()` proves no tool outside the allowlist
+leaks to the engine). `native.py` (`ConnectorDefinition`/`Operation`:
+request/response contracts + `requires_approval` + `live` +
+`CuratedDirectory` with explicit registration, duplicates rejected,
+slug/operation validation). `accounts.py` (account sync:
+`ConnectorAccountStore`, one account used by many bots/modules, no
+secrets, only `credentials_ref` + per-module account choice
+`ModuleAccountSelection`: explicit resolution order = module choice
+→ explicit default → user's first account → None; module choice
+beats default; another user's account / wrong connector rejected;
+unlink removes choices pointing at that account). `wedges.py` (7
+wedge definitions: Tokopedia/Shopee/Blibli `check_price`; PLN/PDAM
+`check_bill`+`pay_bill`; pulsa/data `check_bill`+`top_up` +
+`FakeMarketplaceProvider`/`FakeBillProvider` deterministic example
+data, `example.id` URLs, `fake-...` receipts; pay/top-up require
+approval + `LiveExecutionGate`/`execute_live`). `aggregator.py`
+(`Broker` ABC interface + `FakeBroker` (github/notion/slack,
+deterministic) + `ProjectSession` (allowlist from env, `call_tool`
+rejects unadvertised tools); the real broker doesn't exist — no
+broker choice + credentials; clearly documented as a follow-up).
+`mcp_registry.py` (uses the G27 `puspa/plugins/mcp.py` MCP
+definition format, no second format; OAuth: one pending sign-in per
+server, state compared with `hmac.compare_digest`, listener called
+exactly once then removed, pending expires after 10 minutes;
+`engine_view()` contains only id/name/tools (no `server.env`,
+tokens, or Authorization header); `authorization_header()` for
+transport only). `token_apps.py` (`validate_token_live`: one GET
+validation call; 2xx valid, 401/403 invalid, network failure =
+`TokenValidationError`, not fake success → `attach_token_app`
+(live check first, then seal; invalid tokens store nothing) → seal
+via `VaultSealStore` (existing vault envelope encryption) or
+`InMemorySealStore` (tests only) → `token_app_to_mcp_definition`
+(G27 format, no token); refresh 10 min before expiry
+(`REFRESH_BEFORE_SECONDS=600`), checked every 5 min
+(`CHECK_INTERVAL_SECONDS=300`); `needs_refresh`/`due_for_check`/
+`refresh_token_app` defined, scheduling is the scheduler's domain
+(untouched)). `__init__.py` modified: English docstring + main-name
+exports. `google.py`/`grants.py` untouched. **ToS flag (most
+important): `live_execution_enabled` defaults OFF (env
+`PUSPA_CONNECTORS_LIVE_EXECUTION`, `1`/`true` = ON). Fake providers
+run without the flag and without network. `execute_live()` refuses
+when the flag is OFF (`LiveExecutionDisabledError`, mentions
+decision 15 still open), and STILL refuses when the flag is ON
+(`LiveExecutionError`: "no live client ... yet") because no live
+marketplace/biller client exists at all. No scraping or live calls
+to marketplaces/billers anywhere.** Live measurement: one validation
+call to `https://api.github.com/user` with a fake token (via egress
+proxy): HTTP 401 in 1.37 s — the live-check path proven working, the
+fake token rejected as it should be. No real credentials, no cost
+(Rp 0, 0 LLM tokens — no LLM calls at all). `VaultSealStore`
+round-trip verified against the real `puspa_test` DB with a real
+user. The probe user is no longer in the DB (likely deleted by
+TRUNCATE from the parallel G9 worker's conftest; checked: no probe
+rows remain). Honest limits: ToS decision 15 still open (Nero's):
+no live wedge execution until Nero decides; the flag +
+`execute_live()` are the single refusal point. The real aggregator
+broker doesn't exist (interface + fake only). Real token refresh
+doesn't exist: `refresh_token_app` calls an injected refresher;
+per-provider OAuth refresh implementation is a follow-up; the
+5-minute check scheduling is the scheduler's domain (untouched).
+`ConnectorAccountStore` is in-memory: no persistence table yet
+(follow-up: a table like `agent_connectors`); account-selection
+logic is complete and tested without a DB.
+`token_app_to_mcp_definition` uses the placeholder command
+`puspa-token-app`: the transport running the token-app server
+doesn't exist yet (follow-up when there's an MCP runner). Minor
+note: the first vault probe failed because vault `user_id` must be a
+UUID + FK to the `users` table — not a bug, existing vault behavior;
+the second round-trip with a real user succeeded.
+
+## Next: G22+G23 (credential pool + tool registry)
+
+In progress (spawned after Wave 7): two parallel workers, disjoint
+files. G22 (hermes credential pool): unified BYOK provider resolver
+(one shared runtime resolver for PWA, gateway, cron, harness) +
+per-(provider, model) credential pool with rotation cooldown (the
+area of Nero's own PR #146450 — cooldown scoped to the requested
+model, not global) + per-profile secret scope (never raw
+`os.getenv`) + redaction module per secret type + OAuth (PKCE,
+device flow, anon auth). G23 (hermes tool registry): dependency-free
+registry + automatic discovery (`register()` at import time) +
+registration/exposure separation via toolsets + `check_fn` per
+module (key/permission/availability) with a per-tenant TTL cache +
+dangerous-command approval (yolo mode, approval floor, per-OS
+variants) + footprint ladder. Shared seam: G23's `check_fn`
+credential check defaults to a lazy import of
+`puspa.credentials.scope.check_credential(profile_id, provider,
+model=None) -> bool` (exact name, defined in both briefs; G22
+defines it, G23 consumes it via an injected callable).
