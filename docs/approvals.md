@@ -12,7 +12,7 @@ verbatim — see `NOTICE.md` and `REUSE.md`): OpenBot
 
 ## Action kinds
 
-Six kinds always ask in every edition:
+Seven kinds always ask in every edition:
 
 | Kind | Meaning |
 | --- | --- |
@@ -22,6 +22,7 @@ Six kinds always ask in every edition:
 | `post` | Post publicly |
 | `pay` | Pay money |
 | `change_credentials` | Change an account password or settings |
+| `install` | Install a skill from the marketplace (G30) |
 
 ## Tiered answers
 
@@ -118,6 +119,15 @@ the gate. `ApprovalPolicy.request` raises `GateDenied` for it, and
 `decide` returns `escalate_to_human` for every answer — including
 an "always" answer and an admin rule. A credential change is handed
 to a human, fail-closed.
+
+`install` also has no gate kind on purpose: installing a skill is
+a local enablement, never an outbound action, so it never reaches
+the gate either. `ApprovalPolicy.request` raises `GateDenied` for
+it; the install flow asks through `decide` + the store instead
+(see `docs/skill-discovery.md`): the answer is recorded with
+content `{"skill_slug": ..., "sha256": ...}`, the evidence is
+built fresh from the store per install, and a "once" answer is
+spent after a successful install.
 
 ## Anti-double-approval
 
