@@ -89,6 +89,21 @@ BASELINE_LINES = {
     # frozen, never appended to; the living log continues in
     # docs/status-maturity.md (Wave 9 onwards).
     "docs/status-maturity-archive-2026-11-18.md": 1204,
+    # OpenAPI contract for every PWA route (G1). The spec is the
+    # source of truth and IS counted; the generated client
+    # (generated-types.ts) is excluded as generated output. The
+    # spec grows as routes land: G31 (operator status) + G33
+    # (model settings) pushed it past 1000 lines in Wave 16
+    # (19 Nov 2026). Split only if a second spec file earns its
+    # own contract.
+    "docs/openapi-pwa.yaml": 1097,
+    # Maturity phase status log, re-added 19 Nov 2026: the live
+    # log was archived at 2051 lines on 18 Nov 2026 (entry
+    # removed at 859 lines) and regrew past the soft cap with
+    # the Waves 15-16 entries (G29, G30, G31, G32, G33). Same
+    # rule as before: shrinks only by archiving old sections
+    # into a dated archive doc, never by deleting history.
+    "docs/status-maturity.md": 1055,
 }
 
 #: Puspa-owned top-level directories covered by the ratchet.

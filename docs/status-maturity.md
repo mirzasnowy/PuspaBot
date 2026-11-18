@@ -818,6 +818,145 @@ never cache across installs. Wave 15 central SOLO suite:
 **2,879 passed, 9 skipped, 1 warning, 19m51s, EXIT 0**
 (2,825 Wave 15 G29 + 54 new G30 tests, exact).
 
+## Wave 16: G31 (PWA serve modes, DONE 19 Nov 2026)
+
+Worker 123df2a2. New files `puspa/pwa/serve_modes.py` (321
+lines) + `tests/test_pwa_serve_modes.py` (366 lines, 28 tests)
++ `docs/serve-modes.md` (162 lines) +
+`apps/pwa/src/state/operator.ts` (65 lines) +
+`apps/pwa/src/components/OperatorPanel.tsx` (106 lines) + 3
+new test files (`operator.test.ts` 141,
+`OperatorPanel.test.tsx` 116, `OfficeScreen.test.tsx` 88).
+Changed: `puspa/pwa/app.py` (two G31 blocks),
+`puspa/hosting/pairing.py` (`+status_snapshot`),
+`puspa/policy/gateway.py` (`+policy_summary`),
+`docs/openapi-pwa.yaml` (+ `GET /api/operator/status` + 8
+schemas), `apps/pwa/src/screens/OfficeScreen.tsx` (fetch on
+mount + 5s poll), `apps/pwa/src/api/client.ts`
+(`fetchOperatorStatus` + shared `getJson`),
+`apps/pwa/src/api/client.test.ts` (+2 tests),
+`generated-types.ts` (regenerated), REUSE.md + NOTICE.md
+G31 (no source repo: Nero's product decision, not a repo
+pattern). **Verified by the coordinator:** 28 Python tests +
+neighbours (`test_pwa.py` 7, hosting pairing, gateway) in the
+193-test wave batch; vitest **76 passed, 14 files** (G31
+files: 21 tests — operator 11, OperatorPanel 7, OfficeScreen
+3 — plus 2 in `client.test.ts`; the worker's "34 new" claim
+was measured mid-parallel-work and does not reconcile —
+verified count is 23); `npm run build` green (258 kB); ruff
+check + format clean (whole tree: 539 files); mypy clean;
+real `modern-web-guidance` legacy scan 0 findings on
+templates/src/index/static. Contents: `resolve_serve_mode`
+(env → JSON file → default `local`; an explicitly invalid
+value raises `ServeModeError` and the server refuses to
+start); `operator_panels_visible` (local only, fail-closed);
+`GatewayDecisionLog` (bounded 50, wired as the gateway's
+audit sink); `pairing_status` / `gateway_status` /
+`operator_status` read from the live objects (codes and
+session tokens never exposed); endpoint `GET
+/api/operator/status` (login required; hosted mode returns
+`operator_panels: false` + null panels). Honest limits (from
+`docs/serve-modes.md`): the gateway panel is idle until a
+real action flows through `gateway.decide()` (the PWA takes
+no computer actions); the pairing store is in-memory and
+process-local; panels poll every 5s, not push (merging
+operator events into SSE is a follow-up); hosted mode only
+hides the panels — end-to-end hosted verification needs the
+cloud backend, not built yet. Shared-file note (whole wave):
+`app.py` + `openapi-pwa.yaml` + `generated-types.ts` +
+`client.ts` + REUSE.md + NOTICE.md are shared by G31/G32/G33
+(parallel wave, one disk); they ride with the G31 commit
+(first push) and the G32/G33 commits carry only their own
+files.
+
+## Wave 16: G32 (WebUI lite as a real mode, DONE 19 Nov 2026)
+
+Worker 32a96b94. New files `puspa/pwa/lite.py` (277 lines) +
+`apps/pwa/templates/trial.html` (39 lines) +
+`tests/test_webui_lite.py` (453 lines, 37 tests) +
+`docs/webui-lite.md` (157 lines). Changed: `puspa/pwa/app.py`
+(G32 block: `GET /trial`, `POST /trial/start`, `POST
+/trial/chat`), 7 templates fixed against the real app (base
+nav `/tugas` etc. → real routes; chat `p.dari`/`teks` →
+`p.sender`/`text`; connectors `agent`/`agen_id`/`aksi` →
+`agents`/`agent_id`/`action`; memory fact dict → `key: value
+(status)`; office `office.agent`/`task_terakhir`/`sub_agent`/
+`handoff`/`event_type` → `agents`/`last_task`/`subagents`/
+`handoffs`/`type`; tasks `tujuan`/`setuju` →
+`purpose`/`approve`), `evidence_panel.html` renamed to
+`panel_evidence.html` (the route renders the new name; the
+old file was deleted from GitHub in a follow-up delete commit
+after the G32 push), `docs/GLOSSARY.md` (2 lines), REUSE.md +
+NOTICE.md G32 (no source repo: Nero's product decision).
+**Verified by the coordinator:** 37 Python tests re-run with
+conftest; ruff check + format clean; mypy clean; real
+`modern-web-guidance` legacy scan 0 findings on the owned
+web files (the old hand-rolled scanner was replaced by the
+real tool per Nero 19 Nov 2026; the one ERROR in
+`dist/assets/*.js` is React DOM's own legacy-IE `attachEvent`
+fallback inside the Vite bundle, not Puspa code — `dist/` is
+gitignored build output, fix would be a React bump, triaged
+in `docs/webui-lite.md`). Contents: trial = G2 HMAC
+entitlement (Pro, `trial_days` 14), httpOnly cookie,
+verified against the server secret on every request,
+fail-closed with no secret; start reuses an active/grace
+trial and refuses when an expired token is still presented
+(one trial per user as far as the cookie proves); the trial
+page is Jinja-only even when `dist` exists. Honest limits
+(from `docs/webui-lite.md`): no server-side trial ledger
+(deleting the cookie can start a new trial); the approval
+queue is never populated (nothing writes
+`app.state.approval`); htmx comes from the unpkg CDN (only
+the trial page works with plain HTML, no JS); trial chat is
+not a live LLM (demo `/api/chat` storage, message stored and
+shown back).
+
+## Wave 16: G33 (own-model selection in PWA Settings, DONE 19 Nov 2026)
+
+Worker 1c4f8692. New files `puspa/pwa/model_settings.py`
+(432 lines) + `tests/test_pwa_model_settings.py` (305 lines,
+30 tests) + `tests/test_pwa_model_settings_api.py` (89 lines,
+6 tests) + `apps/pwa/src/state/modelSettings.ts` (94 lines)
++ 3 new test files (`modelSettings.test.ts` 76/7 tests,
+`modelSettings` API test 86/5, `SettingsScreen.test.tsx`
+86/4) + `docs/model-selection.md` (96 lines). Changed:
+`puspa/pwa/app.py` (G33 block: `GET`/`POST
+/api/model-settings`, `POST`/`DELETE
+/api/model-settings/byok-key`), `puspa/router/complete.py`
+(+ optional `provider` arg on `complete_messages` /
+`complete_detailed` / `complete`, backward-compatible),
+`apps/pwa/src/screens/SettingsScreen.tsx` (Model card),
+`apps/pwa/src/api/client.ts` (get/save/delete BYOK),
+`openapi-pwa.yaml` + `generated-types.ts`, REUSE.md +
+NOTICE.md G33 (no source repo: Nero's product decision).
+**Verified by the coordinator:** 36 Python tests + router
+complete tests in the 193-test wave batch; vitest **76
+passed, 14 files** (G33 files: 16 tests); `npm run build`
+green; ruff check + format clean; mypy clean; real legacy
+scan 0 findings. Contents: three sources (hosted default /
+BYOK vault-only / local Ollama default
+`http://localhost:11434/v1`); `model_settings` table (one
+row per user, no key column); `save_selection` refuses any
+payload carrying a key field; `validate_base_url` (http(s)
+only, host required, no userinfo); `save_byok_key` /
+`has_byok_key` / `delete_byok_key` through the existing
+`puspa.accounts.vault` (`byok:<provider>`);
+`resolve_completion_kwargs` → router kwargs, fake-transport
+proven (local → `127.0.0.1:11434` with `Bearer ollama` +
+`provider` ollama; BYOK OpenAI → `api.openai.com` with the
+vault key; hosted → default OpenRouter, unchanged);
+`complete_with_selection` + `llm_complete_for_user`
+(resolves the selection on every call). Honest limits (from
+`docs/model-selection.md`): a local model needs real
+hardware (BYOK is the realistic path for most users); Puspa
+does not pre-check that the local server runs or the model
+is pulled (fails at first completion as `CompletionError`);
+BYOK providers outside the known-endpoint map need their
+base URL typed in; selection is per user, not per role/task;
+no live BYOK/Ollama call proven (fake transport + dummy keys
+only). Wave 16 central SOLO suite: pending (runs after the
+three pushes; number lands here once green).
+
 ## New items: G29 + G30 (approved by Nero 18 Nov 2026, queued after Wave 14)
 
 Nero approved two more maturity items (18 Nov 2026 ~22:08
