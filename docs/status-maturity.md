@@ -1605,3 +1605,59 @@ composer yet (text only). Wave 11 central SOLO suite: **2,463
 passed, 9 skipped, 1 warning, 15m01s, EXIT 0** — Wave 11 green
 (same count as Wave 10: G1 added no new Python tests; the 7 PWA
 tests were already in the 2,463).
+
+## Wave 12: G13 (multi-tenant teams / hosting, DONE 18 Nov 2026)
+
+### G13 Multi-tenant teams (commit ec86981f)
+
+New package `puspa/teams/` (9 modules, 2,419 lines) + 6 test
+files (1,455 lines), 112 passed (verified by the coordinator),
+ruff check + format clean, mypy clean (9 source files).
+`teams.py` (create/delete, owner-only role changes, last-owner
+guard, idempotent re-add, self-leave, cascade delete);
+`invitations.py` (hash-only tokens, 7-day TTL, single use,
+idempotent accept, revoke; acceptance runs as the table owner,
+like team creation); `visibility.py` (`can_see_thread` pure
+function over a ThreadRef + `BotAccessGate` grants/requests,
+decisions final, requests table is the audit trail);
+`entitlements.py` (Ed25519-signed `v1.<payload>.<signature>`
+tokens, canonical JSON, tiers from G2 + `admin`, `HomeGate.decide`
+with plain deny reasons; Ed25519 — not G2's HMAC — because the
+home must not hold the server secret); `moves.py`
+(pending/in_progress/done/failed/cancelled, freeze derived from
+move records, failed stays frozen and resumable, one move per bot
+at a time); `deploy.py` (offline Dockerfile/compose parse + rule
+validation); `schema.py` (applies `infra/schema_teams.sql`).
+Schema: seven tables + RLS (teams, team_members, invitations,
+bot_access_grants, bot_access_requests, entitlements,
+workspace_moves). Deploy: `Dockerfile` (multi-stage, s6-overlay
+PID 1, dashboard on 127.0.0.1 default, UID/GID remap, API server
+off unless keyed) + `docker-compose.yml` (gateway + dashboard on
+host 127.0.0.1 only, shared home volume). Docs: `docs/teams.md`
+(model, RLS rules, deploy + live-validation steps). Coordinator
+fixes during verification (worker code, not worker report): the
+RLS policies subqueried `team_members` inside its own policies —
+Postgres refuses that ("infinite recursion detected in policy") —
+replaced with SECURITY DEFINER helpers `is_team_member` /
+`is_team_owner` (locked search_path, schema-qualified tables),
+used by every policy; `resume_move`/`begin_move` shared one
+transition target (`in_progress`), so a pending move could be
+"resumed" and a failed move "begun" — each method now enforces
+its own source status; the non-owner UPDATE test expected
+`InsufficientPrivilege`, but RLS on an invisible row returns 0
+affected rows without raising (same rule as `tests/test_rls.py`)
+— test now asserts rowcount 0 + unchanged name, and the unused
+`pg_errors` import left behind was removed. First run: 6 failed,
+106 passed; after fixes: 112 passed. Honest limits (from
+`docs/teams.md` + the Dockerfile/compose headers): the Docker
+files were NOT built or run here (the VM kernel rejects setns) —
+parse + rule validation only; first live check must happen on a
+VPS (`docker build` + `docker compose up` + real login). The move
+transport (copying bot data between workspaces) is an injected
+callable at the call site, not built here. No new ledger event
+types for access decisions (core ledger stays at 31 types); the
+gateway/teams HTTP wiring is a follow-up; two containers sharing
+one home volume are not refused at open (G26 single-writer is
+process-wide — the file-lock follow-up). Wave 12 central SOLO
+suite: pending at docs time (runs after this commit; number lands
+here once it is green).
