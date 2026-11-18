@@ -18,8 +18,15 @@ What one verification checks (all offline, no Fulcio or Rekor call):
    Sigstore behavior, not a hole.
 3. The certificate carries the expected identity (Subject Alternative
    Name) and the expected OIDC issuer (the issuer extension).
-4. The artifact digest in the bundle matches the artifact bytes, and
-   the signature is valid for those bytes under the certificate key.
+4. The artifact is bound to the bundle: for a message-signature
+   bundle the artifact digest in the bundle matches the artifact
+   bytes and the signature is valid for those bytes under the
+   certificate key; for a DSSE bundle the in-toto statement inside
+   the envelope must list the artifact's sha256 digest as a subject
+   digest, so a bundle signed for one artifact cannot verify a
+   different one. A payload that is not an in-toto statement, or a
+   statement with no subject digest, is rejected outright, never
+   treated as envelope-only proof.
 5. The transparency log entry is genuine: its signed entry timestamp
    verifies against the Rekor log key in the trust root, and its
    Merkle inclusion proof verifies against the log root in the
@@ -52,6 +59,8 @@ References (read 18 Nov 2026):
 
 from __future__ import annotations
 
+import hashlib
+import json
 from importlib.resources import as_file, files
 from pathlib import Path
 
@@ -74,6 +83,15 @@ _BUNDLED_ROOTS = {
     "production": "https%3A%2F%2Ftuf-repo-cdn.sigstore.dev/trusted_root.json",
     "staging": "https%3A%2F%2Ftuf-repo-cdn.sigstage.dev/trusted_root.json",
 }
+
+#: DSSE payload type for in-toto statements, the only payload type
+#: skill verification accepts. ``Verifier.verify_dsse`` returns the
+#: payload type and bytes without validating either, so the binding
+#: check below asserts both before trusting the payload.
+_DSSE_PAYLOAD_TYPE = "application/vnd.in-toto+json"
+
+#: ``_type`` of an in-toto statement (https://in-toto.io/Statement/v1).
+_IN_TOTO_STATEMENT_TYPE = "https://in-toto.io/Statement/v1"
 
 
 def _load_sigstore():
@@ -107,6 +125,49 @@ def _load_trusted_root(TrustedRoot, trust_root):
 def _fail(reason: str) -> tuple[bool, str]:
     """One-line failure reason: library errors can be multi-line."""
     return False, " ".join(str(reason).split())
+
+
+def _check_dsse_binding(payload_type, payload, artifact_bytes) -> tuple[bool, str]:
+    """Bind a verified DSSE payload to ``artifact_bytes``.
+
+    The payload must be an in-toto statement whose subjects include
+    a sha256 digest equal to sha256(``artifact_bytes``). A statement
+    may list several subjects (for example several artifacts of one
+    release); the artifact being verified needs to be one of them.
+    Envelope-only verification would let any DSSE bundle from the
+    right identity "verify" for any artifact, so anything else fails
+    closed: a payload that is not an in-toto statement, or a
+    statement with no sha256 subject digest, is rejected, never
+    treated as envelope-only proof. Never raises.
+    """
+    if payload_type != _DSSE_PAYLOAD_TYPE:
+        return False, "dsse payload type is not an in-toto statement"
+    try:
+        statement = json.loads(payload)
+    except Exception:
+        return False, "dsse payload is not valid json"
+    if not isinstance(statement, dict):
+        return False, "dsse payload is not an in-toto statement"
+    if statement.get("_type") != _IN_TOTO_STATEMENT_TYPE:
+        return False, "dsse payload is not an in-toto statement"
+    subjects = statement.get("subject")
+    if not isinstance(subjects, list) or not subjects:
+        return False, "dsse payload statement has no subject"
+    digests = set()
+    for subject in subjects:
+        if not isinstance(subject, dict):
+            continue
+        digest = subject.get("digest")
+        if not isinstance(digest, dict):
+            continue
+        value = digest.get("sha256")
+        if isinstance(value, str) and value:
+            digests.add(value.lower())
+    if not digests:
+        return False, "dsse payload subject has no sha256 digest"
+    if hashlib.sha256(bytes(artifact_bytes)).hexdigest() in digests:
+        return True, "ok"
+    return False, "artifact digest does not match dsse statement subject digest"
 
 
 def verify_sigstore_bundle(bundle_bytes, artifact_bytes, identity, issuer, *,
@@ -152,9 +213,22 @@ def verify_sigstore_bundle(bundle_bytes, artifact_bytes, identity, issuer, *,
         return _fail(f"malformed bundle: {exc}")
     try:
         policy = Identity(identity=identity, issuer=issuer)
-        Verifier(trusted_root=root).verify_artifact(
-            bytes(artifact_bytes), bundle, policy
-        )
+        verifier = Verifier(trusted_root=root)
+        if getattr(bundle, "_dsse_envelope", None) is not None:
+            # DSSE bundle: verify the envelope, then bind the artifact
+            # to the in-toto statement inside it. ``getattr`` with a
+            # default keeps this fail-closed if a future ``sigstore``
+            # version drops the private attribute: the bundle then
+            # falls through to ``verify_artifact``, which rejects a
+            # DSSE bundle, instead of ever verifying it unchecked.
+            payload_type, payload = verifier.verify_dsse(bundle, policy)
+            ok, reason = _check_dsse_binding(
+                payload_type, payload, bytes(artifact_bytes)
+            )
+            if not ok:
+                return _fail(reason)
+            return True, "ok"
+        verifier.verify_artifact(bytes(artifact_bytes), bundle, policy)
     except Exception as exc:
         return _fail(f"sigstore verification failed: {exc}")
     return True, "ok"
