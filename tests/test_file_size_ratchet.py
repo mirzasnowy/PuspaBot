@@ -72,8 +72,9 @@ BASELINE_LINES = {
     "tests/test_router_oauth_translate.py": 1123,
     # Maturity phase status log, append-only by design (same rule as
     # status-brain-deepening.md); shrinks only by archiving old sections
-    # into a dated archive doc, never by deleting history.
-    "docs/status-maturity.md": 1084,
+    # into a dated archive doc, never by deleting history. Count
+    # updated with the Wave 8 + CI status entries (18 Nov 2026).
+    "docs/status-maturity.md": 1259,
 }
 
 #: Puspa-owned top-level directories covered by the ratchet.
