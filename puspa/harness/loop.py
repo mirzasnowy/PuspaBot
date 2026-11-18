@@ -121,6 +121,7 @@ import inspect
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from puspa.computer.errors import BackendUnavailable
 from puspa.policy import Gate
 from puspa.policy.tokens import tool_permission
 from puspa.runtime.budget import CEILING_RP_PER_TASK, BudgetExhausted, BudgetTracker
@@ -307,11 +308,15 @@ class CodingHarness:
             reproduce_first = mode_spec.reproduce_first
         # Unknown profile names are refused at construction time.
         get_profile(profile)
-        if production and not isinstance(executor, SandboxExecutor):
+        if production and not (
+            isinstance(executor, SandboxExecutor) or getattr(executor, "production_safe", False)
+        ):
             raise HarnessError(
-                "production harness requires a SandboxExecutor; "
-                f"got {type(executor).__name__}. LocalTestExecutor is "
-                "test-only and must never run in production."
+                "production harness requires a SandboxExecutor or a "
+                "BackendExecutor over the docker backend; "
+                f"got {type(executor).__name__}. LocalTestExecutor and a "
+                "local-backed BackendExecutor are test-only and must never "
+                "run in production."
             )
         self.executor = executor
         # generator(task, attempts) -> str (full program text, or a
@@ -335,7 +340,9 @@ class CodingHarness:
         self.cost_per_attempt_rp = cost_per_attempt_rp
         self.timeout_s = timeout_s
         self.production = production
-        self.test_only = isinstance(executor, LocalTestExecutor)
+        self.test_only = isinstance(executor, LocalTestExecutor) or getattr(
+            executor, "test_only", False
+        )
         self.budget = BudgetTracker(rupiah_max=cost_ceiling_rp, step_max=max_attempts)
 
     # -- events ---------------------------------------------------------
@@ -437,10 +444,24 @@ class CodingHarness:
                 build_reproduction(task.task_id, task.description, task.test_code)
             )
             if task.starter_code:
-                report = tracker.record_reproduction(
-                    lambda program: self.executor.run(program, timeout_s=self.timeout_s),
-                    task.starter_code,
-                )
+                try:
+                    report = tracker.record_reproduction(
+                        lambda program: self.executor.run(program, timeout_s=self.timeout_s),
+                        task.starter_code,
+                    )
+                except (SandboxUnavailable, BackendUnavailable) as exc:
+                    # Fail-closed, same as the main attempt loop: a
+                    # dead backend during the starter probe stops
+                    # the run instead of raising out of harness.run.
+                    outcome.status = STATUS_SANDBOX_UNAVAILABLE
+                    outcome.reason = str(exc)
+                    self._record(
+                        "sandbox_unavailable", {"task_id": task.task_id, "reason": str(exc)}
+                    )
+                    self._record(
+                        "harness_failed", {"task_id": task.task_id, "status": outcome.status}
+                    )
+                    return outcome
                 outcome.reproduction_failed = bool(report["reproduced"])
                 self._record(
                     "reproduction_checked",
@@ -535,9 +556,11 @@ class CodingHarness:
             current_code = code
             try:
                 result = self.executor.run(code, timeout_s=self.timeout_s)
-            except SandboxUnavailable as exc:
-                # Fail-closed: the sandbox cannot run. Stop here.
+            except (SandboxUnavailable, BackendUnavailable) as exc:
+                # Fail-closed: the backend cannot run. Stop here.
                 # No retry, no host fallback, no local executor swap.
+                # BackendUnavailable is the computer-backend
+                # equivalent of SandboxUnavailable (G16 seam).
                 outcome.status = STATUS_SANDBOX_UNAVAILABLE
                 outcome.reason = str(exc)
                 self._record("sandbox_unavailable", {"task_id": task.task_id, "reason": str(exc)})
