@@ -762,6 +762,62 @@ recovery waiter was killed by a fourth replacement ~4 min
 later; recovery succeeded on the second attempt, and the
 re-run went green on the first try.
 
+## Wave 15: G30 (skill discovery, vercel-labs find-skills pattern, DONE 18 Nov 2026)
+
+Worker 3333ca47 + coordinator follow-up (G4 `install` kind).
+New files `puspa/marketplace/discovery.py` (815 lines) +
+`tests/test_marketplace_discovery.py` (586 lines, 38 tests) +
+`tests/test_marketplace_discovery_approval.py` (8 tests) +
+`skills/find-skills/SKILL.md` (202 lines) +
+`skills/find-skills/manifest.json` +
+`docs/skill-discovery.md` (168 lines); changed
+`puspa/marketplace/errors.py` (4 new errors) +
+`puspa/marketplace/__init__.py` (exports) +
+`puspa/policy/approvals.py` (new `install` kind, coordinator
+follow-up) + `docs/approvals.md` (seven kinds) + G30 sections
+in REUSE.md + NOTICE.md (vercel-labs/skills MIT pattern
+attribution, no code copied). **54 tests cover G30 (38
+discovery + 8 bridge + 8 taxonomy install-kind), all passing**
+(verified by the coordinator), ruff check + format clean,
+mypy clean. Contents: `SkillsShClient` (GET
+`{base}/api/search?q=...`, fail-soft to empty on transport
+failure / non-200 / malformed payload); word-drop fallback
+(exact < 10 + 2-6 terms → drop one term per subquery, merge
+dedup by slug, cap 25, exact never displaced); rubric
+(recommended = 1K+ installs + trusted source or 100+ stars;
+suspect = < 100 installs or < 100 stars; unknown stars
+reported unknown, never assumed good); `DiscoveryCache`
+(local JSON, 24h TTL, stale served when live fails);
+`install_discovered` (6 fail-closed gates: valid slug →
+fetch SKILL.md → sha256 vs expected → explicit per-skill
+approval → licence detected + allowlist MIT/Apache/BSD →
+import DISABLED → enable with `explicit_approval=True`;
+G24 `record_use` when `skills_root` given); built-in
+find-skills skill (own wording, trigger terms, imports
+through the registry). Coordinator follow-up (the worker's
+open decision, closed here): `install` is now a first-class
+G4 kind — always asks, tiered answers in the `ApprovalStore`
+with 24h expiry, content-bound to `{"skill_slug",
+"sha256"}`; recognition from tool verb `install` and button
+label "Install"; no Gate kind (local enablement, never
+outbound — `ApprovalPolicy.request` refuses it, same pattern
+as `change_credentials`); bridge `approval_from_store`
+(builds `InstallApproval` fresh from the store per install)
++ `consume_install_approval` (spends "once" answers only).
+Honest limits (from `docs/skill-discovery.md`): no live
+call to skills.sh or GitHub yet (API shape from public
+`find.ts` + SKILL.md; first live search unverified);
+registry returns no description / version / licence / stars
+(imports as 1.0.0, licence from the repo LICENSE file, stars
+caller-supplied); SKILL.md only from conventional paths
+(`skills/<slug>/SKILL.md` or `<slug>/SKILL.md` on
+main/master); built-in find-skills skill not wired into
+turn-loop skill activation yet; `InstallApproval` is
+evidence, not a capability — build fresh per install,
+never cache across installs. Wave 15 central SOLO suite:
+pending (runs after this commit; number lands here once
+green).
+
 ## New items: G29 + G30 (approved by Nero 18 Nov 2026, queued after Wave 14)
 
 Nero approved two more maturity items (18 Nov 2026 ~22:08
