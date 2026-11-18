@@ -1601,6 +1601,7 @@ credentials in scope); no live browser check (build + unit tests
 open); chat messages do not yet carry per-number Bukti buttons
 (evidence panel route unchanged); push needs a VAPID key (no
 push round-trip verified live); no photo upload in the chat
-composer yet (text only). Wave 11 central SOLO suite: pending at
-docs time (runs after this commit; number lands here once it is
-green).
+composer yet (text only). Wave 11 central SOLO suite: **2,463
+passed, 9 skipped, 1 warning, 15m01s, EXIT 0** — Wave 11 green
+(same count as Wave 10: G1 added no new Python tests; the 7 PWA
+tests were already in the 2,463).
