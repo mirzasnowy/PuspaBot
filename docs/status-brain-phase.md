@@ -135,6 +135,43 @@ during integration because it contradicted revision 7 (see
 - Tests: `tests/test_planner_eval.py` (19 tests) plus
   `tests/test_skills_hooks.py` (12 tests), 31 tests.
 
+### 5. World model + learning loop wiring (worker 4, 18 Nov 2026)
+
+Follow-up wiring after the four workstreams above; revision 7
+still unchanged. Full write-up:
+`docs/brain-wiring-world-learning.md`.
+
+- `puspa/runtime/tasks.py`: `TaskRunner` takes optional
+  `world_model` / `learning_loop`. Per step it predicts the
+  step's world action before acting (`world_prediction` event,
+  advisory), then scores the real result with
+  `WorldModel.update` (a miss is reported to the learning loop
+  through the `record_misprediction` seam and recorded as a
+  `world_misprediction` event). Steps with no world action are
+  folded through `ingest_task_result` instead. No new ledger
+  event type was added: the prediction is also attached to the
+  `handoff_proposed` / `handoff_handed_over` event content,
+  which the ledger keeps.
+- `puspa/chassis/agent_session.py`: `AgentBrain` plus
+  `get_session_brain` / `bind_turn` wiring, so one (user, agent)
+  pair shares one WorldModel + LearningLoop across turns.
+  `PuspaChassis` carries the pair (`brain()`).
+- `puspa/world/model.py`: `WorldModel.learning_loop` attribute
+  routes misprediction reports to the session loop; the lazy
+  import seam is unchanged.
+- `puspa/runtime/planner.py`, `puspa/scheduler/curriculum.py`:
+  brain pass-through to the `TaskRunner` they build.
+- `puspa/world/store.py` + `infra/schema_world.sql`: Postgres
+  persistence of `WorldModel.state()`, one row per (user, agent)
+  in table `world_beliefs` (upsert, RLS like the other schemas).
+  Apply with `create_schema()` after Postgres is up.
+- Tests: `tests/test_world_brain_wiring.py` (9 tests, in-memory,
+  end-to-end through the real `TaskRunner`) and
+  `tests/test_world_store.py` (serialization round trip in-memory
+  plus Postgres save/load; the database test skips itself while
+  Postgres is down, so it still waits for the coordinator's
+  Postgres install).
+
 ## Final test numbers (full suite, single process)
 
 Command, from `build/`:

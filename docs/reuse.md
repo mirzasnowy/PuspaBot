@@ -345,3 +345,28 @@ change was adopted.
 - LightRAG as a library (not installed): only the dual-level
   retrieval idea was adapted on top of Postgres + pgvector.
 - No GPL, AGPL, SSPL, PolyForm, or CC BY-NC code was used.
+
+## Brain wiring phase (18 Nov 2026)
+
+The wiring phase connects the Brain phase patterns into the live
+agent loop. No new third-party pattern and no new dependency was
+introduced: every pattern used here was already attributed in the
+Brain phase section above, and `requirements.txt` is unchanged.
+
+| What was wired | Pattern (already attributed above) | Where it lives |
+| --- | --- | --- |
+| World model predicts before acting, learns after observing, in the real task cycle | generative_agents reflection shape; LightRAG dual-level retrieval (beliefs are Postgres rows, not a library) | `puspa/runtime/tasks.py` (TaskRunner world_model / learning_loop), `puspa/world/model.py` |
+| One brain per (user, agent) across turns | hermes-agent persistent user model idea | `puspa/chassis/agent_session.py` (AgentBrain, get_session_brain), `puspa/chassis/factory.py` |
+| Curriculum runs its own learning tasks | Voyager automatic curriculum shape | `puspa/scheduler/curriculum.py`, `puspa/scheduler/scheduler.py` (tick curriculum parameter) |
+| User feedback corrects the loop | letta-code self-improvement from experience | `puspa/memory/learning_loop.py` (record_feedback) |
+| Schedule and capability beliefs | procedural memory lifecycle (decay, contradiction as separate candidate) | `puspa/world/model.py` (_ScheduleBelief, _CapabilityBelief) |
+| Irregular-drift evaluation | inspect_ai / tau-bench simulated-user shape | `puspa/world/noisy_simulator.py` |
+
+**Not used in the wiring phase (recorded so it is not repeated):**
+- No code was copied from any repo. No fork was created.
+- No new library was installed. The CLI change
+  (`cli/puspa_cli/repl.py`, `/umpanbalik` command) is local only
+  and is not part of the repo push.
+- The deterministic simulator was not changed; the noisy
+  simulator is a second, separate world with the same interface.
+- No GPL, AGPL, SSPL, PolyForm, or CC BY-NC code was used.

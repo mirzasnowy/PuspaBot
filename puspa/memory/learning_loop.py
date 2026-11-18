@@ -56,6 +56,17 @@ task for the gap. The module-level function delegates to a
 default `LearningLoop` instance; use `get_learning_loop()` /
 `reset_learning_loop()` in tests.
 
+User feedback is the same seam in the other direction:
+
+    record_feedback(task, verdict, correction=None, source="user")
+
+with `verdict` "correct" or "wrong". A "wrong" verdict with a
+correction corrects the next prediction like a misprediction;
+a "correct" verdict only reinforces and never changes a
+prediction. Feedback never overwrites a manual user edit: when
+`note_manual_edit` already holds a version for the task, a
+correction from feedback is stored as a proposal instead.
+
 This module is deliberately in-memory: the loop state (log,
 corrections, drafts) lives in a `LearningLoop` instance so the
 behaviour is testable without a database. Durable storage is
@@ -77,6 +88,9 @@ from .procedural import LEARNED_DRAFT_PREFIX
 MISPREDICTION_KEYS = ("task", "predicted", "observed", "error", "context")
 
 SKILL_STATUSES = ("draft", "active", "rejected", "suspect")
+
+FEEDBACK_VERDICTS = ("correct", "wrong")
+FEEDBACK_SOURCE = "user_feedback"
 
 
 def _skill_id():
@@ -119,6 +133,7 @@ class LearningLoop:
         self.gaps = {}
         self.skills = {}
         self.manual_edits = {}
+        self.feedback_proposals = []
 
     # -- experience: mispredictions correct the model ------------
 
@@ -169,6 +184,116 @@ class LearningLoop:
             if skill["task"] == task and skill["status"] == "active":
                 skill["status"] = "suspect"
         return dict(self.corrections[task])
+
+    def record_feedback(self, task, verdict, *, correction=None, source="user"):
+        """Record user feedback about an answer for a task.
+
+        `verdict` is "correct" or "wrong". A "wrong" verdict with
+        a `correction` corrects the next prediction like a
+        misprediction: `predict(task)` returns the correction,
+        the active skill for the task becomes suspect, and the
+        curriculum proposes a retry. A "wrong" verdict without a
+        correction still logs the gap (the curriculum proposes a
+        retry) but changes no prediction. A "correct" verdict
+        only records a positive experience: it never changes a
+        prediction and never creates a correction, so learned
+        truth is not overwritten. Every feedback-derived entry
+        carries source "user_feedback" (the actor is kept in
+        `feedback_source`) so the origin is auditable. Feedback
+        never overwrites a manual user edit: when
+        `note_manual_edit` already holds a version for the task,
+        a correction from feedback is stored as a proposal with
+        `conflicts_with_manual_edit` True instead of replacing
+        the manual version. Returns a result dict with `task`,
+        `verdict`, `status` and `source`.
+        """
+        task = str(task)
+        if not task:
+            raise ValueError("task must be a non-empty string")
+        if verdict not in FEEDBACK_VERDICTS:
+            raise ValueError(f"verdict must be one of {FEEDBACK_VERDICTS}")
+        predicted = self.predict(task)
+        experience = {
+            "id": uuid.uuid4().hex,
+            "task": task,
+            "kind": "user_feedback",
+            "source": FEEDBACK_SOURCE,
+            "feedback_source": source,
+            "verdict": verdict,
+            "predicted": predicted,
+            "observed": correction if verdict == "wrong" else predicted,
+            "error": (
+                "user feedback: answer was wrong" if verdict == "wrong"
+                else None
+            ),
+            "context": {"source": FEEDBACK_SOURCE, "feedback_source": source},
+        }
+        self.experiences.append(experience)
+        result = {
+            "task": task,
+            "verdict": verdict,
+            "source": FEEDBACK_SOURCE,
+            "feedback_source": source,
+            "experience_id": experience["id"],
+        }
+        if verdict == "correct":
+            result["status"] = "recorded"
+            result["predicted"] = predicted
+            return result
+        # verdict == "wrong": the answer failed, so the gap is real
+        # even when no correction was given.
+        gap = self.gaps.get(task, {"mispredictions": 0, "last_error": None})
+        gap["mispredictions"] += 1
+        gap["last_error"] = "user feedback: answer was wrong"
+        self.gaps[task] = gap
+        for skill in self.skills.values():
+            if skill["task"] == task and skill["status"] == "active":
+                skill["status"] = "suspect"
+        if correction is None:
+            result["status"] = "recorded"
+            result["correction"] = None
+            return result
+        if task in self.manual_edits:
+            proposal = {
+                "id": uuid.uuid4().hex,
+                "task": task,
+                "correction": correction,
+                "source": FEEDBACK_SOURCE,
+                "feedback_source": source,
+                "status": "proposed",
+                "conflicts_with_manual_edit": True,
+                "experience_id": experience["id"],
+            }
+            self.feedback_proposals.append(proposal)
+            result["status"] = "proposed"
+            result["correction"] = correction
+            result["conflicts_with_manual_edit"] = True
+            result["proposal_id"] = proposal["id"]
+            return result
+        previous = self.corrections.get(task)
+        self.corrections[task] = {
+            "task": task,
+            "predicted": predicted,
+            "observed": correction,
+            "error": "user feedback: answer was wrong",
+            "count": (previous["count"] if previous else 0) + 1,
+            "experience_ids": (
+                (previous["experience_ids"] if previous else [])
+                + [experience["id"]]
+            ),
+            "source": FEEDBACK_SOURCE,
+            "feedback_source": source,
+        }
+        result["status"] = "applied"
+        result["correction"] = dict(self.corrections[task])
+        return result
+
+    def list_feedback_proposals(self, task=None):
+        """Feedback corrections held as proposals (manual-edit conflicts)."""
+        proposals = self.feedback_proposals
+        if task is not None:
+            proposals = [p for p in proposals if p["task"] == str(task)]
+        return [dict(p) for p in proposals]
 
     def correction_for(self, task):
         """The learned correction for a task, or None."""
@@ -475,3 +600,16 @@ def record_misprediction(record):
     Delegates to the default `LearningLoop` instance.
     """
     return _DEFAULT_LOOP.record_misprediction(record)
+
+
+def record_feedback(task, verdict, *, correction=None, source="user"):
+    """Record user feedback about an answer for a task.
+
+    `verdict` is "correct" or "wrong"; `correction` is the right
+    value when the answer was wrong. Returns the result dict
+    from the default `LearningLoop` instance (see
+    `LearningLoop.record_feedback`).
+    """
+    return _DEFAULT_LOOP.record_feedback(
+        task, verdict, correction=correction, source=source
+    )

@@ -37,6 +37,40 @@ from puspa.runtime.handoff import Handoff, HandoffContract
 
 STAGES = ("accept", "plan", "run", "verify", "present")
 
+#: Event types the brain wiring records through the sink. They are
+#: advisory only: a prediction never gates anything, and the numbers
+#: in them are never meaningful numbers (those still come from the
+#: code renderer and the Book of Evidence). Note the ledger keeps a
+#: closed set of 31 event types (revision 7 section 2.3), so a
+#: production Ledger sink drops these two types silently
+#: (best-effort, see `make_ledger_sink`); the same prediction is
+#: therefore also attached to the `handoff_proposed` /
+#: `handoff_handed_over` event content, which the ledger does keep.
+WORLD_PREDICTION_EVENT = "world_prediction"
+WORLD_MISPREDICTION_EVENT = "world_misprediction"
+
+
+def _world_action_for_step(step: "Step") -> dict | None:
+    """Translate a plan step into a world-model action, or None.
+
+    A step whose inputs carry a ``type`` the world model knows
+    (``check_price``, ``check_bill``, ``pay_bill``, ``wait_day``,
+    ``buy_from_store``, ``estimate_task``, ``attempt_task``) is
+    predicted and scored as that action. Any other step has no
+    world-model action: it is not predicted, but its outcome is
+    still folded into the model through ``ingest_task_result``
+    (capability and schedule beliefs). Returns None when the step
+    has no world-model action.
+    """
+    from puspa.world.model import ACTION_TYPES
+
+    action_type = (step.inputs or {}).get("type")
+    if action_type in ACTION_TYPES:
+        action = dict(step.inputs)
+        action.setdefault("task_kind", step.name)
+        return action
+    return None
+
 
 class TaskError(Exception):
     """Siklus tugas gagal / tidak sah."""
@@ -85,10 +119,30 @@ def create_plan(purpose: str, steps: list[Step]) -> list[Step]:
 
 
 class TaskRunner:
-    """Menjalankan satu tugas lewat 5 tahap, menulis ke Buku Kerja."""
+    """Menjalankan satu tugas lewat 5 tahap, menulis ke Buku Kerja.
+
+    Brain wiring (advisory only, fail-open): pass a ``world_model``
+    (``puspa.world.WorldModel``) and a ``learning_loop``
+    (``puspa.memory.learning_loop.LearningLoop``) and the runner
+    predicts each step's world action before acting, scores the
+    real result against that prediction after the step, and folds
+    the outcome into the model. A prediction never gates anything:
+    it does not skip the verifier, the permission token, the single
+    outbound gate, or the orphan-number rule, and its numbers are
+    never presented as meaningful numbers. When the model or the
+    loop is missing or raises, the runner keeps working exactly as
+    before (fail-open for prediction, fail-closed for action: no
+    action is ever taken on the model's word alone). A missed
+    prediction is reported to the learning loop through
+    ``WorldModel.update`` (``record_misprediction`` seam); when a
+    session loop is given here it is also set as the model's
+    ``learning_loop`` so the report goes to that loop instead of
+    the module-level default.
+    """
 
     def __init__(self, *, sink=None, executor=None, verifier=None,
-                 budget: BudgetTracker | None = None) -> None:
+                 budget: BudgetTracker | None = None,
+                 world_model=None, learning_loop=None) -> None:
         # sink(jenis, isi): pencatat kejadian; default buang ke memori.
         self._event: list[dict] = []
         self.sink = sink or (lambda event_type, content: self._event.append({"type": event_type, "content": content}))
@@ -97,6 +151,89 @@ class TaskRunner:
         # pemeriksa(hasil) -> (lolos: bool, alasan: str).
         self.verifier = verifier or (lambda result: (True, ""))
         self.budget = budget or BudgetTracker()
+        self.world_model = world_model
+        self.learning_loop = learning_loop
+        if world_model is not None and learning_loop is not None:
+            try:
+                world_model.learning_loop = learning_loop
+            except Exception:
+                pass
+
+    def _predict_step(self, task: Task, step: Step, action: dict):
+        """Predict one step's action before acting (advisory).
+
+        Returns the ``Prediction`` or None when there is no model
+        or the prediction fails. The prediction is recorded as a
+        `world_prediction` event; it never changes the plan.
+        """
+        try:
+            prediction = self.world_model.predict(action)
+        except Exception:
+            return None
+        self._record(WORLD_PREDICTION_EVENT, {
+            "task_id": task.task_id, "step": step.name,
+            "action": dict(action),
+            "predicted": dict(prediction.outcome),
+            "confidence": prediction.confidence,
+            "advisory": True,
+        })
+        return prediction
+
+    def _observe_step(self, task: Task, step: Step, action: dict,
+                      result: dict):
+        """Score one step's result against its prediction.
+
+        Calls ``WorldModel.update`` (which scores the pending
+        prediction, corrects the model, and reports a miss to the
+        learning loop through the ``record_misprediction`` seam)
+        and records a `world_misprediction` event when the
+        prediction missed. Returns the update outcome dict, or
+        None when there is no model or the update fails. Never
+        raises: a failed observation must not fail the task.
+        """
+        observed = dict(result) if isinstance(result, dict) else {}
+        # A step that completed passed its handoff, so it succeeded
+        # unless its result says otherwise.
+        observed.setdefault("success", True)
+        try:
+            outcome = self.world_model.update({
+                "action": dict(action), "observed": observed,
+                "task": step.name,
+                "day": observed.get("day"),
+            })
+        except Exception:
+            return None
+        if outcome.get("correct") is False:
+            self._record(WORLD_MISPREDICTION_EVENT, {
+                "task_id": task.task_id, "step": step.name,
+                "task_name": step.name,
+                "predicted": outcome.get("predicted"),
+                "observed": outcome.get("observed"),
+                "error": outcome.get("error"),
+                "context": {"action": dict(action)},
+                "advisory": True,
+            })
+        return outcome
+
+    def _ingest_step(self, task: Task, step: Step, result: dict) -> None:
+        """Fold a step outcome with no world action into the model.
+
+        Only for steps ``_world_action_for_step`` maps to None:
+        steps with a world action are already folded by
+        ``WorldModel.update`` (price, bill, schedule, capability),
+        so ingesting them again would count one outcome twice.
+        Never raises.
+        """
+        if not isinstance(result, dict):
+            return
+        try:
+            self.world_model.ingest_task_result({
+                "task": step.name,
+                "success": bool(result.get("success", True)),
+                "result": result,
+            })
+        except Exception:
+            pass
 
     def _record(self, event_type: str, content: dict) -> None:
         try:
@@ -140,7 +277,28 @@ class TaskRunner:
                     completion_definition=step.completion_condition or step.name,
                 )
                 handoff = Handoff(contract)
-                self._record("handoff_proposed", {"task_id": task.task_id, "handoff_id": handoff.id, "purpose": step.name})
+                # Brain (advisory): predict the step's world action
+                # before anything runs. A missing model, an
+                # unmapped step, or a failed prediction means no
+                # prediction, never a failed task.
+                action = None
+                prediction = None
+                if self.world_model is not None:
+                    action = _world_action_for_step(step)
+                    if action is not None:
+                        prediction = self._predict_step(task, step, action)
+                proposed = {"task_id": task.task_id, "handoff_id": handoff.id, "purpose": step.name}
+                if prediction is not None:
+                    # Same advisory prediction, kept in the ledger:
+                    # the closed event-type set drops the dedicated
+                    # `world_prediction` event, this key survives.
+                    proposed["world_prediction"] = {
+                        "action": dict(action),
+                        "predicted": dict(prediction.outcome),
+                        "confidence": prediction.confidence,
+                        "advisory": True,
+                    }
+                self._record("handoff_proposed", proposed)
                 handoff.accept()
                 handoff.start()
                 result = self.executor(step.name, step.inputs)
@@ -150,8 +308,17 @@ class TaskRunner:
                     self._record("handoff_rejected", {"task_id": task.task_id, "handoff_id": handoff.id})
                     raise TaskError(f"langkah {step.name!r} ditolak: keluaran tidak lolos skema")
                 handoff.mark_passed()
-                self._record("handoff_handed_over", {"task_id": task.task_id, "handoff_id": handoff.id})
+                handed_over = {"task_id": task.task_id, "handoff_id": handoff.id}
+                if action is not None and self.world_model is not None:
+                    # Brain: score the real result against the
+                    # prediction and correct the model.
+                    outcome = self._observe_step(task, step, action, result)
+                    if outcome is not None:
+                        handed_over["world_observation"] = outcome
+                self._record("handoff_handed_over", handed_over)
                 task.result[step.name] = result
+                if action is None and self.world_model is not None:
+                    self._ingest_step(task, step, result)
         except BudgetExhausted as exc:
             task.status = "failed"
             self._record("budget_exhausted", {"task_id": task.task_id, "reason": str(exc)})
