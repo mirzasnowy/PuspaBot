@@ -110,10 +110,37 @@ RUN_STATUSES = (
     "pending_user",
     "busy",
     "daily_cap_reached",
+    "budget_hold",
     "no_task",
     "already_completed",
     "error",
 )
+
+
+def default_task_budget_check():
+    """Lazy, fail-soft resolver for the billing-ledger budget check.
+
+    Returns a callable ``(user_id, task_id, *, cap_rp) -> int``
+    (rupiah remaining for the task) when
+    ``puspa/billing/ledger.py::task_budget_remaining`` exists, or
+    ``None`` when the module is not there yet (the G2 worker builds
+    it in parallel) — the runner then runs without a ledger check
+    instead of failing. The import is lazy and the call is
+    fail-soft, and billing is never imported at module top level.
+    """
+    try:
+        from puspa.billing.ledger import task_budget_remaining
+    except Exception:  # noqa: BLE001 - ledger may not exist yet
+        return None
+
+    def _check(user_id, task_id, *, cap_rp=2000):
+        try:
+            return int(task_budget_remaining(
+                user_id, task_id, cap_rp=cap_rp))
+        except Exception:  # noqa: BLE001 - a broken check must not stop learning
+            return None
+
+    return _check
 
 
 class CurriculumError(Exception):
@@ -128,7 +155,7 @@ class CurriculumRunner:
                  agent_id=None, max_tasks_per_day=None,
                  cost_ceiling_rp=None, max_replans=2,
                  plan_builder=None, world_model=None,
-                 learning_loop=None):
+                 learning_loop=None, budget_check=None):
         self.loop = loop if loop is not None else get_learning_loop()
         self._events: list[dict] = []
         if sink is None:
@@ -169,6 +196,15 @@ class CurriculumRunner:
         self.plan_builder = plan_builder
         self.world_model = world_model
         self.learning_loop = learning_loop
+        # Budget gate (policy on top of the general scheduler):
+        # ``budget_check(user_id, task_id, cap_rp=...) -> int`` is
+        # the remaining rupiah for the task. ``None`` means "use the
+        # default lazy ledger check" (fail-soft: no check at all
+        # while the billing ledger module does not exist yet).
+        # Tests inject a stub. Never imported at top level.
+        if budget_check is None:
+            budget_check = default_task_budget_check()
+        self.budget_check = budget_check
         self._runs_by_day: dict[str, int] = {}
         self._completed_by_day: dict[str, set] = {}
         self.history: list[dict] = []
@@ -320,6 +356,23 @@ class CurriculumRunner:
                        "reason": "task already completed today"}
             self.history.append(outcome)
             return outcome
+        # Ledger budget gate: no remaining budget means the task
+        # waits (a hold, not a failure) and consumes no daily run.
+        if self.budget_check is not None:
+            try:
+                remaining = self.budget_check(
+                    self.user_id, task_name,
+                    cap_rp=self.cost_ceiling_rp)
+            except Exception:
+                remaining = None
+            if remaining is not None and remaining <= 0:
+                outcome = {"status": "budget_hold", "ran": False,
+                           "proposal": proposal, "task_id": None,
+                           "task_status": None, "cost_rp": 0,
+                           "runs_today": self.runs_today(day),
+                           "reason": "no task budget remaining"}
+                self.history.append(outcome)
+                return outcome
 
         purpose = self._purpose_for(proposal)
         plan = self._plan_for(proposal, purpose)
@@ -381,6 +434,7 @@ def run_curriculum_tick(*, runner: CurriculumRunner | None = None,
                         max_tasks_per_day=None,
                         cost_ceiling_rp=None,
                         world_model=None, learning_loop=None,
+                        budget_check=None,
                         now: datetime | None = None) -> dict:
     """Run one curriculum step from a scheduler tick.
 
@@ -399,7 +453,8 @@ def run_curriculum_tick(*, runner: CurriculumRunner | None = None,
                 max_tasks_per_day=max_tasks_per_day,
                 cost_ceiling_rp=cost_ceiling_rp,
                 world_model=world_model,
-                learning_loop=learning_loop)
+                learning_loop=learning_loop,
+                budget_check=budget_check)
         return runner.run_once(now=now)
     except Exception as exc:  # noqa: BLE001 - tick must never break
         return {"status": "error", "ran": False, "proposal": None,
