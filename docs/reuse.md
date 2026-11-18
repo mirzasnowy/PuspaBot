@@ -934,6 +934,93 @@ column, the `tree` filter had a global dedup that dropped
 `model.py` in different modules). No new dependency: tiktoken
 was already pinned in `requirements.txt` (0.14.0).
 
+### 9Router: smart 3-tier fallback + quota tracking (mechanism 2 of 3)
+
+Pattern: decolua/9router (MIT, verified from three
+independent sources 18 Nov 2026: the GitHub README via a
+mirror, x-cmd, and FollowAgents/reporadar, all saying MIT).
+No code copied, no fork, no sub-project studied or used.
+`puspa/router/quota.py` (new, 368 lines): `QuotaStore` +
+`ProviderQuota`, per-provider quota tracking (remaining
+tokens, usage, reset countdown, Retry-After blocking), cost
+estimation, and rate-limit header parsing (`Retry-After`,
+`X-RateLimit-Remaining`, `X-RateLimit-Reset`). Windows roll
+over automatically (5-hour / daily / weekly, as registered);
+the clock is injectable (used by the tests).
+`puspa/router/fallback.py` (new, 529 lines): `build_chain()`
+(subscription -> cheap -> free from the role candidates in the
+router catalog, most expensive first via spread first/median/
+last, a different model per tier), `choose_with_quota()`
+(quota-aware routing), `call_with_fallback()` (fallback
+executor), failure classification (`classify_failure`: 429
+-> rate_limited, quota signals -> quota_exhausted, 5xx or no
+status -> provider_error, other 4xx -> non_retryable),
+`FallbackAttempt` / `FallbackHop` / `FallbackResult` (full
+audit: every hop records reason + source tier + target tier),
+`AllTiersFailed`, and the `RateLimited` /
+`QuotaExhaustedError` / `ProviderError` / `NonRetryableError`
+exceptions. Wiring in `puspa/router/router.py` (about 30
+lines): `default_chain(role)` and
+`choose_with_quota(role, quota_store)` delegating to
+`fallback.py` via lazy import (no circular import);
+`choose()` and `build_provider()` untouched. The chain is
+built from the same `CATALOG` + role rules as
+`router.choose()` (planner/presenter = benchmark-passing,
+checker = a different family, vision = cheapest vision), and
+costs use the same Rupiah formula as `router.compute_cost`
+and `BudgetTracker` (Rp per 1,000 tokens, integer Rupiah, no
+second currency). The Rp2,000/task cap is unchanged. Tests:
+`tests/test_router_fallback_quota.py`, 33 tests, 33 passed,
+all in-memory with simulated providers and a fake clock
+(regression: `tests/test_router.py` +
+`tests/test_budget_tasks.py` still green, 16 passed). What
+the tests prove: the chain order [subscription, cheap, free]
+with different models and falling prices; a real switch on
+429 (tier 1 429 -> tier 2 succeeds, hop recorded with reason
+and status), on 5xx, and on quota signals; an exhausted tier
+is skipped without ever being called; 429 marks the provider
+blocked in the store until Retry-After passes; all tiers
+failing raises `AllTiersFailed` naming each tier + model +
+reason, never silently; a deterministic 400 raises at once
+and the next tier is never tried; quota math (1000 - 500 used
+= 500 remaining, countdown shrinking with the clock, full
+reset restoring 1000, three missed windows rolling forward,
+no window never resetting, `X-RateLimit-Reset` shifting the
+reset); cost estimates identical to `compute_cost` per tier;
+successful usage recorded in quota + cost reported, failed
+tiers charging nothing; quota-aware routing skipping
+exhausted tiers and returning to subscription after reset;
+and the budget cannot be gamed (exhausted budget before any
+attempt calls no tier; a tier 1 success over the cap, Rp56
+vs a Rp50 cap, raises `BudgetExhausted`, the cheap tier is
+not tried, the charge is refused, usage stays 0). Honest
+limits: the quota store is in-memory (dict + lock), it does
+not survive restart and is not written to the ledger or
+Postgres (follow-up: Postgres persistence with a quota
+snapshot + reconciliation against ledger cost events);
+subscription and free tiers are cost bands over Puspa's own
+OpenRouter catalog, not different billing relations (no
+flat-rate subscription provider in the Claude Code/Codex
+OAuth style and no zero-cost provider is wired in the
+catalog yet; the subscription tier is the best model per
+role, drained first per 9Router "maximize subscription", and
+the free tier is the cheapest models at Rp1-3/1k tokens,
+near-zero, not zero) — wiring a real subscription/OAuth or
+free provider (for example local Ollama as the free tier) is
+a maturity-phase follow-up and needs Nero's decision on
+which provider; there is no live call adapter yet
+(`call_with_fallback` takes `call_fn(entry)` from the
+caller; no caller of `build_provider()` / `choose()` exists
+in `puspa/` today, so a live adapter cannot be proven without
+inventing a call path — the `call_fn` + `CallResult`
+signature is set here as the contract for the first live
+router caller); quota without registration is assumed
+available (limits are never guessed: `register()` /
+`seed_chain_quotas()` must be given real limits + windows
+from the provider's actual plan); costs come from catalog
+rates (public OpenRouter prices, Nov 2026), not live
+provider bills, the same as the existing `compute_cost`.
+
 ### mem0: extraction quality + ranked recall
 
 Pattern: mem0ai/mem0 (Apache-2.0). No code copied, no fork.
