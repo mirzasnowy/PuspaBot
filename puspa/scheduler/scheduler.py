@@ -28,7 +28,8 @@ import psycopg
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 HEARTBEAT_STALE_SECONDS = 120
 TRIGGER_TYPES = ("schedule", "due_date_bill", "price_drop", "manual",
-                "backup_daily", "consolidation", "trust_root_refresh")
+                "backup_daily", "consolidation", "trust_root_refresh",
+                "dream")
 
 
 class SchedulerError(Exception):
@@ -237,6 +238,18 @@ def schedule_trust_root_refresh(user_id: str, *, hour: int = 3, dsn=None) -> Tri
     return create_trigger(user_id, "trust_root_refresh", tomorrow, schedule=f"daily {hour:02d}:00", dsn=dsn)
 
 
+def schedule_dream(user_id: str, *, hour: int = 3, dsn=None) -> Trigger:
+    """Register the nightly DREAM memory pass (G7) as a trigger.
+
+    Running this trigger calls ``puspa.memory.dream.run_dream_job``
+    through ``run_scheduled_job`` below. The dream learns from the
+    last 7 days of episodic rows; without an LLM key it reports
+    ``"no_llm"`` and applies nothing.
+    """
+    tomorrow = (_now() + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
+    return create_trigger(user_id, "dream", tomorrow, schedule=f"daily {hour:02d}:00", dsn=dsn)
+
+
 def run_scheduled_job(run: dict, *, dsn=None) -> dict:
     """Eksekusi job sistem untuk satu jalan pemicu (backup/konsolidasi).
 
@@ -266,4 +279,9 @@ def run_scheduled_job(run: dict, *, dsn=None) -> dict:
 
         result = run_trust_root_refresh_job()
         return {"job": "trust_root_refresh", "result": result}
+    if event_type == "dream":
+        from puspa.memory.dream import run_dream_job
+
+        result = run_dream_job(str(user_id), dsn=dsn)
+        return {"job": "dream", "result": result}
     return {"job": "regular_task", "result": run["task_id"]}
