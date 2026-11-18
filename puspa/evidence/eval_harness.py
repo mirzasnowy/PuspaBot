@@ -61,6 +61,7 @@ __all__ = [
     "cassette_solver",
     "derive_expected_state",
     "load_reference_tasks",
+    "run_heldout_eval",
     "run_price_injection_eval",
     "run_reference_eval",
     "sandbox_available",
@@ -82,6 +83,8 @@ class EvalTask:
     expected_state: dict = field(default_factory=dict)
     policy: list[str] = field(default_factory=list)
     version: str = HARNESS_VERSION
+    environment: str = ""
+    cassette: dict | None = None
 
 
 @dataclass
@@ -94,6 +97,7 @@ class EvalResult:
     score: float
     final_state: dict = field(default_factory=dict)
     details: dict = field(default_factory=dict)
+    environment: str = ""
 
 
 @dataclass
@@ -241,15 +245,26 @@ class EvalHarness:
         return list(self._events)
 
     def run_task(self, task: EvalTask) -> EvalResult:
-        """Run one task: replay, score the final state, record it."""
-        cassette = load_cassette(self.cassette_dir / f"{task.cassette_name}.json")
+        """Run one task: replay, score the final state, record it.
+
+        A task with an inline cassette (``task.cassette``) replays it
+        directly and never touches the cassette directory; that is
+        how the AgentBench held-out tasks run. The score comes from
+        the scorer's details when it reports one (the held-out scorer
+        reports partial credit), otherwise 1.0 on pass and 0.0 on fail.
+        """
+        if task.cassette is not None:
+            cassette = task.cassette
+        else:
+            cassette = load_cassette(self.cassette_dir / f"{task.cassette_name}.json")
         player = CassettePlayer(cassette)
         final_state = self.solver(task, player)
         passed, details = self.scorer(task, final_state)
         result = EvalResult(
             task_id=task.task_id, name=task.name, passed=passed,
-            score=1.0 if passed else 0.0,
+            score=float(details.get("score", 1.0 if passed else 0.0)),
             final_state=final_state, details=details,
+            environment=task.environment,
         )
         try:
             self.sink("verification_completed", {
@@ -272,6 +287,26 @@ def run_reference_eval(cassette_dir: Path | str | None = None, **kwargs) -> Eval
     """Run the 10 reference tasks with the default solver and scorer."""
     harness = EvalHarness(cassette_dir=cassette_dir, **kwargs)
     return harness.run(load_reference_tasks(cassette_dir))
+
+
+def run_heldout_eval(cassette_dir: Path | str | None = None, **kwargs) -> EvalReport:
+    """Run the AgentBench held-out tasks and return their own report.
+
+    The held-out set is disjoint from the 10 dev cassettes (see
+    ``puspa/evidence/agentbench_tasks.py``) and is scored separately:
+    this report's score is the held-out score only, never mixed with
+    the dev score from ``run_reference_eval``. The import is lazy
+    because ``agentbench_tasks`` imports this module.
+    """
+    from puspa.evidence.agentbench_tasks import (
+        heldout_solver,
+        load_heldout_tasks,
+        score_agentbench,
+    )
+
+    harness = EvalHarness(cassette_dir=cassette_dir, solver=heldout_solver,
+                          scorer=score_agentbench, **kwargs)
+    return harness.run(load_heldout_tasks())
 
 
 def run_price_injection_eval(
