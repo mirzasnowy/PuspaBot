@@ -1724,7 +1724,9 @@ suite (any pytest that builds an httpx client) with sanitised
 NO_PROXY. Postgres was recovered the same way as before: the
 system os-intent replay reinstalled postgresql-16 + pgvector on
 its own, cluster started, `schema_core.sql` re-run (roles +
-puspa_test + RLS on).
+puspa_test + RLS on). A second VM replacement hit ~22:00 WIB
+(cluster down on arrival, DB/roles wiped again); same
+recovery, cluster started + `schema_core.sql` re-run.
 
 ## Wave 13: G21 (interruptible turn loop + layered fallback + budget, DONE 18 Nov 2026)
 
@@ -1794,6 +1796,158 @@ compressor, overflow truncates). `session_search` /
 answer with a clear "not wired" error. The production model
 executor via the chassis is still the follow-up named in
 `puspa/channels/agent.py`; until it lands the default model
-adapter is the router's live OpenRouter caller. Wave 13 central
+adapter is the router's live OpenRouter caller. Turn events
+(`turn_started`, `model_called`, ...) are advisory, not part of
+the 31 closed core ledger event types — a production Ledger
+sink drops them silently (same as `world_prediction`); test
+observation via `event_memory()`. Wave 13 central
 SOLO suite: **2,695 passed, 9 skipped, 1 warning, 17m43s, EXIT
 0** (2,575 Wave 12 + 61 G14 + 59 G21, exact).
+
+## Wave 14: G4+G5+G6 (approval taxonomy + fail-closed gateway + audit trail, DONE 18 Nov 2026)
+
+New files `puspa/policy/approvals.py` (773 lines, G4) +
+`puspa/policy/gateway.py` (791 lines, G5) +
+`puspa/policy/rules.py` (301 lines, G5) +
+`puspa/ledger/audit.py` (571 lines, G6) + 3 test files
+(1,111 lines) + `docs/approvals.md` (171) + `docs/gateway.md`
+(176) + `docs/audit-trail.md` (137) + G4+G5+G6 sections in
+REUSE.md + NOTICE.md (OpenBot MIT pattern attribution, from
+documentation — the enforcing CEL code is not in the OpenBot
+repo, so the evaluator is Puspa's own; no code copied).
+**117 tests passed** (verified by the coordinator), ruff check +
+format clean, mypy clean (8 source files). Contents: G4 — six
+kinds that always ask (delete, send_to_other, share, post, pay,
+change_credentials); tiered answers once / conversation /
+always (24h expiry, "once" bound to content hash);
+strictest-wins (credential → members_self_serve → ask_every_time
+→ extra vigilant → check-in → auto-review → stored answer →
+default ask); auto-review (unknown action, pay without amount,
+delete without target, send without recipient); extra-vigilant
+switch (default off); recognition from the first verb of the
+tool name + button labels, never content (pay via the word
+`payment` anywhere in action/page, tool names
+transfer/payout/order/payroll/plan upgrade/subscription matched
+whole-word so `recorder` does not catch `order`, buttons
+Transfer/Withdraw/Pay/Buy/Place your order/Subscribe);
+credential changes can never be approved by any answer
+(escalate to a human); `ASKING_GUIDANCE` marker +
+`GuidanceState` anti-double-approval; destructive tools marked
+in their description; wired to the existing `Gate` (hash binding
++ 24h expiry still enforced, proven by tests) and to
+`kind_for_tool` (`puspa/chassis/tools.py` falls back to the G4
+classifier for tool names outside the gate's table). G5 —
+`Gateway.execute` in 5 steps (resolve target from snapshot →
+evaluate policy → audit the decision → call the computer only
+when forwarded → second audit line when a forwarded action
+fails); own rule language (tokenizer + recursive-descent parser
++ evaluator, no `eval()`: `contains()` / `matches()`
+case-insensitive over the 20 documented attributes, plus
+`and`/`or`/`not`, `==`/`!=`, `true`/`false`); deny before
+allow; fail-closed (missing/empty policy → refuse everything,
+broken deny → deny, broken allow → no allow, snapshot never
+loaded / stale → refuse everything, malformed policy →
+`PolicyError` at load and `Gateway.start` halts startup);
+dry-run (verdict recorded, still forwarded — except the cloud
+metadata address, refused in all modes including dry-run); 5
+built-in templates each with its `cost` (the Enter/Space trap
+and the `contains(page.host, "x.com")` trap that also blocked
+dropbox.com/netflix.com recorded explicitly); snapshot kept
+fresh via an injected refresh hook + `PostgresPolicyWatcher`
+LISTEN/NOTIFY as a wake-up signal;
+`make_ledger_gateway_sink` maps gateway audit lines to existing
+ledger event types (`tool_called` / `tool_completed`) only. G6
+— `initiator` field as an attribute in event content (person,
+deployment, routine, responsibility, memory, handoff); event
+types stay 31 (proven by test); "Nobody watching" filter =
+routine+handoff+responsibility+memory; handover
+(help_requested / control_taken / control_released) audited via
+the existing handoff event types + `control` attribute; while a
+human controls the browser, bot actions are refused
+(`ControlRejected`), not queued; CSV export max 5,000 rows +
+truncation marker header + `'` prefix on cells starting
+`= + - @` (formula-injection guard) + secrets redacted + saved
+files contribute path + size only; every export recorded in a
+separate `AuditExportLog` (JSONL hash-chained, outside the core
+ledger — documented choice, not a new event type and not
+squeezed into an unrelated type); retention via
+`AUDIT_RETENTION_DAYS` (unset = forever); pruning touches only
+the export log, never the core ledger. No new dependency.
+`puspa/policy/gate.py` untouched. Coordinator fix during
+verification (worker test, not worker report): the new G4 test
+`test_policy_request_executes_payment_through_gate` set a
+spending limit for `user-1` in the module-global `_limits` dict
+and never cleaned it, so the older
+`test_spending_limit_default_zero_blocks_payment` (which expects
+the fresh default 0) failed when the suite ran both files —
+the test now uses its own user `user-g4-payment`
+(SpendingLimit, token payload, request, approve). First full
+run: 1 failed, 2,811 passed; after the fix: **2,812 passed, 9
+skipped, 1 warning, 19m34s, EXIT 0** (2,695 Wave 13 + 117
+G4+G5+G6, exact). Fix commit d9a4e8c3. Honest limits (from the
+three docs): no live computer call site is guarded by the
+gateway yet (Puspa has no browser/desktop driver) — a caller
+that drives the computer directly can still bypass it;
+`ApprovalStore` + `ControlState` are in-memory (lost on
+restart); no admin UI for rules (rules are added in code, and
+"admin" is an owner string, not a role check); the rule language
+is deliberately small (no numbers/arithmetic/lists); an
+`ActionContext` that carries no attribute sees an empty string,
+not an error — the fail-closed "broken rule" path only lives
+for raw context dicts; the export log is a JSONL file without a
+lock (two processes can interleave appends); pruning cuts the
+head of the hash chain (verification anchors on the oldest
+surviving record); redaction only catches secret-assignment
+patterns, not bare secrets in free sentences. Also checked: the
+Indonesian aliases `kirim`/`hapus`/`bayar` in the classifier
+are interop, not new naming — `gmail.kirim` is a real
+pre-existing tool name in Puspa's registry (`gate.py`,
+`runtime/hierarchy.py`, `agent_scan.py`); recognition has to
+read the names that exist.
+
+## New items: G29 + G30 (approved by Nero 18 Nov 2026, queued after Wave 14)
+
+Nero approved two more maturity items (18 Nov 2026 ~22:08
+WIB). They run as the next wave AFTER Wave 14 (G4+G5+G6)
+finishes, then the remaining G/K list continues as before
+(G28, G16, G18, G17, Kosmos K1, K3, K4, K5, K6, K10, K11,
+K12, K13). Each item gets its own commit + push, same standard
+(real code + green SOLO tests + wiring, rewritten as Puspa
+code, never verbatim).
+
+G29 — Code graph extraction, Graphify pattern
+(Graphify-Labs/graphify, Apache-2.0). Parse code structure
+into a graph (entities: functions, classes, files, SQL tables,
+config; edges: imports and calls), built from static analysis
++ LLM triple extraction. Scope: extend
+`puspa/retrieval/knowledge_graph.py` with a code parser
+(Python AST first: functions, classes, imports, calls) that
+inserts entities/edges into the existing KG; wire
+JsonTripleExtractor to a real completion function via the
+`router/complete.py` seam so LLM extraction finally goes live
+(not just in tests); queries like "which functions call X"
+must be answerable from the graph without re-reading files.
+Out of scope: PDF/document ingestion (the document topic is
+dead), verbatim Graphify code. Tests: extraction from a sample
+Python file, multi-hop queries, incremental updates.
+
+G30 — Skill discovery, vercel-labs find-skills pattern
+(vercel-labs/skills, MIT; skills/find-skills/SKILL.md +
+src/find.ts + registry skills.sh). Search via the skills.sh
+API (GET https://skills.sh/api/search?q=...), check the
+install leaderboard first, fallback drops one query word when
+exact results are under 10 then merges (max 25), quality
+rubric (prefer 1K+ installs, official sources trusted, repos
+under 100 stars suspect), show choices to the user, install
+via the G3 marketplace path (sha256 + license allowlist
+MIT/Apache/BSD + import-disabled-default), install REQUIRES
+user approval first (G4). Scope: Python client for skills.sh
+search + ranking in `puspa/marketplace/` (or
+`puspa/skills/discovery.py`), plus one built-in find-skills
+skill (SKILL.md) active when the user asks "how to do X",
+connected to the marketplace install path and the G24 curator;
+catalog cached locally, never fully dependent on skills.sh at
+runtime. Out of scope: porting the Node CLI, verbatim copy,
+auto-install without approval. Tests: search parsing +
+fallback merge, ranking rubric, hash/license gate on the
+install path, approval gate.
