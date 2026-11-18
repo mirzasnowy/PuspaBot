@@ -552,3 +552,36 @@ di sini.
 - `ringkasan` — hasil konsolidasi (§2.7: "job meringkas episodik
   lama"). Kata umum Indonesia.
 - Tidak ada istilah domain baru yang diperkenalkan ke definisi.
+
+## Maturity phase (G29 — code graph extraction, Graphify pattern + live LLM extractor)
+
+No new dependency. Only PATTERNS adapted (rewritten, not copied):
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| Build a knowledge graph from a codebase: parse source files into function / class / import / call nodes and edges, then answer questions from the graph instead of re-reading files | Graphify-Labs/graphify (Apache-2.0) | The code-graph shape itself: entities for files, functions, classes, imports and calls, edges for defines / imports / calls, and graph queries (who calls X, what X reaches) instead of file reads | `puspa/retrieval/code_graph.py` (`CodeExtractor`: two-pass `ast` walk — a definition pass first so calls resolve to functions defined later in the file, then an edge pass; call resolution inside the module, through `self`, through class names and through imports; SQL table + config-key detection as a heuristic over string literals; `CodeGraph`: incremental per-file indexing into the shared graph with stored extractions, so update detaches exactly the old file and removes orphaned entities; queries `callers_of` / `callees_of` / `reachable_from` / `reaches` / `call_path` / `defined_in` / `imports_of` with bare-name resolution that raises on ambiguity) + `docs/code-graph.md`. The entities and edges live in the existing shared `KnowledgeGraph`, not a second parallel graph |
+| LLM triple extraction plugged into a real completion function instead of a test-only seam | (Puspa's own router seam, G21) | The `llm_complete` seam shape already used by `HippoRAGRetriever` and the reranker (`"default"` resolves to the router's live completion) | `JsonTripleExtractor` in `puspa/retrieval/knowledge_graph.py`: no argument, or `"default"`, now resolves through `resolve_llm_complete` to `default_llm_complete` (built on `complete_messages`, the entry point the turn loop's `turn_api` calls); extra kwargs (`model=`, `transport=`, `key_resolver=`) pass through, so tests bind a fake transport |
+
+No Graphify code was copied; only the documented pattern above
+was followed. No new pip dependency was added for G29.
+Wiring: `CodeGraph` wraps any `KnowledgeGraph` (including the
+live retrieval graph) and uses its own `CodeExtractor` by
+default; `JsonTripleExtractor`'s live default is the same
+`resolve_llm_complete("default")` seam the retriever uses.
+Exports added to `puspa/retrieval/__init__.py` (`CodeExtractor`,
+`CodeGraph`, `call_path`, `callees_of`, `callers_of`,
+`defined_in`, `imports_of`, `module_name_for_path`,
+`reachable_from`, `reaches`, `resolve_code_name`). Tests:
+`tests/test_retrieval_code_graph.py` (13 tests, written, not
+run by this worker — the coordinator runs the suite; verified
+standalone by this worker with a no-pytest runner — 13 pass,
+plus the 9 existing `test_retrieval_graph.py` tests still
+pass). Docs: `docs/code-graph.md`. Honest limits: only Python
+is parsed (`ast`); only calls the AST can resolve become
+edges (dynamic calls — `getattr`, `eval`, calls through
+unknown objects — are invisible); names are normalized the
+shared graph's way (lowercased), so `Foo` and `foo` collide;
+relative imports with no module are skipped; SQL/config
+detection is a string-literal heuristic; no live provider call
+is proven in the suite (tests use an injected fake callable
+or a fake transport).
