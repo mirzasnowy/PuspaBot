@@ -169,6 +169,20 @@ to be included here because no third-party code is vendored.
   outside the boundary. Used as a pattern in
   `puspa/harness/sandbox_profiles.py`. Puspa's `full` is NOT Codex
   `danger-full-access`.
+- **OSU-NLP-Group/HippoRAG** (MIT License) - pattern: schema-less
+  knowledge graph built at index time, multi-hop retrieval by
+  Personalized PageRank, HippoRAG 2 style filtering and
+  re-ranking. Used as a pattern in
+  `puspa/retrieval/knowledge_graph.py` and
+  `puspa/retrieval/hipporag.py`.
+- **HKUDS/LightRAG** (MIT License) - pattern: dual-level retrieval
+  and the five query modes local, global, hybrid, naive, mix, plus
+  incremental graph update. Used as a pattern in
+  `puspa/retrieval/modes.py`.
+- **LlamaIndex** (MIT License) - pattern: reranker as a node
+  postprocessor between retrieval and synthesis, and query
+  decomposition into sub-questions. Used as a pattern in
+  `puspa/retrieval/reranker.py`.
 
 ## Puspa license
 

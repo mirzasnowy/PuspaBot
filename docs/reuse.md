@@ -528,3 +528,68 @@ sandbox applies to every spawned command, `.git` / `.codex` /
 - No PASS_TO_PASS regression set yet: the loop grades the acceptance
   tests only, as before. A regression set is future work for the
   self-develop module evaluation.
+## Retrieval pipeline (HippoRAG + LightRAG + LlamaIndex reranker)
+
+Date: 18 Nov 2026. Worker: Retrieval Pipeline (brain deepening).
+Files: `puspa/retrieval/knowledge_graph.py`, `puspa/retrieval/hipporag.py`,
+`puspa/retrieval/modes.py`, `puspa/retrieval/reranker.py`,
+`puspa/retrieval/__init__.py`; wiring in `puspa/memory/episodic.py`
+(`episodes_to_graph`, `search_episodes_pipeline`) and
+`puspa/graphs/identity.py` (`product_passages`,
+`rank_products_pipeline`). Tests: `tests/test_retrieval_graph.py`,
+`tests/test_retrieval_hipporag.py`, `tests/test_retrieval_modes.py`,
+`tests/test_retrieval_reranker.py`, `tests/test_retrieval_eval.py`,
+`tests/test_retrieval_wiring.py`, plus the database-backed
+`tests/test_retrieval_wiring_db.py` (run by the coordinator only).
+
+### Patterns studied (all MIT, all rewritten, none copied verbatim)
+
+- HippoRAG (OSU-NLP-Group/HippoRAG, MIT): schema-less knowledge
+  graph built at index time, multi-hop retrieval by Personalized
+  PageRank, HippoRAG 2 style query-to-triple filtering and
+  passage re-ranking. Reimplemented here as `KnowledgeGraph`,
+  `personalized_pagerank` (power iteration with restart),
+  `HippoRAGRetriever`, weighted seeds, and sum-of-node passage
+  scoring. No HippoRAG code or dependency is used.
+- LightRAG (HKUDS/LightRAG, MIT): dual-level retrieval and the
+  five query modes local, global, hybrid, naive, mix, plus
+  incremental graph update (add one document without a rebuild)
+  and document deletion with orphan cleanup. Reimplemented here
+  as `puspa/retrieval/modes.py` over the same dual-level weights
+  already in `puspa/memory/episodic.py` (entity 0.5, concept 0.3,
+  vector 0.2). No LightRAG code or dependency is used.
+- LlamaIndex (MIT): reranker as a node postprocessor between
+  retrieval and synthesis (cross-encoder, recommended local
+  default `cross-encoder/ms-marco-MiniLM-L6-v2` or a
+  `BAAI/bge-reranker-*` model) and query decomposition into
+  sub-questions (`SubQuestionQueryEngine`,
+  `DecomposeQueryTransform`). Reimplemented here as
+  `DeterministicReranker`, the `CrossEncoderReranker` seam (any
+  `score_fn` callable), `decompose_query`, and
+  `retrieve_with_decomposition` (reciprocal rank fusion). No
+  LlamaIndex code or dependency is used.
+
+### Dependencies
+
+No new dependency. Embeddings reuse `HashEmbedding` (offline
+default) or the pinned `fastembed` provider. fastembed 0.9.1
+ships no reranker, so `CrossEncoderReranker.from_fastembed`
+raises `RerankerUnavailable` honestly; a real cross-encoder
+(`BAAI/bge-reranker-v2-m3` through FlagEmbedding, or a
+`cross-encoder/ms-marco-MiniLM-L6-v2` through
+sentence-transformers) is a follow-up dependency, not added here.
+
+### Honest limits
+
+- The default extractor is deterministic and rule-based, so its
+  recall is below LLM extraction. A real LLM extractor plugs
+  into `JsonTripleExtractor` through any completion callable;
+  no LLM call is made by this module and no key is needed.
+- A query with no seed entity or concept falls back to plain
+  vector ranking; the graph cannot help it.
+- Passages with no extracted entity compete on vector and
+  lexical score alone, with a zero graph score.
+- The deterministic reranker cannot judge relevance the way a
+  cross-encoder can: on the hand-written eval set the decisive
+  two-hop passage ranks 6-9, so the pipeline wins on reach
+  (recall@10) rather than on top-3 precision.

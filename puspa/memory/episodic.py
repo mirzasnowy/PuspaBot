@@ -160,6 +160,81 @@ def search_episodes_dual(user_id, query, limit=5, agent_id=None,
     return dual_level_search(candidates, query, embedder=embedder, limit=limit)
 
 
+def episodes_to_graph(episodes, extractor=None):
+    """Build a knowledge graph from episode dicts (pure, in-memory).
+
+    Each episode becomes one document, so its passage ids look
+    like "<episode id>#p0" and map back to the episode. This is
+    the seam where episodic recall meets the retrieval pipeline.
+    The retrieval package is imported lazily so this module keeps
+    no import cycle with it.
+    """
+    from puspa.retrieval.knowledge_graph import KnowledgeGraph
+
+    graph = KnowledgeGraph(extractor=extractor)
+    for episode in episodes or []:
+        content = str(episode.get("content") or "")
+        if not content:
+            continue
+        graph.add_document(str(episode.get("id")), content)
+    return graph
+
+
+def search_episodes_pipeline(user_id, query, mode="mix", limit=5,
+                             agent_id=None, embedder=None, dsn=None,
+                             reranker=None):
+    """Episodic recall through the retrieval pipeline.
+
+    Same candidates as `search_episodes_dual` (vector search plus
+    the latest episodes), but instead of plain dual-level scoring
+    the candidates are indexed into a knowledge graph and read
+    back through a LightRAG query mode, with an optional
+    reranker on the shortlist. A multi-hop question (product,
+    promo, seller, fraud report) can reach an episode no single
+    passage shares words with. Every result carries `score`,
+    `mode`, `level` and `evidence_id` (the episode id).
+    """
+    if not isinstance(query, str) or query == "":
+        raise ValueError("query must be a non-empty string")
+    if limit < 1:
+        raise ValueError("limit must be at least 1")
+    from puspa.retrieval.modes import query as mode_query
+
+    embedder = embedder or HashEmbedding()
+    candidates = search_episodes(
+        user_id, query, limit=limit * 4, agent_id=agent_id,
+        embedder=embedder, dsn=dsn,
+    )
+    seen = {c["id"] for c in candidates}
+    for ep in list_episodes(user_id, limit=limit * 4, dsn=dsn):
+        if ep["id"] not in seen:
+            candidates.append(ep)
+            seen.add(ep["id"])
+    graph = episodes_to_graph(candidates)
+    ranked = mode_query(
+        graph, query, mode=mode, embedder=embedder, top_k=limit)
+    if reranker is not None:
+        ranked = reranker.rerank(query, ranked, top_n=limit)
+        for result in ranked:
+            result["score"] = result.get("rerank_score", result["score"])
+    by_id = {str(ep["id"]): ep for ep in candidates}
+    out = []
+    for result in ranked:
+        episode_id = result["passage_id"].split("#p")[0]
+        episode = by_id.get(episode_id)
+        if episode is None:
+            continue
+        entry = dict(episode)
+        entry.update({
+            "score": result["score"],
+            "mode": result.get("mode", mode),
+            "level": result.get("level", "concept"),
+            "evidence_id": episode_id,
+        })
+        out.append(entry)
+    return out
+
+
 def _connect(dsn=None):
     return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
 
