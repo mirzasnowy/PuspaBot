@@ -250,6 +250,23 @@ class Ledger:
             rows = cur.fetchall()
         return [_row_to_event(row) for row in rows]
 
+    def recent_events(self, since: datetime, *, limit: int = 10000) -> list[dict]:
+        """All events created at or after `since`, insertion order.
+
+        Read-only window query for the sentinel scanner
+        (`puspa/sentinel/`), which scans across tasks instead of
+        one task at a time. `since` should be timezone-aware
+        (UTC); a naive value is read as UTC by Postgres.
+        """
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM events WHERE created_at >= %s "
+                "ORDER BY created_at ASC, id ASC LIMIT %s",
+                (since, limit),
+            )
+            rows = cur.fetchall()
+        return [_row_to_event(row) for row in rows]
+
     def verify_chain(self, task_id: str) -> tuple[bool, list[str]]:
         """Periksa rantai hash satu tugas.
 

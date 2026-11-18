@@ -308,6 +308,73 @@ to be included here because no third-party code is vendored.
   locally in `~/.cache/huggingface`. No model code is vendored
   and no BAAI code was copied.
 
+# NOTICE - Puspa maturity phase, G11 (18 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **DuskBot** (PolyForm Noncommercial License 1.0.0 — study only,
+  no code used, no dependency) - patterns only, rewritten as Puspa
+  Python code (DuskBot is TypeScript; nothing was copied verbatim):
+  loopback trust (Host + Origin loopback, browsers never trusted)
+  and the explicit `SERVICE_ALLOW` list from
+  `server/request-auth.ts`; the HPKE card seal (per-start sealing
+  key never written to disk, each seal signed by the long-term
+  server identity key pinned by the app) from
+  `server/card-seal.ts`; pairing (short code, 30-day session,
+  lockout after wrong codes) from `server/sessions.ts`; the
+  7-character link code (no l/o/0/1), rate limits (30/hour per
+  address, 2,000/hour total), AES-256-GCM relay frames, and the
+  fallback order direct → Cloudflare tunnel → relay from
+  `apps/link-service/` and `apps/cloudflare/link-relay/`. Used as
+  patterns in `puspa/hosting/` (`loopback.py`, `service_allow.py`,
+  `gateway.py`, `pairing.py`, `identity.py`, `seal.py`, `link.py`,
+  `relay.py`, `fallback.py`). Because the license is PolyForm
+  Noncommercial, no DuskBot code is vendored, linked, or depended
+  on, and the patterns are not used to build a competing DuskBot
+  product — they implement Puspa's own multi-tenant hosting auth.
+  No new pip dependency was added for G11 (`cryptography==50.0.2`,
+  already pinned, provides the HPKE suite).
+
+# NOTICE - Puspa maturity phase, G12 (18 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **DuskBot** (PolyForm Noncommercial License 1.0.0 — study only,
+  no code used, no dependency) - patterns only, rewritten as Puspa
+  Python code (DuskBot is TypeScript; nothing was copied verbatim):
+  the periodic sentinel scanner over the server's own records with
+  five detectors (`toolError`, `turnStop`, `queueWait`, `cost`,
+  `retryLoop`), default thresholds (queue 5 minutes, cost $5,
+  retry minimum 3, 7-day lookback, 30-minute rescan), and the
+  state file (`readState` / `readIssues` / `markCounted` /
+  `upsertIssues` / `pruneSeen` / `writeSentinelFiles`) from
+  `server/sentinel/`; the decision log (actor, source, via into
+  daily files, 180-day retention) from `server/decision-log.ts`;
+  usage traces as span trees from `server/usage-trace/`; anonymous
+  analytics + crash reports that can be switched off; and the
+  verification discipline (isolated fixtures, never verify a
+  mutation on live user data) from `docs/verification/`. Used as
+  patterns in `puspa/sentinel/` (`detectors.py`, `thresholds.py`,
+  `state.py`, `scanner.py`, `decision_log.py`, `traces.py`,
+  `analytics.py`) and in the "Sentinel self-checks" section of
+  `docs/verification.md`. Because the license is PolyForm
+  Noncommercial, no DuskBot code is vendored, linked, or depended
+  on, and the patterns are not used to build a competing DuskBot
+  product — they implement Puspa's own self-observability.
+- **NousResearch/hermes-agent** (MIT License) - patterns only,
+  rewritten as Puspa Python code (nothing copied verbatim): the
+  batch trajectory runner (`batch_runner.py` — checkpoint +
+  resume, aggregate tool usage) and trajectory storage with
+  redaction before saving (`agent/trajectory.py`) plus the
+  ShareGPT trajectory format (`trajectory-format.md`), used as
+  patterns in `puspa/sentinel/trajectory.py` and
+  `docs/trajectory-format.md`; session insights from `state.db`
+  (tokens, cost estimate with sub-cent labels at 4 decimals,
+  tool/skill usage, activity, model/platform breakdown) from
+  `agent/insights.py`, used as a pattern in
+  `puspa/sentinel/insights.py`. No new pip dependency was added
+  for G12.
+
 ## Puspa license
 
 The code in this directory is Puspa's own work (Nero / Luna). The Puspa
