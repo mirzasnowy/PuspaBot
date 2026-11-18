@@ -226,3 +226,140 @@ context → volatile), stable layer frozen per session, cache breakpoint
 markers, snapshot test for prompt surface + tool list, prompt-state
 changes deferred to next session (compression is the only allowed
 mid-session mutation).
+
+## Wave 3: G19+G20 (context compression + prompt caching, done 18 Nov 2026)
+
+Two parallel workers, disjoint files, one shared interface (message
+list shape + compressor return shape + prompt surface shape, defined
+in the briefs). Central SOLO suite after the wave: **1,491 passed, 8
+skipped, 1 warning, 9m27s** (baseline 1,445 + 46 new: G19 24 + G20
+22). Postgres stayed online through the wave (no restore needed).
+Coordinator verified the G19→G20 integration itself (compressed
+messages feed the builder: 427 → 291 tokens, stable prefix preserved
+byte-identical).
+
+### G19 Context compression (commit 4b7821d5)
+
+`puspa/runtime/context_compression.py` (533 lines) +
+`tests/test_context_compression.py` (24 passed, 0.90 s, in-memory).
+Home is `puspa/runtime/` (not `puspa/memory/`): the compressor works
+on the live turn message list at the runtime layer, reusing
+`count_tokens` (tiktoken `cl100k_base`, chars/4 fallback) from
+`puspa/router/compression.py`. `should_compress` → `"gateway"` ≥85%,
+`"preflight"` ≥50%, `None` below 50%. `ContextCompressor.compress`
+returns `CompressionResult` (`messages` new list, input never
+mutated; `lineage_id` uuid4 hex fresh per compression; `stats` with
+tokens before/after, ratio, threshold hit, protected/summarized
+counts). Standard order: flush first → summarize middle turns →
+`protect_last_n` (default 20, halved at gateway, min 4) kept whole →
+tool call/result pairs never split (messages grouped into units first;
+boundaries fall only between units) → fresh lineage. System messages
+always kept whole. Summary is one `assistant` message prefixed
+`[Context summary of earlier turns]` (role `assistant`, not `system`,
+so it never clashes with G20's system prompt). Summarizer is an
+injected callable; default is the cheapest reader model via
+`puspa.router.complete.complete` (`default_llm_complete(role="reader")`),
+with a deterministic extractive fallback that never raises (recorded
+in stats). The summary prompt orders every number/date/amount/name/
+identifier preserved exactly (orphan-number rule). Flush is an injected
+callback run before summarization, failure never blocks compression;
+the real default (when `user_id` is given) calls
+`puspa.memory.consolidate.consolidate_idle` (lazy import, no Postgres
+needed at import). `prepare_turn_messages` is the call site: check
+thresholds, compress when hit, return `(messages, None)` otherwise.
+Measured (tiktoken, real tokens): a 61-message history 4,634 tokens →
+preflight 1,583 (ratio 0.34; 20 protected, 40 summarized) → gateway
+813 (10 protected). Honest limits: **not wired to the live turn loop**
+— the live loop is nanobot's `AgentLoop` (it builds its own transcript
+from session history; `PuspaHook.before_run` only receives a deep-copy
+snapshot, so the hook cannot rewrite the live message list); the
+correct call site is `prepare_turn_messages` for a future Puspa-owned
+turn wrapper (or an upstream nanobot hook that allows pre-request
+message rewriting). The flush default is idle consolidation (episodic
+older than 30 days), NOT a turn-scoped flush — turn-scoped flush
+(write this turn's facts to episodic before summarizing) does not
+exist as a callable yet (follow-up; the callback is ready to take it).
+No live LLM call was made (no key): token/Rp/latency of the live path
+still need one smoke test. Variants not built (micro-compaction,
+native/relay/prepared, image compression, trajectory compression).
+Note: the worker's regression numbers for
+`test_tool_result_compression.py` (85 passed + 3 failed + 1 error,
+nanobot import) were an artifact of its `--noconftest` run; the
+standard run is 53 passed and the central suite is green.
+
+### G20 Prompt assembly + caching (commit fb67381a)
+
+`puspa/runtime/prompt_assembly.py` (547 lines) +
+`puspa/runtime/prompt_caching.py` (172 lines) +
+`tests/test_prompt_surface.py` (22 passed, 0.30 s, in-memory) +
+`tests/snapshots/prompt_surface.json` (69 lines). Home is
+`puspa/runtime/` (not `puspa/router/`): the router is the model-call
+path; prompt assembly is session state. `PromptBuilder.build(messages,
+*, stable, context, volatile) -> PromptSurface` (`system_prompt`,
+`messages`, `cache_breakpoint`, `snapshot_hash`), exactly the shared
+interface. Layers accept `str | Iterable[str] | None`, normalized
+deterministically, joined with `"\n\n---\n\n"` (same as nanobot) in
+fixed order stable → context → volatile. `cache_breakpoint` is the
+character offset where the stable layer ends (snapshot fixture: 216 =
+`len(stable)`); the stable layer is byte-identical across turns and
+volatile/context changes never move the breakpoint. Freezing: the
+first `build()` freezes the stable layer; a later `build()` with a
+different stable layer still renders the frozen text and records the
+attempt as a `DeferredChange(kind="replace_stable")`.
+`snapshot_hash` is SHA-256 over canonical JSON of
+`{system_prompt, messages, tools}`. Tools are frozen at construction
+(`with_tools()` returns a new builder, for the next session). The
+builder NEVER compresses: input messages pass through unchanged (new
+list, same dicts), with light validation only (valid role, `content`
+present, tool messages require `tool_call_id`). `PromptSession` holds
+one session's state (stable layer as tagged parts `base`/`skill:<name>`,
+`model`, queue); `request_change(...)` → `"deferred"` unless
+`apply_now=True` → `"applied"` immediately; `next_session()` drains
+the queue FIFO into a new session while the old session keeps its
+frozen layer. `PromptSurface.to_prompt_text()` flattens the surface to
+one string for the `complete(prompt)` path. `prompt_caching.py` holds
+per-provider breakpoint markers (`anthropic_system_blocks`,
+`openai_request`, `anthropic_request`, `stable_prefix`), split out
+because markers are a provider concern, not an assembly concern.
+Real wiring delivered: the builder feeds both router formats without
+editing `translate.py`/`complete.py` — `openai_request()` →
+`translate_request` (openai→anthropic, system whole, tools included,
+`report.dropped == []`); `anthropic_request()` converts history via
+`translate_request` (tool messages → `tool_result` blocks,
+`tool_calls` → `tool_use` blocks; hard failure if anything drops) +
+system as a block with `cache_control: {"type": "ephemeral"}` on the
+stable block; translate back anthropic→openai returns the system text
+byte-identical. One real bug found and fixed during that wiring: the
+first `anthropic_request` passed raw tool messages (invalid role
+`tool` in Anthropic), so the back-translation dropped them — history
+is now always converted first. Snapshot test fails when prompt/tools
+change (proven) and passes after regeneration
+(`PROMPT_SURFACE_REGEN=1 pytest
+tests/test_prompt_surface.py::test_snapshot_matches_committed_file
+--noconftest`; regen is idempotent — second run diffs empty). Honest
+limits: **not wired to the live turn loop** — the system prompt today
+is assembled entirely inside the nanobot dependency
+(`ContextBuilder.build_system_prompt` / `build_transcript`;
+`AgentLoop.__init__` hardcodes `self.context = ContextBuilder(...)`
+with no injection parameter; `assemble()` in `puspa/chassis/factory.py`
+can only inject `tool_registry`/`hooks`/`hook_factories`; the
+`before_model_request` hook cannot change the transcript). Follow-up:
+ask nanobot for a seam (accept `context_builder` in `AgentLoop`) or
+build a Puspa-owned transcript builder; after that, measure real
+cache-hit rate + cost per turn. The live path is untested (no
+token/Rp/latency measured with a real provider). G19 was not in the
+tree while G20 worked — interface compatibility was verified by the
+coordinator after both landed (see above).
+
+## Next: G7+G24 (memory)
+
+In progress (spawned after Wave 3): two parallel workers, disjoint
+files. G7 (DuskBot pattern): versioned facts with validity dates +
+history/restore, DREAM cross-chat, trust anti-injection, journal +
+undo, hybrid recall (FTS5 BM25 + local embedding + name + time, RRF
+k=60, cosine 0.6 / 0.5 with a matching word, max 14 facts), memory
+file size limits. G24 (hermes pattern): memory provider plug-in ABC
+(pgvector stays one provider), background review fork per turn,
+inactivity skill curator (active→stale→archived, archive as max,
+pins immune), learning graph. FTS5 is owned by G7; G24 consumes the
+recall interface without building FTS5 itself.
