@@ -388,9 +388,105 @@ its own iteration with commit + push):
 4. Sigstore: local shape only in `puspa/policy/signing.py`, no
    Fulcio, no Rekor, no real keyless identity. Fix: verify a
    real sigstore bundle OR rename the scope to "local keyless
-   signing" and drop the sigstore claim.
+   signing" and drop the sigstore claim. DONE 18 Nov 2026
+   (path A: real verification), commit
+   fe3514f2b107dcf1048666ecaef49595e6a6c1e5 (see Rework
+   progress below).
 
 ## Rework progress
+
+### Rework 4: real Sigstore bundle verification, path A (done, 18 Nov 2026)
+
+Commit fe3514f2b107dcf1048666ecaef49595e6a6c1e5.
+
+Decision: path A (verify a real Sigstore bundle) won, proven
+possible before any code was written: library `sigstore==4.5.0`
+was already installed in the venv (a nanobot dependency),
+license Apache-2.0 (PyPI classifier "License :: OSI Approved
+:: Apache Software License" + README "licensed under the
+Apache 2.0 License"); the trust root can be cached (the
+`sigstore` package bundles production and staging
+`trusted_root.json` in `sigstore._store`); a real staging
+bundle (`bundle_v3.txt` + `bundle_v3.txt.sigstore`, Sigstore's
+public test asset) passed verification with the staging root
+and every tampered variant was rejected. No reason to take
+path B (rename to "local keyless signing").
+
+- `puspa/policy/sigstore_verify.py` (new, 160 lines, Puspa's
+  own code rewritten from the studied pattern, no copy):
+  one public function `verify_sigstore_bundle(bundle_bytes,
+  artifact_bytes, identity, issuer, *,
+  trust_root="production") -> tuple[bool, str]`, never raises
+  on bad input. It checks: the bundle parses; the
+  certificate chains to the Fulcio root in the trust root and
+  is valid at the Rekor integrated time; the SAN identity and
+  OIDC issuer match exactly what was asked; the artifact
+  digest matches and the signature is valid; the Rekor SET
+  and Merkle inclusion proof are valid against the log key
+  in the trust root. The trust root never comes from the
+  bundle or the caller, only from the file bundled in the
+  `sigstore` package (production default, staging for
+  tests, or an explicit `trusted_root.json` path). The
+  `sigstore` import is lazy, so a missing library fails
+  closed instead of crashing. Size limits: bundle 256 KiB,
+  artifact 16 MiB.
+- `tests/test_sigstore_verify.py` (new, 415 lines, 26 tests,
+  26 passed in 1.40 seconds). The fixture bundle + artifact
+  are real Sigstore assets embedded as base64 and verified
+  byte-identical to the source (sha256 matches). What the
+  tests prove: the real staging bundle + exact artifact +
+  identity `william@yossarian.net` / issuer
+  `https://github.com/login/oauth` passes `(True, "ok")`,
+  and the same test passes with `socket.socket` disabled,
+  so verification is 100% offline, no Fulcio or Rekor call;
+  modified artifact rejected (digest mismatch); forged
+  signature rejected (first base64 character flipped);
+  flipped certificate rejected; an expired self-signed
+  certificate with the same SAN rejected (chain cannot be
+  built); a tampered inclusion proof rejected (root hash
+  mismatch); wrong identity and wrong issuer
+  (`https://example.com`) rejected; 8 bad inputs (not a
+  bundle, empty, `{}`, `[]`, `null`, non-bytes types,
+  over-size bundle/artifact, empty or None identity/issuer)
+  all return `(False, reason)` without raising; the staging
+  bundle is rejected under the production root (roots are
+  not interchangeable); a root from an explicit file path
+  works; an unknown root is rejected; a missing library
+  fails closed (`(False, "...not installed")`, no weaker
+  fallback). `puspa/policy/signing.py` (local mechanism)
+  untouched, `skill_signing.py` untouched.
+- `requirements.txt`: `sigstore==4.5.0` added with a comment
+  (Apache-2.0, already installed, now an explicit Puspa
+  dependency instead of a transitive one).
+- Honest limits: (1) verification only, not signing: this
+  module cannot create a bundle (signing needs a Fulcio
+  certificate from an OIDC identity + a Rekor entry, both
+  live services; community authors sign with the `sigstore`
+  CLI; Puspa only verifies). (2) The trust root is pinned
+  to the installed package version and does not refresh
+  itself via TUF; refresh happens when the `sigstore`
+  package is upgraded. Verification still works offline,
+  but the root can go stale over time. Follow-up:
+  scheduled TUF refresh / refresh at startup (outside the
+  verify path, so verification stays offline). (3) Only a
+  message-signature fixture was tested; `verify_artifact`
+  also handles DSSE bundles, but no DSSE fixture was
+  tested. Follow-up: add a DSSE bundle fixture when one is
+  available. (4) Expiry is judged at signing time (spec
+  behavior, not a hole): the fixture certificate is valid
+  only 2024-04-02 19:19-19:29 UTC and long expired, but the
+  bundle still passes because the Rekor integrated time
+  (19:19:09) sits inside the window; the test documents this
+  with an assertion. (5) NOT yet wired into
+  `skill_signing.verify_skill`: the verifier stands alone
+  and `verify_skill(..., transparency_log=...)` still uses
+  the local DSSE + local log mechanism. Wiring (community
+  skills must carry a Sigstore bundle, verified through this
+  function) is a follow-up for the coordinator; the local
+  mechanism is not weakened (everything rejected today
+  stays rejected). Full suite SOLO after this push (all
+  four rework items present): 1321 passed, 5 skipped,
+  1 warning.
 
 ### Rework 1: real cross-encoder reranker (done, 18 Nov 2026)
 
