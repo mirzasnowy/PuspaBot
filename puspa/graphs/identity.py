@@ -324,6 +324,66 @@ def rank_products(products, query):
     return ranked
 
 
+def product_passages(products):
+    """Turn product dicts into graph passages (pure, in-memory).
+
+    One passage per product: brand, series, model number,
+    category. The passage id is "product:<id>" so results map
+    back to the product.
+    """
+    passages = []
+    for product in products or []:
+        text = " ".join(
+            str(product.get(field) or "")
+            for field in ("brand", "series", "model_number", "category")
+        ).strip()
+        passages.append({
+            "id": f"product:{product.get('id')}",
+            "content": text,
+        })
+    return passages
+
+
+def rank_products_pipeline(products, query, mode="local", top_k=5,
+                           embedder=None):
+    """Rank products through the retrieval pipeline (pure).
+
+    The products are indexed into a knowledge graph and read back
+    through a LightRAG query mode, so a query can reach a product
+    through a shared brand or series node instead of only by an
+    exact model-number hit. No price is returned here, so no
+    evidence-free price exists; price evidence still comes from
+    `search_products_dual`. The retrieval package is imported
+    lazily so this module keeps no import cycle with it.
+    """
+    if not isinstance(query, str) or query == "":
+        raise ValueError("query must be a non-empty string")
+    from puspa.retrieval.knowledge_graph import KnowledgeGraph
+    from puspa.retrieval.modes import query as mode_query
+
+    products = list(products or [])
+    graph = KnowledgeGraph()
+    for passage in product_passages(products):
+        graph.add_document(passage["id"], passage["content"])
+    ranked = mode_query(graph, query, mode=mode, embedder=embedder,
+                        top_k=top_k)
+    by_id = {f"product:{p.get('id')}": p for p in products}
+    out = []
+    for result in ranked:
+        product_id = result["passage_id"].split("#p")[0]
+        product = by_id.get(product_id)
+        if product is None:
+            continue
+        out.append({
+            "product": product,
+            "level": result.get("level", "concept"),
+            "score": result["score"],
+            "mode": result.get("mode", mode),
+            "evidence_ids": [],
+        })
+    return out
+
+
 def search_products_dual(query, *, dsn=None):
     """Dual-level product search on Postgres (entity + concept).
 
