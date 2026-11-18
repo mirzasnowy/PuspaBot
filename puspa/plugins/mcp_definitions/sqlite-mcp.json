@@ -1,0 +1,1 @@
+{"dependencies":["requests>=2.0"],"description":"Query a local SQLite database.","id":"sqlite-mcp","name":"SQLite MCP","server":{"args":["sqlite-mcp","--db","notes.db"],"command":"python3","env":{},"transport":"stdio"},"tools":[{"description":"Run a read-only SQL query.","name":"query_db"}],"version":"1.1.0"}

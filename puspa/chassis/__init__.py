@@ -23,7 +23,13 @@ from .context import (
     token_context,
     token_payload_from_request_context,
 )
-from .factory import PuspaChassis, assemble, build_hook_factory, build_registry
+from .factory import (
+    PuspaChassis,
+    assemble,
+    build_hook_factory,
+    build_registry,
+    load_chassis_plugins,
+)
 from .hooks import PuspaHook, make_puspa_hook_factory
 from .registry import PuspaRegistry
 from .sandbox_tool import SandboxTool
@@ -53,6 +59,7 @@ __all__ = [
     "current_token_payload",
     "get_session_brain",
     "kind_for_tool",
+    "load_chassis_plugins",
     "make_ledger_sink",
     "make_puspa_hook_factory",
     "payload_from_token",

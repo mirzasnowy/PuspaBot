@@ -1,0 +1,1 @@
+{"dependencies":["pyyaml>=6.0"],"description":"Read local files through a small MCP server.","id":"local-files-mcp","name":"Local Files MCP","server":{"args":["-m","local_files_mcp"],"command":"python3","env":{},"transport":"stdio"},"tools":[{"description":"Read a text file.","name":"read_file"},{"description":"List a directory.","name":"list_directory"}],"version":"1.0.0"}
