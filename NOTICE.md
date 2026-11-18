@@ -183,6 +183,11 @@ to be included here because no third-party code is vendored.
   postprocessor between retrieval and synthesis, and query
   decomposition into sub-questions. Used as a pattern in
   `puspa/retrieval/reranker.py`.
+- **google/adk-python** (Apache License 2.0) - pattern:
+  hierarchical multi-agent composition (sequential/parallel/loop),
+  session state with user/app/temp scopes, memory service, tool
+  confirmation callbacks. Used as a pattern in
+  `puspa/runtime/hierarchy.py`.
 
 ## Puspa license
 

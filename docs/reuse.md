@@ -593,3 +593,67 @@ sentence-transformers) is a follow-up dependency, not added here.
   cross-encoder can: on the hand-written eval set the decisive
   two-hop passage ranks 6-9, so the pipeline wins on reach
   (recall@10) rather than on top-3 precision.
+# google/adk-python (hierarchical multi-agent) - REUSE fragment
+
+Pattern studied from google/adk-python (Apache License 2.0), reimplemented
+as Puspa's own code from the documented behavior. No code was copied
+verbatim; no fork was made; no new dependency was added.
+
+## What was taken (pattern level only)
+
+- Agent hierarchy: root agent with sub-agents, one parent per agent,
+  delegation by role (ADK `LlmAgent.sub_agents` + transfer, single
+  parent rule). Puspa: `AgentNode` in `puspa/runtime/hierarchy.py`.
+- Workflow compositions: sequential, parallel, loop (ADK
+  `SequentialAgent` / `ParallelAgent` / `LoopAgent`; ADK 2.0 also
+  offers graph `Workflow`, which Puspa does not adopt). Puspa:
+  `HierarchicalPlan.composition` + `HierarchicalRunner`.
+- Sessions and state: `SessionService` + `session.state` with
+  namespaced keys (plain session keys, `user:`, `app:`, `temp:`
+  never persisted). Puspa: `SessionState` + `SessionStore`.
+- Memory: `MemoryService` search across sessions. Puspa keeps its
+  own rule instead: a node never touches memory storage directly;
+  it receives a slice through `puspa.memory.slices.grant_slice`.
+  Puspa: `MemoryAccess`.
+- Tool confirmation and callbacks: ADK HITL tool confirmation
+  (`require_confirmation`) and `before_tool_callback` /
+  `after_tool_callback` / `before_model_callback` /
+  `after_model_callback`. Puspa: `ToolConfirmation` goes through
+  the existing `puspa.policy.Gate` approval flow, and
+  `CallbackRegistry` holds the four hooks.
+- Handoff: every parent/child delegation goes through the existing
+  `puspa.runtime.handoff` contract (max 3 handoffs between agents
+  per task, cycle rejection). No new bypass path.
+
+## What was NOT taken
+
+- The ADK package itself is not a dependency; nothing was imported
+  from `google.adk`. The model, the Runner, and `VertexAi*`
+  services were not adopted. Parallel composition is logical, not
+  threaded: children run one after another in a fixed order and
+  their results are merged.
+
+## Docs read (18 Nov 2026)
+
+- GitHub README google/adk-python (Apache 2.0, 22,256 stars at read
+  time): key features list, Workflow quick start, tool
+  confirmation feature.
+- Official docs site (adk.dev) workflows overview: graph, dynamic,
+  collaborative, and template workflow types.
+- ADK multi-agent and state/session/memory guides (search results,
+  checked against google-adk 2.13.0 on 2026-11-17): hierarchy
+  rules, `SequentialAgent` / `ParallelAgent` / `LoopAgent`,
+  `user:` / `app:` / `temp:` state scopes, `InMemorySessionService`
+  vs `DatabaseSessionService`, `InMemoryMemoryService`,
+  `load_memory` / `preload_memory`, `require_confirmation`.
+
+## Files
+
+- New: `puspa/runtime/hierarchy.py` (AgentNode,
+  HierarchicalRunner, SessionState, MemoryAccess, ToolConfirmation,
+  CallbackRegistry).
+- Changed: `puspa/runtime/planner.py` (`decompose_hierarchical`,
+  `ROLE_FOR_STEP`, `Planner.run_hierarchical`; flat `run` untouched),
+  `puspa/runtime/subagents.py` (`Subagent.role`, `spawn(role=...)`,
+  `SubagentPool.active_by_role`).
+- Tests: `tests/test_hierarchy.py` (29 tests, in-memory only).
