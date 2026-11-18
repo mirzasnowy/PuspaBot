@@ -1,15 +1,16 @@
-"""Skill bertanda tangan Puspa (definisi 2.6, CONTRACTS.md).
+"""Signed Puspa skills (definition 2.6, CONTRACTS.md).
 
-Skill = direktori berisi ``SKILL.md`` + ``manifest.json``::
+A skill is a directory holding ``SKILL.md`` + ``manifest.json``::
 
     {name, version, tools[], domains[], konektor{}, author, signature}
 
-``signature`` adalah Ed25519 atas JSON kanonis manifes TANPA field
-``signature``. Skill tanpa tanda tangan atau dengan signature salah
-ditolak. Tool di luar manifes ditolak saat dipakai (``check_tool``).
+``signature`` is an Ed25519 signature over the canonical JSON of the
+manifest WITHOUT the ``signature`` field. A skill with no signature
+or a bad signature is rejected. Tools outside the manifest are
+rejected when used (``check_tool``).
 
-Kunci Puspa untuk skill bawaan dibuat saat runtime; kunci komunitas
-terdaftar terpisah (fase 6).
+Puspa's key for built-in skills is created at runtime; community
+keys are registered separately (phase 6).
 
 Provenance (``puspa.policy.signing``): when a transparency log is
 passed to ``verify_skill``, a skill is trusted only if it also carries
@@ -18,6 +19,35 @@ payload binds the manifest bytes and the expected identity, and that
 envelope is recorded in the log with a verifiable Merkle inclusion
 proof. Without a log argument, ``verify_skill`` keeps its old meaning
 (manifest signature only) so existing callers stay valid.
+
+Sigstore (``puspa.policy.sigstore_verify``): a community skill may
+additionally carry a real Sigstore bundle, declared in the manifest::
+
+    "sigstore": {
+      "bundle": "bundle.sigstore",   // file in the skill dir (default)
+      "artifact": "manifest.json",   // file the bundle attests (default)
+      "identity": "author@example.com",
+      "issuer": "https://github.com/login/oauth",
+      "trust_root": "production"     // "production" | "staging" | path
+    }
+
+When the ``sigstore`` field is present, the bundle must verify (real
+Sigstore verification: certificate chain, identity, issuer, artifact
+digest, transparency-log inclusion proof) IN ADDITION to everything
+else: the local manifest signature is still required first, and the
+provenance envelope is still required when a log is passed. A bundle
+is never a replacement for the local mechanism. When the field is
+absent, behavior is exactly as before. A missing, malformed, or
+failing bundle rejects the skill (fail closed); verification never
+raises.
+
+The bundle attests the raw bytes of the named artifact file as
+stored on disk (by default ``manifest.json`` itself, which is the
+natural ``sigstore sign manifest.json`` flow). The author signs the
+final manifest, so the bundle binds the exact bytes Puspa reads,
+including the ``sigstore`` declaration itself — and the local
+signature covers that declaration too, so it cannot be added or
+changed after signing without breaking the local check.
 """
 
 import base64
@@ -33,6 +63,7 @@ from .signing import (
     sign_skill as sign_skill_envelope,
 )
 from .signing import verify_skill_envelope
+from .sigstore_verify import verify_sigstore_bundle
 from .tokens import TokenError, _b64url_decode, _b64url_encode, canonical_json
 
 __all__ = [
@@ -46,6 +77,10 @@ __all__ = [
 
 #: DSSE envelope file next to manifest.json in a skill directory.
 ENVELOPE_FILENAME = "envelope.json"
+
+#: Default Sigstore bundle file in a skill directory, used when the
+#: manifest's ``sigstore`` declaration does not name another file.
+SIGSTORE_BUNDLE_FILENAME = "bundle.sigstore"
 
 
 class SkillRejected(Exception):
@@ -111,16 +146,25 @@ def sign_skill(dirpath, signing_key) -> dict:
     return manifest
 
 
-def verify_skill(dirpath, public_key, transparency_log=None, expected_identity=None) -> bool:
-    """Benar kalau manifes ada, punya signature, dan signature valid.
+def verify_skill(dirpath, public_key, transparency_log=None, expected_identity=None,
+                 *, sigstore_identity=None, sigstore_issuer=None, sigstore_trust_root=None) -> bool:
+    """True when the manifest exists, is signed, and the signature is valid.
 
-    Tidak pernah raise untuk skill yang rusak: kembalikan False.
-    When ``transparency_log`` is given, the skill must ALSO carry a
-    valid DSSE envelope (``envelope.json``) bound to these manifest
-    bytes and to ``expected_identity``, recorded in the log with a
+    Never raises for a damaged skill: returns False instead. When
+    ``transparency_log`` is given, the skill must ALSO carry a valid
+    DSSE envelope (``envelope.json``) bound to these manifest bytes
+    and to ``expected_identity``, recorded in the log with a
     verifiable inclusion proof; otherwise the skill is not trusted,
     even with a valid manifest signature. Without a log, behavior is
-    exactly the old manifest-signature check.
+    exactly the old manifest-signature check. When the manifest
+    declares a ``sigstore`` bundle, that bundle must ALSO verify (see
+    the module docstring); a failing bundle rejects the skill even
+    when the local signature and the provenance envelope are fine.
+
+    ``sigstore_identity``, ``sigstore_issuer``, and
+    ``sigstore_trust_root`` override the matching values from the
+    manifest's ``sigstore`` declaration when given; otherwise the
+    manifest values are used.
     """
     try:
         manifest = _read_manifest(dirpath)
@@ -128,9 +172,75 @@ def verify_skill(dirpath, public_key, transparency_log=None, expected_identity=N
         return False
     if not _verify_manifest_dict(manifest, public_key):
         return False
-    if transparency_log is None:
+    if transparency_log is not None:
+        if not _verify_provenance(dirpath, manifest, transparency_log, expected_identity):
+            return False
+    return _verify_sigstore(
+        dirpath, manifest, sigstore_identity, sigstore_issuer, sigstore_trust_root
+    )
+
+
+def _skill_file(dirpath, filename):
+    """Path to ``filename`` inside the skill directory, or None when
+    the name is not a plain file inside it (empty, absolute, or
+    escaping via ``..``). Never raises.
+
+    The bundle and artifact names come from the manifest, which the
+    local signature covers, but a registered community key must still
+    not be able to make verification read files outside the skill
+    directory.
+    """
+    if not isinstance(filename, str) or not filename:
+        return None
+    base = Path(dirpath).resolve()
+    path = (base / filename).resolve()
+    try:
+        path.relative_to(base)
+    except ValueError:
+        return None
+    return path
+
+
+def _verify_sigstore(dirpath, manifest, identity, issuer, trust_root) -> bool:
+    """Sigstore check: True when the manifest declares no bundle, or
+    when the declared bundle verifies against its artifact with the
+    expected identity and issuer. Never raises; anything missing,
+    malformed, or failing rejects the skill (fail closed)."""
+    declaration = manifest.get("sigstore")
+    if declaration is None:
         return True
-    return _verify_provenance(dirpath, manifest, transparency_log, expected_identity)
+    if not isinstance(declaration, dict):
+        return False
+    bundle_path = _skill_file(
+        dirpath, declaration.get("bundle", SIGSTORE_BUNDLE_FILENAME)
+    )
+    artifact_path = _skill_file(dirpath, declaration.get("artifact", "manifest.json"))
+    if bundle_path is None or artifact_path is None:
+        return False
+    if identity is None:
+        identity = declaration.get("identity")
+    if issuer is None:
+        issuer = declaration.get("issuer")
+    if trust_root is None:
+        trust_root = declaration.get("trust_root", "production")
+    if not isinstance(identity, str) or not identity:
+        return False
+    if not isinstance(issuer, str) or not issuer:
+        return False
+    if not isinstance(trust_root, str) or not trust_root:
+        return False
+    try:
+        bundle_bytes = bundle_path.read_bytes()
+        artifact_bytes = artifact_path.read_bytes()
+    except OSError:
+        return False
+    try:
+        ok, _reason = verify_sigstore_bundle(
+            bundle_bytes, artifact_bytes, identity, issuer, trust_root=trust_root
+        )
+    except Exception:
+        return False
+    return ok
 
 
 def _verify_provenance(dirpath, manifest, transparency_log, expected_identity) -> bool:
