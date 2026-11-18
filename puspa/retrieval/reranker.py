@@ -29,12 +29,25 @@ This module implements the same two hooks in Puspa's own code:
   deterministic stand-in for the LLM question generator. The
   query is split on conjunctions into sub-questions, each is
   retrieved separately, and the rankings are merged with
-  reciprocal rank fusion.
+  reciprocal rank fusion. ``LLMQueryDecomposer`` is the real
+  LLM decomposer: it takes a ``complete(prompt)`` callable (the
+  same seam ``JsonTripleExtractor`` and ``LLMTripleJudge`` use),
+  asks the LLM to break a complex query into self-contained
+  sub-questions, and returns them as JSON. ``decompose_query``
+  and ``RegexQueryDecomposer`` stay as the explicit fallback
+  when no LLM is wired, and every merged result records which
+  source decomposed the query, so a retrieval that ran without
+  an LLM is visible as such instead of silently pretending the
+  LLM decomposed it. An LLM reply that is not usable JSON is
+  rejected with ``DecomposerError``, never silently replaced
+  by the regex split.
 """
 
 from __future__ import annotations
 
+import json
 import re
+from dataclasses import dataclass, field
 
 from puspa.memory.embeddings import HashEmbedding, cosine_similarity
 from puspa.memory.episodic import extract_concepts
@@ -284,6 +297,192 @@ def make_reranker(kind: str = "deterministic",
     raise ValueError(f"unknown reranker kind: {kind!r}")
 
 
+class DecomposerError(ValueError):
+    """An LLM decomposer reply was unusable, or the LLM call failed.
+
+    Raised instead of silently falling back to the regex split,
+    so a caller can see the LLM path failed rather than trust a
+    decomposition that never came from the model.
+    """
+
+
+@dataclass
+class Decomposition:
+    """One query decomposition, with its source recorded.
+
+    ``source`` is ``"llm"`` when the LLM decomposer made the
+    split and ``"regex"`` when the deterministic fallback did.
+    """
+
+    subquestions: list = field(default_factory=list)
+    source: str = "regex"
+
+
+def build_decompose_prompt(query: str, max_subquestions: int = 4) -> str:
+    """One prompt asking an LLM to split a question into parts.
+
+    Each sub-question must stand on its own: names and shared
+    context from the original question are repeated in every
+    part, because each part is retrieved separately. A question
+    that needs no split comes back as a single-element list
+    holding the question itself. The reply must be JSON only.
+    """
+    return "\n".join([
+        "Break the question below into sub-questions, one per "
+        "independent part of what it asks. Each sub-question "
+        "must stand on its own: repeat the names and shared "
+        "context from the original question in every part, so "
+        "each part can be answered without seeing the others. "
+        "Keep each part short and focused on one thing. A "
+        "question that asks only one thing needs no split: "
+        "return it unchanged as the only sub-question.",
+        "",
+        f"Question: {query}",
+        "",
+        "Reply with JSON only, in this shape: "
+        "{\"subquestions\": [\"...\", ...]}. Return at most "
+        f"{max_subquestions} sub-questions.",
+    ])
+
+
+def parse_decompose_reply(reply: str) -> list:
+    """Parse an LLM decomposer reply into raw sub-questions.
+
+    Strict: the reply must be a JSON object with a
+    ``subquestions`` list holding at least one non-empty
+    string. Anything else raises ``DecomposerError`` so the
+    caller falls back explicitly instead of trusting a
+    half-read split. De-duplication and the size cap live in
+    ``_dedupe_subquestions`` and the decomposer, not here.
+    """
+    if not isinstance(reply, str) or reply == "":
+        raise DecomposerError("decomposer reply is empty")
+    try:
+        parsed = json.loads(reply)
+    except ValueError as exc:
+        raise DecomposerError(
+            "decomposer reply is not valid JSON") from exc
+    if not isinstance(parsed, dict):
+        raise DecomposerError(
+            "decomposer reply must be a JSON object")
+    raw = parsed.get("subquestions")
+    if not isinstance(raw, list) or not raw:
+        raise DecomposerError(
+            "decomposer reply must carry a non-empty "
+            "subquestions list")
+    subquestions = []
+    for item in raw:
+        if not isinstance(item, str) or item.strip() == "":
+            raise DecomposerError(
+                "every decomposer sub-question must be a "
+                "non-empty string")
+        subquestions.append(item.strip())
+    return subquestions
+
+
+def _dedupe_subquestions(subquestions) -> list:
+    """Drop duplicate and overlapping sub-questions, in order.
+
+    Exact duplicates match case-insensitively, and a shorter
+    sub-question that is fully contained in a longer one (same
+    words, trailing "?" ignored) is dropped in favour of the
+    longer, self-contained form. The first occurrence wins, so
+    the LLM's ordering is kept. Raises ``DecomposerError``
+    when nothing survives.
+    """
+    kept: list[str] = []
+    for sub in subquestions:
+        candidate = sub.strip()
+        if not candidate:
+            continue
+        folded = candidate.lower().rstrip("?")
+        if any(folded == kept_sub.lower().rstrip("?")
+               for kept_sub in kept):
+            continue
+        if any(folded in kept_sub.lower().rstrip("?")
+               for kept_sub in kept):
+            continue
+        kept = [kept_sub for kept_sub in kept
+                if kept_sub.lower().rstrip("?") not in folded]
+        kept.append(candidate)
+    if not kept:
+        raise DecomposerError(
+            "decomposer returned no usable sub-question")
+    return kept
+
+
+class RegexQueryDecomposer:
+    """Deterministic query decomposer: the regex split.
+
+    Splits on "and", "vs", ";" and "?" boundaries through
+    ``decompose_query``. This is the fallback when no LLM is
+    available, and it says so on every result through
+    ``source="regex"``. It cannot keep shared context across
+    the split the way an LLM can, so a sub-question may read
+    under-specified on its own.
+    """
+
+    source = "regex"
+
+    def __init__(self, max_subquestions: int = 4):
+        if max_subquestions < 1:
+            raise ValueError("max_subquestions must be at least 1")
+        self.max_subquestions = max_subquestions
+
+    def decompose(self, query: str) -> Decomposition:
+        subquestions = _dedupe_subquestions(
+            decompose_query(query))[:self.max_subquestions]
+        return Decomposition(subquestions=subquestions, source="regex")
+
+
+class LLMQueryDecomposer:
+    """Query decomposer driven by an LLM, LlamaIndex style.
+
+    ``complete(prompt)`` is any function returning a string:
+    the reply to one decomposition prompt. This is the seam
+    for a real LLM: pass a completion function from the
+    provider layer when a key exists (the router's cheapest
+    reader model fits: decomposition is short-form rewriting,
+    not generation). This class itself makes no network call
+    and holds no key.
+
+    One LLM call decomposes one query. A reply that is not
+    usable JSON, or an LLM call that raises, raises
+    ``DecomposerError`` with the reason attached; the regex
+    split is never substituted silently for a failed LLM
+    reply. Duplicates and overlapping sub-questions from the
+    model are dropped, and the result is capped at
+    ``max_subquestions``.
+    """
+
+    source = "llm"
+
+    def __init__(self, complete, *, max_subquestions: int = 4):
+        if not callable(complete):
+            raise ValueError("complete must be a callable")
+        if max_subquestions < 1:
+            raise ValueError("max_subquestions must be at least 1")
+        self.complete = complete
+        self.max_subquestions = max_subquestions
+        self.calls = 0
+
+    def decompose(self, query: str) -> Decomposition:
+        if not isinstance(query, str) or query == "":
+            raise ValueError("query must be a non-empty string")
+        try:
+            self.calls += 1
+            reply = self.complete(build_decompose_prompt(
+                query, self.max_subquestions))
+        except DecomposerError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - any LLM failure
+            raise DecomposerError(
+                f"LLM decomposer call failed: {exc}") from exc
+        subquestions = _dedupe_subquestions(
+            parse_decompose_reply(reply))[:self.max_subquestions]
+        return Decomposition(subquestions=subquestions, source="llm")
+
+
 def decompose_query(query: str) -> list:
     """Split a complex query into sub-questions, deterministically.
 
@@ -292,7 +491,9 @@ def decompose_query(query: str) -> list:
     deterministic stand-in for LlamaIndex's LLM question
     generator: it cannot keep shared context across the split
     the way an LLM can, so a sub-question may read
-    under-specified on its own.
+    under-specified on its own. ``RegexQueryDecomposer`` wraps
+    this function with a recorded source; ``LLMQueryDecomposer``
+    is the real LLM decomposer with the same return shape.
     """
     if not isinstance(query, str) or query == "":
         raise ValueError("query must be a non-empty string")
@@ -302,7 +503,9 @@ def decompose_query(query: str) -> list:
 
 
 def retrieve_with_decomposition(retrieve_fn, query: str, top_k: int = 5,
-                                max_subquestions: int = 4) -> list:
+                                max_subquestions: int = 4,
+                                decomposer=None,
+                                llm_complete=None) -> list:
     """Retrieve per sub-question, merge with reciprocal rank fusion.
 
     ``retrieve_fn(sub_query, top_k)`` returns ranked dicts with
@@ -310,12 +513,32 @@ def retrieve_with_decomposition(retrieve_fn, query: str, top_k: int = 5,
     contributes ``1 / (60 + rank)`` per passage; the merged list
     is sorted by the fused score. A single sub-question just runs
     the plain retrieval.
+
+    The decomposer is, in order: ``decomposer`` when one is
+    passed, an ``LLMQueryDecomposer`` built from
+    ``llm_complete`` when a ``complete(prompt)`` callable is
+    passed, else the regex fallback. Pass both ``decomposer``
+    and ``llm_complete`` is an error. Every merged entry
+    records ``decomposition_source`` ("llm" or "regex") and
+    the sub-questions that retrieved it. An LLM decomposer
+    whose reply is unusable raises ``DecomposerError``; the
+    regex split is never substituted silently for it.
     """
     if top_k < 1:
         raise ValueError("top_k must be at least 1")
     if max_subquestions < 1:
         raise ValueError("max_subquestions must be at least 1")
-    subquestions = decompose_query(query)[:max_subquestions]
+    if decomposer is not None and llm_complete is not None:
+        raise ValueError(
+            "pass only one of decomposer and llm_complete")
+    if llm_complete is not None:
+        decomposer = LLMQueryDecomposer(
+            llm_complete, max_subquestions=max_subquestions)
+    elif decomposer is None:
+        decomposer = RegexQueryDecomposer(
+            max_subquestions=max_subquestions)
+    decomposition = decomposer.decompose(query)
+    subquestions = decomposition.subquestions[:max_subquestions]
     if len(subquestions) <= 1:
         return retrieve_fn(query, top_k=top_k)
     fused: dict[str, dict] = {}
@@ -333,4 +556,5 @@ def retrieve_with_decomposition(retrieve_fn, query: str, top_k: int = 5,
         fused.values(), key=lambda r: (-r["rrf_score"], _candidate_id(r)))
     for entry in merged:
         entry["score"] = entry["rrf_score"]
+        entry["decomposition_source"] = decomposition.source
     return merged[:top_k]

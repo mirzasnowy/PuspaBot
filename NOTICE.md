@@ -186,6 +186,10 @@ to be included here because no third-party code is vendored.
   `puspa/retrieval/reranker.py`. The cross-encoder itself is
   `cross-encoder/ms-marco-MiniLM-L-6-v2` (Apache License 2.0)
   via sentence-transformers 6.3.0 (Apache License 2.0).
+  Query decomposition in `puspa/retrieval/reranker.py` is
+  inspired by the LlamaIndex sub-question query engine
+  pattern. The implementation is original Puspa code; no
+  LlamaIndex source code is included.
 - **google/adk-python** (Apache License 2.0) - pattern:
   hierarchical multi-agent composition (sequential/parallel/loop),
   session state with user/app/temp scopes, memory service, tool
