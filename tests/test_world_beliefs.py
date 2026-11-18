@@ -168,8 +168,10 @@ def test_decay_returns_verified_beliefs_to_trial():
     # 89 days later: nothing decays yet.
     assert model.decay_stale_beliefs(now_day=17 + 89) == []
     # 90 days after the last observation: both decay, old versions kept.
+    # The same three tasks also formed a verified habit belief (the
+    # 1-day gaps repeat), so it decays in the same sweep.
     decayed = model.decay_stale_beliefs(now_day=17 + 90)
-    assert {item["kind"] for item in decayed} == {"schedule", "capability"}
+    assert {item["kind"] for item in decayed} == {"schedule", "capability", "habit"}
     assert schedule.status == "trial"
     assert schedule.version == 2
     assert schedule.history[0]["reason"] == "decay"
