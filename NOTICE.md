@@ -173,8 +173,9 @@ to be included here because no third-party code is vendored.
   knowledge graph built at index time, multi-hop retrieval by
   Personalized PageRank, HippoRAG 2 style filtering and
   re-ranking. Used as a pattern in
-  `puspa/retrieval/knowledge_graph.py` and
-  `puspa/retrieval/hipporag.py`.
+  `puspa/retrieval/knowledge_graph.py`,
+  `puspa/retrieval/hipporag.py`, and
+  `puspa/retrieval/triple_filter.py`.
 - **HKUDS/LightRAG** (MIT License) - pattern: dual-level retrieval
   and the five query modes local, global, hybrid, naive, mix, plus
   incremental graph update. Used as a pattern in

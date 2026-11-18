@@ -550,7 +550,15 @@ Files: `puspa/retrieval/knowledge_graph.py`, `puspa/retrieval/hipporag.py`,
   passage re-ranking. Reimplemented here as `KnowledgeGraph`,
   `personalized_pagerank` (power iteration with restart),
   `HippoRAGRetriever`, weighted seeds, and sum-of-node passage
-  scoring. No HippoRAG code or dependency is used.
+  scoring. No HippoRAG code or dependency is used. Rework 2
+  (18 Nov 2026): the query-to-triple filter is now a real LLM
+  judge (`puspa/retrieval/triple_filter.py`, `LLMTripleJudge`,
+  batched decisions with keep/drop plus reason, strict JSON
+  parsing, per-batch deterministic fallback), wired in
+  `puspa/retrieval/hipporag.py` (`triple_filter` /
+  `llm_complete`); the deterministic filter remains as fallback.
+  The judge is not yet wired to a live LLM (follow-up: wire a
+  provider-layer completion function as `llm_complete`).
 - LightRAG (HKUDS/LightRAG, MIT): dual-level retrieval and the
   five query modes local, global, hybrid, naive, mix, plus
   incremental graph update (add one document without a rebuild)
