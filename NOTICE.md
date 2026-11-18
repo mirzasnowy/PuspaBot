@@ -594,3 +594,31 @@ copied, vendored, or depended on; only the documented patterns
 above were followed, rewritten as Puspa's own code. The rule
 language evaluator, the approval taxonomy, and the audit export
 log are Puspa's own implementations.
+# NOTICE - Puspa maturity phase, G29 (18 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **Graphify-Labs/graphify** (Apache License 2.0) - patterns
+  only, rewritten as Puspa Python code (nothing copied
+  verbatim): building a knowledge graph from a codebase
+  (parse source files into function / class / import / call
+  nodes and edges, answer questions from the graph instead
+  of re-reading the files). Used as the pattern in
+  `puspa/retrieval/code_graph.py` (`CodeExtractor`, a
+  two-pass `ast` walk; `CodeGraph`, incremental per-file
+  indexing into the shared `KnowledgeGraph`; graph queries
+  `callers_of` / `callees_of` / `reachable_from` /
+  `reaches` / `call_path` / `defined_in` / `imports_of`)
+  and `docs/code-graph.md`. The entities and edges live in
+  Puspa's existing shared knowledge graph, not a second
+  parallel graph.
+
+## New dependency: none
+
+No new dependency was added for G29. No Graphify code was
+copied, vendored, or depended on; only the documented
+pattern above was followed, rewritten as Puspa's own code.
+The live LLM extractor default (`JsonTripleExtractor`
+resolving `"default"` through the router's
+`resolve_llm_complete`) reuses Puspa's own G21 completion
+seam; no new provider dependency is introduced.
