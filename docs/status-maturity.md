@@ -717,3 +717,198 @@ task_id, *, cap_rp=2000, dsn=None) -> int` (G2 defines it; G8's
 curriculum runner calls it via an injected callable, default lazy
 import). G2 does NOT touch `puspa/scheduler/`; G8 does NOT touch
 `puspa/billing/` or `puspa/pricing/`.
+
+## Wave 6: G2+G8 (billing + scheduler, done 18 Nov 2026)
+
+Two parallel workers, disjoint files. Central SOLO suite after the
+wave: **1,955 passed, 9 skipped, 1 warning, 11m48s** (baseline 1,800
++ 155 new: G2 71 + G8 78 + 5 curriculum budget tests; 1 more from
+collection differences under conftest). Postgres stayed online
+through the wave itself — but see the incident below.
+
+**Incident: VM replaced mid-wave (~09:40 WIB).** The first central
+suite run was SIGTERM'd at 32%; the second run failed with 1,960 DB
+errors because Postgres was gone (packages wiped, the `postgres`
+user gone). The new VM ran the Hatch os-intent replay (PID 772),
+which reinstalled postgresql-16 + pgvector 0.6.0; the coordinator
+waited for the replay, then restored the cluster (roles root +
+puspa_app, DB puspa_test, `infra/schema_core.sql`). The third suite
+run went green. Lesson recorded: after a VM replacement, check
+`pg_lsclusters` + package presence BEFORE the suite; the replay
+reinstalls packages but not the data (roles/DBs must be recreated).
+The G8 push also failed once transiently (GitHub API
+`RemoteDisconnected` on the first ref fetch, nothing pushed) and
+succeeded on retry.
+
+### G2 Billing (commit 1ac8b86e)
+
+Eight new modules + `__init__` exports + 7 test files (71 passed,
+0.63 s `--noconftest`, repeated 3x stable; combined regression 116
+passed in 36 s). `config.py` (single price source: tiers Free Rp0 /
+Plus Rp99.000 / Pro Rp199.000 / Team Rp499.000, packs Rp9.000/20,
+Rp35.000/100, Rp150.000/500, 15 free credits/month, `billing_model`
+("credits"|"subscription"|"compute", default "subscription"), trial
+14 days, grace 30 days, max 5 clouds, invested thresholds 3 bots /
+50 messages / 3 routines, snooze 10 days). `contract.py`
+(additive-only `validate_additive`, Cart → Quote with line items +
+total, annual discount 2 months free (12 billed 10), dedicated from
+spec: base 50.000 + 15.000/vCPU + 5.000/GB RAM + 10.000 per 20 GB
+disk). `providers.py` (`PaymentProvider` interface;
+`FakePaymentProvider` deterministic, checkout id from the
+idempotency key, key conflict = `KeyConflictError`;
+`LocalGatewayProvider` stub — all real gateway calls =
+`NotImplementedError`, HMAC verification still works; product keys
+from env `PUSPA_BILLING_PRODUCT_KEY_<PRODUCT>`). `webhook.py`
+(`handle_webhook(payload_bytes, signature, secret)`: HMAC first,
+duplicates via idempotency key return the old result, unknown events
+recorded in `unknown_events` + ignored, malformed payload rejected;
+plain Python function, not a live HTTP route). `entitlements.py`
+(HMAC-signed per user/machine + tier + validity; trial via config;
+grace 30 days; max 5 clouds/account from config; verify signature →
+tier → date; status active/grace/expired/invalid). `ledger.py`
+(`UsageRow` + `MemoryUsageStore` + `PostgresUsageStore`, own table
+`billing_usage_rows`, idempotent `create_schema()` — NO new event
+types in the core 31-type ledger; `battery_view` 7-day totals per
+bot/routine, share, cap; `forecast_routines` frequent|costly;
+`task_budget_remaining(user_id, task_id, *, cap_rp=2000, dsn=None)
+-> int` — the exact shared-interface name/signature with G8; no DSN
+→ process in-memory store, with DSN → Postgres; never negative;
+`upsell_due`). `client.py` (12-state state→render table; fail-closed
+on fetch failure; 9 typed refusal codes + copy + recovery + state
+each; unknown codes show the server message; idempotency key per
+charge, conflict = new charge with a new key; settlement polling 2 s
+cap 5 min with injectable sleep/clock; timeout called timeout +
+"check balance first" framing; effect preview
+charge_now/scheduled/no_op/blocked; upgrade matrix reason-before-
+status; resumable `StepUpFlow`; portal deep-link `?plan=<tier_id>`).
+`routes.py` (`handle_billing_request(method, path, payload, deps)`:
+catalog, quote, overview, invoices, license (GET verify + POST
+issue), checkout, webhook, team, clouds, ops funnel/grant/review;
+404 unknown path, 400 malformed payload; plain Python function).
+`__init__.py` only added exports (old wedge docstring kept).
+`billing.py` + `fixture.py` untouched; `puspa/pricing/` untouched.
+Honest limits: the live path is untested (no LLM, no real gateway;
+`LocalGatewayProvider` deliberately stub — follow-up after Nero
+picks a gateway + provides credentials: implement
+`create_checkout`/`get_invoice`/`refund` in the stub, then test
+checkout end-to-end in a sandbox). Monthly renewal / monthly credit
+reset only defined as policy; scheduling is G8's domain. Module
+generation price: config records `module_generate = 5` (brief locks
+5–10); the quote states the exact amount before charge. GPU
+video/try-on per-second costs have no numbers yet (brief: don't sell
+before measuring) — not invented. Portal base URL default
+`https://portal.puspa.example` is a config placeholder (env
+`PUSPA_BILLING_PORTAL_URL`). Trial tier: trial issues an entitlement
+for the requested tier with trial flag + `trial_days` config; no
+automatic trial→paid flow (business decision). Flaky notes from the
+worker: `test_billing.py` failed once with `Invalid port: ':1]'`
+(httpx + NO_PROXY bracketed IPv6 — documented env issue; with
+NO_PROXY sanitized 6/6 passed) and `test_ledger_event_types.py`
+errored when combined with G8's parallel suite (shared `puspa_test`
+truncate collisions) but passed alone — both are
+environment/parallelism artifacts, not G2 code; the central suite
+(run alone) is green.
+
+**DECISION QUESTION FOR NERO (billing model — ask the parent to ask
+Nero): which billing model does Puspa sell?** The mechanism supports
+all three; only `BillingConfig.billing_model` changes. (a) Credits
+only (pay-as-you-go) — packs; per-action metering; tiers only limit
+features. (b) Subscription (current default) — monthly tiers; paid
+tiers grant a monthly credit allowance (Plus 60, Pro 150, Team 400)
++ cloud machines; packs top up. (c) Sell compute — customers pay for
+cloud machines (dedicated pricing) + pay AI costs directly to the
+model provider with their own API key, like DuskBot; Puspa doesn't
+sell AI tokens. Follow-ups: which local payment gateway (only
+implementable after a choice + credentials), and whether the 14-day
+trial auto-converts to paid or stops.
+
+### G8 Mature scheduler (commit 8d0e9877)
+
+Eight new modules + curriculum refactor + `__init__` exports + 8
+test files + 5 budget tests in `test_curriculum_runner.py` (78
+passed `--noconftest`, 2.18 s; combined with conftest 121 passed in
+36.82 s; old regression 43 passed). `schedules.py` (explicit union
+once/daily/interval/cron, all with an explicit timezone validated at
+create/update, readers use `.get("timezone", "UTC")` so old records
+work without migration; `validate_schedule`, `next_occurrence`
+incl. a 5-field cron parser + `zoneinfo`, `merge_schedule` (type
+change = whole schedule replaced, old timezone kept), separate
+`RoutineScheduleInput` for user input validation). `due.py`
+(not_yet|due|late|missed; late runs still run up to 12 h, then
+missed and never run silently; `sort_due_first`, most-late first).
+`execution.py` (compose an execution prompt for a fresh agent
+without history: job prompt + injected skills + delivery target +
+run id + due status). `recovery.py` (failed requeue ONCE,
+`MAX_REQUEUE = 1`; second failure terminal, recorded as a failure
+fact, owner notified; no unbounded retry). `holds.py` (`HoldStore`
+hold until time/clear, per scope; `Pacer` minimum interval between
+checks per scope; quiet hours `HH:MM-HH:MM` supporting past
+midnight, per timezone). `receipts.py` (per-event idempotency
+receipts: `InMemoryReceiptStore` + `PostgresReceiptStore`, table
+`event_receipts`, atomic claim `INSERT ... ON CONFLICT DO NOTHING`;
+`process_once` — duplicates don't run the handler). `claim.py`
+(OpenBot-style claims: `work_items` table, `SELECT ... FOR UPDATE
+SKIP LOCKED`, lease on the DB clock (`now()`), attempt cap (failure
+= pending until cap, then `failed` terminal), advisory lock
+`pg_try_advisory_xact_lock` (only one replica scans; others get
+`[]`), plus an `InMemoryWorkQueue` fallback with the same surface).
+`cron.py` (general cron scheduler: 4 formats in one model — relative
+delay `30m`/`2h`/`1d`, interval `every 2h`, cron expression, ISO
+timestamp; job carries prompt + skills + `deliver_to` + optional
+model/provider/script + top-level timezone validated at create/
+update, `.get()` in readers; fresh-agent execution without history;
+state + `next_run` updated; missed runs reported, not executed;
+quota hold; incidents; separate delivery queue (`flush_deliveries`);
+atomic storage (temp + fsync + rename); one model tool
+`cronjob_manage` (create, list, update, pause, resume, run, remove)
+as a Python function, not an HTTP route). Modified: `curriculum.py`
+(thin refactor: the runner takes a `budget_check` callable, new
+status `budget_hold` that doesn't consume the daily quota; the
+default is a lazy import of
+`puspa.billing.ledger.task_budget_remaining` + fail-soft if the
+module is absent; NO billing import at top level; 5 tasks/day +
+Rp2.000/task caps intact as policy above the general scheduler),
+`__init__.py` (new public exports), `test_curriculum_runner.py` (5
+new budget tests). `scheduler.py` NOT touched at all
+(schedule/bill due/price drop/manual triggers, dream,
+trust_root_refresh unchanged). Three bugs found by tests and fixed:
+(1) `claim_work_items` couldn't reclaim expired-lease items
+(`claimed` status missing from WHERE) — fixed in Postgres and
+in-memory; (2) `cronjob_manage(create)` didn't pass `now` to delay
+parsing (`30m` computed from the real clock, not the test clock) —
+fixed; (3) `flush_deliveries` kept delivered deliveries — fixed
+(delivered dropped from the queue). Honest limits: 0 live LLM calls
+(all cron execution uses an injected `llm_complete` stub); the live
+path (`complete` via `default_llm_complete`, lazy in
+`cron._resolve_llm_complete`) is untested — follow-up with a key.
+`schedules.py` was truncated during writing (line 196, incomplete
+`except Value`) — fixed, the whole file verified passing. Regression
+failed 2x not from G8's code but from G2's parallel billing suite on
+the same `puspa_test` DB (conftest truncate collisions;
+`ForeignKeyViolation` + deadlock seen); after G2's process finished,
+full green regression. Lesson for the coordinator: don't run two
+DB-using workers together (already known — the parallel workers' DB
+tests collide; G8's own claim/receipts tests use their own tables
+`work_items`/`event_receipts`, not truncated by conftest, so they're
+safe). Seam verified by the coordinator: the curriculum's default
+budget check resolves to G2's real function (no spend = full
+Rp2.000 remaining); no top-level billing import in `curriculum`.
+
+## Next: G9+G10 (decider + layered connectors)
+
+In progress (spawned after Wave 6): two parallel workers, disjoint
+files. G9 (DuskBot decider): one small module with a strict contract
+— 3 question forms (Choice/Score/YesNo), typed answers, pluggable
+backend, 1,500 ms default timeout, failure = value not exception,
+explicit `DECIDER_JOBS` list with a seam per job, key-check, decider
+log with a state hash; a layer BELOW planner + world model, not a
+replacement. G10 (DuskBot 4-layer connectors): native 1-click
+(Indonesian wedges: Tokopedia/Shopee/Blibli + PLN/PDAM/pulsa) +
+aggregator (broker + advertised-tool allowlist) + generic MCP
+(registry + OAuth pending sign-in, constant-time state comparison) +
+token apps (paste token → live check → sealed store → MCP server;
+refresh 10 min before expiry, check every 5 min) + per-module
+account choice + advertised-tool allowlist. **Wedge live execution
+is gated by a config flag, default OFF, pending Nero's ToS decision
+(decision 15 — live price execution held); the worker builds
+definitions + contracts + fake/test providers, NOT live scraping.**
