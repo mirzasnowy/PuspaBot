@@ -269,6 +269,18 @@ result = loop.run_subagent_turn(
 )
 ```
 
+## Intent advisor (K1)
+
+An optional `IntentTurnAdvisor` (`puspa.intent.turn_wiring`,
+see `docs/intent-engine.md`) can be passed as `intent_advisor`:
+the loop consults it before dispatching a tool call to the
+registry. On `act` the call runs as before; on `ask` the call is
+not run and the model gets an ask payload with the clarifying
+question instead. The verdicts land on
+`TurnResult.intent_decisions` and as `intent_ask` sink events.
+Without an advisor the loop behaves exactly as before, and
+intercepted tools are never advised on.
+
 TaskRunner wiring (the one loop for every surface):
 
 ```python
