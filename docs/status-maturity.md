@@ -363,3 +363,157 @@ file size limits. G24 (hermes pattern): memory provider plug-in ABC
 inactivity skill curator (active→stale→archived, archive as max,
 pins immune), learning graph. FTS5 is owned by G7; G24 consumes the
 recall interface without building FTS5 itself.
+
+## Wave 4: G7+G24 (memory, done 18 Nov 2026)
+
+Two parallel workers, disjoint files, one shared interface (fact
+record shape + `record_fact` as an injected callable for the
+background review). Central SOLO suite after the wave: **1,590 passed,
+8 skipped, 1 warning, 9m52s** (baseline 1,491 + 99 new: G7 47 + G24
+52). Postgres stayed online. Note: G7 reported 2 failures in
+`tests/test_scheduler_link.py` in isolation (`WorkflowError: alur
+tidak ditemukan`), proven pre-existing by reverting its scheduler
+edits — in the full central suite those tests pass (test-order
+dependency: they need a workflow created by another test file). One
+combined run also showed 3 teardown fixture errors + one
+`DeadlockDetected`; the same run re-run went green 108/108 (flaky,
+not G7's code).
+
+### G7 Memory tightening (commit 12bcd9d1)
+
+Seven new modules + seven test files (47 passed, 0.82 s
+`--noconftest`; also green with full conftest). `puspa/memory/facts.py`
+(versioned facts: `PostgresFactStore` + `MemoryFactStore`, same
+interface; record/supersede/expire/restore/history/at; record shape
+`{id, user_id, key, content, status, valid_from, valid_until,
+superseded_by, source, created_at, updated_at}`, `content` mapped to
+the `value` column; `source="inferred"` stays `proposed`, never
+silently active — the Rev 7 rule; statuses `active`/`superseded`/
+`expired`, old `proposed`/`rejected`/`replaced` still readable in
+history; `profile.py` still says `replaced` — unifying the vocabulary
+is a separate small PR). `puspa/memory/trust.py` (16 instruction
+regex patterns, external vs own origin/tool lists, `redact_secrets`
+— the first redaction helper in the repo, `mark_blocked`,
+`check_text` → allow/quarantine/blocked; wired into `record_fact` —
+blocked/quarantined facts never become permanent, they go to the
+journal with `[blocked: ...]` / `[quarantined: ...]` markers for user
+review). `puspa/memory/journal.py` (append-only + `undo_last` — undo
+expires instead of deleting; undo of a change restores the `before`
+snapshot; `list_quarantined` review queue; optional JSONL
+persistence). `puspa/memory/recall.py` (4-signal hybrid + RRF k=60,
+cosine 0.6 / 0.5 with a keyword hit, max 14 facts; owns FTS5). FTS5
+home: SQLite sidecar, not Postgres tsvector (`ts_rank` is not BM25;
+the sidecar is a derived index, rebuildable via `FtsIndex.rebuild`;
+default in-memory, optional file path for a persistent `state.db`).
+`puspa/memory/dream.py` (DREAM cross-chat + `run_dream_job` scheduler
+entry; LLM only via `resolve_llm_complete`; no LLM → status `no_llm`,
+never faked; learned results recorded as `inferred` proposals;
+expired kills matching active facts). `puspa/memory/write_cycle.py`
+(`record_now` / `background_pass` idle ≥120 s or every 6 turns via
+`consolidate.reflect_episodes` → proposals / `nightly_tidy` 03:00
+expire + consolidate + DREAM). `puspa/memory/limits.py` (200 lines /
+24,000 bytes, 256 KB per file — Puspa has no on-disk narrative memory
+files (grep-verified), so the limits live as functions enforced in the
+only narrative writer, `consolidate._extractive_summary`; the DREAM
+40,000-byte budget is enforced in `dream.py`). Modified:
+`puspa/memory/schema.sql` (`profile_facts`: status + `superseded`/
+`expired`, `superseded_by` + `updated_at`, idempotent migration DO
+block), `puspa/memory/consolidate.py` (one wiring:
+`_extractive_summary` → `truncate_narrative`),
+`puspa/scheduler/scheduler.py` (dream trigger + `schedule_dream` + one
+dispatch branch only — verified live: trigger daily 03:00, next
+2026-11-19 03:00 UTC, dispatch returns `job: dream, status: too_few,
+applied: {learned: 0, expired: 0}` for an empty user, no LLM, no key).
+Honest limits: the live DREAM path is untested (no key; needs one
+`run_dream_job` with `llm_complete="default"` + BYOK key, recording
+token/Rp/latency); `record_now`/`background_pass` are not wired to a
+chat handler/idle detector (call sites documented in the
+`write_cycle.py` docstring); the `replaced` vs `superseded`
+vocabulary unification is a separate small PR; the persistent FTS5
+sidecar is not activated (default in-memory, rebuilt per recall —
+activate the file sidecar + `index_fact` sync on `record_fact` if
+recall goes on the hot path).
+
+### G24 Memory provider + background review + curator (commit c0a4e40c)
+
+Four new modules + four test files (52 passed, 1.88 s
+`--noconftest`, including 2 DB tests). `puspa/memory/provider.py`
+(`MemoryProvider` ABC over the shared record shape;
+`DefaultPgVectorProvider` routes by `record["layer"]` — episodic via
+`record_episode`/`search_episodes`, profile via `add_fact` (live
+facts only; `superseded`/`expired` rejected with `ValueError`),
+procedural via `record_successful_task`; explicit registry,
+first-registration wins, duplicate name → `ProviderShadowError`;
+selection: argument → env `PUSPA_MEMORY_PROVIDER` → `pgvector`;
+per-provider `config_schema` dict + `validate_config` fills defaults,
+rejects unknown/missing-required/wrong-type keys).
+`puspa/memory/background_review.py` (`review_turn(snapshot,
+record_fact=..., recall_facts=..., sync=...)`; snapshot deep-copied,
+daemon-thread fork, writes only via the injected `record_fact`, never
+touches the main conversation/cache; deterministic extraction
+(`extract_facts` + `is_memorable` filter); internal dedupe + via the
+`recall_facts` seam; 120 s timeout enforced by `ReviewHandle.wait()`
+→ `"timeout"`; `sync=True` inline for tests).
+`puspa/memory/curator.py` (manual trigger, not a daemon; deterministic
+one-step-per-run state machine active→stale (90 days inactive, same as
+the procedural decay window) →archived (180 days); pins immune;
+archived is terminal for the curator (only `record_use` revives);
+archive = max, never delete (tested: all files remain); full snapshot
+backup of the skills root BEFORE state changes; opt-in LLM
+consolidation via an injected `consolidate` callable (result recorded
+in the report, never auto-applied); `.usage.json` telemetry
+(`use_count`, `view_count`, `patch_count`, `last_activity_at`,
+`state`, `pinned`)). `puspa/memory/learning_graph.py` (skill +
+memory-chunk nodes first-class; edges `declared` + `lexical_overlap`
+(light stemmed declared-token vs chunk-concept overlap, default
+threshold 0.3) + `related`; `related_skills`/`related_chunks` ranked
+by weight; declarations read from `manifest.json`
+(`tools`/`domains`) or `SKILL.md` frontmatter; in-memory + JSON
+serialization). Modified: `puspa/memory/__init__.py` only (exports
+`get_memory_provider`/`select_provider` — the file also carries G7's
+exports; it rides in the G24 commit). Honest limits and findings:
+G7's `record_fact` contract differed from the brief's assumption —
+it is `record_fact(user_id, key, content, source=...)`, not
+`(user_id, record)`; G24 wrote a `_default_record_fact` adapter (key
+= `fact:<sha256[:16]>` of the content, so identical clauses share a
+key and supersede cleanly; source passed through, `inferred` →
+proposal, never active); the default path was tested live against
+G7's Postgres store; trust-gate rejection (`stored: False`) is
+handled as an error, not counted. **Recall seam mismatch: G24's seam
+is `recall_facts(query) -> list`, but G7 provides
+`hybrid_recall(query, facts, ...)` needing a facts list supplied —
+the call-site adapter (`lambda q: hybrid_recall(q,
+store.list_user(...))`) still needs writing at wiring time
+(follow-up).** Wiring: the provider is a seam only
+(`get_memory_provider` exported; old call sites still call layer
+functions directly — migrating call sites to the provider is a
+follow-up). Background review has no LLM summary yet (follow-up via
+`complete()`); the curator has no LLM consolidation wired + no
+Postgres mirror; the graph has no Postgres table; graph stemming is a
+light suffix stemmer, not a real NLP stemmer. Simplifications
+documented in code: provider discovery = registry dict + env var (no
+`plugin.yaml`/`config_schema.py`/pip entry-point scan — follow-up if
+third-party providers need self-registration); curator telemetry =
+`.usage.json` sidecars, not a Postgres table (must work without a DB,
+travels when a skill is copied; Postgres mirror is a follow-up);
+graph = in-memory + JSON, not a table (derived view rebuilt from
+skills + memory, consumed by the dashboard as JSON).
+Note: both workers edited `puspa/memory/__init__.py`; the live file
+carries both sets of exports and resolves (verified: `import
+puspa.memory` exposes `facts`, `provider`, `get_memory_provider`).
+
+## Next: G3+G27 (marketplace)
+
+In progress (spawned after Wave 4): two parallel workers, disjoint
+files. G3 (DuskBot + OpenBot + hermes authoring): marketplace registry
++ skill folder/manifest validation + import (disabled by default) +
+install/rollback + trust scoring + share modes (off|ask|auto) +
+authoring standards test + per-run narrowing + `search_tools`
+overflow + price/license layer in the manifest (entitlement check is
+an injected callable; real charging is G2). G27 (hermes plugin
+system): published plugin API (`plugin_api.json` + `ctx`) + loader +
+discovery (3 sources) + plugin types (general + single-select) +
+boundary lint (test-enforced) + plugin catalog (YAML manifests +
+admission rules + CI test) + optional MCP definitions (seed set).
+Split: G3 owns `manifest.json` + `SKILL.md` (skill/module layer);
+G27 owns plugin YAML manifests + `plugin_api.json` (plugin layer).
