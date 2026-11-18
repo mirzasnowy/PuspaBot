@@ -89,7 +89,7 @@ BASELINE_LINES = {
     # Wave 12 G13 status entry (18 Nov 2026), the Wave 12 final
     # suite number (18 Nov 2026), and the Wave 13 G14 status
     # entry (18 Nov 2026).
-    "docs/status-maturity.md": 1711,
+    "docs/status-maturity.md": 1799,
 }
 
 #: Puspa-owned top-level directories covered by the ratchet.
@@ -153,7 +153,12 @@ def _scoped_files(root: Path) -> list[Path]:
             files.append(path)
     # Root-level text files (README, NOTICE, helper scripts).
     for path in sorted(root.iterdir()):
-        if path.is_file() and path.name not in SKIPPED_FILES and not path.name.startswith(GENERATED_PREFIX) and path.suffix in COUNTED_SUFFIXES:
+        if (
+            path.is_file()
+            and path.name not in SKIPPED_FILES
+            and not path.name.startswith(GENERATED_PREFIX)
+            and path.suffix in COUNTED_SUFFIXES
+        ):
             files.append(path)
     return files
 

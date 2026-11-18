@@ -1707,5 +1707,93 @@ wire the executor that calls the model via `puspa.chassis`).
 Pairing bindings are in-memory (durable home is a follow-up with
 its own migration). Channel bindings/session keys are not yet
 wired to the PWA; the gateway is not yet connected to a live
-scheduler run. Wave 13 central SOLO suite: pending at docs time
-(runs after this commit; number lands here once it is green).
+scheduler run. Wave 13 central SOLO suite: **2,695 passed, 9
+skipped, 1 warning, 17m43s, EXIT 0** (2,575 Wave 12 + 61 G14 +
+59 G21, exact). Incident on the way there: the first suite run
+was killed by a VM replacement (~21:00 WIB, SIGTERM, empty
+log), and the re-run came back 18 failed + 13 errors — all
+environmental, not code: the fresh VM's `NO_PROXY` carries
+bracketed-IPv6 entries (`[::1]`, `[fd8b:...]`) and httpx raises
+`InvalidURL: Invalid port: ':1]'` on plain `httpx.Client()`
+construction (channels adapters, reranker fixture,
+billing/integration paths). The failing subset re-run with
+`NO_PROXY=localhost,127.0.0.1 no_proxy=localhost,127.0.0.1`
+went 47/47 green, and the full suite with the same sanitised
+variables went fully green. Rule from now on: run the central
+suite (any pytest that builds an httpx client) with sanitised
+NO_PROXY. Postgres was recovered the same way as before: the
+system os-intent replay reinstalled postgresql-16 + pgvector on
+its own, cluster started, `schema_core.sql` re-run (roles +
+puspa_test + RLS on).
+
+## Wave 13: G21 (interruptible turn loop + layered fallback + budget, DONE 18 Nov 2026)
+
+New package `puspa/turns/` (14 modules, 2,947 lines) +
+`puspa/router/chains.py` (214 lines, new) + small router
+changes + 4 test files (1,081 lines) + `docs/turn-loop.md`
+(321 lines) + G21 sections in REUSE.md + NOTICE.md
+(hermes-agent MIT pattern attribution, no code copied).
+**59 tests passed** (verified by the coordinator), ruff check +
+format clean, mypy clean (18 source files). Contents:
+`loop.py` (TurnLoop: prepare -> overflow -> interruptible model
+call -> tool calls -> checkpoint/recovery; statuses
+completed/interrupted/budget_exceeded/failed, always with a
+clear message; `make_task_executor` adapts it to a TaskRunner
+step executor; subagent turns run under a narrowed budget);
+`interrupt.py` (background daemon thread + result queue, main
+thread polls in 50ms slices for result/interrupt/timeout; on
+interrupt the API thread is abandoned and its reply discarded,
+no partial response in history; the HTTP request itself cannot
+be cancelled, only abandoned — named in the module docstring);
+`messages.py` (one internal format for chat completions /
+Responses / Anthropic Messages, converters both ways with
+dropped/notes reports; alternation enforced in code with
+deterministic merge repairs); `turn_api.py` (chain execution
+through the existing `call_with_fallback`, live OpenRouter
+adapter `make_openrouter_model_call`); `turn_api_error.py`
+(refresh-first auth wrapper over the router's existing
+TokenRefresher); `chains.py` (config-driven main + auxiliary
+chains — vision, compression, title — each independent, built
+on the 9Router 3-tier fallback, never duplicated; at most 3
+refs per chain); `budget.py` (per-agent 500, per-subagent 50
+narrowed by the parent's remaining iterations);
+`intercepts.py` (todo/memory/session_search/delegate_task before
+the registry, real stores: in-memory todo store,
+`puspa.memory.facts` + hybrid recall, SessionGateway search,
+SubagentPool spawn / injected delegate); `turn_overflow.py` +
+`turn_truncate.py` (caps, system block + protected tail never
+touched); `turn_prepare.py`, `turn_recover.py`, `config.py`,
+`todos.py`. Router changes: `complete.py` (`ModelReply` gains
+tool_calls + finish_reason; `complete_messages` message-list
+entry point); `fallback.py` (auth failures — 401, 403 with an
+auth signal — retryable, but only after a credential refresh
+first; 403 with a quota signal stays quota exhaustion);
+`__init__.py` re-exports. No new dependency. No nanobot lines
+touched; `puspa/runtime/tasks.py` unchanged.
+Coordinator fixes during verification (worker code, not worker
+report): `validate_alternation` flagged assistant -> tool ->
+assistant as "two assistant messages in a row" (it never
+updated its previous-role tracking for tool messages, though
+its own docstring says a tool run counts as part of the
+assistant turn — now sets previous_role to "tool");
+`InternalMessage.text` was "" for tool messages (their content
+lives only in the tool_result block — `.text` now returns the
+tool-result content, and `char_count` sums per block so the tool
+content is not double-counted). First run: 2 failed, 57 passed;
+after fixes: 59 passed. Honest limits (from
+`docs/turn-loop.md`): the engine + `make_task_executor`
+adapter are built and tested, but NO call site uses them yet —
+TaskRunner still runs its old executor, so the swap-in at the
+PWA / channels / scheduler construction sites is a follow-up
+(the old inline path is still live; this is not a second
+parallel loop in production, the new loop is simply unused
+until wired). The todo store is in-memory (no durable todo
+store yet). The overflow compressor is a seam (without a
+compressor, overflow truncates). `session_search` /
+`delegate_task` need a gateway / pool injected, else they
+answer with a clear "not wired" error. The production model
+executor via the chassis is still the follow-up named in
+`puspa/channels/agent.py`; until it lands the default model
+adapter is the router's live OpenRouter caller. Wave 13 central
+SOLO suite: **2,695 passed, 9 skipped, 1 warning, 17m43s, EXIT
+0** (2,575 Wave 12 + 61 G14 + 59 G21, exact).
