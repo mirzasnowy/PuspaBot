@@ -108,8 +108,8 @@ BASELINE_LINES = {
     # entries) and archived again the same day — Waves 9-13
     # moved to docs/status-maturity-archive-2026-11-19.md
     # (580 lines, under the soft cap) when the live log hit
-    # 1060 lines. The live log is now 771 lines (Wave 14
-    # onwards + Waves 17-19), under the soft cap, so this entry
+    # 1060 lines. The live log is now 886 lines (Wave 14
+    # onwards + Waves 17-20), under the soft cap, so this entry
     # is removed per test_baseline_entries_are_still_large_or_gone.
     # Same rule as before: shrinks only by archiving old
     # sections into a dated archive doc, never by deleting history.

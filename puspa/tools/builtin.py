@@ -28,9 +28,10 @@ from typing import Any
 
 from puspa.chassis.sandbox_tool import SandboxTool
 from puspa.plugins.loader import load_plugin
+from puspa.tools.narrowing import register_search_tools
 from puspa.tools.registry import ToolRegistry, default_registry, register
 
-__all__ = ["register_builtin_tools"]
+__all__ = ["register_builtin_tools", "register_search_tools"]
 
 
 def _register_run_code(registry: ToolRegistry) -> None:
@@ -91,6 +92,9 @@ def register_builtin_tools(registry: ToolRegistry | None = None) -> ToolRegistry
     target = registry if registry is not None else default_registry()
     _register_run_code(target)
     _register_plugin_tools(target)
+    # G17: the overflow search tool, so a run whose catalog
+    # overflowed can search the hidden tools through the registry.
+    register_search_tools(target)
     return target
 
 

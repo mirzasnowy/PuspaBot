@@ -111,6 +111,14 @@ class TurnLoop:
     callable for the overflow-compress path. ``sink(event_type,
     content)`` records turn events (best-effort, like the
     TaskRunner sink); the default keeps them in memory.
+    ``tool_catalog`` is the run's tool catalog (a list of
+    :class:`puspa.tools.registry.ToolDefinition`, already filtered
+    by toolset / allowlist / availability): when it is set, every
+    run narrows it for the last user message first (G17, see
+    :meth:`run_turn`) — unless the caller passes explicit
+    ``tools``, which win. ``narrowing_skills`` groups the catalog
+    into skills; ``narrowing_selector`` picks the skills (None
+    means the deterministic keyword selector).
     """
 
     def __init__(
@@ -125,6 +133,9 @@ class TurnLoop:
         budget=None,
         compressor=None,
         sink=None,
+        tool_catalog=None,
+        narrowing_skills=(),
+        narrowing_selector=None,
     ) -> None:
         self.config = config or TurnConfig()
         self.model_call = model_call
@@ -134,6 +145,10 @@ class TurnLoop:
         self.quota_store = quota_store
         self.budget = budget
         self.compressor = compressor
+        self.tool_catalog = list(tool_catalog) if tool_catalog is not None else None
+        self.narrowing_skills = list(narrowing_skills)
+        self.narrowing_selector = narrowing_selector
+        self._refusal_message = ""
         self._event: list[dict] = []
         self.sink = sink or (
             lambda event_type, content: self._event.append({"type": event_type, "content": content})
@@ -175,7 +190,117 @@ class TurnLoop:
         ``budget`` overrides the turn's iteration budget (a
         subagent turn passes its own narrowed budget — see
         :meth:`run_subagent_turn`).
+
+        When this loop was built with a ``tool_catalog`` (and the
+        caller did not pass explicit ``tools``), the catalog is
+        narrowed for this run first (G17, see
+        :meth:`_prepare_run_tools`): the model is offered the
+        narrowed set, the hidden tools stay reachable through
+        ``search_tools`` for the whole turn, and a catalog past
+        the hard tool limit refuses the turn with a failed result
+        instead of starting it.
         """
+        if tools is None and self.tool_catalog is not None:
+            prepared = self._prepare_run_tools(messages, agent_id=agent_id, task_id=task_id)
+            if prepared is None:
+                # Refusal: _prepare_run_tools already recorded the
+                # audit event and the turn failure; the message
+                # names the limit.
+                return TurnResult(
+                    status=TURN_FAILED,
+                    text="",
+                    message=self._refusal_message,
+                    messages=list(messages),
+                    iterations_used=0,
+                    iterations_limit=self.config.max_iterations,
+                )
+            tools = prepared.schemas()
+            if prepared.hidden_tools:
+                from puspa.tools.narrowing import hidden_tools_context
+
+                with hidden_tools_context(prepared.hidden_tools):
+                    return self._run_turn_inner(
+                        messages,
+                        user_id=user_id,
+                        agent_id=agent_id,
+                        task_id=task_id,
+                        tools=tools,
+                        interrupt_event=interrupt_event,
+                        model_call=model_call,
+                        tool_call=tool_call,
+                        budget=budget,
+                    )
+        return self._run_turn_inner(
+            messages,
+            user_id=user_id,
+            agent_id=agent_id,
+            task_id=task_id,
+            tools=tools,
+            interrupt_event=interrupt_event,
+            model_call=model_call,
+            tool_call=tool_call,
+            budget=budget,
+        )
+
+    def _prepare_run_tools(self, messages, *, agent_id, task_id):
+        """Narrow the loop's tool catalog for one run (G17).
+
+        Returns the :class:`NarrowingResult`, or None when the
+        run is refused: the ``agent.tool_limit_refused`` audit
+        event goes out through the loop sink and the turn failure
+        is recorded, so the refusal is visible without starting
+        the turn. The user message narrowed on is the last user
+        message in the history (``""`` when there is none, which
+        fails open to the whole catalog).
+        """
+        # Lazy import: the turns package must not import the tools
+        # package at module level (tools pulls in the connectors
+        # allowlist); the loop only needs narrowing when a catalog
+        # is actually wired in.
+        from puspa.tools.narrowing import (
+            NarrowingConfig,
+            ToolLimitError,
+            prepare_run_tools,
+        )
+
+        message = _last_user_text(messages)
+        config = NarrowingConfig(
+            max_direct_tools=self.config.max_direct_tools,
+            max_tools=self.config.max_tools,
+            max_offered_tools=self.config.max_offered_tools,
+            search_result_limit=self.config.search_result_limit,
+        )
+        try:
+            return prepare_run_tools(
+                message,
+                list(self.tool_catalog),
+                skills=list(self.narrowing_skills),
+                selector=self.narrowing_selector,
+                config=config,
+                audit_sink=self._record,
+            )
+        except ToolLimitError as exc:
+            self._refusal_message = str(exc)
+            self._record(
+                "turn_failed",
+                {"agent_id": agent_id, "task_id": task_id, "reason": str(exc)},
+            )
+            return None
+
+    def _run_turn_inner(
+        self,
+        messages: list[InternalMessage],
+        *,
+        user_id=None,
+        agent_id: str = "puspa",
+        task_id: str | None = None,
+        tools: list[dict] | None = None,
+        interrupt_event: threading.Event | None = None,
+        model_call=None,
+        tool_call=None,
+        budget: IterationBudget | None = None,
+    ) -> TurnResult:
+        """The turn itself, after tool preparation (see :meth:`run_turn`)."""
         event = interrupt_event if interrupt_event is not None else self._interrupt_event
         if event is self._interrupt_event:
             event.clear()
@@ -607,6 +732,24 @@ def _result_text(result) -> str:
     if isinstance(result, dict) and "error" in result and len(result) == 1:
         return str(result["error"])
     return json.dumps(result, ensure_ascii=False, default=str)
+
+
+def _last_user_text(messages: list[InternalMessage]) -> str:
+    """Text of the last user message, or "" when there is none.
+
+    Only ``text`` blocks count; a user message with no text
+    (images only) narrows on "" and therefore fails open.
+    """
+    for message in reversed(messages):
+        if message.role != "user":
+            continue
+        parts = [
+            block.get("text", "")
+            for block in message.blocks
+            if block.get("type") == "text" and block.get("text")
+        ]
+        return " ".join(parts)
+    return ""
 
 
 def make_task_executor(turn_loop: TurnLoop | None = None, **loop_kwargs) -> object:
