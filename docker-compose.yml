@@ -1,0 +1,83 @@
+# Puspa multi-tenant deploy (G13).
+#
+# Pattern (hermes-agent docker-compose.yml, rewritten for Puspa):
+# gateway + dashboard services, both published on the HOST's
+# 127.0.0.1 only; API server off unless its key is uncommented;
+# one named home volume, owned by the host user via UID/GID remap.
+#
+# Remote access: NEVER by publishing a port to 0.0.0.0 or to the LAN.
+# From your own machine, SSH-tunnel to the host:
+#   ssh -L 8000:127.0.0.1:8000 <user>@<host>
+# then open http://127.0.0.1:8000. Or put an authenticated reverse
+# proxy in front of the host loopback. Anyone who can reach the
+# published ports can reach the dashboard — that is why they bind
+# host loopback only.
+#
+# Honest limits: this file has NOT been validated live — Docker
+# containers cannot run on the dev VM (the kernel rejects setns).
+# It is checked offline by puspa/teams/deploy.py (parse + rule
+# validation: services exist, ports bind 127.0.0.1, no API key set,
+# home volume present, UID/GID args passed). The first live check
+# must happen on a VPS: `docker compose up --build`, then open the
+# dashboard through an SSH tunnel and log in. See docs/teams.md.
+#
+# Both services run the same image (see Dockerfile). Today the PWA
+# app serves both the dashboard and the API in one FastAPI app; the
+# two services are the deployment shape for the gateway + dashboard
+# topology (gateway runs in G11 service mode, dashboard is the
+# user-facing PWA). Splitting them into two different processes is
+# a follow-up once the gateway has its own entrypoint.
+#
+# The two services share one home volume on purpose (one home per
+# host user, files owned by that user). Known limit: G26's
+# single-writer rule is process-wide, not machine-wide — two
+# containers writing the same state.db are not refused at open.
+# Do not run a third writer against this volume until the file-lock
+# follow-up lands (see docs/teams.md).
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PUSPA_UID: ${PUSPA_UID:-1000}
+        PUSPA_GID: ${PUSPA_GID:-1000}
+    image: puspa:local
+    container_name: puspa-gateway
+    environment:
+      PUSPA_ROLE: gateway
+      PUSPA_SERVICE_MODE: service
+      PUSPA_DASHBOARD_PORT: 8001
+      # PUSPA_API_KEY=   # <-- uncomment (with a real key) to enable the API server.
+      PUSPA_HOME: /home/puspa
+    ports:
+      # Host loopback only. Never change this to 0.0.0.0 or a bare port.
+      - "127.0.0.1:8001:8001"
+    volumes:
+      - puspa-home:/home/puspa
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PUSPA_UID: ${PUSPA_UID:-1000}
+        PUSPA_GID: ${PUSPA_GID:-1000}
+    image: puspa:local
+    container_name: puspa-dashboard
+    environment:
+      PUSPA_ROLE: dashboard
+      PUSPA_DASHBOARD_PORT: 8000
+      # PUSPA_API_KEY=   # <-- uncomment (with a real key) to enable the API server.
+      PUSPA_HOME: /home/puspa
+    ports:
+      # Host loopback only. Never change this to 0.0.0.0 or a bare port.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - puspa-home:/home/puspa
+    restart: unless-stopped
+
+volumes:
+  puspa-home:
