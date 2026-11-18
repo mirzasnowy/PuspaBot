@@ -78,18 +78,17 @@ BASELINE_LINES = {
     # module. Split only if a second test module earns its own file.
     "tests/test_router_oauth_translate.py": 1123,
     # Maturity phase status log, append-only by design (same rule as
-    # status-brain-deepening.md); shrinks only by archiving old sections
-    # into a dated archive doc, never by deleting history. Count
-    # updated with the Wave 8 + CI status entries (18 Nov 2026), the
-    # Wave 9 status entries (18 Nov 2026), the Wave 10 G11 status
-    # entry (18 Nov 2026), and the Wave 10 G12 status entry
-    # (18 Nov 2026), plus the Wave 10 final suite number
-    # (18 Nov 2026), the Wave 11 G1 status entry (18 Nov 2026),
-    # the Wave 11 final suite number (18 Nov 2026), the
-    # Wave 12 G13 status entry (18 Nov 2026), the Wave 12 final
-    # suite number (18 Nov 2026), and the Wave 13 G14 status
-    # entry (18 Nov 2026).
-    "docs/status-maturity.md": 1953,
+    # status-brain-deepening.md); shrinks only by archiving old
+    # sections into a dated archive doc, never by deleting history.
+    # On 18 Nov 2026 the live log crossed the 2000-line hard cap
+    # (2051 lines) and Waves 1-8 + the CI lanes adoption were moved
+    # to the archive below; the live log is now 859 lines, under the
+    # soft cap, so its baseline entry was removed (per
+    # test_baseline_entries_are_still_large_or_gone).
+    # Archived maturity log (Waves 1-8 + CI lanes, 18 Nov 2026):
+    # frozen, never appended to; the living log continues in
+    # docs/status-maturity.md (Wave 9 onwards).
+    "docs/status-maturity-archive-2026-11-18.md": 1204,
 }
 
 #: Puspa-owned top-level directories covered by the ratchet.
