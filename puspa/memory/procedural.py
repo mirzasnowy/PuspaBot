@@ -1,28 +1,59 @@
-"""Prosedural — lapis 3 memori (definisi 2.7 C55, 3.3).
+"""Procedural - layer 3 of memory (definition 2.7 C55, 3.3).
 
-Cara menyelesaikan tugas yang pernah berhasil, disimpan sebagai
-prosedur. Di MVP prosedur ditulis OTOMATIS dari tugas yang berhasil,
-tanpa editor prosedur. Graf Alur Layanan penuh (canary, pemakaian
-ulang lintas agen, verifikasi silang) dibangun Fase 3 — yang dibangun
-di sini: jalur tulis prosedural + penyimpanan + siklus hidup status
-dasar (percobaan -> terverifikasi -> rusak).
+How to do a task that once succeeded, stored as a procedure.
+In the MVP procedures are written AUTOMATICALLY from tasks that
+succeeded, with no procedure editor. The full Service Flow Graph
+(canary, cross-agent reuse, cross-check) is built in Phase 3;
+what is built here: the procedural write path + storage + the
+basic lifecycle (trial -> verified -> broken), plus the
+learning-loop hardening added in the Brain phase:
 
-Pola yang diadaptasi (ditulis ulang, bukan disalin):
-- Letta (Apache-2.0): sleep-time compute — agen kedua merapikan
-  memori saat idle; Puspa memakai pola yang sama di `consolidate.py`.
-- Graphiti (Apache-2.0): prosedur sebagai templat berparameter tanpa
-  data pribadi; nomor pelanggan tidak pernah masuk prosedur.
+- Promotion: trial -> verified after 3 successful runs by at
+  least 2 different agents (unchanged).
+- Contradiction: a new step that conflicts with a stored
+  procedure for the same service never silently overwrites it.
+  It is stored as a separate trial candidate and reported as a
+  proposal with `conflicts_with`; the user resolves it.
 
-Siklus hidup di sini (angka awal, revisi 7 §3.3):
-- `percobaan`: lahir dari tugas sukses yang lolos Pemeriksa.
-- `terverifikasi`: setelah 3 jalan sukses, oleh minimal 2 agen berbeda.
-- `rusak`: 2 jalan gagal berturut-turut; prosedur rusak tidak dipakai.
+Note on demotion (integration decision, 18 Nov 2026): the Brain
+phase first added a demotion rule (one failure on a verified
+procedure drops it back to trial). That rule was removed again
+during integration because it broke the revision 7 section 3.3
+contract the canary relies on: `run_canary` in
+`puspa/graphs/service.py` only runs on verified procedures, so a
+demoted procedure could never record the second consecutive
+failure that makes it broken, and the pre-existing canary tests
+(`tests/test_service_canary.py`,
+`tests/test_integration_gates.py`) failed. Revision 7 says
+broken after 2 consecutive failed runs, with no demotion step,
+so the lifecycle here follows revision 7 exactly. A demotion
+rule would need a canary-guard change first, which is outside
+this phase.
+
+Patterns adapted (rewritten, not copied):
+- Letta (Apache-2.0): sleep-time compute - a second agent
+  tidies memory while idle; Puspa uses the same pattern in
+  `consolidate.py`.
+- Graphiti (Apache-2.0): procedures as parameterised templates
+  without personal data; customer numbers never enter procedures.
+- Voyager (MIT): learned skills stored as tested executable
+  code with an embedding key; Puspa stores learned-skill drafts
+  as trial procedures under the `learned_draft:` service prefix,
+  inactive until the user approves them (see
+  `puspa/memory/learning_loop.py`).
+
+Lifecycle numbers here (first numbers, revision 7 section 3.3):
+- `trial`: born from a successful task that passed the Checker.
+- `verified`: after 3 successful runs, by at least 2 agents.
+- `broken`: 2 consecutive failed runs; broken procedures are
+  never used.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime, timedelta, timezone
 
 import psycopg
 from psycopg.rows import dict_row
@@ -33,6 +64,9 @@ from .schema import resolve_dsn
 REQUIRED_VERIFIED_RUNS = 3
 REQUIRED_VERIFIED_AGENTS = 2
 BROKEN_AFTER_CONSECUTIVE_FAILURES = 2
+STALE_AFTER_DAYS = 90
+LEARNED_DRAFT_PREFIX = "learned_draft:"
+LEARNED_PREFIX = "learned:"
 
 
 def _connect(dsn=None):
@@ -64,17 +98,116 @@ def _step_hash(step):
     return hashlib.sha256(canon.encode("utf-8")).hexdigest()
 
 
+def compute_run_update(proc, success, agent_id=None):
+    """Pure lifecycle step: apply one run to a procedure dict.
+
+    Returns a new dict with updated counts and status. No
+    database access, so the promotion / broken rules are
+    testable in memory. Revision 7 section 3.3, exactly: a
+    verified procedure survives a single failure (it keeps its
+    status and its successful runs, with one consecutive
+    failure counted); two consecutive failures mean broken.
+    There is no demotion step (see the module note: demotion
+    was removed during Brain-phase integration because it broke
+    the canary contract). The returned dict keeps a `demoted`
+    key, always False, so callers reading the old shape do not
+    break.
+    """
+    agent_ids = list(proc.get("agent_ids") or [])
+    if agent_id and str(agent_id) not in agent_ids:
+        agent_ids.append(str(agent_id))
+    successful = proc["successful_runs"] + (1 if success else 0)
+    failed = proc["failed_runs"] + (0 if success else 1)
+    consecutive_failures = 0 if success else proc["consecutive_failed_runs"] + 1
+    status = proc["status"]
+    if consecutive_failures >= BROKEN_AFTER_CONSECUTIVE_FAILURES:
+        status = "broken"
+    elif (
+        status == "trial"
+        and successful >= REQUIRED_VERIFIED_RUNS
+        and len(agent_ids) >= REQUIRED_VERIFIED_AGENTS
+    ):
+        status = "verified"
+    updated = dict(proc)
+    updated.update({
+        "successful_runs": successful,
+        "failed_runs": failed,
+        "consecutive_failed_runs": consecutive_failures,
+        "agent_ids": agent_ids,
+        "status": status,
+        "demoted": False,
+    })
+    return updated
+
+
+def is_stale(proc, now=None, older_than_days=STALE_AFTER_DAYS):
+    """True when a verified procedure was untouched for too long."""
+    if proc.get("status") != "verified":
+        return False
+    updated_at = proc.get("updated_at")
+    if updated_at is None:
+        return False
+    now = now or datetime.now(timezone.utc)
+    if updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=timezone.utc)
+    return (now - updated_at) >= timedelta(days=older_than_days)
+
+
+def apply_decay(proc, now=None, older_than_days=STALE_AFTER_DAYS):
+    """Pure decay step: a stale verified procedure returns to trial.
+
+    Returns a new dict; untouched procedures are returned as-is
+    with `decayed` False. Decayed procedures must earn
+    verification again from zero successful runs.
+    """
+    if not is_stale(proc, now=now, older_than_days=older_than_days):
+        updated = dict(proc)
+        updated["decayed"] = False
+        return updated
+    updated = dict(proc)
+    updated.update({"status": "trial", "successful_runs": 0, "decayed": True})
+    return updated
+
+
+def steps_conflict(old_step, new_step):
+    """True when two steps for the same service disagree.
+
+    A conflict is a shared task with a different method: at
+    least one identical step element (same task) and at least
+    one difference (different method). Identical steps do not
+    conflict; wholly unrelated steps do not conflict either.
+    """
+    old_set = {json.dumps(s, sort_keys=True, ensure_ascii=False) for s in (old_step or [])}
+    new_set = {json.dumps(s, sort_keys=True, ensure_ascii=False) for s in (new_step or [])}
+    if not old_set or not new_set:
+        return False
+    return bool(old_set & new_set) and old_set != new_set
+
+
+def detect_contradiction(existing_procedures, service, step_new):
+    """Find the stored procedure that `step_new` contradicts.
+
+    Returns the conflicting procedure dict, or None. A conflict
+    never overwrites: the caller must store the new step as a
+    separate candidate (see `propose_conflicting_procedure`).
+    """
+    for proc in existing_procedures or []:
+        if proc.get("service") == service and steps_conflict(proc.get("step"), step_new):
+            return proc
+    return None
+
+
 def record_successful_task(user_id, service, step, agent_id=None,
                            output_schema=None, required_checks=None,
                            source_event_id=None, dsn=None):
-    """Tulis prosedur dari tugas yang berhasil (otomatis, tanpa editor).
+    """Write a procedure from a successful task (automatic, no editor).
 
-    Kalau prosedur dengan layanan + langkah yang sama sudah ada,
-    catat satu jalan sukses lagi (bukan duplikat). Prosedur baru
-    lahir berstatus `percobaan` dengan 1 jalan sukses.
+    If a procedure with the same service + steps already exists,
+    record one more successful run (not a duplicate). A new
+    procedure is born with status `trial` and 1 successful run.
     """
     if not service or not isinstance(step, list) or not step:
-        raise ValueError("layanan dan langkah tak kosong wajib diisi")
+        raise ValueError("service and non-empty steps are required")
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -107,34 +240,22 @@ def record_successful_task(user_id, service, step, agent_id=None,
 
 
 def _mark_run_in_cursor(cur, row, success, agent_id):
-    agent_ids = list(row["agent_ids"] or [])
-    if agent_id and str(agent_id) not in agent_ids:
-        agent_ids.append(str(agent_id))
-    success_new = row["successful_runs"] + (1 if success else 0)
-    failed_new = row["failed_runs"] + (0 if success else 1)
-    consecutive_failures = 0 if success else row["consecutive_failed_runs"] + 1
-    status = row["status"]
-    if consecutive_failures >= BROKEN_AFTER_CONSECUTIVE_FAILURES:
-        status = "broken"
-    elif (
-        status == "trial"
-        and success_new >= REQUIRED_VERIFIED_RUNS
-        and len(agent_ids) >= REQUIRED_VERIFIED_AGENTS
-    ):
-        status = "verified"
+    updated = compute_run_update(_row_to_procedure(row), success, agent_id=agent_id)
     cur.execute(
         "UPDATE procedures SET successful_runs = %s, failed_runs = %s, "
         "consecutive_failed_runs = %s, agent_ids = %s, status = %s, updated_at = now() "
         "WHERE id = %s RETURNING *",
-        (success_new, failed_new, consecutive_failures, Jsonb(agent_ids), status, row["id"]),
+        (updated["successful_runs"], updated["failed_runs"],
+         updated["consecutive_failed_runs"], Jsonb(updated["agent_ids"]),
+         updated["status"], row["id"]),
     )
     return cur.fetchone()
 
 
 def mark_run(procedure_id, user_id, success, agent_id=None, dsn=None):
-    """Catat satu jalan prosedur (sukses/gagal); kembalikan prosedur baru.
+    """Record one procedure run (success/failure); return the new procedure.
 
-    Raise KeyError kalau prosedur tidak ditemukan.
+    Raise KeyError if the procedure is not found.
     """
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
@@ -144,14 +265,15 @@ def mark_run(procedure_id, user_id, success, agent_id=None, dsn=None):
             )
             row = cur.fetchone()
             if row is None:
-                raise KeyError(f"prosedur tidak ditemukan: {procedure_id}")
+                raise KeyError(f"procedure not found: {procedure_id}")
             row = _mark_run_in_cursor(cur, row, success=success, agent_id=agent_id)
         conn.commit()
-    return _row_to_procedure(row)
+    result = _row_to_procedure(row)
+    return result
 
 
 def get_procedure(procedure_id, user_id, dsn=None):
-    """Ambil satu prosedur milik user; KeyError kalau tidak ada."""
+    """Fetch one procedure owned by the user; KeyError if missing."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -160,12 +282,12 @@ def get_procedure(procedure_id, user_id, dsn=None):
             )
             row = cur.fetchone()
             if row is None:
-                raise KeyError(f"prosedur tidak ditemukan: {procedure_id}")
+                raise KeyError(f"procedure not found: {procedure_id}")
     return _row_to_procedure(row)
 
 
 def list_procedures(user_id, status=None, dsn=None):
-    """Daftar prosedur milik user, terbaru dulu."""
+    """List the user's procedures, newest first."""
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             if status is None:
@@ -180,3 +302,111 @@ def list_procedures(user_id, status=None, dsn=None):
                     (user_id, status),
                 )
             return [_row_to_procedure(r) for r in cur.fetchall()]
+
+
+def decay_stale_procedures(user_id, older_than_days=STALE_AFTER_DAYS,
+                           dsn=None, now=None):
+    """Demote verified procedures untouched for `older_than_days`.
+
+    Stale procedures decay to trial with zero successful runs, so
+    they must earn verification again. Returns the list of
+    decayed procedures. Broken and trial procedures are untouched.
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=older_than_days)
+    with _connect(dsn) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM procedures WHERE user_id = %s AND status = 'verified' "
+                "AND updated_at < %s",
+                (user_id, cutoff),
+            )
+            rows = cur.fetchall()
+            decayed = []
+            for row in rows:
+                cur.execute(
+                    "UPDATE procedures SET status = 'trial', successful_runs = 0, "
+                    "updated_at = now() WHERE id = %s RETURNING *",
+                    (row["id"],),
+                )
+                decayed.append(_row_to_procedure(cur.fetchone()))
+        conn.commit()
+    return decayed
+
+
+def propose_conflicting_procedure(user_id, service, step_new, agent_id=None,
+                                 output_schema=None, required_checks=None,
+                                 source_event_id=None, dsn=None):
+    """Store a conflicting step as a separate trial candidate.
+
+    A new fact that contradicts a stored procedure never
+    overwrites it silently: the old procedure is untouched, the
+    new step is stored as its own trial procedure, and the
+    result reports `conflicts_with` (the old procedure id) and
+    status "proposed". With no conflict the result reports
+    status "recorded" and `conflicts_with` None.
+    """
+    if not service or not isinstance(step_new, list) or not step_new:
+        raise ValueError("service and non-empty steps are required")
+    existing = list_procedures(user_id, dsn=dsn)
+    conflict = detect_contradiction(existing, service, step_new)
+    proc = record_successful_task(
+        user_id, service, step_new, agent_id=agent_id,
+        output_schema=output_schema, required_checks=required_checks,
+        source_event_id=source_event_id, dsn=dsn,
+    )
+    return {
+        "procedure": proc,
+        "conflicts_with": conflict["id"] if conflict else None,
+        "status": "proposed" if conflict else "recorded",
+    }
+
+
+def resolve_contradiction(user_id, keep_id, drop_id, dsn=None):
+    """Resolve a contradiction by user decision.
+
+    The kept procedure is untouched; the dropped one is retired
+    (status `broken`, so it is never reused) with its history
+    kept. Returns {"kept": ..., "retired": ...}.
+    """
+    if keep_id == drop_id:
+        raise ValueError("keep_id and drop_id must differ")
+    kept = get_procedure(keep_id, user_id, dsn=dsn)
+    with _connect(dsn) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE procedures SET status = 'broken', updated_at = now() "
+                "WHERE id = %s AND user_id = %s RETURNING *",
+                (drop_id, user_id),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise KeyError(f"procedure not found: {drop_id}")
+        conn.commit()
+    return {"kept": kept, "retired": _row_to_procedure(row)}
+
+
+def activate_draft_procedure(procedure_id, user_id, dsn=None):
+    """Activate a learned-skill draft procedure after user approval.
+
+    Drafts live under the `learned_draft:` service prefix and are
+    never selected for execution under that prefix. Activation
+    strips the prefix to `learned:`; the procedure keeps its
+    trial status and must still earn verification by runs.
+    Raise KeyError if the procedure is not found, ValueError if
+    it is not a draft.
+    """
+    proc = get_procedure(procedure_id, user_id, dsn=dsn)
+    if not proc["service"].startswith(LEARNED_DRAFT_PREFIX):
+        raise ValueError(f"procedure is not a learned draft: {procedure_id}")
+    new_service = LEARNED_PREFIX + proc["service"][len(LEARNED_DRAFT_PREFIX):]
+    with _connect(dsn) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE procedures SET service = %s, updated_at = now() "
+                "WHERE id = %s AND user_id = %s RETURNING *",
+                (new_service, procedure_id, user_id),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return _row_to_procedure(row)

@@ -51,6 +51,98 @@ The full license of each repo lives in its source repo (links in
 `docs/reuse.md`). No third-party LICENSE file needs to be
 included here because no third-party code is vendored.
 
+# NOTICE — Puspa Brain phase
+
+## Pattern attribution (not code)
+
+The Brain phase studied the PATTERNS of the following repos and then
+REWROTE them as Puspa's own code (no code copied verbatim, no new
+dependencies except fastembed, listed below):
+
+- **joonspk-research/generative_agents** (MIT License) — pattern:
+  memory stream plus reflection into higher-level inferences plus
+  plans retrieved and revised. Used as a pattern in
+  `puspa/world/model.py` and `puspa/memory/consolidate.py`.
+- **MineDojo/Voyager** (MIT License) — pattern: automatic
+  curriculum, self-verification, skill library of tested
+  executable code indexed by embeddings. Used as a pattern in
+  `puspa/world/model.py`, `puspa/harness/executor.py`, and
+  `puspa/memory/learning_loop.py`. Voyager is a dormant research
+  archive; its Minecraft code was not used.
+- **NousResearch/hermes-agent** (MIT License) — pattern: skills
+  created and repaired automatically, persistent user model,
+  learning loop. Used as a pattern in
+  `puspa/memory/learning_loop.py` and `puspa/chassis/hooks.py`.
+- **letta-ai/letta-code** (Apache License 2.0) — pattern:
+  self-improvement from experience. Used as a pattern in
+  `puspa/memory/procedural.py` (decay, contradiction).
+- **HKUDS/LightRAG** (MIT License) — pattern: dual-level retrieval
+  (specific entities plus abstract concepts, over a graph plus
+  vectors). Used as a pattern in `puspa/memory/episodic.py` and
+  `puspa/graphs/identity.py`. The library was not installed.
+- **anomalyco/opencode** (MIT License) — pattern: coding agent loop
+  (write code, run tests, fix, repeat) and per-tool permission
+  model. Used as a pattern in `puspa/harness/loop.py` and
+  `puspa/policy/tokens.py`. The tool was not installed.
+- **SWE-bench/SWE-bench** (MIT License) — pattern: harness task
+  shape (fixed FAIL_TO_PASS tests decide pass/fail). Used as a
+  pattern in `puspa/harness/loop.py`. No dataset or score is used.
+- **OpenBMB/ChatDev** (Apache License 2.0) — pattern: readable
+  handoffs between steps. Used as a pattern in
+  `puspa/harness/loop.py`.
+- **FoundationAgents/OpenManus** (MIT License) — pattern: goal to
+  plan to tool loop with replanning on failure. Used as a pattern
+  in `puspa/runtime/planner.py`.
+- **UKGovernmentBEIS/inspect_ai** (MIT License) — pattern: task,
+  solver, scorer structure; scoring from evidence, not words. Used
+  as a pattern in `puspa/evidence/eval_harness.py`.
+- **sierra-research/tau-bench** (MIT License) — pattern: simulated
+  user plus domain policy plus final database state decides
+  success. Used as a pattern in `puspa/evidence/eval_harness.py`.
+- **EleutherAI/lm-evaluation-harness** (MIT License) — pattern:
+  versioned task configs with a pinned prompt and scorer. Used as
+  a pattern in `puspa/evidence/eval_harness.py`.
+- **stanfordnlp/dspy** (MIT License) — pattern: programs, not
+  prompts; declarative modules tuned by an optimiser against a
+  metric on a fixed dataset. Used as a pattern in
+  `puspa/memory/optimizer.py`. The library was not installed.
+- **pydantic/pydantic-ai** (MIT License) — pattern: type-safe
+  structured output. Used as a pattern in `puspa/chassis/tools.py`
+  and `puspa/evidence/eval_harness.py`.
+- **modelcontextprotocol/python-sdk** (MIT License) — pattern:
+  official MCP client (list tools, call a tool with typed
+  arguments, over stdio). Used in `puspa/chassis/tools.py` through
+  the installed SDK (`mcp==1.30.0`), behind the signed-skill gate
+  and the outbound gate.
+- **affaan-m/ECC** (MIT License) — pattern: skill collection plus
+  hooks. Used as a pattern in `puspa/chassis/hooks.py`.
+- **strands-agents/harness-sdk** (Apache License 2.0) — pattern:
+  model-driven agent loop with Cedar-style approval policies. The
+  approval-policy idea only; the SDK was not installed.
+- **langchain-ai/langgraph** (MIT License) — pattern: stateful
+  orchestration with checkpoints and resume, idea only. The
+  library was not installed and no LangGraph code is used.
+- **anthropics/claude-code** (PROPRIETARY) — pattern study only,
+  from public docs: per-tool permissions and approval before a
+  consequential action. No claude-code code was used; the leaked
+  March 2026 source-map code was never looked at.
+
+## New dependency: fastembed (MIT License)
+
+- **Source:** https://github.com/qdrant/fastembed
+- **Version:** `fastembed==0.9.1`, installed via pip (see
+  `requirements.txt`). The package is a pip dependency, not vendored.
+- **Model:** BAAI/bge-small-en-v1.5 (ONNX, about 65 MB), downloaded
+  from HuggingFace at first use and cached locally.
+- **License:** MIT License
+- **Use in this repo:** optional local embedding provider in
+  `puspa/memory/embeddings.py`; falls back to the built-in
+  `HashEmbedding` when fastembed or the model is unavailable.
+
+The full license of each repo lives in its source repo (links in
+`docs/reuse.md` and `REUSE.md`). No third-party LICENSE file needs
+to be included here because no third-party code is vendored.
+
 ## Puspa license
 
 The code in this directory is Puspa's own work (Nero / Luna). The Puspa

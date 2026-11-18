@@ -32,9 +32,25 @@ dipanggil ``build_agent_turn_hook`` tiap turn.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from nanobot.agent.hook import AgentHook, AgentTurnHookContext
 
-__all__ = ["PuspaHook", "make_puspa_hook_factory"]
+__all__ = [
+    "HOOK_SKILL_APPROVED",
+    "HOOK_SKILL_BLOCKED",
+    "HOOK_SKILL_INSTALLED",
+    "HOOK_SKILL_REJECTED",
+    "HOOK_SKILL_USED",
+    "LearnedSkill",
+    "LearnedSkillStore",
+    "PuspaHook",
+    "SkillHookRegistry",
+    "check_skill_use",
+    "default_skill_registry",
+    "load_learned_skills_from_procedures",
+    "make_puspa_hook_factory",
+]
 
 _MAX_MESSAGE_CHARS = 2000
 
@@ -89,3 +105,230 @@ def make_puspa_hook_factory(task_id: str, agent_id: str, log=None):
         return PuspaHook(task_id=task_id, agent_id=agent_id, log=log)
 
     return factory
+
+
+# ---------------------------------------------------------------------------
+# Skill hooks (ECC pattern, rewritten for Puspa).
+#
+# ECC (affaan-m/ECC, MIT) is a harness with a skill collection and
+# hooks: a hook point fires when a skill is installed or used. Puspa
+# keeps the hook-point idea and rewrites it around its own rules:
+#
+# - A hook point fires on skill install and on skill use; listeners
+#   are observers only (a broken listener never breaks the run, the
+#   same isolation rule as nanobot's CompositeHook).
+# - Enforcement lives elsewhere: the signed-skill gate in
+#   ``puspa/policy/skill_signing.py`` and the outbound gate in
+#   ``puspa/policy/gate.py``. Hooks never approve anything by
+#   themselves.
+# - Hook events are delivered to a caller-supplied sink, NOT written
+#   to the ledger here: the ledger event set is closed in revision 7
+#   and has no skill event type.
+# ---------------------------------------------------------------------------
+
+#: Hook points for the skill lifecycle.
+HOOK_SKILL_INSTALLED = "skill_installed"
+HOOK_SKILL_USED = "skill_used"
+HOOK_SKILL_APPROVED = "skill_approved"
+HOOK_SKILL_REJECTED = "skill_rejected"
+HOOK_SKILL_BLOCKED = "skill_blocked"
+
+SKILL_HOOK_POINTS = frozenset({
+    HOOK_SKILL_INSTALLED,
+    HOOK_SKILL_USED,
+    HOOK_SKILL_APPROVED,
+    HOOK_SKILL_REJECTED,
+    HOOK_SKILL_BLOCKED,
+})
+
+
+class SkillHookRegistry:
+    """Registry of listeners per skill hook point.
+
+    ``register(point, callback)`` adds a listener; ``emit(point,
+    payload)`` calls every listener for the point and returns their
+    results. A listener that raises is isolated: the exception is
+    recorded in the returned results and the other listeners still
+    run. Unregistering removes one listener.
+    """
+
+    def __init__(self) -> None:
+        self._listeners: dict[str, list] = {point: [] for point in SKILL_HOOK_POINTS}
+
+    def register(self, point: str, callback) -> None:
+        if point not in SKILL_HOOK_POINTS:
+            raise ValueError(f"unknown skill hook point: {point!r}")
+        if not callable(callback):
+            raise ValueError("skill hook callback must be callable")
+        self._listeners[point].append(callback)
+
+    def unregister(self, point: str, callback) -> bool:
+        if point not in SKILL_HOOK_POINTS:
+            raise ValueError(f"unknown skill hook point: {point!r}")
+        try:
+            self._listeners[point].remove(callback)
+            return True
+        except ValueError:
+            return False
+
+    def listeners(self, point: str) -> list:
+        if point not in SKILL_HOOK_POINTS:
+            raise ValueError(f"unknown skill hook point: {point!r}")
+        return list(self._listeners[point])
+
+    def emit(self, point: str, payload: dict | None = None) -> list[dict]:
+        if point not in SKILL_HOOK_POINTS:
+            raise ValueError(f"unknown skill hook point: {point!r}")
+        payload = dict(payload or {})
+        results = []
+        for callback in list(self._listeners[point]):
+            try:
+                results.append({"ok": True, "result": callback(point, payload)})
+            except Exception as exc:  # isolate a broken listener
+                results.append({"ok": False, "error": str(exc)})
+        return results
+
+
+#: Process-wide default registry (callers may use their own instead).
+default_skill_registry = SkillHookRegistry()
+
+
+# ---------------------------------------------------------------------------
+# Learned skills store (hermes-agent / Voyager pattern, read-only here).
+#
+# The learning loop (planned ``puspa/memory/learning_loop.py``) drafts
+# skills from successful tasks and stores them as procedures in
+# ``puspa/memory/procedural.py``. This store is a READ-ONLY view over
+# that draft store: it never writes, never approves, and never
+# activates anything on its own. The hard rule, from the brain repo
+# list: a learned skill stays INACTIVE until the user approves it.
+# Approval itself happens through the gate in ``puspa/policy/gate.py``
+# (outside this module); this store only reports the current state.
+# ---------------------------------------------------------------------------
+
+#: Statuses a learned skill can be in. Only "approved" is active.
+LEARNED_SKILL_STATUSES = ("pending_approval", "approved", "rejected")
+
+
+@dataclass(frozen=True)
+class LearnedSkill:
+    """One learned skill, as the learning loop drafted it."""
+
+    name: str
+    source: str = "learning_loop"
+    status: str = "pending_approval"
+    tools: tuple[str, ...] = ()
+    created_from_task_id: str = ""
+    approved_by: str = ""
+
+    def __post_init__(self) -> None:
+        if self.status not in LEARNED_SKILL_STATUSES:
+            raise ValueError(f"unknown learned skill status: {self.status!r}")
+
+    @property
+    def is_active(self) -> bool:
+        """Active only after user approval. Never active by default."""
+        return self.status == "approved"
+
+
+class LearnedSkillStore:
+    """Read-only view over learned skills. No write methods exist.
+
+    Built from plain records (dicts or ``LearnedSkill`` objects), or
+    from procedure rows via ``from_procedures``: a procedure in
+    ``trial`` status is a learned skill awaiting approval; a
+    ``verified`` procedure is an approved one; ``broken`` maps to
+    rejected. The store never changes the underlying procedures.
+    """
+
+    def __init__(self, skills: list | None = None) -> None:
+        self._skills: dict[str, LearnedSkill] = {}
+        for record in skills or []:
+            skill = record if isinstance(record, LearnedSkill) else LearnedSkill(
+                name=record["name"],
+                source=record.get("source", "learning_loop"),
+                status=record.get("status", "pending_approval"),
+                tools=tuple(record.get("tools", ())),
+                created_from_task_id=record.get("created_from_task_id", ""),
+                approved_by=record.get("approved_by", ""),
+            )
+            self._skills[skill.name] = skill
+
+    @classmethod
+    def from_procedures(cls, rows: list[dict]) -> "LearnedSkillStore":
+        """Build a read-only view from ``procedures`` rows (no writes)."""
+        status_map = {"trial": "pending_approval", "verified": "approved",
+                      "broken": "rejected"}
+        skills = []
+        for row in rows:
+            step = row.get("step") or []
+            tools = tuple(
+                item.get("tool", "") for item in step
+                if isinstance(item, dict) and item.get("tool")
+            )
+            skills.append(LearnedSkill(
+                name=str(row.get("service", "")),
+                source="procedural",
+                status=status_map.get(str(row.get("status", "trial")),
+                                      "pending_approval"),
+                tools=tools,
+                created_from_task_id=str(row.get("source_event_id") or ""),
+            ))
+        return cls(skills)
+
+    def get(self, name: str) -> LearnedSkill | None:
+        return self._skills.get(name)
+
+    def list_all(self) -> list[LearnedSkill]:
+        return list(self._skills.values())
+
+    def list_pending(self) -> list[LearnedSkill]:
+        return [s for s in self._skills.values() if s.status == "pending_approval"]
+
+    def list_approved(self) -> list[LearnedSkill]:
+        return [s for s in self._skills.values() if s.status == "approved"]
+
+    def is_active(self, name: str) -> bool:
+        """False for unknown skills and for unapproved learned skills."""
+        skill = self._skills.get(name)
+        return bool(skill and skill.is_active)
+
+
+def load_learned_skills_from_procedures(dsn, user_id: str) -> LearnedSkillStore:
+    """Read learned skills from the procedures table (SELECT only).
+
+    Read-only: no INSERT, UPDATE or DELETE is issued here. The
+    learning loop owns writes; this function only reads its drafts
+    so the hook layer can check them.
+    """
+    import psycopg
+    from psycopg.rows import dict_row
+
+    from puspa.memory.schema import resolve_dsn
+
+    with psycopg.connect(resolve_dsn(dsn), row_factory=dict_row) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT service, step, status, source_event_id FROM procedures "
+                "WHERE user_id = %s ORDER BY created_at DESC",
+                (user_id,),
+            )
+            rows = [dict(row) for row in cur.fetchall()]
+    return LearnedSkillStore.from_procedures(rows)
+
+
+def check_skill_use(store: LearnedSkillStore, skill_name: str, *,
+                    registry: SkillHookRegistry | None = None) -> bool:
+    """Allow a learned skill to be used only if the user approved it.
+
+    Emits ``skill_used`` when allowed and ``skill_blocked`` when the
+    skill is unknown or still pending approval. Returns True only for
+    an approved skill. This is the hook-layer check; the signed-skill
+    gate still applies separately at execution time.
+    """
+    active = store.is_active(skill_name)
+    hook_registry = registry or default_skill_registry
+    point = HOOK_SKILL_USED if active else HOOK_SKILL_BLOCKED
+    hook_registry.emit(point, {"skill": skill_name, "active": active})
+    return active
+
