@@ -414,3 +414,117 @@ Not used: the `sigstore` Python client and any Rekor/Fulcio service
 log (file-backed by design, so trust stays verifiable without a
 database; see the persistence rationale in the `signing.py` module
 docstring).
+# Reuse fragment: unified harness, Aider + SWE-agent + openai/codex (`puspa/harness/`)
+
+Workstream: one harness, not three (see `docs/brain-depth-triage.md`,
+"Traps to avoid": Aider + SWE-agent + Codex are ONE harness:
+surgical edit + reproduce-first + sandbox profiles). Built 18 Nov
+2026 by the Coding Harness worker. Rules followed (Nero's order, see
+`REUSE.md`): study the BIG PATTERNS/IDEAS from surveyed repos, then
+REWRITE them as Puspa's own code adapted to the revision 7
+architecture, with English identifiers, stored values, and prose.
+NEVER copy code verbatim. NEVER use code licensed GPL, AGPL, SSPL,
+PolyForm, CC BY-NC, or a custom non-OSI license. NEVER create a
+GitHub fork of any repo. No new dependencies were added: this
+workstream uses only the standard library plus the existing Puspa
+policy and sandbox modules. `puspa/policy/` was NOT edited;
+enforcement runs through the existing `Gate.authorize_tool` API.
+
+Source inventory: `docs/brain-depth-triage.md` (Tier 1 Aider,
+Tier 1 SWE-agent, Tier 2 openai/codex). Upstream documents read
+18 Nov 2026: Aider README (github.com/Aider-AI/aider, Apache-2.0)
+and Aider repo map docs (aider.chat/docs/repomap.html: concise map
+of classes and functions with types and signatures, token budget
+default 1k via `--map-tokens`); SWE-agent README
+(github.com/SWE-agent/SWE-agent, MIT) plus the reproduce-first
+discipline as documented in the SWE-bench task shape (FAIL_TO_PASS
+tests fail before the fix and pass after it); openai/codex README
+(github.com/openai/codex, Apache-2.0) plus the Codex sandbox and
+approval docs (three modes `read-only` / `workspace-write` /
+`danger-full-access`, approval policies `on-request` / `never`,
+sandbox applies to every spawned command, `.git` / `.codex` /
+`.agents` stay protected under writable roots).
+
+## What was built
+
+- `puspa/harness/repo_map.py` (new): repo map builder. Walks a
+  directory of Python files, extracts top-level classes, functions,
+  and methods with signatures (arguments, defaults, annotations,
+  return annotation, base classes) via stdlib `ast`, and renders a
+  compact Aider-like map within a token budget (chars / 4 estimate,
+  default 1000). Whole files are dropped when the budget runs out,
+  never half a file. Unparseable files are listed as skipped.
+- `puspa/harness/diff.py` (new): unified diff generation (stdlib
+  `difflib`) and strict application. `apply_diff` validates EVERY
+  hunk against the original before changing anything; a hunk whose
+  context does not match raises `DiffApplyError` with the failed
+  hunk numbers and NOTHING is applied, not even the hunks that did
+  match. `is_diff` detects diff text so the loop accepts a full
+  program or a diff from the generator.
+- `puspa/harness/reproduce.py` (new): reproduce-first state machine
+  (`ReproduceFirst`, `Reproduction`, `build_reproduction`,
+  `generate_reproduction_stub`). The reproduction test must fail on
+  the unpatched program (and match `expected_failure` when one is
+  given) before any fix is verified; `mark_fixed` refuses without
+  both observations. The reproduction test is frozen once observed,
+  so the gate cannot be passed by weakening the test.
+- `puspa/harness/sandbox_profiles.py` (new): profiles `read_only` /
+  `workspace_write` / `full`, mapped to tool levels. The effective
+  level for a tool is always the narrower of the profile level and
+  the token level (via `puspa.policy.tokens.tool_permission`), so a
+  profile never widens a token and a token never widens a profile.
+  `check_tool` enforces through `Gate.authorize_tool`;
+  `check_write_path` refuses writes under `read_only`, writes
+  outside the workspace root, and writes inside protected paths
+  (`.git`, `.codex`, `.agents`, `.aws`). `requires_approval` models
+  approval before a write outside the profile boundary. Puspa's
+  `full` is NOT Codex `danger-full-access`: it still runs only
+  through the sandbox executor, still needs gate approval for
+  deploy, and never enables network access.
+- `puspa/harness/loop.py` (changed): `CodingHarness` gains
+  `profile` (default `workspace_write`), `diff_mode` (default off),
+  and `reproduce_first` (default off). In diff mode a generator
+  diff is applied to the current program text; a failed diff fails
+  that one attempt with the reason recorded. With reproduce-first
+  on, starter code plus the acceptance tests runs as the
+  reproduction probe before any fix attempt, and a first attempt
+  that passes without a prior failing reproduction ends as
+  `reproduction_missing` instead of `passed`. `HarnessOutcome`
+  gains `profile`, `reproduction_failed`, and
+  `reproduction_verified`. Defaults keep the old behaviour exactly.
+- `puspa/harness/executor.py` (changed): `Executor.write_file`
+  (default refuses: no writable filesystem) and
+  `LocalTestExecutor.write_file` (writes under its workdir only,
+  profile-enforced via `check_write_path`). `SandboxExecutor`
+  keeps the default refusal: the sandbox has no persistent
+  filesystem, so production edits run through `run()` only.
+- Tests: `tests/test_harness_unified.py` (30 tests, in-memory plus
+  the local test executor; no new Postgres tables).
+
+## Pattern table
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| Repo map: concise map of the whole codebase with the most important classes and functions plus types and signatures, fitted to a token budget | Aider-AI/aider (Apache-2.0) | The map shape (file header plus one line per symbol) and the budget idea (default 1k tokens, most relevant parts first) | `puspa/harness/repo_map.py`: `ast` extraction of classes, functions, and methods with full signatures, `render_repo_map` with whole-file budget drops, `estimate_tokens` (chars / 4). No tree-sitter, no PageRank ranking yet: files render in sorted path order, which is the honest gap recorded below |
+| Surgical edits as unified diffs, then lint and test after the edit | Aider-AI/aider (Apache-2.0) | The diff as the unit of change instead of a whole-file rewrite, so the change stays reviewable | `puspa/harness/diff.py`: `generate_diff` on stdlib `difflib`, `parse_diff`, `apply_diff` with all-hunks-validated-first and no partial apply, `is_diff` detection in `puspa/harness/loop.py` |
+| Reproduce-first: write the failing test before fixing, fix, run the tests, prove the fix | SWE-agent/SWE-agent (MIT) and the SWE-bench task shape (MIT) | The FAIL_TO_PASS discipline: a fix counts only when the same test fails before it and passes after it, and the failure must match the reported symptom | `puspa/harness/reproduce.py`: `ReproduceFirst` state machine with frozen reproduction test, `expected_failure` matching, `mark_fixed` refusal; `puspa/harness/loop.py`: starter probe plus first-failing-attempt rule, `reproduction_missing` outcome |
+| Sandbox profiles plus approval before acting outside the boundary | openai/codex (Apache-2.0) | The two-layer split (sandbox mode as the technical boundary, approval policy as when to stop and ask) and the three modes, plus protected paths under writable roots | `puspa/harness/sandbox_profiles.py`: `read_only` / `workspace_write` / `full` mapped onto the existing Puspa token levels, effective level as the narrower of profile and token, `check_tool` through `Gate.authorize_tool`, `check_write_path`, `requires_approval`; `puspa/harness/executor.py`: profile-enforced `write_file` |
+
+## Not used in this workstream (recorded so it is not repeated)
+
+- Aider source code (Apache-2.0): pattern study only, from the public
+  README and docs pages listed above. No aider code was read, copied,
+  or installed; the repo map here uses stdlib `ast`, not tree-sitter.
+- SWE-agent source code (MIT): pattern study only, from the public
+  README and the SWE-bench task shape already in the harness. No
+  SWE-agent code was read, copied, or installed; mini-SWE-agent is
+  noted in the SWE-agent README as the successor, but nothing was
+  taken from it either.
+- openai/codex source code (Apache-2.0): pattern study only, from the
+  public README and docs. No codex code was read, copied, or
+  installed. Codex `danger-full-access` was deliberately NOT
+  reproduced: Puspa's `full` profile stays inside the sandbox with
+  gate approval for deploy and no network in any profile.
+- No PASS_TO_PASS regression set yet: the loop grades the acceptance
+  tests only, as before. A regression set is future work for the
+  self-develop module evaluation.

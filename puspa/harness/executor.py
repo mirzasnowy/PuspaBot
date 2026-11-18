@@ -26,6 +26,14 @@ an :class:`ExecutionResult`. The sandbox has no persistent filesystem
 between runs, so the loop always passes the full program text on
 every attempt instead of relying on files written by an earlier
 attempt.
+
+File writes go through ``write_file`` on the executor, enforced by
+the sandbox profile (see :mod:`puspa.harness.sandbox_profiles`):
+``read_only`` refuses every write, ``workspace_write`` and ``full``
+allow writes only under the executor workdir and never inside
+protected paths. The sandbox executor has no persistent filesystem,
+so its ``write_file`` always refuses: edits in production run
+through ``run()`` only.
 """
 
 from __future__ import annotations
@@ -40,10 +48,13 @@ from pathlib import Path
 
 from puspa.sandbox import Sandbox, SandboxUnavailable
 
+from .sandbox_profiles import ProfileDenied, check_write_path
+
 __all__ = [
     "ExecutionResult",
     "Executor",
     "LocalTestExecutor",
+    "ProfileDenied",
     "SandboxExecutor",
     "SandboxUnavailable",
 ]
@@ -75,6 +86,19 @@ class Executor(abc.ABC):
         ``ok=False`` instead of raising: a failing test is a result,
         not a backend failure.
         """
+
+    def write_file(self, path: str | Path, content: str, *, profile: str = "workspace_write") -> Path:
+        """Write ``content`` to ``path`` under this executor.
+
+        The default refuses: only executors with a writable
+        filesystem implement this. The profile is enforced by the
+        implementing executor through
+        :func:`puspa.harness.sandbox_profiles.check_write_path`.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} has no writable filesystem; "
+            "edits run through run() only"
+        )
 
 
 class SandboxExecutor(Executor):
@@ -128,6 +152,19 @@ class LocalTestExecutor(Executor):
         if "TMPDIR" in os.environ:
             env["TMPDIR"] = os.environ["TMPDIR"]
         return env
+
+    def write_file(self, path: str | Path, content: str, *, profile: str = "workspace_write") -> Path:
+        """Write a file under the executor workdir, profile-enforced.
+
+        ``read_only`` refuses every write with :class:`ProfileDenied`;
+        other profiles allow writes only under ``self.workdir`` and
+        never inside protected paths (``.git`` and friends). A path
+        escaping the workdir (absolute or ``..``) is refused.
+        """
+        resolved = check_write_path(profile, path, workspace_root=self.workdir)
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        resolved.write_text(content, encoding="utf-8")
+        return resolved
 
     def run(self, code: str, *, timeout_s: int = 30) -> ExecutionResult:
         if not isinstance(code, str):
