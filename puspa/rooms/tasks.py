@@ -37,6 +37,8 @@ import psycopg
 from psycopg.rows import dict_row
 
 from puspa.accounts.users import resolve_dsn
+from puspa.evidence.outcomes import write_outcome
+from puspa.ledger import Ledger
 
 from .errors import NotRoomMemberError
 from .rooms import RoomStore, _validate_uuid
@@ -187,16 +189,37 @@ class RoomTaskStore:
             conn.commit()
         return task
 
-    def complete_task(self, task_id: str, *, completed_by: str) -> RoomTask | None:
+    def complete_task(
+        self,
+        task_id: str,
+        *,
+        completed_by: str,
+        ledger: Ledger | None = None,
+        agent_id: str | None = None,
+        evidence: list[dict] | None = None,
+    ) -> RoomTask | None:
         """Mark a task done. Any member of the room may complete a
         task (the owner is reminded, not gated). Completing an
         already-done task is a no-op returning the current row.
+
+        When a ledger is given (``agent_id`` required with it),
+        the completion is also recorded as a ``task_done``
+        outcome record through the shared B2 writer, with the
+        board task itself as the evidence (a caller that holds
+        richer proof — a delegation's executed steps, for
+        example — passes it as ``evidence`` instead). The
+        record is written after the status change, so a ledger
+        failure never rolls back the user's work; a completion
+        whose record failed to write is not re-recorded by a
+        later call, because the later call is a no-op.
 
         Returns None when the task id does not exist. Raises
         ``NotRoomMemberError`` for a non-member.
         """
         task_id = _validate_uuid(task_id, "task_id")
         completed_by = _validate_uuid(completed_by, "completed_by")
+        if ledger is not None and agent_id is None:
+            raise ValueError("agent_id is required when a ledger is given")
         with _connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute("SELECT * FROM room_tasks WHERE id = %s", (task_id,))
             row = cur.fetchone()
@@ -216,6 +239,28 @@ class RoomTaskStore:
             )
             task = _task_row(cur.fetchone())
             conn.commit()
+        if ledger is not None:
+            write_outcome(
+                ledger,
+                task_id=task.id,
+                agent_id=agent_id,  # type: ignore[arg-type]
+                outcome_type="task_done",
+                user_id=completed_by,
+                room_id=task.room_id,
+                subject_id=task.id,
+                summary=f"task done: {task.title}",
+                evidence=evidence
+                if evidence is not None
+                else [
+                    {
+                        "kind": "board_task",
+                        "task_id": task.id,
+                        "title": task.title,
+                        "status": "done",
+                        "completed_by": completed_by,
+                    }
+                ],
+            )
         return task
 
     def list_tasks(
@@ -287,8 +332,18 @@ def add_task(
     )
 
 
-def complete_task(task_id: str, *, completed_by: str, dsn=None) -> RoomTask | None:
-    return _store(dsn).complete_task(task_id, completed_by=completed_by)
+def complete_task(
+    task_id: str,
+    *,
+    completed_by: str,
+    ledger: Ledger | None = None,
+    agent_id: str | None = None,
+    evidence: list[dict] | None = None,
+    dsn=None,
+) -> RoomTask | None:
+    return _store(dsn).complete_task(
+        task_id, completed_by=completed_by, ledger=ledger, agent_id=agent_id, evidence=evidence
+    )
 
 
 def list_tasks(

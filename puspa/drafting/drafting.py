@@ -46,6 +46,8 @@ import psycopg
 from psycopg.rows import dict_row
 
 from puspa.accounts.users import resolve_dsn
+from puspa.evidence.outcomes import write_outcome
+from puspa.ledger import Ledger
 from puspa.memory import facts as facts_module
 
 from .errors import (
@@ -541,14 +543,29 @@ class DraftingService:
         return self.store.update_draft(draft)
 
     # -- approval -----------------------------------------------------
-    def approve_draft(self, draft_id: str, *, user_id: str) -> DraftApproval:
+    def approve_draft(
+        self,
+        draft_id: str,
+        *,
+        user_id: str,
+        ledger: Ledger | None = None,
+        agent_id: str | None = None,
+    ) -> DraftApproval:
         """The user's explicit approval to send one draft.
 
         Records a single-use approval bound to the SHA-256 of
         the draft text right now, expiring after 24 hours, and
         marks the draft ``approved``. Approving does not send
         anything.
+
+        When a ledger is given (``agent_id`` required with it),
+        the approval is also recorded through the shared B2
+        writer as a ``decision_recorded`` outcome record, with
+        the approval itself as the evidence: the decision to
+        send this draft, by this user, is on the record.
         """
+        if ledger is not None and agent_id is None:
+            raise ValueError("agent_id is required when a ledger is given")
         draft = self.get_draft(draft_id, user_id=user_id)
         if draft.status == "sent":
             raise DraftValidationError("a sent draft cannot be approved again")
@@ -566,10 +583,41 @@ class DraftingService:
         draft.status = "approved"
         draft.updated_at = now
         self.store.update_draft(draft)
+        if ledger is not None:
+            write_outcome(
+                ledger,
+                task_id=draft.id,
+                agent_id=agent_id,  # type: ignore[arg-type]
+                outcome_type="decision_recorded",
+                user_id=user_id,
+                subject_id=draft.id,
+                summary=f"draft approved for sending: {draft.kind}"
+                + (f" to {draft.recipient}" if draft.recipient else ""),
+                evidence=[
+                    {
+                        "kind": "draft_approval",
+                        "approval_id": approval.id,
+                        "draft_id": draft.id,
+                        "content_hash": approval.content_hash,
+                    }
+                ],
+                details={
+                    "kind": draft.kind,
+                    "channel": draft.channel,
+                    "recipient": draft.recipient,
+                    "decision_flags": draft.decision_flags,
+                },
+            )
         return approval
 
     def request_send_approval(
-        self, draft_id: str, *, user_id: str, conversation_id: str | None = None
+        self,
+        draft_id: str,
+        *,
+        user_id: str,
+        conversation_id: str | None = None,
+        ledger: Ledger | None = None,
+        agent_id: str | None = None,
     ) -> dict:
         """Ask for send approval through the G4 taxonomy policy.
 
@@ -587,7 +635,9 @@ class DraftingService:
                 conversation_id=conversation_id,
             )
             if decision.outcome == "allow":
-                approval = self.approve_draft(draft_id, user_id=user_id)
+                approval = self.approve_draft(
+                    draft_id, user_id=user_id, ledger=ledger, agent_id=agent_id
+                )
                 return {"status": "approved", "approval": approval.to_dict()}
             return {
                 "status": "awaiting_approval",

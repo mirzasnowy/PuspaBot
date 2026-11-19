@@ -71,6 +71,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Json
 
 from puspa.accounts.users import resolve_dsn
+from puspa.ledger import Ledger
 from puspa.policy.approvals import ApprovalPolicy
 from puspa.policy.gate import Gate, GateDenied
 from puspa.scheduler.due import classify_due
@@ -622,12 +623,29 @@ class DelegationService:
         assert result is not None
         return result
 
-    def complete_task(self, task_id: str, *, completed_by: str) -> RoomTask | None:
+    def complete_task(
+        self,
+        task_id: str,
+        *,
+        completed_by: str,
+        ledger: Ledger | None = None,
+        agent_id: str | None = None,
+    ) -> RoomTask | None:
         """Complete a delegated task: refused while any step is
         still proposed or awaiting approval — the work is not
         done until its steps are decided and executed. On
         success the B6 board marks the task done and the
-        delegation closes with it."""
+        delegation closes with it.
+
+        When a ledger is given (``agent_id`` required with it),
+        the completion is recorded once, through the shared B2
+        writer, as a ``task_done`` outcome record: the board
+        task plus the delegation's decided steps are the
+        evidence. The record is written by the B6 board call
+        below, so there is exactly one record per completion.
+        """
+        if ledger is not None and agent_id is None:
+            raise ValueError("agent_id is required when a ledger is given")
         delegation = self.get_delegation(task_id)
         if delegation is None:
             raise ValueError(f"task {task_id} is not delegated")
@@ -635,7 +653,30 @@ class DelegationService:
             raise ValueError(
                 f"cannot complete task {task_id}: {delegation.pending_steps} step(s) still waiting"
             )
-        done = self.tasks.complete_task(task_id, completed_by=completed_by)
+        evidence: list[dict] | None = None
+        if ledger is not None:
+            evidence = [
+                {
+                    "kind": "board_task",
+                    "task_id": delegation.task.id,
+                    "title": delegation.task.title,
+                    "status": "done",
+                    "completed_by": completed_by,
+                }
+            ]
+            for step in delegation.steps:
+                evidence.append(
+                    {
+                        "kind": "delegated_step",
+                        "step_id": step.id,
+                        "description": step.description,
+                        "status": step.status,
+                        "result": step.result,
+                    }
+                )
+        done = self.tasks.complete_task(
+            task_id, completed_by=completed_by, ledger=ledger, agent_id=agent_id, evidence=evidence
+        )
         if done is not None:
             self._set_delegation_status(task_id, "done")
         return done

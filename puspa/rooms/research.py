@@ -69,7 +69,9 @@ from psycopg.rows import dict_row
 
 from puspa.accounts.users import resolve_dsn
 from puspa.evidence.evidence import record_evidence, save_evidence
+from puspa.evidence.outcomes import write_outcome
 from puspa.evidence.verifier import verify
+from puspa.ledger import Ledger
 from puspa.pricing.readers import create_reader
 from puspa.pricing.tos import may_read
 from puspa.sandbox.allowlist import is_allowed
@@ -393,7 +395,13 @@ class ResearchService:
         return True
 
     def compare(
-        self, room_id: str, *, requested_by_user_id: str, task_id: str | None = None
+        self,
+        room_id: str,
+        *,
+        requested_by_user_id: str,
+        task_id: str | None = None,
+        ledger: Ledger | None = None,
+        agent_id: str | None = None,
     ) -> GroupComparison:
         """Compare every link collected in the room, in one answer.
 
@@ -402,15 +410,103 @@ class ResearchService:
         marketplace source held by the ToS gate is never read.
         The requester must be a member. A room with no links
         returns an empty comparison — the renderer says so.
+
+        When a ledger is given (``agent_id`` required with it),
+        every checked link is also recorded through the shared
+        B2 writer: a ``price_checked`` outcome record, plus a
+        ``seller_checked`` record when the reader reported a
+        seller. The saved evidence row is the proof both
+        records point at; unchecked links write nothing, since
+        there is no evidence for them.
         """
         room_id = _validate_uuid(room_id, "room_id")
         requester = _validate_uuid(requested_by_user_id, "requested_by_user_id")
+        if ledger is not None and agent_id is None:
+            raise ValueError("agent_id is required when a ledger is given")
         self._require_member(room_id, requester)
         task_id = task_id or f"research-{uuid.uuid4().hex[:12]}"
         comparison = GroupComparison(room_id=room_id, task_id=task_id, mode=self.mode)
         for link in self.list_links(room_id, viewer_user_id=requester):
-            comparison.items.append(self._check_link(link, task_id=task_id))
+            item = self._check_link(link, task_id=task_id)
+            comparison.items.append(item)
+            if ledger is not None and item.checked:
+                self._record_checked_outcomes(
+                    ledger,
+                    agent_id,
+                    comparison,
+                    item,
+                    requester,  # type: ignore[arg-type]
+                )
         return comparison
+
+    def _record_checked_outcomes(
+        self,
+        ledger: Ledger,
+        agent_id: str,
+        comparison: GroupComparison,
+        item: ResearchItem,
+        requester: str,
+    ) -> None:
+        """Write the outcome records for one checked link.
+
+        The price record carries the full reading; the seller
+        record is written only when the reader reported a
+        seller, and carries the seller judgement. Both point
+        at the same saved evidence row.
+        """
+        if item.price is None or item.evidence_id is None:
+            return
+        ref = {
+            "kind": "evidence_record",
+            "evidence_id": item.evidence_id,
+            "source_url": item.link.url,
+            "verdict": item.verdict,
+        }
+        details = {
+            "link_id": item.link.id,
+            "url": item.link.url,
+            "source": item.link.source,
+            "price": item.price,
+            "shipping": item.shipping,
+            "store_rating": item.store_rating,
+            "seller": item.seller,
+            "verdict": item.verdict,
+            "evidence_id": item.evidence_id,
+        }
+        write_outcome(
+            ledger,
+            task_id=comparison.task_id,
+            agent_id=agent_id,
+            outcome_type="price_checked",
+            user_id=requester,
+            room_id=comparison.room_id,
+            subject_id=item.link.id,
+            summary=f"price checked: {item.link.display_name()} {_format_rupiah(item.price)}",
+            evidence=[ref],
+            sources=[item.link.url],
+            details=details,
+        )
+        if item.seller.strip():
+            write_outcome(
+                ledger,
+                task_id=comparison.task_id,
+                agent_id=agent_id,
+                outcome_type="seller_checked",
+                user_id=requester,
+                room_id=comparison.room_id,
+                subject_id=item.link.id,
+                summary=f"seller checked: {item.seller} ({item.link.source})",
+                evidence=[ref],
+                sources=[item.link.url],
+                details={
+                    "link_id": item.link.id,
+                    "seller": item.seller,
+                    "store_rating": item.store_rating,
+                    "source": item.link.source,
+                    "verdict": item.verdict,
+                    "evidence_id": item.evidence_id,
+                },
+            )
 
     def _check_link(self, link: ResearchLink, *, task_id: str) -> ResearchItem:
         """Read one link and verify its price, or record why not."""
@@ -458,6 +554,8 @@ class ResearchService:
         decision: str,
         agreed_by_user_ids: list[str] | None = None,
         comparison_task_id: str | None = None,
+        ledger: Ledger | None = None,
+        agent_id: str | None = None,
     ) -> RoomMemory:
         """Record the group's decision, with who agreed.
 
@@ -468,11 +566,18 @@ class ResearchService:
         ``decision``; the comparison task id is attached when the
         decision follows a comparison, so the shared graphs of B3
         can adopt the record later.
+
+        When a ledger is given (``agent_id`` required with it),
+        the decision is also recorded through the shared B2
+        writer as a ``decision_recorded`` outcome record, with
+        the decision and its agreers as the evidence.
         """
         room_id = _validate_uuid(room_id, "room_id")
         author = _validate_uuid(author_user_id, "author_user_id")
         if not isinstance(decision, str) or not decision.strip():
             raise ValueError("decision must be a non-empty string")
+        if ledger is not None and agent_id is None:
+            raise ValueError("agent_id is required when a ledger is given")
         agreed = [_validate_uuid(uid, "agreed_by_user_id") for uid in (agreed_by_user_ids or [])]
         self._require_member(room_id, author)
         for uid in agreed:
@@ -483,12 +588,33 @@ class ResearchService:
         text = decision.strip()
         if comparison_task_id:
             text += f" (based on comparison {comparison_task_id})"
-        return self.memory.record_decision(
+        memory = self.memory.record_decision(
             room_id,
             author_user_id=author,
             decision=text,
             agreed_by_user_ids=agreed,
         )
+        if ledger is not None:
+            write_outcome(
+                ledger,
+                task_id=memory.id,
+                agent_id=agent_id,  # type: ignore[arg-type]
+                outcome_type="decision_recorded",
+                user_id=author,
+                room_id=room_id,
+                subject_id=memory.id,
+                summary=text,
+                evidence=[
+                    {
+                        "kind": "group_decision",
+                        "room_id": room_id,
+                        "decision": text,
+                        "agreed_by_user_ids": agreed,
+                    }
+                ],
+                details={"comparison_task_id": comparison_task_id} if comparison_task_id else {},
+            )
+        return memory
 
     def answer_compare_command(self, room_id: str, *, requested_by_user_id: str) -> str:
         """Run the comparison and render the one answer for the room."""
@@ -585,10 +711,16 @@ def compare_group_links(
     reread=None,
     mode: str = "fixture",
     task_id: str | None = None,
+    ledger: Ledger | None = None,
+    agent_id: str | None = None,
     dsn=None,
 ) -> GroupComparison:
     return ResearchService(dsn, reader=reader, reread=reread, mode=mode).compare(
-        room_id, requested_by_user_id=requested_by_user_id, task_id=task_id
+        room_id,
+        requested_by_user_id=requested_by_user_id,
+        task_id=task_id,
+        ledger=ledger,
+        agent_id=agent_id,
     )
 
 
@@ -599,6 +731,8 @@ def record_group_decision(
     decision: str,
     agreed_by_user_ids: list[str] | None = None,
     comparison_task_id: str | None = None,
+    ledger: Ledger | None = None,
+    agent_id: str | None = None,
     dsn=None,
 ) -> RoomMemory:
     return _service(dsn).record_group_decision(
@@ -607,6 +741,8 @@ def record_group_decision(
         decision=decision,
         agreed_by_user_ids=agreed_by_user_ids,
         comparison_task_id=comparison_task_id,
+        ledger=ledger,
+        agent_id=agent_id,
     )
 
 

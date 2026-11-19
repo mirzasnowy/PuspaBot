@@ -100,6 +100,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from puspa.accounts.users import resolve_dsn
+from puspa.evidence.outcomes import write_outcome
 from puspa.scheduler.due import classify_due
 
 from .errors import MoneyApprovalError, NotRoomMemberError, SplitError
@@ -695,10 +696,12 @@ class SplitService:
         that approval this raises ``MoneyApprovalError`` and
         nothing is recorded. Preparing again supersedes the
         debtor's earlier prepared row. When a ledger is passed,
-        the preparation is also appended as an
-        ``evidence_recorded`` event (``agent_id`` required with
-        it); the ledger is optional so the split maths never
-        depends on it.
+        the preparation is also recorded as a
+        ``payment_prepared`` outcome record through the shared
+        B2 writer (``puspa.evidence.outcomes``), with the money
+        approval as its evidence and the settlement row as its
+        receipt (``agent_id`` required with it); the ledger is
+        optional so the split maths never depends on it.
         """
         split = self.require_split(split_id)
         debtor = _validate_uuid(debtor_user_id, "debtor_user_id")
@@ -742,11 +745,39 @@ class SplitService:
             settlement = _settlement_row(cur.fetchone())
             conn.commit()
         if ledger is not None:
-            ledger.append_event(
+            # B2: the preparation is a verified outcome record.
+            # The pre-B2 payload is preserved verbatim under
+            # ``details``.
+            write_outcome(
+                ledger,
                 task_id=split.id,
-                agent_id=agent_id,
-                event_type="evidence_recorded",
-                content={
+                agent_id=agent_id,  # type: ignore[arg-type]
+                outcome_type="payment_prepared",
+                user_id=requester,
+                room_id=split.room_id,
+                subject_id=split.id,
+                summary=(
+                    f"settlement of {format_rupiah(share.remaining_cents)} prepared: "
+                    f"{_short_id(debtor)} pays {_short_id(split.payer_user_id)}"
+                ),
+                evidence=[
+                    {
+                        "kind": "money_approval",
+                        "action_id": action_id,
+                        "amount_cents": share.remaining_cents,
+                        "recipient_user_id": split.payer_user_id,
+                    }
+                ],
+                receipts=[
+                    {
+                        "kind": "split_settlement",
+                        "settlement_id": settlement.id,
+                        "split_id": split.id,
+                        "amount_cents": share.remaining_cents,
+                        "status": "prepared",
+                    }
+                ],
+                details={
                     "kind": "split_settlement_prepared",
                     "split_id": split.id,
                     "room_id": split.room_id,

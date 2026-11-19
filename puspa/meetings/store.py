@@ -21,20 +21,27 @@ One meeting, end to end, from a transcript:
    pattern — no new event type (the closed set of 31 stays
    closed):
 
-   - ``evidence_recorded`` per decision, content
-     ``{"kind": "meeting_decision", "meeting_id": ..., "room_id":
-     ..., "decision": ...}``;
+   - ``evidence_recorded`` per decision, written through the
+     B2 shared outcome writer (``puspa.evidence.outcomes``)
+     as a ``decision_recorded`` outcome record, content
+     ``{"kind": "outcome_record", "outcome_type":
+     "decision_recorded", "user_id": ..., "room_id": ...,
+     "subject_id": <meeting id>, "summary": <decision>,
+     "evidence": [{"kind": "meeting_minutes", ...}],
+     "details": {<the pre-B2 payload, verbatim>}}``;
    - ``task_created`` per action item, content
      ``{"kind": "meeting_action_item", "meeting_id": ...,
      "room_id": ..., "room_task_id": ..., "title": ...,
-     "owner_user_id": ..., "due_at": ...}``.
+     "owner_user_id": ..., "due_at": ...}`` — creating a task
+     is not an outcome, so it stays a plain task event and is
+     NOT routed through the outcome writer.
 
    The ledger's ``task_id`` for these events is the meeting id:
    the events chain per meeting, so the chain for one meeting
-   verifies on its own. This is the stand-in outcome-record path
-   until B2 builds the general one: B2 adopts these events
-   (same types, same content shape) instead of replacing them —
-   see ``docs/meetings-b10.md`` for the honest follow-up.
+   verifies on its own. B2 adopted the decision events (same
+   event type, the pre-B2 payload preserved verbatim under
+   ``details``) instead of replacing them — see
+   ``docs/outcome-records.md``.
 
 The transcript itself is never stored: the minutes are the
 room's record.
@@ -50,6 +57,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from puspa.accounts.users import resolve_dsn
+from puspa.evidence.outcomes import write_outcome
 from puspa.ledger import Ledger
 from puspa.rooms.errors import NotRoomMemberError
 from puspa.rooms.memory import RoomMemoryStore
@@ -261,11 +269,28 @@ class MeetingMinutesStore:
             self.memory.record_decision(room_id, author_user_id=author, decision=decision)
         if ledger is not None:
             for decision in decisions:
-                ledger.append_event(
+                # B2: the decision is a verified outcome record.
+                # The pre-B2 payload is preserved verbatim under
+                # ``details``; the action-item event below stays a
+                # plain ``task_created`` (creating a task is not
+                # an outcome).
+                write_outcome(
+                    ledger,
                     task_id=record.id,
                     agent_id=agent_id,  # type: ignore[arg-type]
-                    event_type="evidence_recorded",
-                    content={
+                    outcome_type="decision_recorded",
+                    user_id=author,
+                    room_id=room_id,
+                    subject_id=record.id,
+                    summary=decision,
+                    evidence=[
+                        {
+                            "kind": "meeting_minutes",
+                            "meeting_id": record.id,
+                            "decision": decision,
+                        }
+                    ],
+                    details={
                         "kind": "meeting_decision",
                         "meeting_id": record.id,
                         "room_id": room_id,
