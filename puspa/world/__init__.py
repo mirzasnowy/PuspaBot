@@ -39,6 +39,13 @@
   proposed and updated from the learning loop's outcomes, read
   through ``CausalLedger.expect``; the ``CausalExpectationMixin``
   gives a model the same read path (``WorldModel.expect``).
+- ``puspa.world.ignorance``: ignorance map (Kosmos K6) — the
+  areas the model cannot answer (no evidence or low
+  confidence), derived from the belief dicts plus gaps callers
+  registered; the ``IgnoranceMixin`` gives a model the same
+  read path (``WorldModel.ignorance_map``), and the planner
+  probes a gap instead of guessing when it needs a missing
+  price.
 """
 
 from .agents import (
@@ -60,6 +67,7 @@ from .causal import (
     CausalLedger,
     causal_effect_key,
 )
+from .ignorance import IgnoranceArea
 from .model import Prediction, WorldModel
 from .noisy_simulator import (
     NoisySimulatedWorld,
@@ -109,6 +117,7 @@ __all__ = [
     "CausalHypothesis",
     "CausalLedger",
     "GoalInferrer",
+    "IgnoranceArea",
     "KeywordGoalInferrer",
     "NoisySimulatedWorld",
     "Prediction",
