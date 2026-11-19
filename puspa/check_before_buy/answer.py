@@ -14,8 +14,11 @@ Evidence rules (the slice never guesses):
 - Advice: ``act`` only when every check that applies is green
   (fair price verified, seller record clean, account record clean
   when an account is involved). Any flagged seller or account gives
-  ``do_not_act``. Anything else gives ``cannot_advise`` with the
-  missing pieces listed, so the user knows exactly what is unverified.
+  ``do_not_act``. A forwarded text matching a known local scam
+  pattern (plan 15.5, ``puspa.graphs.fraud_patterns``) also gives
+  ``do_not_act``, with the pattern named. Anything else gives
+  ``cannot_advise`` with the missing pieces listed, so the user
+  knows exactly what is unverified.
 
 ``mode="live"`` is refused outright: live price execution is held
 under decision 15 (see the package docstring), so a live request
@@ -28,8 +31,10 @@ from __future__ import annotations
 import statistics
 from dataclasses import dataclass, field
 
+from puspa.graphs.fraud_patterns import match_fraud_patterns
 from puspa.graphs.shared import seller_reputation, shared_fair_price
 from puspa.local_data.language import extract_courier, extract_destination_city
+from puspa.local_data.money import format_rupiah
 from puspa.local_data.rails import PaymentRail, detect_rail
 from puspa.local_data.rates import (
     RateStore,
@@ -218,6 +223,10 @@ class CheckAnswer:
     # Recorded observations the fair price rests on. Kept out of
     # to_dict(); the outcome writer turns them into evidence rows.
     observations: list[PriceObservation] = field(default_factory=list, repr=False)
+    # Known local scam patterns (plan 15.5) the forwarded text
+    # matches, as dicts (pattern_id / title / matched_trigger /
+    # warning). Empty when the text matches none.
+    fraud_patterns: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -233,6 +242,7 @@ class CheckAnswer:
             "live_execution_held": self.live_execution_held,
             "shipping": self.shipping.to_dict(),
             "payment_rail": self.payment_rail.to_dict() if self.payment_rail else None,
+            "fraud_patterns": [dict(entry) for entry in self.fraud_patterns],
             "text": self.text,
         }
 
@@ -467,6 +477,18 @@ def check_before_buy(
 
     advice, reasons = _decide_advice(classified.kind, fair_price, seller, account)
 
+    # 15.5: a forwarded text matching a known local scam pattern
+    # is a do-not-act answer on its own, whatever the other
+    # sections say — the pattern is the warning, and the user
+    # must see it named.
+    fraud_matches = match_fraud_patterns(text)
+    if fraud_matches:
+        advice = ADVICE_DO_NOT_ACT
+        reasons = [
+            f"matches a known local scam pattern: {match.title} — {match.warning}"
+            for match in fraud_matches
+        ]
+
     # B5: shipping quote for the lane named in the input, and
     # the payment rail the input mentions (naming only).
     shipping = _shipping_section(text, rate_store or RateStore())
@@ -486,6 +508,7 @@ def check_before_buy(
         advice_reasons=reasons,
         cannot_verify=cannot_verify,
         observations=observations,
+        fraud_patterns=[match.to_dict() for match in fraud_matches],
         shipping=shipping,
         payment_rail=payment_rail,
     )
@@ -536,13 +559,13 @@ def render_text(answer: CheckAnswer) -> str:
     price = answer.fair_price
     if price.status == STATUS_VERIFIED and price.value is not None:
         lines.append(
-            f"Fair price: Rp{price.value:,.0f} ({price.basis}; "
+            f"Fair price: {format_rupiah(round(price.value))} ({price.basis}; "
             f"sources: {', '.join(price.sources)})."
         )
     elif price.status == STATUS_UNCERTAIN and price.value is not None:
         lines.append(
-            f"Fair price, not yet verified: Rp{price.value:,.0f} ({price.basis}). "
-            "Treat it as a hint, not a verdict."
+            f"Fair price, not yet verified: {format_rupiah(round(price.value))} "
+            f"({price.basis}). Treat it as a hint, not a verdict."
         )
     else:
         lines.append(f"Fair price: I could not verify this. {price.reason}")
@@ -568,7 +591,7 @@ def render_text(answer: CheckAnswer) -> str:
         cod = "COD is available" if shipping.cod_available else "COD is not available"
         lines.append(
             f"Shipping to {shipping.city} via {shipping.courier}: "
-            f"Rp{shipping.cost_idr:,.0f} for 1 kg from Jakarta. {cod}. "
+            f"{format_rupiah(shipping.cost_idr)} for 1 kg from Jakarta. {cod}. "
             f"({shipping.source_label}; sample rates, not a live tariff.)"
         )
     elif shipping.status == STATUS_CANNOT_VERIFY:
@@ -576,6 +599,12 @@ def render_text(answer: CheckAnswer) -> str:
 
     if answer.payment_rail is not None:
         lines.append(f"Payment: {answer.payment_rail.note}")
+
+    for pattern in answer.fraud_patterns:
+        lines.append(
+            f"Warning: this matches a known local scam pattern "
+            f"({pattern['title']}). {pattern['warning']}"
+        )
 
     if answer.advice == ADVICE_ACT:
         lines.append("Advice: you can go ahead. " + "; ".join(answer.advice_reasons) + ".")

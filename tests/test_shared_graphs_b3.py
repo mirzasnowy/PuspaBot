@@ -431,3 +431,56 @@ def test_handle_check_before_buy_passes_shared_dsn(test_dsn):
     )
     assert result["answer"]["seller"]["status"] == "flagged"
     assert result["answer"]["advice"] == "do_not_act"
+
+
+# ---------------------------------------------------------------------------
+# local fraud patterns (15.5), B14
+# ---------------------------------------------------------------------------
+
+
+def test_fraud_pattern_table_covers_plan_15_5():
+    from puspa.graphs.fraud_patterns import FRAUD_PATTERNS
+
+    ids = {pattern.pattern_id for pattern in FRAUD_PATTERNS}
+    assert ids == {
+        "courier_apk",
+        "bank_ojk_impersonation",
+        "mama_minta_pulsa",
+        "new_number",
+        "part_time_like_subscribe",
+        "illegal_investment_loan",
+        "wrong_transfer_refund",
+        "mule_account",
+        "fake_cod",
+        "account_trading",
+        "online_gambling",
+    }
+    for pattern in FRAUD_PATTERNS:
+        assert pattern.triggers
+        assert pattern.warning
+
+
+def test_match_fraud_patterns_names_pattern_and_warning():
+    from puspa.graphs.fraud_patterns import match_fraud_patterns
+
+    matches = match_fraud_patterns("tolong unduh apk buat cek resi paket kurir")
+    assert [match.pattern_id for match in matches] == ["courier_apk"]
+    assert "Never install a file" in matches[0].warning
+    assert matches[0].matched_trigger == "apk"
+    assert match_fraud_patterns("halo, cek harga dong") == []
+    assert match_fraud_patterns("") == []
+
+
+def test_match_fraud_patterns_deduplicates_per_pattern():
+    from puspa.graphs.fraud_patterns import match_fraud_patterns
+
+    matches = match_fraud_patterns("apk apk apk, paket kurir")
+    assert len(matches) == 1
+    assert matches[0].pattern_id == "courier_apk"
+
+
+def test_classify_flag_reason_tags_free_text():
+    from puspa.graphs.fraud_patterns import classify_flag_reason
+
+    assert classify_flag_reason("seller asked me to install an apk") == ["courier_apk"]
+    assert classify_flag_reason("slow shipping") == []
