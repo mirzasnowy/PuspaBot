@@ -1,0 +1,142 @@
+# Nightly live smoke lane (E-04, plan section 4.4).
+#
+# A separate scheduled workflow — NOT part of CI's per-push lanes
+# (see .github/workflows/ci.yml): once a day it probes the live
+# providers with low-capped keys and test accounts, and records
+# latency, cost, and provider response shape as a TIME SERIES
+# (nightly-smoke/runs.jsonl), not just green/red, so provider
+# behaviour changes are visible over time.
+#
+# Probes (puspa/nightly/probes.py):
+#   openrouter_turn           — one short turn through OpenRouter
+#   openrouter_fallback       — first tier called with a deliberately
+#                               invalid key; the chain must move
+#   ollama_turn               — health check first, then one local
+#                               end-to-end turn (qwen2.5:0.5b)
+#   skill_discovery           — one skills.sh search + one install
+#                               to a temp dir (only when enabled)
+#   google_login              — Google callback (or refresh-only
+#                               path), session saved, token refreshed
+#   telegram_roundtrip        — one message out (approval keyboard)
+#                               and one message in
+#   telegram_approval_button  — one approval via a button tap
+#
+# Secrets (names only; a human with repo settings access creates
+# them — see docs/nightly-smoke.md for the setup checklist):
+#   OPENROUTER_NIGHTLY_KEY       low-capped OpenRouter key
+#   PUSPA_GOOGLE_TEST_CLIENT_ID / PUSPA_GOOGLE_TEST_CLIENT_SECRET
+#   PUSPA_GOOGLE_TEST_REFRESH_TOKEN (daily path)
+#   PUSPA_GOOGLE_TEST_AUTH_CODE + PUSPA_GOOGLE_TEST_CODE_VERIFIER
+#     (full callback path; a fresh code each run)
+#   TELEGRAM_TEST_BOT_TOKEN / TELEGRAM_TEST_CHAT_ID
+#
+# Time series: the JSONL store is restored from the Actions
+# cache (previous nights) before the run and saved back after
+# it, so each night appends to the series; the per-run artifact
+# is the backup if the cache is ever evicted. The Google test
+# session file holds real tokens and is NEVER uploaded.
+#
+# Honest limit: this workflow has never run on GitHub yet. The
+# YAML is validated and every referenced command is checked
+# here, and the harness is proven with fakes in
+# tests/test_nightly_smoke.py — but the first live run happens
+# on GitHub, after the secrets above exist.
+
+name: Nightly live smoke
+
+on:
+  schedule:
+    # Once a day, 02:00 UTC.
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+# Never run two nightly lanes at once (a second run would
+# double-spend the low-capped key and double-poll Telegram).
+concurrency:
+  group: nightly-smoke
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Nightly live smoke
+    runs-on: ubuntu-24.04
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_NIGHTLY_KEY }}
+      PUSPA_GOOGLE_TEST_CLIENT_ID: ${{ secrets.PUSPA_GOOGLE_TEST_CLIENT_ID }}
+      PUSPA_GOOGLE_TEST_CLIENT_SECRET: ${{ secrets.PUSPA_GOOGLE_TEST_CLIENT_SECRET }}
+      PUSPA_GOOGLE_TEST_REFRESH_TOKEN: ${{ secrets.PUSPA_GOOGLE_TEST_REFRESH_TOKEN }}
+      PUSPA_GOOGLE_TEST_AUTH_CODE: ${{ secrets.PUSPA_GOOGLE_TEST_AUTH_CODE }}
+      PUSPA_GOOGLE_TEST_CODE_VERIFIER: ${{ secrets.PUSPA_GOOGLE_TEST_CODE_VERIFIER }}
+      TELEGRAM_TEST_BOT_TOKEN: ${{ secrets.TELEGRAM_TEST_BOT_TOKEN }}
+      TELEGRAM_TEST_CHAT_ID: ${{ secrets.TELEGRAM_TEST_CHAT_ID }}
+      # The skills leg runs only when this is "1" (E-12's flags
+      # file is the one source of truth for the flag; the lane
+      # reads it through this env var until then).
+      PUSPA_SKILL_DISCOVERY_ENABLED: ${{ vars.PUSPA_SKILL_DISCOVERY_ENABLED }}
+      OLLAMA_BASE_URL: http://localhost:11434/v1
+      OLLAMA_SMOKE_MODEL: qwen2.5:0.5b
+      PUSPA_NIGHTLY_STORE: nightly-smoke/runs.jsonl
+      PUSPA_NIGHTLY_SUMMARY: nightly-smoke/summary.md
+      PUSPA_NIGHTLY_SESSION_FILE: ${{ runner.temp }}/puspa-nightly-google-session.json
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Restore the time-series store (previous nights)
+        uses: actions/cache@v4
+        with:
+          path: nightly-smoke/runs.jsonl
+          # The key is unique per run so the cache is always
+          # saved fresh below; restore-keys picks up the latest
+          # previous night's store.
+          key: nightly-smoke-${{ github.run_id }}
+          restore-keys: |
+            nightly-smoke-
+
+      - name: Start Ollama (container service)
+        run: |
+          docker run -d --name ollama -p 11434:11434 ollama/ollama
+          # Wait for the server to answer before pulling the model:
+          # the probe's own health check runs later, but the pull
+          # needs a live server too.
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:11434/api/tags > /dev/null 2>&1; then
+              echo "ollama is up"
+              break
+            fi
+            if [ "$i" = 30 ]; then
+              echo "ollama did not come up in 150s"
+              docker logs ollama
+              exit 1
+            fi
+            sleep 5
+          done
+          docker exec ollama ollama pull qwen2.5:0.5b
+
+      - name: Run the nightly smoke probes
+        run: python -m puspa.nightly.run
+
+      - name: Upload this night's records + summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-smoke-${{ github.run_id }}
+          path: |
+            nightly-smoke/runs.jsonl
+            nightly-smoke/summary.md
+          retention-days: 90
+
+      - name: Stop Ollama
+        if: always()
+        run: docker rm -f ollama || true

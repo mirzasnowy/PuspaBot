@@ -8,3 +8,5 @@ backups/
 
 node_modules/
 dist/
+
+nightly-smoke/
