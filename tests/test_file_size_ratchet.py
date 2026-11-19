@@ -84,6 +84,24 @@ BASELINE_LINES = {
     "puspa/world/agents.py": 1047,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
+    # Shared-room delegation (B6): the delegation board, task
+    # lifecycle, and approval-gated steps in one module. Crossed
+    # 1000 lines in Wave 33 (B2): +41 lines threading the shared
+    # B2 outcome writer through complete_task and the delegation
+    # close path (optional ledger + agent_id params, docstrings).
+    # No logic change beyond the B2 wiring. Split candidate when
+    # it grows again: the approval-gated step runner into its own
+    # module, or the board queries into a store module.
+    "puspa/rooms/delegation.py": 1039,
+    # Shared splitting / patungan (B11): split maths, partial
+    # payments, and settlement preparation in one module. Crossed
+    # 1000 lines in Wave 33 (B2): +31 lines routing the settlement
+    # preparation through the shared B2 outcome writer as a
+    # payment_prepared record (optional ledger + agent_id params,
+    # docstrings). No logic change beyond the B2 wiring. Split
+    # candidate when it grows again: the settlement preparation
+    # into its own module.
+    "puspa/rooms/splitting.py": 1031,
     # Phase status log, append-only by design; shrinks only by archiving
     # old sections into a dated archive doc, never by deleting history.
     "docs/status-brain-deepening.md": 1134,
