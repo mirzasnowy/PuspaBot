@@ -3063,6 +3063,746 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mockups/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The five beta templates and their slots */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Template list */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MockupTemplates"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mockups/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Build 2-3 mockup variants from a text prompt
+         * @description B7: deterministic template filling (no live model call).
+         *     Intent keywords pick the template; quoted text becomes the
+         *     headline, the first Rp... becomes the price. Each variant is
+         *     self-critiqued (clipped text, contrast, collisions) and
+         *     auto-fixed once; remaining issues ride along.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        prompt: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Variants (docs are not stored yet) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MockupGeneration"];
+                    };
+                };
+                /** @description Empty prompt */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mockups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the user's mockups, newest first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Mockup summaries */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MockupList"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Store a mockup doc, or build one from a template
+         * @description B7: either {"doc": <design doc>} or {"template": ..., "fields": {...}}.
+         *     The doc is validated (whitelisted components, no scripts) before
+         *     it is stored.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MockupCreate"];
+                };
+            };
+            responses: {
+                /** @description Stored doc */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MockupDoc"];
+                    };
+                };
+                /** @description Unknown template or invalid doc */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mockups/{mockup_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch one mockup doc */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    mockup_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Design doc */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MockupDoc"];
+                    };
+                };
+                /** @description Not found or not the user's */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Delete a mockup */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    mockup_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            deleted?: string;
+                        };
+                    };
+                };
+                /** @description Not found or not the user's */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mockups/{mockup_id}/ops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply one numbered op to a mockup
+         * @description B7: the drag-and-drop editor and the LLM patcher both write
+         *     ops here. The op is numbered, appended to the op log, and the
+         *     doc version bumps by one.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    mockup_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        op: components["schemas"]["MockupOp"];
+                    };
+                };
+            };
+            responses: {
+                /** @description Updated doc */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MockupDoc"];
+                    };
+                };
+                /** @description Invalid op */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mockups/{mockup_id}/patch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply a word-change instruction as ops
+         * @description B7: "besarkan harga, ganti warna jadi hijau" becomes ops on
+         *     the doc. Unparseable instructions are 400, never guessed.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    mockup_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        instruction: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Updated doc */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MockupDoc"];
+                    };
+                };
+                /** @description Instruction could not be parsed into ops */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mockups/{mockup_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo the last op */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    mockup_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Updated doc */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MockupDoc"];
+                    };
+                };
+                /** @description Nothing to undo */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mockups/{mockup_id}/redo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redo the last undone op */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    mockup_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Updated doc */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MockupDoc"];
+                    };
+                };
+                /** @description Nothing to redo */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mockups/{mockup_id}/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add an image asset (data URI only) to a mockup */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    mockup_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        asset_id: string;
+                        data_uri: string;
+                        name?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Updated doc */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MockupDoc"];
+                    };
+                };
+                /** @description Asset is not an image data URI */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mockups/{mockup_id}/critique": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Self-critique issues for a mockup */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    mockup_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Issues (empty means the mockup passes) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            issues?: components["schemas"]["MockupIssue"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mockups/{mockup_id}/render.svg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Deterministic SVG render */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    mockup_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description SVG */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "image/svg+xml": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mockups/{mockup_id}/render.html": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Safe HTML render (strict CSP header) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    mockup_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description HTML page */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mockups/{mockup_id}/export.png": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** PNG export (rendered output) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    mockup_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description PNG */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "image/png": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mockups/{mockup_id}/export.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** PDF export (rendered output) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    mockup_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description PDF */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/pdf": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/onboarding": {
         parameters: {
             query?: never;
@@ -4523,6 +5263,81 @@ export interface components {
             type?: string;
             created_at?: number;
             summary?: string;
+        };
+        MockupTemplates: {
+            templates?: {
+                id?: string;
+                fields?: string[];
+            }[];
+        };
+        MockupOp: {
+            seq?: number;
+            /** @enum {string} */
+            type?: "add_node" | "remove_node" | "move_node" | "set_text" | "set_style" | "set_image" | "reorder" | "set_theme" | "set_title";
+            node_id?: string;
+            parent_id?: string;
+            payload?: {
+                [key: string]: unknown;
+            };
+            note?: string;
+        };
+        /** @description Declarative design doc (see docs/mockup-editor.md). */
+        MockupDoc: {
+            id?: string;
+            title?: string;
+            /** @enum {string} */
+            template?: "hajatan_invitation" | "promo_banner" | "warung_menu" | "chat_catalog" | "lebaran_card";
+            frame?: {
+                width?: number;
+                height?: number;
+            };
+            theme?: {
+                [key: string]: unknown;
+            };
+            assets?: {
+                [key: string]: unknown;
+            };
+            nodes?: {
+                [key: string]: unknown;
+            }[];
+            version?: number;
+            ops?: components["schemas"]["MockupOp"][];
+            decisions?: {
+                seq?: number;
+                note?: string;
+            }[];
+        };
+        MockupIssue: {
+            /** @enum {string} */
+            kind?: "clipped_text" | "low_contrast" | "collision";
+            node_id?: string | null;
+            detail?: string;
+        };
+        MockupGeneration: {
+            template?: string;
+            fields?: {
+                [key: string]: string;
+            };
+            variants?: {
+                doc?: components["schemas"]["MockupDoc"];
+                issues?: components["schemas"]["MockupIssue"][];
+            }[];
+        };
+        MockupList: {
+            mockups?: {
+                id?: string;
+                title?: string;
+                template?: string;
+                updated_at?: string;
+            }[];
+        };
+        /** @description Either a full doc or a template + fields. */
+        MockupCreate: {
+            doc?: components["schemas"]["MockupDoc"];
+            template?: string;
+            fields?: {
+                [key: string]: string;
+            };
         };
     };
     responses: never;
