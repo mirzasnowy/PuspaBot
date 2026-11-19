@@ -33,6 +33,13 @@ Real stores, not stubs:
   are given. One level only (the pool enforces it). When
   neither is wired the tool returns a synthetic error result
   saying delegation is unavailable — never a fake subagent id.
+- ``check_before_buy`` -> the B1 beta slice
+  (:mod:`puspa.check_before_buy`): one forwarded product link,
+  seller chat, or account number answered from recorded data
+  only. Live price execution stays held under decision 15, so
+  the tool never fetches a live price; the outcome is written
+  through the existing evidence + ledger path when a DSN is
+  wired in, and never sends a message or moves money.
 
 An unknown tool name returns None: it is not intercepted, and
 the loop passes it to the registry as usual.
@@ -43,11 +50,11 @@ from __future__ import annotations
 __all__ = ["INTERCEPTED_TOOLS", "InterceptedTools"]
 
 #: Tool names the loop intercepts before the registry.
-INTERCEPTED_TOOLS = ("todo", "memory", "session_search", "delegate_task")
+INTERCEPTED_TOOLS = ("todo", "memory", "session_search", "delegate_task", "check_before_buy")
 
 
 class InterceptedTools:
-    """The four intercepted tools and the real stores behind them."""
+    """The five intercepted tools and the real stores behind them."""
 
     def __init__(
         self,
@@ -61,6 +68,8 @@ class InterceptedTools:
         subagent_pool=None,
         agent_token: dict | None = None,
         subagent_token: dict | None = None,
+        check_store=None,
+        check_dsn: str | None = None,
     ) -> None:
         self.user_id = user_id
         self.agent_id = agent_id
@@ -71,6 +80,8 @@ class InterceptedTools:
         self.subagent_pool = subagent_pool
         self.agent_token = agent_token
         self.subagent_token = subagent_token
+        self.check_store = check_store
+        self.check_dsn = check_dsn
 
     # -- entry point ---------------------------------------------------
 
@@ -80,7 +91,7 @@ class InterceptedTools:
         """Handle an intercepted tool call, or None when not intercepted.
 
         ``arguments`` must be a dict (the model call already parsed
-        it). Returns the synthetic result dict for the four
+        it). Returns the synthetic result dict for the five
         intercepted names; returns None for anything else so the
         loop passes it to the registry.
         """
@@ -93,6 +104,7 @@ class InterceptedTools:
             "memory": self._memory,
             "session_search": self._session_search,
             "delegate_task": self._delegate_task,
+            "check_before_buy": self._check_before_buy,
         }[name]
         try:
             return handler(arguments, task_id=task_id)
@@ -124,6 +136,27 @@ class InterceptedTools:
 
             self.memory_store = MemoryFactStore()
         return self.memory_store
+
+    def _check_before_buy(self, arguments: dict, *, task_id: str | None) -> dict:
+        """B1 slice: answer one forwarded check from recorded data only.
+
+        The store defaults to an empty recorded store (every lookup
+        answers cannot-verify) when none is wired in. The outcome is
+        written to evidence + ledger only when both a user and a DSN
+        are wired in; otherwise the answer is computed only.
+        """
+        from puspa.check_before_buy.records import RecordStore
+        from puspa.check_before_buy.wiring import handle_check_before_buy
+
+        result = handle_check_before_buy(
+            arguments,
+            store=self.check_store if self.check_store is not None else RecordStore(),
+            user_id=self.user_id,
+            agent_id=self.agent_id,
+            task_id=task_id,
+            dsn=self.check_dsn,
+        )
+        return self._ok("check_before_buy", result)
 
     # -- todo ----------------------------------------------------------
 

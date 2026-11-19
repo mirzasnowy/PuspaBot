@@ -182,7 +182,13 @@ def test_delegate_task_without_wiring_is_an_error_result():
 
 
 def test_intercepted_tools_never_reach_the_registry():
-    assert set(INTERCEPTED_TOOLS) == {"todo", "memory", "session_search", "delegate_task"}
+    assert set(INTERCEPTED_TOOLS) == {
+        "todo",
+        "memory",
+        "session_search",
+        "delegate_task",
+        "check_before_buy",
+    }
     registry_calls = []
 
     def registry(name, arguments):
