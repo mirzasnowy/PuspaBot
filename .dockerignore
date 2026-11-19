@@ -1,0 +1,23 @@
+# Build context for the Puspa deploy image (Dockerfile).
+#
+# The image builds everything it serves: the Python venv is built
+# in the builder stage and the React SPA in the Node (pwa) stage,
+# so the context must NOT carry prebuilt outputs or local caches.
+# In particular apps/pwa/dist is excluded on purpose: it is
+# gitignored and rebuilt by `npm run build` in the pwa stage, so
+# shipping a stale local dist would hide a broken Node build.
+# Likewise node_modules is excluded: the pwa stage reinstalls the
+# pinned dependencies with `npm ci` from package-lock.json.
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.git/
+nanobot/
+*.egg-info/
+backups/
+nightly-smoke/
+node_modules/
+dist/
