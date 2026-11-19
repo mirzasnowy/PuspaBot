@@ -92,26 +92,28 @@ after step 2 leaves a partial write: the minutes row is the
 anchor, and a retry re-parses the same transcript. A single
 cross-store transaction is a follow-up, not part of this ticket.
 
-## Outcome records (B2 stand-in — honest follow-up)
+## Outcome records (B2 — adopted)
 
-B2 (the general outcome-record path) is not built yet, so B10
-does not build it. Instead, each decision and action item is
-recorded through the existing ledger / evidence pattern, with
-no new event type (the closed set of 31 stays closed):
-
-- `evidence_recorded` per decision, content
-  `{"kind": "meeting_decision", "meeting_id", "room_id",
-  "decision"}`;
-- `task_created` per action item, content
-  `{"kind": "meeting_action_item", "meeting_id", "room_id",
-  "room_task_id", "title", "owner_user_id", "due_at"}`.
+B2 built the general outcome-record path
+(`puspa.evidence.outcomes`, see `docs/outcome-records.md`)
+and adopted these events: each decision is now a
+`decision_recorded` outcome record written through the shared
+writer, as an `evidence_recorded` event with content
+`{"kind": "outcome_record", "outcome_type":
+"decision_recorded", "user_id", "room_id", "subject_id":
+<meeting id>, "summary": <decision>, "evidence":
+[{"kind": "meeting_minutes", …}], "details":
+{"kind": "meeting_decision", "meeting_id", "room_id",
+"decision"}}` — the pre-B2 payload is preserved verbatim
+under `details`. The action item stays a plain `task_created`
+event, content `{"kind": "meeting_action_item", "meeting_id",
+"room_id", "room_task_id", "title", "owner_user_id",
+"due_at"}`: creating a task is not an outcome.
 
 The ledger `task_id` for these events is the meeting id, so the
-events for one meeting form their own verifiable chain. When B2
-lands, it adopts these events (same types, same content shape)
-as the meeting flavour of outcome records instead of replacing
-them; the follow-up is to point B2's writer at them and to add
-the per-user / per-group outcome query B2 promises.
+events for one meeting form their own verifiable chain. The
+records are queryable per user and per group through the B2
+query API.
 
 ## Reminders
 
@@ -156,6 +158,7 @@ no second scheduler is built:
 - No live chat delivery is verified anywhere in this ticket:
   the reminder job's delivery target is the caller's, and no
   Telegram / WhatsApp send is exercised (same limit as B6).
-- B2's general outcome-record path does not exist yet (see
-  above); the ledger events here are the stand-in it adopts.
+- B2's general outcome-record path exists now (see above):
+  decisions are outcome records; action items stay plain
+  `task_created` events.
 - `write_minutes` is not one cross-store transaction (see above).

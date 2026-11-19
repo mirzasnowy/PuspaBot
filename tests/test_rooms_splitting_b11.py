@@ -478,10 +478,17 @@ def test_settlement_preparation_is_ledger_recorded(splits, trio, test_dsn):
     events = ledger.events(split.id, event_type="evidence_recorded")
     assert len(events) == 1
     content = events[0]["content"]
-    assert content["kind"] == "split_settlement_prepared"
-    assert content["executed"] is False
-    assert content["amount_cents"] == rupiah_to_cents(100_000)
-    assert content["recipient_user_id"] == trio["owner"]
+    # B2: the preparation is a payment_prepared outcome
+    # record; the pre-B2 payload is preserved under details.
+    assert content["kind"] == "outcome_record"
+    assert content["outcome_type"] == "payment_prepared"
+    assert content["receipts"][0]["kind"] == "split_settlement"
+    assert content["receipts"][0]["amount_cents"] == rupiah_to_cents(100_000)
+    details = content["details"]
+    assert details["kind"] == "split_settlement_prepared"
+    assert details["executed"] is False
+    assert details["amount_cents"] == rupiah_to_cents(100_000)
+    assert details["recipient_user_id"] == trio["owner"]
     with pytest.raises(SplitError):  # ledger without an agent id
         splits.prepare_settlement(
             split.id, trio["third"], requested_by=trio["owner"], ledger=ledger

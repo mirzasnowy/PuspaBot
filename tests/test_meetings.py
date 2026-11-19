@@ -220,12 +220,21 @@ def test_write_minutes_records_ledger_events(
         agent_id=owner["agent_id"],
     )
     events = ledger.events(record.id)
-    kinds = [(event["type"], event["content"]["kind"]) for event in events]
-    assert kinds == [
-        ("evidence_recorded", "meeting_decision"),
-        ("task_created", "meeting_action_item"),
-    ]
-    assert events[0]["content"]["decision"] == "buy from seller A."
+    # B2: the decision is an outcome record now; the
+    # pre-B2 payload is preserved verbatim under details.
+    # The action item stays a plain task_created event.
+    assert events[0]["type"] == "evidence_recorded"
+    assert events[0]["content"]["kind"] == "outcome_record"
+    assert events[0]["content"]["outcome_type"] == "decision_recorded"
+    assert events[0]["content"]["summary"] == "buy from seller A."
+    assert events[0]["content"]["details"] == {
+        "kind": "meeting_decision",
+        "meeting_id": record.id,
+        "room_id": room.id,
+        "decision": "buy from seller A.",
+    }
+    assert events[1]["type"] == "task_created"
+    assert events[1]["content"]["kind"] == "meeting_action_item"
     assert events[1]["content"]["room_task_id"] == record.action_items[0]["task_id"]
     assert events[1]["content"]["owner_user_id"] == budi["user_id"]
     ok, broken = ledger.verify_chain(record.id)

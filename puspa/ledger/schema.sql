@@ -33,6 +33,15 @@ CREATE INDEX IF NOT EXISTS idx_event_task_id_id ON events (task_id, id);
 CREATE INDEX IF NOT EXISTS idx_event_jenis ON events (type);
 CREATE INDEX IF NOT EXISTS idx_event_time ON events (created_at);
 
+-- B2 outcome records (docs/outcome-records.md): the per-user
+-- and per-group outcome queries filter on the content marker
+-- plus user_id / room_id, so those lookups are indexed, not
+-- full scans.
+CREATE INDEX IF NOT EXISTS idx_events_outcome_user
+    ON events ((content->>'kind'), (content->>'user_id'));
+CREATE INDEX IF NOT EXISTS idx_events_outcome_room
+    ON events ((content->>'kind'), (content->>'room_id'));
+
 -- Migrasi CHECK jenis: CREATE TABLE IF NOT EXISTS di atas tidak mengubah
 -- constraint tabel yang sudah ada (mis. dibuat saat himpunan masih 22 jenis),
 -- jadi constraint lama diganti dengan daftar 31 jenis revisi 7 di sini.
