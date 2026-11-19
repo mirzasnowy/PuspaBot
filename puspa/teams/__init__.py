@@ -25,6 +25,11 @@ verbatim):
   files (``Dockerfile`` + ``docker-compose.yml``). Docker cannot
   run on this VM, so the validator parses the files instead of
   building them; a live deploy check on a VPS is still required.
+- ``vps`` — VPS validation + health checks (E-02): Postgres
+  tables + RLS, dashboard HTTP probe, Docker precondition, offline
+  deploy-file validation, allowlist probe judging. The live steps
+  (compose up, sandbox tests in a container, restore on a real
+  VPS) wait for a VPS; see ``docs/vps-validation.md``.
 - ``schema`` — applies ``infra/schema_teams.sql``.
 
 Google login (``puspa.auth``) stays in front; the G11 hosting auth
@@ -105,19 +110,37 @@ from .visibility import (
     can_see_thread,
     require_thread_visible,
 )
+from .vps import (
+    DEFAULT_DASHBOARD_URL,
+    EXPECTED_TABLES,
+    RLS_TABLES,
+    CheckResult,
+    all_passed,
+    check_docker_available,
+    check_http,
+    check_postgres,
+    classify_allowlist_probe,
+    format_report,
+    run_health_checks,
+    validate_deploy_files,
+)
 
 __all__ = [
+    "DEFAULT_DASHBOARD_URL",
     "ENTITLEMENT_VERSION",
+    "EXPECTED_TABLES",
     "FROZEN_STATUSES",
     "INVITATION_TTL_DAYS",
     "KNOWN_TIERS",
     "MOVE_STATUSES",
+    "RLS_TABLES",
     "ROLE_MEMBER",
     "ROLE_OWNER",
     "BotAccessError",
     "BotAccessGate",
     "BotAccessRequest",
     "BotRef",
+    "CheckResult",
     "DockerfileInfo",
     "DockerfileStage",
     "Entitlement",
@@ -144,11 +167,17 @@ __all__ = [
     "ThreadRef",
     "accept_invitation",
     "add_member",
+    "all_passed",
     "can_access_bot",
     "can_see_thread",
+    "check_docker_available",
+    "check_http",
+    "check_postgres",
+    "classify_allowlist_probe",
     "create_schema",
     "create_team",
     "delete_team",
+    "format_report",
     "get_invitation",
     "get_team",
     "is_member",
@@ -168,9 +197,11 @@ __all__ = [
     "revoke_entitlement",
     "revoke_invitation",
     "role_of",
+    "run_health_checks",
     "schema_path",
     "set_role",
     "validate_compose",
+    "validate_deploy_files",
     "validate_dockerfile",
     "verify_entitlement",
 ]
