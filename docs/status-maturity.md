@@ -666,3 +666,46 @@ the /tmp/head snapshot is incomplete (missing
 test_file_size_ratchet.py, docs/status-maturity.md) — verify
 file-vs-HEAD via the GitHub contents API + git hash-object,
 not /tmp/head alone.
+
+## Wave 34 — B3 + B4 (2 workers parallel, pipeline rule, 19 Nov 2026)
+
+B3 shared anti-fraud and price graphs (commit 2befcd89)
+and B4 trust and proof surface (commit c0039687). B3: new
+puspa/graphs/shared.py (shared anti-fraud + price graphs,
+per-user privacy via per-(user,subject) pseudonym hash,
+shared reads return aggregates only, private records in an
+own table namespaced by user_id); infra/schema_graphs.sql
+gains 3 shared tables + RLS on the private table; wired
+into B1's answer (shared fair-price fallback only when the
+local store has nothing; shared flag reason never shown,
+only the aggregate count); docs/shared-graphs.md. B4: new
+puspa/evidence/proof.py (Receipt for ledger events,
+attach_proof, audit-trail export reusing the K12 shape;
+reads over the one hash chain, no second ledger) +
+puspa/pwa/proof_api.py (/proof page + API) +
+apps/pwa/templates/proof.html; wired into B1's outcome
+(proof block on every answer); docs/proof-surface.md.
+
+Central suite Wave 34, first run: 1 failed, 3,785 passed,
+23 skipped, SUITE_EXIT 1 (30m00s). The single failure was
+a merge miss by the coordinator, not a code bug: the B4
+file list taken from the worker's report omitted
+apps/pwa/templates/proof.html (21 lines), so
+test_proof_page_renders_receipts failed with
+TemplateNotFound. Lesson recorded in the pipeline doc:
+never trust a reported file list for a merge — verify with
+diff -rq worktree-vs-build over puspa/, tests/, docs/,
+infra/, apps/ before copying, and diff again after. Fix:
+copied the template, re-ran the B4 tests in build/
+(56 passed). B3's own lines had contained Indonesian
+(docstrings in graphs/__init__.py, comment block in
+schema_graphs.sql) — translated to English before merge.
+Pre-existing Indonesian identifiers in schema_graphs.sql
+(tautan_id, sumber, vonis, prosedur_id, versi, jalan_pada,
+sisa, dicatat, pasal, keputusan; idx_tautan_* etc.) are
+NOT touched here — renaming DB columns needs a migration,
+its own ticket.
+
+Central suite Wave 34 re-run: 3,786 passed, 23 skipped, 1
+warning, EXIT 0, 29m58s (3,736 + 23 B3 + 27 B4, exact).
+Both items pushed: B3 2befcd89, B4 c0039687.
