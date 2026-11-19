@@ -931,3 +931,76 @@ reinstalled postgresql-16 + pgvector 0.6.0, started the
 cluster, recreated role root + DBs puspa_test /
 puspa_test_w1 / puspa_test_w2, applied `schema_core.sql` to
 all three, verified RLS.
+## Wave 31 — B11 + B12 (2 workers parallel, pipeline rule, 19 Nov 2026)
+
+B11 patungan / shared splitting (`puspa/rooms/splitting.py`,
+exactly 1,000 lines; `infra/schema_rooms.sql` gains
+`room_splits`, `split_shares`, `split_payments`,
+`split_settlements` + RLS). Money is integer sen only
+(1 rupiah = 100 sen); equal / custom / weighted shares with
+exact sums (leftover sen to earliest participants, payer's own
+share settled at creation); partial payments, overpayment
+refused, never creates credit; reminders are queries only
+(debtors only, G8 12h hook, Asia/Jakarta); settlement is a
+B8 prepare-only seam through the B6 MoneyGate (owner alone,
+or requester + one other owner/member), `prepared` row with
+verified recipient = payer, no `execute_settlement` (a test
+asserts it does not exist), optional ledger `evidence_recorded`
+with `executed: false`. PWA API: GET/POST splits, POST
+payments, POST settlements prepare (403 until the money gate
+approves). Module tests: 27 passed (21 splitting + 6 PWA API,
+verified by coordinator in build/). Honest limits: no live
+chat delivery verified; no `@puspa patungan` chat command yet;
+no payment rail named on a prepared settlement (B8's job);
+no PWA screen yet (API only); a split creates no B9 room tasks
+for its debtors.
+
+B12 group research and shopping (`puspa/rooms/research.py`;
+`infra/schema_rooms.sql` gains `room_research_links` + RLS).
+The room collects product links; `@puspa compare` renders one
+group comparison (price + seller per item, each with its
+`evidence_id` and verifier verdict) without calling the agent;
+cheapest is computed over Verified prices only; unreadable
+links are listed unchecked with their reason, never guessed;
+seller reported only when the reader reports one
+(`ResultRead.seller`, JSON-LD `offers.seller`). Agreement is
+explicit (every agreer must be a room member); the decision
+lands as room-memory kind `decision` (same as B10) so B3 can
+adopt it later. ToS gate (K-15): in `live` mode all three
+marketplaces are held, the reader is never called. Module
+tests: 18 passed (verified by coordinator in build/). Honest
+limits: no live marketplace read verified (live mode held
+behind K-15); no B1-style reliability downgrade (group links
+carry no category); no live Telegram/WhatsApp delivery
+verified; WhatsApp groups stay postponed.
+
+Merge notes (coordinator): both workers changed the same
+three files (`puspa/rooms/__init__.py`,
+`puspa/rooms/schema.py`, `infra/schema_rooms.sql`).
+Resolved with `git merge-file` (3-way, base = build/).
+Lesson: sorted-union resolution is right for sorted Python
+lists but DESTROYS SQL — the first attempt scrambled the
+CREATE TABLE statements (column lines sorted alphabetically);
+redone with concatenation, validated by applying the merged
+file to a scratch database (all 12 room/split tables created,
+exit 0). Coordinator fixes during merge: (1) B11's
+`split_reminder_lines` was listed in `__all__` but missing
+from the `from .splitting import` block — added (the worker's
+ruff run passed only because the project config does not
+flag it; the name genuinely was not importable from the
+package); (2) B11 added the Split paths/schemas to
+`docs/openapi-rooms.yaml` but not the $ref stubs in
+`docs/openapi-pwa.yaml`, so the generated client had no Split
+types — stubs added for the 3 paths + 3 schemas, client
+regenerated (openapi-typescript 7.13.0, Split types present),
+`tsc -b` clean.
+
+Central suite after Wave 31: 3,647 passed, 23 skipped, 1
+warning, EXIT 1 on first run — the single failure was the
+file-size ratchet (`docs/openapi-pwa.yaml` 1,739 lines vs its
+1,727 baseline: the 12 B11 $ref stub lines). Fixed by
+re-recording the baseline at 1,739 with the reason in
+`tests/test_file_size_ratchet.py` (Wave 30 precedent); the
+ratchet test re-run green alone (3 passed). No other test
+failed; the only change since the full run is the baseline
+number in that one test.

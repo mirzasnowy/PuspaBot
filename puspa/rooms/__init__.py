@@ -32,6 +32,10 @@ Public surface:
 - :class:`RoomChannelLinker` / :func:`handle_group_inbound` —
   routing a linked Telegram/WhatsApp group chat to its room, with
   the room as principal; only @Puspa messages are answered.
+- :class:`ResearchService` — group research and shopping (B12):
+  the room collects product links, the agent compares price and
+  seller for all of them with evidence per item, and the group
+  decision is recorded with who agreed.
 
 Reuse (mechanisms taken, rewritten as Puspa code, never copied
 verbatim):
@@ -124,6 +128,24 @@ from .money import (
     is_money_approved,
     list_money_approvals,
 )
+from .research import (
+    COMPARE_COMMANDS,
+    MAX_LABEL_CHARS,
+    GroupComparison,
+    ResearchItem,
+    ResearchLink,
+    ResearchService,
+    add_research_link,
+    answer_compare_command,
+    compare_group_links,
+    detect_source,
+    extract_product_links,
+    is_compare_command,
+    list_research_links,
+    record_group_decision,
+    remove_research_link,
+    render_group_comparison,
+)
 from .rooms import (
     MAX_ROOM_SIZE,
     ROLE_GUEST,
@@ -204,11 +226,13 @@ from .tasks import (
 
 __all__ = [
     "CODE_TTL_HOURS",
+    "COMPARE_COMMANDS",
     "DEFAULT_REMINDER_SCHEDULE",
     "DEFAULT_REMINDER_TIMEZONE",
     "DELEGATION_STATUSES",
     "INVITE_LINK_TTL_DAYS",
     "JOIN_LINK_BASE",
+    "MAX_LABEL_CHARS",
     "MAX_MEMORY_CONTENT_CHARS",
     "MAX_ROOM_SIZE",
     "MAX_TASK_TITLE_CHARS",
@@ -226,6 +250,7 @@ __all__ = [
     "DelegatedStep",
     "DelegatedTask",
     "DelegationService",
+    "GroupComparison",
     "InviteError",
     "LastOwnerError",
     "MoneyApprovalError",
@@ -234,6 +259,9 @@ __all__ = [
     "NotRoomOwnerError",
     "Payment",
     "PreparedSettlement",
+    "ResearchItem",
+    "ResearchLink",
+    "ResearchService",
     "Room",
     "RoomChannelLink",
     "RoomChannelLinker",
@@ -255,13 +283,16 @@ __all__ = [
     "accept_invite",
     "accept_invite_code",
     "add_member",
+    "add_research_link",
     "add_task",
+    "answer_compare_command",
     "approve_money_action",
     "approve_step",
     "board",
     "build_reminder_digest",
     "cents_to_rupiah",
     "classify_task_due",
+    "compare_group_links",
     "complete_delegated_task",
     "complete_task",
     "create_room",
@@ -271,9 +302,11 @@ __all__ = [
     "delegate_to_teammate",
     "delete_memory",
     "delete_room",
+    "detect_source",
     "due_soon",
     "equal_shares",
     "execute_step",
+    "extract_product_links",
     "format_rupiah",
     "get_invite",
     "get_room",
@@ -281,6 +314,7 @@ __all__ = [
     "handle_group_inbound",
     "is_addressed_to_puspa",
     "is_board_command",
+    "is_compare_command",
     "is_member",
     "is_money_approved",
     "is_owner",
@@ -292,6 +326,7 @@ __all__ = [
     "list_invites",
     "list_members",
     "list_money_approvals",
+    "list_research_links",
     "list_room_memory",
     "list_rooms_for_user",
     "list_settlements",
@@ -303,6 +338,7 @@ __all__ = [
     "propose_step",
     "purge_expired",
     "record_decision",
+    "record_group_decision",
     "record_memory",
     "record_payment",
     "record_summary",
@@ -311,7 +347,9 @@ __all__ = [
     "reminder_job_prompt",
     "reminder_lines",
     "remove_member",
+    "remove_research_link",
     "render_board",
+    "render_group_comparison",
     "render_split",
     "report_progress",
     "reset_tables",
