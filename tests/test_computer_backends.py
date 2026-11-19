@@ -6,8 +6,9 @@ others, not by having its own bespoke tests. Backends that
 cannot run on this host skip with a clear reason instead of
 failing or faking — Docker containers cannot start on this VM
 (the kernel rejects the ``setns`` syscall), so the Docker
-variant skips here and its first live check is on a Docker
-host or VPS, after the MVP.
+variant skips here and its first live check is the CI sandbox
+lane (.github/workflows/ci.yml), which builds the sandbox image
+and runs the Docker variant on every PR.
 
 These tests use no Puspa database tables themselves (temp dirs
 and subprocesses only). Note: the shared ``tests/conftest.py``
@@ -31,7 +32,7 @@ from puspa.harness.sandbox_profiles import ProfileDenied
 
 DOCKER_SKIP_REASON = (
     "docker backend unavailable on this host: containers cannot run here "
-    "(kernel rejects setns); first live check is on a Docker host/VPS"
+    "(kernel rejects setns); first live check is the CI sandbox lane"
 )
 
 
@@ -123,6 +124,11 @@ def test_sync_write_read_roundtrip(backend, tmp_path):
 
 
 def test_sync_write_outside_scope_is_refused(backend):
+    # The docker backend refuses every sync write (no persistent
+    # filesystem), so scope enforcement does not apply to it; the
+    # refusal itself is covered by test_docker_backend_sync_refuses.
+    if backend.name == "docker":
+        pytest.skip("docker backend has no persistent filesystem")
     with pytest.raises(ProfileDenied):
         backend.sync.write("../escape.txt", "nope\n")
 
@@ -146,10 +152,17 @@ def test_scope_root_is_the_workdir(backend, tmp_path):
 # --- docker: honest unavailability on this host ------------------------------
 
 
-def test_docker_backend_reports_unavailable_on_this_host(tmp_path):
-    """Docker raises a clear, honest error — it never fakes a run."""
+def test_docker_backend_unavailable_when_daemon_dead(monkeypatch, tmp_path):
+    """Docker down: a clear, honest error — it never fakes a run.
+
+    The daemon is pointed at a dead endpoint, so this holds on any
+    host (dev VM and CI alike) and does not depend on the host's own
+    Docker state. On a host where Docker works, the live Docker
+    variant of the conformance tests above is the coverage.
+    """
     from puspa.computer import DockerBackend
 
+    monkeypatch.setenv("DOCKER_HOST", "tcp://127.0.0.1:9")
     backend = DockerBackend(workdir=tmp_path / "docker")
     assert backend.check_available() is False
     with pytest.raises(BackendUnavailable) as excinfo:

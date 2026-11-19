@@ -13,8 +13,9 @@ returns False, and every run raises
 :class:`puspa.computer.errors.BackendUnavailable` with a message
 that says so. That is the correct fail-closed behaviour, not a
 bug, and this module never fakes a passing Docker backend to
-make a test green. The first live check is on a Docker host or
-VPS, after the MVP (see ``docs/computer-use.md``).
+make a test green. The first live check is the CI sandbox lane
+(.github/workflows/ci.yml), which builds the sandbox image and
+runs the Docker conformance tests on every PR.
 
 Because the sandbox only runs Python code (``python -`` on
 stdin), :meth:`DockerBackend.run_command` is implemented by
@@ -42,9 +43,10 @@ from .sync import FileSync, NoFileSync
 __all__ = ["DockerBackend"]
 
 _UNAVAILABLE_HINT = (
-    "Docker containers cannot run on this host "
-    "(the kernel rejects the setns syscall, so no container can start); "
-    "first live check is on a Docker host or VPS, after the MVP. "
+    "Docker containers cannot run on this host right now "
+    "(no working Docker daemon, or the sandbox image is missing); "
+    "first live check is the CI sandbox lane on a Docker host "
+    "(.github/workflows/ci.yml). "
     "No code was executed anywhere (fail-closed, no host fallback)."
 )
 

@@ -77,19 +77,43 @@ def test_playwright_reader_available_or_honestly_unavailable():
     assert result.reason == "domain_not_diizinkan"
 
 
+def _chromium_executable():
+    """Path to a real Chromium binary, or None when there is none.
+
+    Prefers PUSPA_CHROMIUM_EXECUTABLE (Chrome for Testing on the
+    dev VM); otherwise asks Playwright for its managed Chromium
+    (`playwright install chromium` on the CI sandbox lane). A
+    missing browser is still a skip, never a fake read.
+    """
+    import os
+
+    executable = os.environ.get("PUSPA_CHROMIUM_EXECUTABLE")
+    if executable and os.path.exists(executable):
+        return executable
+    try:
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as p:
+            path = p.chromium.executable_path
+        if path and os.path.exists(path):
+            return path
+    except Exception:
+        return None
+    return None
+
+
 def test_playwright_reader_reads_test_site_when_browser_exists(monkeypatch):
     """Browser read-only sungguhan, ujung-ke-ujung lewat reader: bila
     env PUSPA_CHROMIUM_EXECUTABLE menunjuk ke binary Chrome for
-    Testing, PlaywrightReader membaca halaman situs uji lokal dan
+    Testing, atau Playwright membawa Chromium-nya sendiri,
+    PlaywrightReader membaca halaman situs uji lokal dan
     mengekstrak angkanya. Tanpa binary, tes di-skip (bukan gagal).
     Allowlist di-patch di tes ini saja (guard allowlist-nya sendiri
     teruji terpisah di atas) supaya reader bisa membuka situs uji
     localhost."""
-    import os
-
-    executable = os.environ.get("PUSPA_CHROMIUM_EXECUTABLE")
-    if not executable or not os.path.exists(executable):
-        pytest.skip("browser Chromium belum tersedia di host ini")
+    executable = _chromium_executable()
+    if not executable:
+        pytest.skip("no Chromium browser available on this host")
     from puspa.billing.fixture import SiteFixture
     from puspa.pricing import readers as readers_mod
 
