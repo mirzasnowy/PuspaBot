@@ -1693,6 +1693,326 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/rooms/{room_id}/splits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the shared splits of one room
+         * @description B11: every split of the room with each participant's
+         *     share, paid, and remaining amounts (integer sen). Only
+         *     a room member may read the splits.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    room_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The room's splits */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            splits: components["schemas"]["Split"][];
+                        };
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not a room member */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown room */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Create a shared split in one room
+         * @description B11: split a bill among room members. Amounts are
+         *     integer sen (1 rupiah = 100 sen). Shares default to
+         *     equal; give `shares` (user id -> sen, summing to the
+         *     total) or `weights` (one per participant) instead.
+         *     The payer's own share is settled at creation.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    room_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        title: string;
+                        /** @description Total bill in integer sen. */
+                        total_cents: number;
+                        /** Format: uuid */
+                        payer_user_id: string;
+                        participant_user_ids: string[];
+                        /**
+                         * @default other
+                         * @enum {string}
+                         */
+                        kind?: "meal" | "gift" | "arisan" | "other";
+                        shares?: {
+                            [key: string]: number;
+                        };
+                        weights?: number[];
+                        /** Format: date-time */
+                        due_at?: string | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description The created split */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Split"];
+                    };
+                };
+                /** @description Bad input (shares do not sum to the total, guest participant, or a non-integer amount) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not a room member, or a guest may not create a split */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rooms/{room_id}/splits/{split_id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a (partial) payment on a split
+         * @description B11: record that a debtor paid part (or all) of what
+         *     they still owe. The amount must be positive and no
+         *     larger than the remaining balance; overpaying is a
+         *     400, never credit.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    room_id: string;
+                    split_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        debtor_user_id: string;
+                        amount_cents: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description The recorded payment plus the updated split */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            split_id: string;
+                            /** Format: uuid */
+                            debtor_user_id: string;
+                            amount_cents: number;
+                            /** Format: uuid */
+                            recorded_by: string;
+                            /** Format: date-time */
+                            created_at: string;
+                            split: components["schemas"]["Split"];
+                        };
+                    };
+                };
+                /** @description Overpayment, or a bad amount or debtor */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not a room member */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rooms/{room_id}/splits/{split_id}/settlements/{debtor_user_id}/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare (never execute) a debtor's settlement
+         * @description B11 / B8 phase-1 seam: prepare a settlement payment
+         *     (verified recipient = the payer, amount = what the
+         *     debtor still owes, evidence = the split and its
+         *     payments). The preparation is gated by the B6 money
+         *     gate: the room owner passes alone, anyone else needs
+         *     their own approval plus one other owner/member. The
+         *     user pays in their own bank/e-wallet app; nothing
+         *     executes here (`executed` is always false).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    room_id: string;
+                    split_id: string;
+                    debtor_user_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The prepared settlement */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreparedSettlement"];
+                    };
+                };
+                /** @description Nothing left to settle, or the payer was given as debtor */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The money gate has not approved this settlement */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/onboarding": {
         parameters: {
             query?: never;
@@ -2571,6 +2891,78 @@ export interface components {
             task_id: string;
             /** @enum {string} */
             status: "proposed" | "awaiting_approval" | "approved" | "rejected" | "executed";
+        };
+        /**
+         * @description B11: one participant's share of a split: what they owe,
+         *     what they paid, and what remains (all integer sen).
+         */
+        SplitShare: {
+            /** Format: uuid */
+            user_id: string;
+            share_cents: number;
+            paid_cents: number;
+            remaining_cents: number;
+            is_paid: boolean;
+        };
+        /**
+         * @description B11: one shared bill split among room members. The
+         *     payer fronted the total; their own share is settled at
+         *     creation. Status moves open -> partially_paid ->
+         *     settled as debtors pay.
+         */
+        Split: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            room_id: string;
+            title: string;
+            /** @enum {string} */
+            kind: "meal" | "gift" | "arisan" | "other";
+            /** @description Total bill in integer sen (1 rupiah = 100 sen). */
+            total_cents: number;
+            /** Format: uuid */
+            payer_user_id: string;
+            /** Format: uuid */
+            created_by: string;
+            /** Format: date-time */
+            due_at: string | null;
+            /** @enum {string} */
+            status: "open" | "partially_paid" | "settled";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            settled_at: string | null;
+            shares: components["schemas"]["SplitShare"][];
+        };
+        /**
+         * @description B11 / B8 phase-1 seam: a prepared settlement payment.
+         *     The user pays it in their own bank/e-wallet app;
+         *     nothing executes here (`executed` is always false).
+         */
+        PreparedSettlement: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            split_id: string;
+            /** Format: uuid */
+            debtor_user_id: string;
+            /**
+             * Format: uuid
+             * @description The payer of the split.
+             */
+            recipient_user_id: string;
+            /** @description What the debtor still owes, in integer sen. */
+            amount_cents: number;
+            /** @description The B6 money-gate action id that approved this preparation. */
+            action_id: string;
+            /** @enum {string} */
+            status: "prepared" | "superseded";
+            /** Format: uuid */
+            prepared_by: string;
+            /** Format: date-time */
+            prepared_at: string;
+            /** @description Always false — a prepared settlement never executes. */
+            executed: boolean;
         };
         /**
          * @description The user's own-model selection (G33). Carries no key

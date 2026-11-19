@@ -11,6 +11,7 @@ __all__ = [
     "RoomError",
     "RoomFullError",
     "RoomNotFoundError",
+    "SplitError",
 ]
 
 
@@ -44,3 +45,8 @@ class InviteError(RoomError):
 
 class MoneyApprovalError(RoomError):
     """A money action was attempted without the required approval."""
+
+
+class SplitError(RoomError):
+    """A split is invalid: bad shares, bad amount, or a payment that
+    does not fit what a debtor still owes."""

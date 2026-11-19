@@ -2,7 +2,8 @@
 --
 -- Tables: rooms, room_members, room_invites, room_memories,
 -- room_tasks, room_money_approvals, room_channel_links,
--- delegated_tasks, delegated_task_steps.
+-- delegated_tasks, delegated_task_steps, room_splits,
+-- split_shares, split_payments, split_settlements.
 --
 -- B9 adds the last two: a delegation row per room task handed
 -- to the agent or to a teammate (puspa/rooms/delegation.py), and
@@ -10,6 +11,19 @@
 -- irreversible may only run after approval through the G4/G5
 -- approval path; the step row is what records that decision, so
 -- the gate is never bypassed by a caller that forgets to ask.
+--
+-- B11 adds the last four: a split row per shared bill
+-- (puspa/rooms/splitting.py), one share row per participant
+-- (integer sen, never floats; ``position`` is the creation
+-- order, which decides who gets leftover sen on an equal
+-- split), one append-only row per recorded (partial) payment,
+-- and one row per prepared settlement. A settlement is
+-- prepare-only (B8 phase 1 seam): status ``prepared`` means
+-- the recipient + amount + evidence are verified and recorded;
+-- nothing ever executes from this table, and ``superseded``
+-- marks a preparation replaced by a newer one for the same
+-- debtor. There is no balance, no wallet, and no executed
+-- status anywhere in this schema.
 --
 -- Run AFTER infra/schema_core.sql (the users table must exist
 -- first), as a Postgres superuser, from the build/ directory:
@@ -83,6 +97,11 @@
 --     follows the same rule).
 --   - delegated_task_steps: visible / created / updated only by
 --     a member of the room the task belongs to.
+--   - room_splits / split_shares / split_payments /
+--     split_settlements: visible / created / updated only by a
+--     member of the room the split belongs to (the payer's
+--     identity and every debtor's balance are group-visible;
+--     a guest may read them, like the rest of the room).
 --
 -- No password anywhere in this file: auth is peer auth (local
 -- socket, OS user = Postgres role). Do not add a password here.
@@ -213,6 +232,73 @@ CREATE TABLE IF NOT EXISTS delegated_task_steps (
 CREATE INDEX IF NOT EXISTS idx_delegated_task_steps_task_id ON delegated_task_steps(task_id);
 CREATE INDEX IF NOT EXISTS idx_delegated_task_steps_status ON delegated_task_steps(status);
 
+-- Shared splits (B11): one row per shared bill or purchase.
+-- Money is integer sen (1 rupiah = 100 sen); the CHECKs keep
+-- it that way at the database layer too. ``status`` is
+-- maintained by puspa/rooms/splitting.py: open -> partially_paid
+-- -> settled (with settled_at) once every share is fully paid.
+CREATE TABLE IF NOT EXISTS room_splits (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    room_id        UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+    title          TEXT NOT NULL,
+    kind           TEXT NOT NULL CHECK (kind IN ('meal', 'gift', 'arisan', 'other')),
+    total_cents    BIGINT NOT NULL CHECK (total_cents > 0),
+    payer_user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_by     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    due_at         TIMESTAMPTZ,
+    status         TEXT NOT NULL DEFAULT 'open'
+                   CHECK (status IN ('open', 'partially_paid', 'settled')),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    settled_at     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_room_splits_room_id ON room_splits(room_id);
+
+-- One share per participant. ``position`` is the creation order
+-- (it decides who gets leftover sen on an equal split).
+-- ``paid_cents`` never exceeds ``share_cents``: overpaying is
+-- refused in Python and impossible here too.
+CREATE TABLE IF NOT EXISTS split_shares (
+    split_id     UUID NOT NULL REFERENCES room_splits(id) ON DELETE CASCADE,
+    user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    share_cents  BIGINT NOT NULL CHECK (share_cents > 0),
+    paid_cents   BIGINT NOT NULL DEFAULT 0 CHECK (paid_cents >= 0),
+    position     INT NOT NULL DEFAULT 0,
+    CHECK (paid_cents <= share_cents),
+    PRIMARY KEY (split_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_split_shares_split_id ON split_shares(split_id);
+
+-- Recorded (partial) payments: append-only, one row per payment.
+-- Nothing here moves money; it records that the debtor paid the
+-- payer (in their own bank/e-wallet app, or in cash) and how much.
+CREATE TABLE IF NOT EXISTS split_payments (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    split_id        UUID NOT NULL REFERENCES room_splits(id) ON DELETE CASCADE,
+    debtor_user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    amount_cents    BIGINT NOT NULL CHECK (amount_cents > 0),
+    recorded_by     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_split_payments_split_id ON split_payments(split_id);
+
+-- Prepared settlements (B8 phase-1 seam): a prepared payment the
+-- user pays in their own bank/e-wallet app. ``status`` is only
+-- ever ``prepared`` or ``superseded`` — there is no executed
+-- status, because nothing here executes a payment.
+CREATE TABLE IF NOT EXISTS split_settlements (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    split_id          UUID NOT NULL REFERENCES room_splits(id) ON DELETE CASCADE,
+    debtor_user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recipient_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    amount_cents      BIGINT NOT NULL CHECK (amount_cents > 0),
+    action_id         TEXT NOT NULL,
+    status            TEXT NOT NULL DEFAULT 'prepared'
+                      CHECK (status IN ('prepared', 'superseded')),
+    prepared_by       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    prepared_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_split_settlements_split_id ON split_settlements(split_id);
+
 -- Application-role grants (same shape as infra/schema_teams.sql):
 -- puspa_app may read/write all seven tables; isolation between
 -- users is enforced by the RLS policies below, not by revoking
@@ -231,6 +317,10 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON room_channel_links TO puspa_app;
         GRANT SELECT, INSERT, UPDATE, DELETE ON delegated_tasks TO puspa_app;
         GRANT SELECT, INSERT, UPDATE, DELETE ON delegated_task_steps TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON room_splits TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON split_shares TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON split_payments TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON split_settlements TO puspa_app;
     END IF;
 END $$;
 
@@ -263,6 +353,10 @@ ALTER TABLE room_money_approvals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE room_channel_links ENABLE ROW LEVEL SECURITY;
 ALTER TABLE delegated_tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE delegated_task_steps ENABLE ROW LEVEL SECURITY;
+ALTER TABLE room_splits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE split_shares ENABLE ROW LEVEL SECURITY;
+ALTER TABLE split_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE split_settlements ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS rooms_select ON rooms;
 CREATE POLICY rooms_select ON rooms FOR SELECT TO puspa_app
@@ -408,5 +502,106 @@ CREATE POLICY delegated_task_steps_delete ON delegated_task_steps FOR DELETE TO 
             SELECT 1 FROM room_tasks t
             WHERE t.id = delegated_task_steps.task_id
             AND is_room_member(t.room_id, current_setting('app.current_user_id', TRUE)::UUID)
+        )
+    );
+
+-- Shared splits (B11): visible / created / updated only by a
+-- member of the room the split belongs to. The share and
+-- payment rows follow their split; the settlement rows follow
+-- theirs.
+DROP POLICY IF EXISTS room_splits_select ON room_splits;
+CREATE POLICY room_splits_select ON room_splits FOR SELECT TO puspa_app
+    USING (is_room_member(room_id, current_setting('app.current_user_id', TRUE)::UUID));
+DROP POLICY IF EXISTS room_splits_insert ON room_splits;
+CREATE POLICY room_splits_insert ON room_splits FOR INSERT TO puspa_app
+    WITH CHECK (is_room_member(room_id, current_setting('app.current_user_id', TRUE)::UUID));
+DROP POLICY IF EXISTS room_splits_update ON room_splits;
+CREATE POLICY room_splits_update ON room_splits FOR UPDATE TO puspa_app
+    USING (is_room_member(room_id, current_setting('app.current_user_id', TRUE)::UUID));
+DROP POLICY IF EXISTS room_splits_delete ON room_splits;
+CREATE POLICY room_splits_delete ON room_splits FOR DELETE TO puspa_app
+    USING (is_room_member(room_id, current_setting('app.current_user_id', TRUE)::UUID));
+
+DROP POLICY IF EXISTS split_shares_select ON split_shares;
+CREATE POLICY split_shares_select ON split_shares FOR SELECT TO puspa_app
+    USING (
+        EXISTS (
+            SELECT 1 FROM room_splits s
+            WHERE s.id = split_shares.split_id
+            AND is_room_member(s.room_id, current_setting('app.current_user_id', TRUE)::UUID)
+        )
+    );
+DROP POLICY IF EXISTS split_shares_insert ON split_shares;
+CREATE POLICY split_shares_insert ON split_shares FOR INSERT TO puspa_app
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM room_splits s
+            WHERE s.id = split_shares.split_id
+            AND is_room_member(s.room_id, current_setting('app.current_user_id', TRUE)::UUID)
+        )
+    );
+DROP POLICY IF EXISTS split_shares_update ON split_shares;
+CREATE POLICY split_shares_update ON split_shares FOR UPDATE TO puspa_app
+    USING (
+        EXISTS (
+            SELECT 1 FROM room_splits s
+            WHERE s.id = split_shares.split_id
+            AND is_room_member(s.room_id, current_setting('app.current_user_id', TRUE)::UUID)
+        )
+    );
+DROP POLICY IF EXISTS split_shares_delete ON split_shares;
+CREATE POLICY split_shares_delete ON split_shares FOR DELETE TO puspa_app
+    USING (
+        EXISTS (
+            SELECT 1 FROM room_splits s
+            WHERE s.id = split_shares.split_id
+            AND is_room_member(s.room_id, current_setting('app.current_user_id', TRUE)::UUID)
+        )
+    );
+
+DROP POLICY IF EXISTS split_payments_select ON split_payments;
+CREATE POLICY split_payments_select ON split_payments FOR SELECT TO puspa_app
+    USING (
+        EXISTS (
+            SELECT 1 FROM room_splits s
+            WHERE s.id = split_payments.split_id
+            AND is_room_member(s.room_id, current_setting('app.current_user_id', TRUE)::UUID)
+        )
+    );
+DROP POLICY IF EXISTS split_payments_insert ON split_payments;
+CREATE POLICY split_payments_insert ON split_payments FOR INSERT TO puspa_app
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM room_splits s
+            WHERE s.id = split_payments.split_id
+            AND is_room_member(s.room_id, current_setting('app.current_user_id', TRUE)::UUID)
+        )
+    );
+
+DROP POLICY IF EXISTS split_settlements_select ON split_settlements;
+CREATE POLICY split_settlements_select ON split_settlements FOR SELECT TO puspa_app
+    USING (
+        EXISTS (
+            SELECT 1 FROM room_splits s
+            WHERE s.id = split_settlements.split_id
+            AND is_room_member(s.room_id, current_setting('app.current_user_id', TRUE)::UUID)
+        )
+    );
+DROP POLICY IF EXISTS split_settlements_insert ON split_settlements;
+CREATE POLICY split_settlements_insert ON split_settlements FOR INSERT TO puspa_app
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM room_splits s
+            WHERE s.id = split_settlements.split_id
+            AND is_room_member(s.room_id, current_setting('app.current_user_id', TRUE)::UUID)
+        )
+    );
+DROP POLICY IF EXISTS split_settlements_update ON split_settlements;
+CREATE POLICY split_settlements_update ON split_settlements FOR UPDATE TO puspa_app
+    USING (
+        EXISTS (
+            SELECT 1 FROM room_splits s
+            WHERE s.id = split_settlements.split_id
+            AND is_room_member(s.room_id, current_setting('app.current_user_id', TRUE)::UUID)
         )
     );
