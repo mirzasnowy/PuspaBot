@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Proof</h1>
+<p class="pesan-sub">Every action Puspa took, with its receipt: what happened, when, the hash of the event, and its position in the hash chain. A receipt proves the event is on the ledger unchanged; it does not prove the claim behind the event.</p>
+<p><a href="/api/proof/audit-trail/export">Download my audit trail (JSON)</a></p>
+<p class="pesan-sub">Showing {{ receipts | length }} of {{ total }} events.</p>
+{% for receipt in receipts %}
+<div class="kartu">
+<strong>{{ receipt.summary }}</strong><br>
+<span class="lencana">{{ receipt.event_type }}</span>
+<span class="lencana">{{ receipt.action_kind }}</span>
+{% if receipt.verified and receipt.chain_ok %}<span class="lencana">verified</span>{% else %}<span class="lencana">NOT VERIFIED</span>{% endif %}<br>
+When: {{ receipt.created_at }}<br>
+Hash: {{ receipt.event_hash }}<br>
+Chain: event {{ receipt.chain_position }} of {{ receipt.chain_length }} (previous: {{ receipt.previous_hash }})<br>
+{% if receipt.evidence %}Evidence: {{ receipt.evidence | length }} entries{% endif %}
+</div>
+{% else %}
+<p class="pesan-sub">No events yet.</p>
+{% endfor %}
+{% endblock %}
