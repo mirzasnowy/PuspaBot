@@ -13,6 +13,18 @@ rantai hanya dengan `id` akan memutus rantai secara acak. Yang dipakai di sini
 adalah urutan penyisipan, yaitu `(waktu, id)`: `waktu` dari `now()` di DB
 (resolusi mikrodetik, praktis tidak pernah seri antar transaksi) dan `id`
 sebagai penentu seri. Ini dicatat sebagai selisih dari kontrak untuk STATUS.md.
+
+Bitemporal note (K3, `docs/bitemporal-state.md`): every event also
+carries `valid_at` — when the described event was true in the
+world — next to `created_at` (when the event was recorded, the
+chain order). `valid_at` is metadata alongside the hashed
+payload: `compute_event_hash` does not take it and never did,
+so the existing hash chain still verifies after the column is
+added. Old entries get `valid_at = created_at` (honest backfill:
+the past has no separately recorded valid time). New entries
+may state a different `valid_at` (e.g. a payment recorded late),
+defaulting to `created_at`. There is no 32nd event type: the
+closed set of 31 revision-7 types stays closed.
 """
 
 from __future__ import annotations
@@ -114,10 +126,16 @@ def compute_event_hash(
 
 
 def _row_to_event(row: dict) -> dict:
-    """Baris DB -> dict kejadian (UUID jadi string, `waktu` tetap datetime)."""
+    """Baris DB -> dict kejadian (UUID jadi string, `waktu` tetap datetime).
+
+    `valid_at` is read defensively: a database that predates the
+    K3 migration has no such column, and those rows report
+    `valid_at` as None instead of failing.
+    """
     return {
         "id": str(row["id"]),
         "created_at": row["created_at"],
+        "valid_at": row.get("valid_at"),
         "task_id": row["task_id"],
         "agent_id": row["agent_id"],
         "subagent_id": row["subagent_id"],
@@ -154,6 +172,7 @@ class Ledger:
         content: dict,
         parent_id: str | None = None,
         initiator: dict | None = None,
+        valid_at: datetime | None = None,
     ) -> dict:
         """Menambah satu kejadian; kembalikan baris yang dibaca kembali dari DB.
 
@@ -167,6 +186,19 @@ class Ledger:
         deployment, routine, responsibility, memory, handoff).
         Stored inside `content`, NOT a new event type: the closed
         set of 31 types is untouched.
+
+        `valid_at` (K3, bitemporal): when the described event was
+        true in the world. Defaults to the recorded time
+        (`created_at`) when the caller does not know better, and
+        must be a timezone-aware datetime when given. It is
+        stored in its own column, OUTSIDE the hashed payload:
+        the hash inputs are exactly as before, so appending with
+        a `valid_at` never changes any hash and never breaks the
+        chain. On a database that predates the K3 migration (no
+        `valid_at` column yet) the append still succeeds and the
+        event reads back with `valid_at` None — run
+        `create_schema()` or `infra/migrate_bitemporal.sql` to
+        get the column.
         """
         if not isinstance(task_id, str) or not task_id:
             raise LedgerError("task_id harus string tak kosong")
@@ -176,6 +208,8 @@ class Ledger:
             raise InvalidEventTypeError(event_type)
         if not isinstance(content, dict):
             raise LedgerError("isi harus dict")
+        if valid_at is not None and (not isinstance(valid_at, datetime) or valid_at.tzinfo is None):
+            raise LedgerError("valid_at must be a timezone-aware datetime")
         try:
             canonical_json(content)
         except (TypeError, ValueError) as exc:
@@ -198,6 +232,61 @@ class Ledger:
             except ValueError as exc:
                 raise LedgerError(f"id_induk bukan UUID: {parent_id!r}") from exc
 
+        try:
+            event_id = self._insert_event(
+                task_id=task_id,
+                agent_id=agent_id,
+                subagent_id=subagent_id,
+                event_type=event_type,
+                content=content,
+                parent_id=parent_id,
+                valid_at=valid_at,
+                with_valid_at=True,
+            )
+        except psycopg.errors.UndefinedColumn:
+            # Database predates the K3 migration: no valid_at
+            # column yet. Retry without it; the event still
+            # appends and the chain still holds.
+            event_id = self._insert_event(
+                task_id=task_id,
+                agent_id=agent_id,
+                subagent_id=subagent_id,
+                event_type=event_type,
+                content=content,
+                parent_id=parent_id,
+                valid_at=None,
+                with_valid_at=False,
+            )
+
+        # Baca kembali dari DB (waktu dari DB, bukan dari memori).
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute("SELECT * FROM events WHERE id = %s", (event_id,))
+            row = cur.fetchone()
+        if row is None:  # tidak mungkin terjadi; pertahanan terakhir
+            raise LedgerError(f"kejadian {event_id} hilang setelah INSERT")
+        return _row_to_event(row)
+
+    def _insert_event(
+        self,
+        *,
+        task_id: str,
+        agent_id: str,
+        subagent_id: str | None,
+        event_type: str,
+        content: dict,
+        parent_id: str | None,
+        valid_at: datetime | None,
+        with_valid_at: bool,
+    ) -> UUID:
+        """One append transaction; returns the new event id.
+
+        The advisory lock, the DB `now()`, the previous hash, the
+        hash computation, and the INSERT are one transaction, so
+        the value that enters the hash is exactly the value that
+        is stored. `with_valid_at` selects the INSERT shape: with
+        the column (migrated database) or without it (a database
+        that predates the K3 migration).
+        """
         with self._connect() as conn:
             with conn.cursor() as cur:
                 # Kunci per tugas: dua append bersamaan tidak boleh bercabang.
@@ -221,34 +310,48 @@ class Ledger:
                     previous_hash=previous_hash,
                     created_at=created_at,
                 )
-                cur.execute(
-                    "INSERT INTO events "
-                    "(created_at, task_id, agent_id, subagent_id, type, content, "
-                    " parent_id, previous_hash, hash) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
-                    "RETURNING id",
-                    (
-                        created_at,
-                        task_id,
-                        agent_id,
-                        subagent_id,
-                        event_type,
-                        Jsonb(content),
-                        parent_id,
-                        previous_hash,
-                        event_hash,
-                    ),
-                )
+                if with_valid_at:
+                    cur.execute(
+                        "INSERT INTO events "
+                        "(created_at, valid_at, task_id, agent_id, subagent_id, type, "
+                        " content, parent_id, previous_hash, hash) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                        "RETURNING id",
+                        (
+                            created_at,
+                            valid_at if valid_at is not None else created_at,
+                            task_id,
+                            agent_id,
+                            subagent_id,
+                            event_type,
+                            Jsonb(content),
+                            parent_id,
+                            previous_hash,
+                            event_hash,
+                        ),
+                    )
+                else:
+                    cur.execute(
+                        "INSERT INTO events "
+                        "(created_at, task_id, agent_id, subagent_id, type, content, "
+                        " parent_id, previous_hash, hash) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                        "RETURNING id",
+                        (
+                            created_at,
+                            task_id,
+                            agent_id,
+                            subagent_id,
+                            event_type,
+                            Jsonb(content),
+                            parent_id,
+                            previous_hash,
+                            event_hash,
+                        ),
+                    )
                 event_id = cur.fetchone()["id"]
             conn.commit()
-
-        # Baca kembali dari DB (waktu dari DB, bukan dari memori).
-        with self._connect() as conn, conn.cursor() as cur:
-            cur.execute("SELECT * FROM events WHERE id = %s", (event_id,))
-            row = cur.fetchone()
-        if row is None:  # tidak mungkin terjadi; pertahanan terakhir
-            raise LedgerError(f"kejadian {event_id} hilang setelah INSERT")
-        return _row_to_event(row)
+        return event_id
 
     def events(self, task_id: str, event_type: str | None = None) -> list[dict]:
         """Semua kejadian satu tugas, urut penyisipan; opsional saring `event_type`."""
@@ -283,6 +386,43 @@ class Ledger:
                 "ORDER BY created_at ASC, id ASC LIMIT %s",
                 (since, limit),
             )
+            rows = cur.fetchall()
+        return [_row_to_event(row) for row in rows]
+
+    def events_by_valid_time(
+        self,
+        task_id: str,
+        *,
+        valid_from: datetime | None = None,
+        valid_to: datetime | None = None,
+    ) -> list[dict]:
+        """Events of one task ordered by valid time (K3, bitemporal).
+
+        Answers "what happened in the world between these two
+        moments", in the order the events were true — not the
+        order they were recorded. A payment that happened on
+        Monday but was recorded on Friday sorts with Monday.
+        Bounds are half-open: ``valid_from <= valid_at < valid_to``;
+        omit a bound for open-ended. Both bounds must be
+        timezone-aware when given. Rows without a recorded
+        valid time (a database that predates the K3 migration)
+        fall back to their recorded time (`created_at`), so the
+        query works on unmigrated databases too.
+        """
+        for name, bound in (("valid_from", valid_from), ("valid_to", valid_to)):
+            if bound is not None and (not isinstance(bound, datetime) or bound.tzinfo is None):
+                raise LedgerError(f"{name} must be a timezone-aware datetime")
+        query = "SELECT * FROM events WHERE task_id = %s"
+        params: list[object] = [task_id]
+        if valid_from is not None:
+            query += " AND COALESCE(valid_at, created_at) >= %s"
+            params.append(valid_from)
+        if valid_to is not None:
+            query += " AND COALESCE(valid_at, created_at) < %s"
+            params.append(valid_to)
+        query += " ORDER BY COALESCE(valid_at, created_at) ASC, created_at ASC, id ASC"
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(query, params)
             rows = cur.fetchall()
         return [_row_to_event(row) for row in rows]
 
