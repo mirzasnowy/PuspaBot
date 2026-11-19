@@ -1,0 +1,398 @@
+# Agent payments API contract (B8 prepare only, phase 1).
+#
+# Split out of docs/openapi-pwa.yaml the way the mockup and graph
+# contracts were: the main spec references this file with $ref
+# stubs; the generated client is produced from the main spec with
+# openapi-typescript, which resolves external $refs. The Error
+# schema stays in the main spec and is referenced back from here.
+# Phase 1 prepares payments only: there is no execution endpoint
+# that moves money — POST /api/payments/{id}/execute always
+# answers 403 (see docs/agent-payments.md).
+openapi: 3.0.3
+info:
+  title: Puspa agent payments API
+  version: 1.0.0
+paths:
+  /api/payments:
+    get:
+      tags: [payments]
+      summary: List the user's prepared payments, oldest first
+      responses:
+        "200":
+          description: Prepared payments (every status)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreparedPaymentList"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    post:
+      tags: [payments]
+      summary: Prepare a payment (verified recipient + amount + rail + evidence)
+      description: |
+        B8 phase 1: the preparation starts as awaiting_approval
+        and becomes payable only after approval. Nothing here
+        executes a payment; the user pays in their own bank or
+        e-wallet app. The same idempotency key returns the same
+        preparation; the same key with different content is 400.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreparePaymentRequest"
+      responses:
+        "200":
+          description: Prepared payment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreparedPayment"
+        "400":
+          description: Bad input (unverified recipient, bad amount, unnamed rail, missing evidence, conflicting idempotency key)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/payments/payable:
+    get:
+      tags: [payments]
+      summary: List the preparations the user can see as payable (approved, unexpired)
+      responses:
+        "200":
+          description: Payable preparations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreparedPaymentList"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/payments/{preparation_id}:
+    get:
+      tags: [payments]
+      summary: One prepared payment
+      parameters:
+        - name: preparation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Prepared payment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreparedPayment"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown preparation, or another user's
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/payments/{preparation_id}/approve:
+    post:
+      tags: [payments]
+      summary: Approve a prepared payment so the user can see it as payable
+      description: |
+        Approval never authorises execution, because there is no
+        executor. Only an awaiting-approval, unexpired preparation
+        can be approved.
+      parameters:
+        - name: preparation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Approved preparation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreparedPayment"
+        "400":
+          description: Expired or already decided
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/payments/{preparation_id}/reject:
+    post:
+      tags: [payments]
+      summary: Reject a prepared payment
+      parameters:
+        - name: preparation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Rejected preparation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreparedPayment"
+        "400":
+          description: Already decided
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/payments/{preparation_id}/mark-paid:
+    post:
+      tags: [payments]
+      summary: Record the user's assertion that they paid in their own app
+      description: |
+        A user assertion, never an execution and never verified
+        by Puspa: phase 1 has no gateway to check against. Only
+        an approved, unexpired preparation can be marked.
+      parameters:
+        - name: preparation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                assertion:
+                  type: string
+      responses:
+        "200":
+          description: Preparation marked paid by the user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreparedPayment"
+        "400":
+          description: Not approved, or expired
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/payments/{preparation_id}/execute:
+    post:
+      tags: [payments]
+      summary: Always refused (403) — phase 1 never executes
+      description: |
+        The execution guard: every attempt is refused and
+        recorded to the ledger, even for a fully approved
+        preparation. There is no executor to call.
+      parameters:
+        - name: preparation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "403":
+          description: Execution refused
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    PaymentRail:
+      type: object
+      required: [rail_id, display_name, kind]
+      properties:
+        rail_id:
+          type: string
+          description: "Rail id: qris, gopay, ovo, dana, virtual_account, bank_transfer"
+        display_name:
+          type: string
+        kind:
+          type: string
+          description: "Rail kind: qris, e_wallet, virtual_account, bank_transfer"
+        bank:
+          type: string
+    Recipient:
+      type: object
+      required: [name, account_ref, verified, verified_by]
+      properties:
+        name:
+          type: string
+        account_ref:
+          type: string
+          description: Account number, virtual account number, wallet id, or QRIS merchant id
+        verified:
+          type: boolean
+          description: Always true — only a verified recipient can be prepared for payment
+        verified_by:
+          type: string
+          description: What verified this recipient (a seller page, a bank-app screenshot, a bill)
+    PreparePaymentRequest:
+      type: object
+      required: [recipient, amount_rupiah, rail, evidence]
+      properties:
+        recipient:
+          $ref: "#/components/schemas/Recipient"
+        amount_rupiah:
+          type: integer
+          minimum: 1
+          description: Positive integer Rupiah
+        rail:
+          type: string
+          description: A rail id or an everyday mention, e.g. "qris" or "bayar pake qris"
+        evidence:
+          type: array
+          minItems: 1
+          description: At least one entry, each naming its kind; one entry must name the recipient
+          items:
+            type: object
+            required: [kind]
+            properties:
+              kind:
+                type: string
+        idempotency_key:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        room_id:
+          type: string
+          format: uuid
+        task_id:
+          type: string
+    PreparedPayment:
+      type: object
+      required: [id, user_id, recipient, amount_rupiah, amount_display, rail, evidence, status, payable, pay_notice]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        recipient:
+          $ref: "#/components/schemas/Recipient"
+        amount_rupiah:
+          type: integer
+        amount_display:
+          type: string
+          description: "Integer Rupiah as Rp150.000"
+        rail:
+          $ref: "#/components/schemas/PaymentRail"
+        evidence:
+          type: array
+          items:
+            type: object
+        idempotency_key:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [awaiting_approval, approved, rejected, expired, paid_by_user]
+        payable:
+          type: boolean
+          description: True only when approved and not expired
+        room_id:
+          type: string
+          format: uuid
+          nullable: true
+        task_id:
+          type: string
+        outcome_id:
+          type: string
+          nullable: true
+        approval_request_id:
+          type: string
+          nullable: true
+        prepared_by:
+          type: string
+          format: uuid
+        prepared_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        approved_at:
+          type: string
+          format: date-time
+          nullable: true
+        approved_by:
+          type: string
+          format: uuid
+          nullable: true
+        paid_asserted_at:
+          type: string
+          format: date-time
+          nullable: true
+        paid_asserted_by:
+          type: string
+          format: uuid
+          nullable: true
+        paid_assertion:
+          type: string
+          nullable: true
+        summary:
+          type: string
+          description: Plain-text summary (recipient + amount + rail + evidence + expiry + the notice that Puspa never pays)
+        pay_notice:
+          type: string
+          description: "Puspa never pays. Pay in your own bank or e-wallet app."
+    PreparedPaymentList:
+      type: object
+      required: [payments]
+      properties:
+        payments:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreparedPayment"

@@ -169,7 +169,11 @@ BASELINE_LINES = {
     # docs/openapi-mockup.yaml, 551 lines, Wave 30 precedent: the
     # inline mockup contract would have pushed the main spec
     # past the 2000-line hard cap). The ratchet resumes from 1813.
-    "docs/openapi-pwa.yaml": 1813,
+    # B8 (agent payments, phase 1): +24 lines of $ref stubs in
+    # the main spec — 7 payment paths + 5 payment schemas
+    # (contract split out to docs/openapi-payments.yaml, 398
+    # lines, Wave 30 precedent). The ratchet resumes from 1837.
+    "docs/openapi-pwa.yaml": 1837,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:
