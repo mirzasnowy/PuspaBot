@@ -5,6 +5,7 @@ from pathlib import Path
 
 import psycopg
 import pytest
+from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
 from puspa.backup import (
     BackupError,
@@ -17,22 +18,40 @@ from puspa.backup import (
 from puspa.ledger import Ledger
 from puspa.memory import profile
 
-RESTORE_DSN = "dbname=puspa_test_restore user=root host=/var/run/postgresql"
+
+def _db_name(dsn: str) -> str:
+    """The dbname inside a DSN string (default ``puspa_test``)."""
+    return str(conninfo_to_dict(dsn).get("dbname") or "puspa_test")
 
 
-def _create_db_restore():
+def _restore_dsn(dsn: str) -> str:
+    """The restore DSN for a test DSN: its database + ``_restore``.
+
+    Per-DSN on purpose: two worktrees run their suites against
+    different databases (``puspa_test_w1`` / ``puspa_test_w2``),
+    so a shared ``puspa_test_restore`` database would race.
+    """
+    info = conninfo_to_dict(dsn)
+    return make_conninfo(
+        dbname=_db_name(dsn) + "_restore",
+        user=info.get("user"),
+        host=info.get("host"),
+    )
+
+
+def _create_db_restore(dsn: str) -> None:
     with psycopg.connect(
         "dbname=postgres user=root host=/var/run/postgresql", autocommit=True
     ) as conn:
-        conn.execute("DROP DATABASE IF EXISTS puspa_test_restore")
-        conn.execute("CREATE DATABASE puspa_test_restore OWNER root")
+        conn.execute(f'DROP DATABASE IF EXISTS "{_db_name(dsn) + "_restore"}"')
+        conn.execute(f'CREATE DATABASE "{_db_name(dsn) + "_restore"}" OWNER root')
 
 
-def _delete_db_restore():
+def _delete_db_restore(dsn: str) -> None:
     with psycopg.connect(
         "dbname=postgres user=root host=/var/run/postgresql", autocommit=True
     ) as conn:
-        conn.execute("DROP DATABASE IF EXISTS puspa_test_restore")
+        conn.execute(f'DROP DATABASE IF EXISTS "{_db_name(dsn) + "_restore"}"')
 
 
 def test_backup_without_key_rejected(tmp_path, test_dsn, monkeypatch):
@@ -48,7 +67,7 @@ def test_create_and_backup_items(make_user, test_dsn, backup_key, tmp_path):
     path = Path(result["path"])
     assert path.exists() and path.stat().st_size > 0
     assert (path.parent / (path.name + ".json")).exists()
-    assert result["manifest"]["database"] == "puspa_test"
+    assert result["manifest"]["database"] == _db_name(test_dsn)
     assert result["manifest"]["encrypted_size"] > 0
     items = list_backups(tmp_path)
     assert len(items) == 1 and items[0]["path"] == str(path)
@@ -76,18 +95,19 @@ def test_restore_to_clean_db_and_verify(make_user, test_dsn, backup_key, tmp_pat
         content={"tasks": "uji restore"},
     )
     result = create_backup(dsn=test_dsn, backup_dir=tmp_path)
-    _create_db_restore()
+    restore_dsn = _restore_dsn(test_dsn)
+    _create_db_restore(test_dsn)
     try:
-        restored = restore_backup(result["path"], RESTORE_DSN)
+        restored = restore_backup(result["path"], restore_dsn)
         assert "events" in restored["table"]
         assert "profile_facts" in restored["table"]
         assert "users" in restored["table"]
-        counts = verify_restored_counts(RESTORE_DSN, ["users", "profile_facts", "events"])
+        counts = verify_restored_counts(restore_dsn, ["users", "profile_facts", "events"])
         assert counts["users"] >= 1
         assert counts["profile_facts"] == 1
         assert counts["events"] == 1
         # Rantai hash Buku Kerja tetap utuh sesudah restore.
-        ok, problems = Ledger(RESTORE_DSN).verify_chain(task_id)
+        ok, problems = Ledger(restore_dsn).verify_chain(task_id)
         assert ok, problems
     finally:
-        _delete_db_restore()
+        _delete_db_restore(test_dsn)

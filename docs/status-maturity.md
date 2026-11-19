@@ -51,212 +51,11 @@ Waves 16-17 were archived to
 Waves 18-19 were archived to
 `docs/status-maturity-archive-2026-11-19-waves-18-19.md` on 19 Nov
 2026, when the live log passed the soft cap again (1,032 lines
-with the Wave 26 entry).
+with the Wave 26 entry). Waves 20-21 were archived to
+`docs/status-maturity-archive-2026-11-19-waves-20-21.md` on 19 Nov
+2026, when the live log approached the soft cap again (980 lines
+before the Wave 28 entry).
 History is never deleted, only archived.
-
-## Wave 20: G17 (skill narrowing + search_tools, DONE 19 Nov 2026)
-
-G17 is the LAST of the original 28 gaps: per-run narrowing and
-`search_tools`. Built on top of the existing G23 registry (worker
-20103db5, verified centrally by the coordinator).
-
-What was built (new module `puspa/tools/narrowing.py`, 644 lines;
-tests 572 lines; docs 236 lines):
-- `prepare_run_tools(message, catalog, skills, granted, selector,
-  config, audit_sink)`: refusal check first (catalog + granted
-  > 128 -> audit + raise), then skill selection, then the ~10
-  offered cap (tools ranked by message<->name/description token
-  overlap, ties by name), granted tools always kept, overflow
-  past 50 behind `search_tools`.
-- Default selector `KeywordSelector`: deterministic trigger-term
-  (2 pts) + description-token (1 pt) overlap, no LLM call, no
-  cost. The selector is a pluggable `ToolSelector` protocol
-  (`select(message, skills)`); an LLM-backed selector is NOT
-  built — the seam (implement the protocol with the router's
-  `llm_complete` callable, fail to `None` so it falls back to
-  keywords then fail-open) is documented in
-  `docs/skill-narrowing.md`.
-- Real `search_tools` tool: registered via
-  `register_search_tools()` (idempotent) and by
-  `register_builtin_tools`, so discovery picks it up. The
-  handler searches the run's hidden tools when bound via a
-  `ContextVar` (`hidden_tools_context`, same pattern as the
-  token binding in `puspa/chassis/context.py`), otherwise the
-  registry it was registered on. Results ranked by keyword
-  overlap, capped (default 10, max 50), each carrying name +
-  description + parameters. Pure function `search_tools(query,
-  tools)` is directly testable.
-- Refusal audit goes through the G4/G5/G6 ledger-shape sink
-  `sink(event_type, content)` — no new audit path.
-
-Wiring:
-- `puspa/turns/config.py`: `TurnConfig` gains
-  `max_direct_tools=50`, `max_tools=128`,
-  `max_offered_tools=10`, `search_result_limit=10` with
-  validation (mirrors narrowing defaults as literals so config
-  never imports the tools package).
-- `puspa/turns/loop.py`: `TurnLoop(tool_catalog=...,
-  narrowing_skills=..., narrowing_selector=...)`; `run_turn`
-  narrows on the last user message when a catalog is wired and
-  no explicit `tools=` passed (explicit tools win), binds
-  hidden tools for the whole turn, and returns a failed
-  `TurnResult` naming the limit before any model call when
-  refused. `run_turn`'s body moved verbatim into
-  `_run_turn_inner`; `run_subagent_turn` inherits narrowing via
-  delegation.
-- One test expectation updated honestly: `test_discover_imports_
-  tool_modules` expected exactly 2 discovered tools; discovery
-  now legitimately registers `search_tools`, so the assertion
-  is 3 + `search_tools` present.
-
-Coordinator decision — refusal audit vs the ledger's closed 31
-(the worker flagged this for a decision): NO ledger change.
-The worker's concern was that `agent.tool_limit_refused` is
-not one of the 31 revisi-7 event types, so a raw Ledger sink
-(best-effort `suppress(Exception)` in `make_ledger_sink`)
-swallows it. Verified by the coordinator: that is exactly how
-EVERY turn-loop event behaves — `turn_failed`,
-`turn_completed`, `narrowing_selected` and the rest are also
-outside the 31, kept in the turn sink (in-memory list by
-default), and swallowed by a ledger sink the same way. The
-refusal is recorded twice in the turn sink (the refusal event
-itself, then the loop's `turn_failed` carrying the message),
-exactly like any other turn failure. Singling the refusal out
-for a 32nd type — or shoehorning it into `task_failed` — would
-be inconsistent with the whole turn-loop vocabulary, and the
-G6 precedent is explicit: the closed set stays untouched.
-The same gap exists in the G3 marketplace narrowing (same
-event name, same sink shape); it is a shared known limit,
-documented in `docs/skill-narrowing.md`, not a G17 regression.
-
-Suite (coordinator, SOLO, 19 Nov 2026): 3,149 passed, 23 skipped,
-1 warning, 20m48s, EXIT 0 (log hidden_files/suite-wave20-g17.log).
-Reconciliation: 3,116 (Wave 19) + 33 (G17 module tests) = 3,149;
-skipped unchanged at 23. Module tests (coordinator re-run): 33 passed
-(test_narrowing.py 24 + test_narrowing_turn.py 9, incl. a real
-run where the fake model calls `search_tools` mid-turn and
-reaches a hidden tool). Worker's exact command
-(test_narrowing*.py + test_tools*.py): 48 passed. Neighbor
-regression (coordinator re-run): 191 passed (registry,
-approval, check, footprint, result-compression, turn loop,
-turn intercepts, marketplace narrowing — the worker's "239"
-was the combined total of both runs: 48 + 191). Ruff check +
-format: clean. Mypy on the changed files: clean.
-
-Two bugs found by the worker's own tests and fixed in code
-(not papered over): narrowed-away tools were never added to
-`hidden` when the cap didn't trigger, and the `search_tools`
-handler always searched the default registry instead of the
-registry it was registered on.
-
-Honest limits: a wrong-but-confident narrowing hides tools
-(the keyword selector has no synonyms, no stemming, no
-understanding; `search_tools` is the recovery path and only
-helps if the model calls it). Narrowing runs once per turn on
-the last user message; a mid-turn topic change does not
-re-narrow. With no skills registered, narrowing is a no-op
-fail-open (overflow/refusal rules still apply). 50/128 are
-OpenBot's starting points, not numbers measured on Puspa's
-models. Intercepted tools (`todo`, `memory`, `session_search`,
-`delegate_task`) are not registry tools and are not counted
-toward the limits.
-
-All 28 gaps G1-G28 are now DONE. Remaining (order locked by Nero
-19 Nov 2026 ~05:41 WIB): Kosmos K1, K3, K4, K5, K6, K10, K11, K12,
-K13, then B features (B6 group chat, B9 tasks, B10 meetings, B11
-patungan, B12 joint shopping, B13 drafts), then B15 culture LAST
-(the BUDAYA GO! 2026 batik demo order from ~05:37 WIB was
-cancelled by Nero before any work started). Then uji + 15 gates
-+ 10 reference tasks (waiting on Nero's decisions).
-
-## Wave 21: Kosmos K1 (Intent Engine, DONE 19 Nov 2026)
-
-First Kosmos item after all 28 G gaps. K1 builds the intent
-SIGNAL (kosmos-design.md section B); the act-vs-ask RULE itself
-is K2, already folded into G4/G5 — K1 adds what the rule needs
-from intent, and the ask always goes through the existing G4
-approval mechanism. No second approval system was built
-(worker 5b70678c, verified centrally by the coordinator).
-
-What was built (new package `puspa/intent/`, all files under
-1000 lines; tests 786 lines; docs 222 lines):
-- `distribution.py` — `IntentDistribution` with the three
-  levels (desire, goal, values), each a scored set of
-  `IntentHypothesis` values normalized to sum to 1 per level.
-  Empty levels are allowed and recorded as empty, never
-  invented. Unnormalized direct construction raises
-  ValueError. Conflict = top-two weights within 0.15.
-- `inference.py` — default deterministic inferrer: keyword /
-  topic coverage against the user's known goals/values from
-  the profile (only intent-bearing keys: `goal*` -> goal,
-  `value*` / `principle*` -> values, `want*` / `need*` /
-  `desire*` / `preference*` -> desire; identity facts like
-  name/address ignored) plus world beliefs (unpaid bills,
-  known prices -> desire; repeated habits, schedules -> goal).
-  A small hand-written signal lexicon is a fallback only at
-  the desire level when nothing grounded scored, and concept
-  expansion is how one message reads at all three levels.
-  `IntentInferrer` is the pluggable interface;
-  `build_llm_prompt` documents the LLM seam contract (JSON,
-  weights sum to 1, empty level = `[]`) — the LLM inferrer
-  itself is NOT built, per spec.
-- `act_ask.py` — the intent signal feeding act-vs-ask.
-  Decision order: G4 policy first when wired in and the kind
-  is recognized (deny/ask/escalate wins; allow lets intent
-  run) -> fully empty distribution fails open to act -> desire
-  unread asks -> conflicting asks -> top weight < 0.6 asks ->
-  irreversible/high-stakes asks -> otherwise act. Plus
-  `clarifying_question` (one calm question naming what was
-  read).
-- `turn_wiring.py` — `IntentTurnAdvisor` (profile + world +
-  `ActionSpec` per tool: reversible/stakes) and the ask
-  payload (`tool_was_run: false` + question).
-
-Wiring into the turn loop (`puspa/turns/loop.py`): optional
-`intent_advisor` on `TurnLoop`. Consulted before a registry
-tool call (never for intercepted tools); on `ask` the tool is
-NOT run and the model gets the ask payload; on `act` the call
-runs as before. Verdicts land on `TurnResult.intent_decisions`
-plus an `intent_ask` sink event. A broken advisor fails open
-to running the call. Without an advisor behavior is unchanged.
-Also a short K1 paragraph in `docs/turn-loop.md`.
-
-Two bugs found by the worker's own tests and fixed in code:
-`_world_state` returned `{}` for a `WorldModel` (its `state`
-property yields a dict, not a callable), and the conflict check
-was unreachable after the confidence check (normalized weights
-make a conflicting top necessarily < 0.575 < 0.6), so conflict
-is now checked before low confidence, with the math documented
-in the module docstring.
-
-Suite (coordinator, SOLO, 19 Nov 2026): 3,200 passed, 23 skipped,
-1 warning, 21m32s, EXIT 0 (log hidden_files/suite-wave21-k1.log).
-Reconciliation: 3,149 (Wave 20) + 51 (K1 module tests) = 3,200;
-skipped unchanged at 23. Module tests (coordinator re-run): 51 passed
-(test_intent.py + test_intent_turn_wiring.py, incl. the run
-test proving the distribution changes the decision: same
-message "buy the laptop" with one recorded preference -> act
-and the tool runs; with two equally-matching preferences ->
-ask and the tool never runs; same for world state, "pay the
-bill" acts with one unpaid bill, asks with two). Regression
-(coordinator re-run): 72 passed (test_turn_loop.py +
-test_approvals_taxonomy.py). Ruff check + format: clean. Mypy
-on the changed files: clean.
-
-Honest limits: keyword overlap, not understanding
-(paraphrases with no shared words read nothing; "save the
-file" false-matches a "save money" goal); no morphology
-("prices" != "price", "frugality" != "frugal"); thresholds
-0.6/0.15 are chosen, not calibrated; no learning from
-corrections yet; the advisor reads only the last user message,
-not turn history; profile freshness is the caller's job (or
-use `context_provider`); LLM inferrer is a documented seam
-only, no live model call exists.
-
-Remaining: Kosmos K3, K4, K5, K6, K10, K11, K12, K13, then B
-features (B6, B9, B10, B11, B12, B13), then B15 culture LAST.
-Then uji + 15 gates + 10 reference tasks (waiting on Nero's
-decisions).
 
 ## Wave 22: Kosmos K3 (Bitemporal state, DONE 19 Nov 2026)
 
@@ -978,3 +777,129 @@ model decision was made.
 Remaining: Kosmos K11, K12, K13, then B features
 (B6, B9, B10, B11, B12, B13), then B15 culture LAST. Then uji
 + 15 gates + 10 reference tasks (waiting on Nero's decisions).
+## Wave 28 — Kosmos K11: per-area autonomy dial (DONE 19 Nov 2026)
+
+K11 is the per-area autonomy dial: trust per action area,
+moving with prediction calibration, with an emergency drop
+that is instant. New package `puspa/autonomy/` (`dial.py`,
+543 lines), deterministic, no LLM, in-memory by deliberate
+choice (see the honest limits). First item built under the
+2-worker mode: worker 1 in worktree `build-w1` on
+`puspa_test_w1`; the coordinator verified, merged, and runs
+the suite in `build/` on `puspa_test`.
+
+Areas: `money`, `messaging`, `files` (irreversible);
+`scheduling`, `system` (reversible); `accounts`
+(irreversible + capped at 0.59, so it never rises above
+`propose`). Every area starts at 0.50 (`propose`): trust is
+earned, never assumed. A correct outcome closes 5% of the
+remaining gap to 1.0 (slow rise: 5 correct in a row reach
+`do_and_show` at 0.613; 24 reach `do_silently` at 0.854).
+An ordinary wrong outcome drops the score by 0.15, floored
+at 0.0 (fast fall on purpose: 1 wrong from 0.85 lands at
+0.70; 2 wrong land at 0.55, back to `propose`). A serious
+failure is the emergency drop: in an irreversible area the
+score falls to 0.0 at once (rebuild: 18 correct to
+`do_and_show`, 37 to `do_silently`); in a reversible area
+it falls by 0.30. A serious failure is an action that
+failed harmfully, or an irreversible action that went
+wrong — not a plain tool error (that is an ordinary wrong
+outcome). `reset_area` is an operator action (tests, or a
+human resetting trust after a review); the agent itself
+never calls it. Each area keeps an audit history (cap 100
+records): the dial's audit lives there, not in the ledger,
+by design (no ledger event type for dial moves, keeping
+the 31 revisi-7 types closed, same pattern as K10).
+
+Calibration uses signals that already exist: the dial does
+not score predictions itself, it only aggregates outcomes
+already scored per area through `record_outcome` (the
+world-model `WorldModel.stats` scores, the K5 per-contact
+accuracy, and the learning-loop verdicts are its sources;
+the turn loop is the first feeder, from tool-execution
+results). The wiring chosen is the turn loop (same advisor
+pattern as the K1 intent advisor), not approvals G4: one
+clear gating path, and the dial feeds back from execution
+results. `TurnLoop` takes an optional `autonomy_dial` (+
+`dial_area_for_tool` overrides); the dial is consulted in
+`_run_tool_calls` AFTER the intent advisor, so an intent
+`ask` wins. At `propose` the tool does NOT run: the turn
+records a `dial_ask` event and returns a
+`dial_ask_payload` (`tool_was_run: false`). At `do_and_show`
+the tool runs and the turn records `dial_show`; at
+`do_silently` it runs and records `dial_silent` (the model
+still sees the tool result, so it can continue the turn;
+the presenting surface must honour the `show: false` flag
+— the loop itself does not silence the model's narration).
+Every executed outcome feeds the dial (`record_outcome`,
+correct = ran as expected, wrong = error), wrapped so a
+dial failure never breaks the turn; a broken dial fails
+open (the call runs as if no dial were wired in). Verdicts
+land on `TurnResult.dial_decisions`.
+
+Files (worker 3afbe2f2 in build-w1, merged by the
+coordinator): created `puspa/autonomy/dial.py` (543 lines),
+`puspa/autonomy/__init__.py` (45 lines),
+`tests/test_autonomy_dial.py` (584 lines, 36 tests),
+`docs/autonomy-dial.md` (148 lines); changed
+`puspa/turns/loop.py` (859 -> 969, still under 1000).
+`puspa/world/model.py` (1,395) and `puspa/world/agents.py`
+untouched. No new ledger event type (31 stay closed).
+
+Verification (coordinator, re-ran herself in build-w1 on
+`puspa_test_w1`): module tests
+`tests/test_autonomy_dial.py`: 36 passed, including the
+immediate-drop test (climb to `do_silently` with 24
+correct, `record_serious_failure`, next turn blocks
+`gmail.send` with an empty registry and payload
+`tool_was_run: false`). Neighbour regression (autonomy
+dial / intent turn wiring / approvals taxonomy / turn loop
+/ turn intercepts): 148 passed. Ruff check + format:
+clean. Mypy: clean. Read in full: the dial rules
+(`record_outcome`, `record_serious_failure`, `_stage_for`)
+and the loop wiring (`_run_tool_calls`,
+`_consult_autonomy_dial`, fail-open).
+
+Worktree suite (worker, build-w1, `puspa_test_w1`):
+3,427 passed, 23 skipped, 1 failed, 36m21s, EXIT=1 —
+total 3,428 tests, exactly 3,392 (Wave 27) + 36 K11. The
+single failure was `tests/test_backup.py::
+test_create_and_backup_items` asserting the manifest
+database equals the hardcoded `"puspa_test"`, while the
+backup manifest writes the real DSN database
+(`puspa_test_w1`). Pre-existing environment mismatch, not
+a K11 effect (the worker touched no backup code). Fixed
+by the coordinator in `tests/test_backup.py` (rides with
+this wave): the manifest assertion now reads the dbname
+from the test DSN, and the restore database is derived
+per-DSN (`<dbname>_restore`) instead of the shared
+`puspa_test_restore`, so two worktree suites can no longer
+race on it. Verified in build-w1: `tests/test_backup.py`
+4 passed (including the restore test against
+`puspa_test_w1_restore`).
+
+Suite (coordinator, SOLO in build/ on `puspa_test`): 3,444
+passed, 23 skipped, 1 warning, 21m52s, EXIT 0. The first
+K11-only attempt was SIGTERM'd by a VM replacement at 54%
+(no failures visible); the verification re-ran as one
+combined run after the K12 merge, log
+hidden_files/suite-wave28-k12.log.
+Reconciliation: 3,392 (Wave 27) + 36 (K11 module) + 16 (K12
+module) = 3,444.
+
+Honest limits: the dial is in-memory — a restart returns
+every area to 0.50 (the safe direction: only more
+cautious, never bolder). Postgres persistence is a
+follow-up. The calibration signal today is tool-execution
+results (ran / errored), a proxy, not proof the prediction
+was right; a stronger feeder (K8 outcome watcher) is
+planned to use the same `record_outcome` entry point. At
+`do_silently` the loop records `show: false` and
+`dial_silent`, but the model still sees the tool result;
+the presenting surface must honour the flag. No LICENSE or
+billing model decision was made.
+
+Remaining: Kosmos K12, K13, then B features
+(B6, B9, B10, B11, B12, B13), then B15 culture LAST. Then uji
++ 15 gates + 10 reference tasks (waiting on Nero's decisions).
+
