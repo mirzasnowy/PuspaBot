@@ -4,6 +4,8 @@ import {
   createTask,
   decideApproval,
   deleteAgent,
+  fetchRoomBoard,
+  fetchRooms,
   fetchOperatorStatus,
   formatRupiah,
   getJson,
@@ -203,5 +205,61 @@ describe("shared JSON helpers", () => {
         body: JSON.stringify({ a: 1 }),
       }),
     );
+  });
+});
+
+describe("room boards (B9)", () => {
+  it("fetchRooms reads /api/rooms", async () => {
+    const fetchMock = mockFetch({
+      rooms: [{ id: "room-1", name: "Keluarga", role: "owner" }],
+    });
+    const result = await fetchRooms(fetchMock as unknown as typeof fetch);
+    expect(fetchMock).toHaveBeenCalledWith("/api/rooms", { credentials: "same-origin" });
+    expect(result.rooms).toHaveLength(1);
+    expect(result.rooms[0].name).toBe("Keluarga");
+  });
+
+  it("fetchRoomBoard reads /api/rooms/{id}/tasks and returns delegation", async () => {
+    const fetchMock = mockFetch({
+      room_id: "room-1",
+      room_name: "Keluarga",
+      tasks: [
+        {
+          id: "task-1",
+          room_id: "room-1",
+          title: "Compare prices",
+          owner_user_id: "user-2",
+          due_at: "2026-11-21T10:00:00+00:00",
+          status: "open",
+          created_by: "user-1",
+          created_at: "2026-11-19T10:00:00+00:00",
+          completed_at: null,
+          delegation: {
+            delegate_kind: "agent",
+            assignee_ref: "sub-abc",
+            status: "in_progress",
+            last_report: "checked 3 sellers",
+            reported_at: null,
+            started_at: null,
+            blocked_reason: null,
+          },
+          pending_steps: 1,
+        },
+      ],
+    });
+    const result = await fetchRoomBoard("room-1", fetchMock as unknown as typeof fetch);
+    expect(fetchMock).toHaveBeenCalledWith("/api/rooms/room-1/tasks", {
+      credentials: "same-origin",
+    });
+    expect(result.tasks).toHaveLength(1);
+    expect(result.tasks[0].delegation?.status).toBe("in_progress");
+    expect(result.tasks[0].pending_steps).toBe(1);
+  });
+
+  it("fetchRoomBoard throws ApiError on 403 for a non-member", async () => {
+    const fetchMock = mockFetch({ error: "not a member" }, 403);
+    await expect(
+      fetchRoomBoard("room-1", fetchMock as unknown as typeof fetch),
+    ).rejects.toBeInstanceOf(ApiError);
   });
 });

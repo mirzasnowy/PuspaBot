@@ -279,3 +279,53 @@ export function formatRupiah(amountRp: number): string {
     .toString()
     .replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
 }
+
+/** One shared room the user belongs to (B9). */
+export interface RoomSummary {
+  id: string;
+  name: string;
+  role: string;
+}
+
+/** One task on a shared room board (B9). */
+export interface RoomBoardTask {
+  id: string;
+  room_id: string;
+  title: string;
+  owner_user_id: string | null;
+  due_at: string | null;
+  status: string;
+  created_by: string;
+  created_at: string;
+  completed_at: string | null;
+  delegation: {
+    delegate_kind: "agent" | "teammate";
+    assignee_ref: string;
+    status: string;
+    last_report: string | null;
+    reported_at: string | null;
+    started_at: string | null;
+    blocked_reason: string | null;
+  } | null;
+  pending_steps: number;
+}
+
+/** The shared task board of one room (B9). */
+export interface RoomBoard {
+  room_id: string;
+  room_name: string;
+  tasks: RoomBoardTask[];
+}
+
+/** List the user's shared rooms (B9). */
+export function fetchRooms(fetchFn: FetchFn = fetch): Promise<{ rooms: RoomSummary[] }> {
+  return getJson<{ rooms: RoomSummary[] }>("/api/rooms", fetchFn);
+}
+
+/** Read the shared task board of one room (B9). */
+export function fetchRoomBoard(
+  roomId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<RoomBoard> {
+  return getJson<RoomBoard>(`/api/rooms/${encodeURIComponent(roomId)}/tasks`, fetchFn);
+}
