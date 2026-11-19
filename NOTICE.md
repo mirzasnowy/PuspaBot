@@ -758,3 +758,28 @@ the standard library plus Puspa's existing backend ABC
 the local backend, fake clocks, and mock-free refusal checks
 for Docker paths (no live containers). No code from any other
 repo was copied, vendored, or depended on for this item.
+
+# NOTICE - Puspa maturity phase, E-03 (20 Nov 2026)
+
+- **moby/moby** (https://github.com/moby/moby, Apache License
+  2.0) — one vendored data file: `profiles/seccomp/default.json`
+  from tag `v28.0.0`, stored verbatim as
+  `puspa/sandbox/seccomp-default.json` (the Docker default
+  seccomp profile). Copyright: Docker, Inc. and the moby
+  contributors. Full license text: Apache License 2.0
+  (https://www.apache.org/licenses/LICENSE-2.0).
+- **NVIDIA/OpenShell** (https://github.com/NVIDIA/OpenShell,
+  Apache License 2.0) — pattern only, studied at commit
+  `5c0d71641fbc9d62a4ee2f33de235f6662ae196c` (G34): the filtered
+  egress shape (HTTP CONNECT proxy + DNS mediation +
+  fail-closed default) taken for `puspa/sandbox/egress.py`.
+  No OpenShell code was copied, ported, vendored, or depended
+  on.
+
+## New dependency: none
+
+No new dependency was added for E-03. All new modules use only
+the standard library plus Puspa's existing sandbox modules
+(policy, quota, runner); tests use real sockets for the proxy,
+fake runtimes/binaries for Docker paths, and a fake UDP DNS
+server for the pinned resolver (no live containers).
