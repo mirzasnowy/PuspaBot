@@ -179,6 +179,14 @@ class TaskRunner:
         if world_model is not None and learning_loop is not None:
             with contextlib.suppress(Exception):
                 world_model.learning_loop = learning_loop
+            with contextlib.suppress(Exception):
+                # Share the loop's causal ledger with the model so
+                # the model's `expect` read path sees the same
+                # hypotheses. Only when the loop has one: never
+                # wipe a ledger the model already carries.
+                ledger = getattr(learning_loop, "causal_ledger", None)
+                if ledger is not None:
+                    world_model.causal_ledger = ledger
 
     def _predict_step(self, task: Task, step: Step, action: dict):
         """Predict one step's action before acting (advisory).

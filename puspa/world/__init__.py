@@ -26,6 +26,14 @@
   K3) — two time pairs per belief, corrections append a new
   version and never overwrite history, as-of queries on known
   time and valid time.
+- ``puspa.world.beliefs``: the belief data holders split out of
+  ``model.py`` (K4 ratchet fix) — the six belief dataclasses, the
+  price-key helper, and the three constants only the beliefs need.
+- ``puspa.world.causal``: causal hypotheses (Kosmos K4) — "X ->
+  Y under condition C" with strength, evidence, and expiry,
+  proposed and updated from the learning loop's outcomes, read
+  through ``CausalLedger.expect``; the ``CausalExpectationMixin``
+  gives a model the same read path (``WorldModel.expect``).
 """
 
 from .bitemporal import (
@@ -33,6 +41,11 @@ from .bitemporal import (
     BitemporalBeliefStore,
     belief_key,
     utcnow,
+)
+from .causal import (
+    CausalHypothesis,
+    CausalLedger,
+    causal_effect_key,
 )
 from .model import Prediction, WorldModel
 from .noisy_simulator import (
@@ -48,15 +61,20 @@ from .planner import plan
 from .simulator import SimulatedWorld, run_episode, run_episodes
 from .store import (
     apply_bitemporal_migration,
+    apply_causal_migration,
     beliefs_known_at,
     beliefs_valid_at,
+    causal_hypotheses_valid_at,
     delete_belief_history,
+    delete_causal_hypotheses,
     delete_world_state,
     deserialize_state,
     load_belief_history,
+    load_causal_ledger,
     load_world_model,
     load_world_state,
     save_belief_versions,
+    save_causal_hypotheses,
     save_world_state,
     serialize_state,
 )
@@ -67,19 +85,26 @@ from .store import (
 __all__ = [
     "BeliefVersion",
     "BitemporalBeliefStore",
+    "CausalHypothesis",
+    "CausalLedger",
     "NoisySimulatedWorld",
     "Prediction",
     "SimulatedWorld",
     "WorldModel",
     "apply_bitemporal_migration",
+    "apply_causal_migration",
     "belief_key",
     "beliefs_known_at",
     "beliefs_valid_at",
+    "causal_effect_key",
+    "causal_hypotheses_valid_at",
     "create_world_schema",
     "delete_belief_history",
+    "delete_causal_hypotheses",
     "delete_world_state",
     "deserialize_state",
     "load_belief_history",
+    "load_causal_ledger",
     "load_world_model",
     "load_world_state",
     "plan",
@@ -88,6 +113,7 @@ __all__ = [
     "run_noisy_episode",
     "run_noisy_episodes",
     "save_belief_versions",
+    "save_causal_hypotheses",
     "save_world_state",
     "serialize_state",
     "utcnow",

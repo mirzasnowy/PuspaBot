@@ -57,7 +57,14 @@ BASELINE_LINES = {
     # explicit None guards in _apply_observation, isinstance narrowing
     # in decay_stale_beliefs) and `ruff format` wrapped long lines:
     # +145 lines, no logic change. The ratchet resumes from 1605.
-    "puspa/world/model.py": 1605,
+    # Split 19 Nov 2026 (K4 ratchet fix): the K4 causal read path
+    # grew the file to 1,626, past this baseline, so the belief data
+    # holders moved to puspa/world/beliefs.py (six dataclasses, the
+    # price-key helper, three constants) and the causal read path to
+    # the CausalExpectationMixin in puspa/world/causal.py. No logic
+    # change, only the seam the comment above anticipated. The file
+    # shrank 1,626 -> 1,397; the ratchet resumes from 1397.
+    "puspa/world/model.py": 1397,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Phase status log, append-only by design; shrinks only by archiving
@@ -108,9 +115,9 @@ BASELINE_LINES = {
     # entries) and archived again the same day — Waves 9-13
     # moved to docs/status-maturity-archive-2026-11-19.md
     # (580 lines, under the soft cap) when the live log hit
-    # 1060 lines. The live log is now 880 lines (Wave 16
-    # onwards + Waves 17-22; Waves 14-15 archived to
-    # docs/status-maturity-archive-2026-11-19-waves-14-15.md),
+    # 1060 lines. The live log is now 666 lines (Wave 18
+    # onwards + Waves 18-23; Waves 16-17 archived to
+    # docs/status-maturity-archive-2026-11-19-waves-16-17.md),
     # under the soft cap, so this entry is removed per
     # test_baseline_entries_are_still_large_or_gone.
     # Same rule as before: shrinks only by archiving old
