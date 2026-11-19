@@ -46,6 +46,18 @@ row per hypothesis; see ``infra/schema_world.sql`` and
 ``infra/migrate_causal_ledger.sql``). Hypotheses mutate in
 place (strength updates, status changes), so saving upserts
 by id; expired and contradicted rows are kept as history.
+
+Other-agent goal models (Kosmos K5, ``puspa.world.agents``)
+are persisted in table ``agent_goal_models`` (one row per
+(user, agent, contact); see ``infra/schema_world.sql`` and
+``infra/migrate_agent_goal_models.sql``). A model mutates in
+place (goal strengths, predictions, accuracy), so saving
+upserts by (user, agent, contact); dropped goals are kept in
+the row's goals JSONB as history. The world snapshot in
+``world_beliefs.state`` also carries the agent models under
+``"agent_models"`` (same round trip as the other beliefs),
+so a plain ``save_world_state`` / ``load_world_model`` keeps
+them without a second call.
 """
 
 from __future__ import annotations
@@ -60,6 +72,7 @@ from typing import Any
 import psycopg
 from psycopg.rows import dict_row
 
+from .agents import AgentGoalModel, AgentGoalStore
 from .beliefs import (
     _BillBelief,
     _CapabilityBelief,
@@ -95,6 +108,7 @@ _STATE_KEYS = (
     "capability_beliefs",
     "contact_beliefs",
     "habit_beliefs",
+    "agent_models",
     "belief_contradictions",
 )
 
@@ -123,6 +137,8 @@ def serialize_state(state: dict) -> dict:
         value = state.get(key)
         if key in _BELIEF_TYPES:
             out[key] = {name: asdict(belief) for name, belief in (value or {}).items()}
+        elif key == "agent_models":
+            out[key] = {name: model.to_dict() for name, model in (value or {}).items()}
         else:
             out[key] = value
     return out
@@ -136,6 +152,10 @@ def deserialize_state(data: dict) -> dict:
         if key in _BELIEF_TYPES:
             belief_type = _BELIEF_TYPES[key]
             out[key] = {name: belief_type(**belief) for name, belief in (value or {}).items()}
+        elif key == "agent_models":
+            out[key] = {
+                name: AgentGoalModel.from_dict(model) for name, model in (value or {}).items()
+            }
         else:
             out[key] = value
     if out.get("entities") is None:
@@ -144,6 +164,8 @@ def deserialize_state(data: dict) -> dict:
         out["relations"] = []
     if out.get("day") is None:
         out["day"] = 0
+    if out.get("agent_models") is None:
+        out["agent_models"] = {}
     if out.get("belief_contradictions") is None:
         out["belief_contradictions"] = []
     return out
@@ -573,6 +595,142 @@ def delete_causal_hypotheses(user_id, agent_id, *, dsn=None) -> bool:
         with conn.cursor() as cur:
             cur.execute(
                 "DELETE FROM causal_hypotheses WHERE user_id = %s AND agent_id = %s",
+                (str(user_id), str(agent_id)),
+            )
+            deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted
+
+
+# -- other-agent goal models (Kosmos K5) ------------------------------
+def apply_agent_migration(dsn: str | None = None) -> None:
+    """Run `infra/migrate_agent_goal_models.sql` (idempotent).
+
+    Creates table `agent_goal_models` when missing. Safe to run
+    repeatedly and safe to run against a database that already
+    has it. Run this once against an existing database; fresh
+    databases get the same objects from `create_schema`
+    (`schema_world.sql`).
+    """
+    sql = (
+        Path(__file__).resolve().parent.parent.parent / "infra" / "migrate_agent_goal_models.sql"
+    ).read_text(encoding="utf-8")
+    with psycopg.connect(_resolve_dsn(dsn), autocommit=True) as conn:
+        conn.execute(sql)
+
+
+def _agent_row_to_model(row: dict) -> AgentGoalModel:
+    return AgentGoalModel.from_dict(
+        {
+            "contact_id": row["contact_id"],
+            "goals": row["goals"] or {},
+            "observations": row["observations"],
+            "replies": row["replies"],
+            "reply_delays": row["reply_delays"] or [],
+            "channels": row["channels"] or {},
+            "last_day": row["last_day"],
+            "predictions": row["predictions"] or [],
+            "stats": row["stats"] or {"predictions": 0, "correct": 0},
+        }
+    )
+
+
+def save_agent_models(user_id, agent_id, store, *, dsn=None) -> int:
+    """Persist per-contact goal models (one row per contact).
+
+    `store` is an `AgentGoalStore` (or a `WorldModel`, whose
+    `_agent_models` are read). Models mutate in place (goal
+    strengths, predictions, accuracy), so saving upserts by
+    (user, agent, contact) (`ON CONFLICT ... DO UPDATE`):
+    re-saving the same store writes the same rows again with
+    their current values. Dropped goals are saved too — they
+    are history, and the read path filters them. Returns the
+    number of rows written.
+    """
+    if isinstance(store, WorldModel):
+        models = list(store._agent_models.values())
+    elif isinstance(store, AgentGoalStore):
+        models = store.all_models()
+    else:
+        raise ValueError("store must be an AgentGoalStore or a WorldModel")
+    if not models:
+        return 0
+    with psycopg.connect(_resolve_dsn(dsn)) as conn:
+        with conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO agent_goal_models"
+                " (user_id, agent_id, contact_id, goals, observations,"
+                "  replies, reply_delays, channels, last_day, predictions,"
+                "  stats, updated_at)"
+                " VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s::jsonb,"
+                "  %s::jsonb, %s, %s::jsonb, %s::jsonb, now())"
+                " ON CONFLICT (user_id, agent_id, contact_id) DO UPDATE SET"
+                "  goals = EXCLUDED.goals,"
+                "  observations = EXCLUDED.observations,"
+                "  replies = EXCLUDED.replies,"
+                "  reply_delays = EXCLUDED.reply_delays,"
+                "  channels = EXCLUDED.channels,"
+                "  last_day = EXCLUDED.last_day,"
+                "  predictions = EXCLUDED.predictions,"
+                "  stats = EXCLUDED.stats,"
+                "  updated_at = now()",
+                [
+                    (
+                        str(user_id),
+                        str(agent_id),
+                        model.contact_id,
+                        json.dumps(
+                            {label: goal.to_dict() for label, goal in model.goals.items()},
+                            ensure_ascii=False,
+                        ),
+                        model.observations,
+                        model.replies,
+                        json.dumps(model.reply_delays, ensure_ascii=False),
+                        json.dumps(model.channels, ensure_ascii=False),
+                        model.last_day,
+                        json.dumps(
+                            [prediction.to_dict() for prediction in model.predictions],
+                            ensure_ascii=False,
+                        ),
+                        json.dumps(model.stats, ensure_ascii=False),
+                    )
+                    for model in models
+                ],
+            )
+            written = cur.rowcount
+        conn.commit()
+    return written
+
+
+def load_agent_models(user_id, agent_id, *, dsn=None) -> AgentGoalStore | None:
+    """Load all per-contact goal models, or None when none were saved.
+
+    Returns every model including dropped goals (history is
+    preserved); the read path (`AgentGoalModel.active_goals`,
+    `WorldModel.predict_agent`) filters to live ones.
+    """
+    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT contact_id, goals, observations, replies, reply_delays,"
+            " channels, last_day, predictions, stats FROM agent_goal_models"
+            " WHERE user_id = %s AND agent_id = %s"
+            " ORDER BY contact_id",
+            (str(user_id), str(agent_id)),
+        )
+        rows = cur.fetchall()
+    if not rows:
+        return None
+    return AgentGoalStore.from_dict(
+        {"models": [_agent_row_to_model(row).to_dict() for row in rows]}
+    )
+
+
+def delete_agent_models(user_id, agent_id, *, dsn=None) -> bool:
+    """Delete all saved goal models for one (user, agent). Tests only."""
+    with psycopg.connect(_resolve_dsn(dsn)) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM agent_goal_models WHERE user_id = %s AND agent_id = %s",
                 (str(user_id), str(agent_id)),
             )
             deleted = cur.rowcount > 0

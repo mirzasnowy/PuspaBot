@@ -665,6 +665,7 @@ Remaining: Kosmos K5, K6, K10, K11, K12, K13, then B features
 (B6, B9, B10, B11, B12, B13), then B15 culture LAST. Then uji
 + 15 gates + 10 reference tasks (waiting on Nero's decisions).
 
+
 ## Wave 24: G34 (Sandbox deepening from NVIDIA/OpenShell, DONE 19 Nov 2026)
 
 New item from Nero (19 Nov ~08:24 WIB), after K4. The worker
@@ -776,3 +777,128 @@ sessions, exec, and terminals.
 Remaining: Kosmos K5, K6, K10, K11, K12, K13, then B features
 (B6, B9, B10, B11, B12, B13), then B15 culture LAST. Then uji
 + 15 gates + 10 reference tasks (waiting on Nero's decisions).
+
+## Wave 25 — Kosmos K5: other-agent goal models (DONE 19 Nov 2026)
+
+K5 models what other people want and will do, one model per
+contact (`puspa/world/agents.py`, new, 1,047 lines): the goals
+that contact is pursuing (label, strength 0..1, supporting /
+contradicting counts, evidence, status active / stale /
+dropped) plus predictions about what the contact will do next
+(reply, channel, next action, agreement), each a scored claim
+with confidence and evidence. Update rule deterministic, no
+LLM: a new goal starts at 0.5, each support +0.1 (cap 1.0),
+each contradiction -0.2 (floor 0.0), below 0.2 it is dropped
+and kept as history. Confidence = strength (or reply rate) x
+evidence factor `min(1, observations / 3)` x staleness factor
+(1.0 within 30 days, 0.75 within 60, 0.5 within 90, 0.25
+after); a goal untouched for 90 days decays (strength halved,
+status stale). K4 is used as context: `predict_agent` also
+returns the active causal expectations for
+`contact:<id>`, attached as evidence on the reply prediction.
+K1 is used in shape only (labelled scored claims with
+evidence, like `IntentHypothesis`), not its normalised
+distribution: goal strengths are independent (they do not sum
+to 1) and there is no desire / goal / values split — the
+system cannot see another person's values, only what they
+asked for and agreed to. An LLM-backed inferrer is only a
+seam (`GoalInferrer` protocol); the built one is
+`KeywordGoalInferrer`.
+
+Wiring: `WorldModel` owns the per-contact models next to
+`_contact_beliefs` (via `AgentModelMixin`, see the ratchet
+fix below), `ingest_task_result` feeds the goal model from
+the same interaction that feeds the contact belief, and
+`WorldModel.predict_agent(contact_id, proposed)` is the read
+path — fail-open (unknown contact = known False, empty
+predictions). The planner is a real caller: new goal
+`message_contact`, feasible only when a reply is likely and,
+when an ask is given, the agreement confidence is at least
+0.5; otherwise infeasible with reason `agreement_unlikely`.
+The turn loop can call the same method on the session model.
+Privacy (hard rule, kosmos-design.md section J):
+`check_user_involved` raises `ValueError` before anything is
+recorded when `user_involved` is False, `participants` lacks
+`"user"`, or `source` is `third_party_thread`; the refusal is
+recorded in `agent_refusals` (runtime only) and the goal model
+is untouched. A goal model never causes an action on its own.
+Persistence: new table `agent_goal_models` (one row per
+user / agent / contact, upsert), idempotent migration
+`infra/migrate_agent_goal_models.sql` + the same DDL in
+`infra/schema_world.sql` (checked identical); the snapshot in
+`world_beliefs.state` also carries `agent_models`. No 32nd
+ledger event type: the 31 stay closed, goal models cite
+ledger events by id only.
+
+Files (worker 362c005c, not yet pushed): created
+`puspa/world/agents.py` (997 lines at build time),
+`tests/test_agent_models.py` (484),
+`tests/test_agent_store.py` (248),
+`docs/other-agent-models.md` (214),
+`infra/migrate_agent_goal_models.sql` (56); changed
+`puspa/world/model.py`, `puspa/world/planner.py` (+63: the
+`message_contact` goal), `puspa/world/store.py` (+158:
+migration + save / load / delete + snapshot agent models),
+`puspa/world/__init__.py`, `infra/schema_world.sql` (table
+added, 150 lines total).
+
+Verification (coordinator, re-ran herself): module tests
+`tests/test_agent_models.py tests/test_agent_store.py`:
+34 passed (29 in-memory + 5 Postgres). Neighbour regression
+(world model / contact-habit / world store / world beliefs /
+brain wiring / causal ledger / causal store / causal learning
+wiring / intent / intent turn wiring / ledger event types,
+combined with the K5 files): 194 passed. Ruff check +
+format: clean. Mypy: clean. Read in full: the mixin
+(`agents.py` lines 871-997), the planner goal, the doc, the
+migration. Two test failures during the worker's run, both
+fixed in the tests, not the code (one expected `Store.observe`
+to return a label when it returns a model; one expected reply
+rate 1.0 when a decline without a reply makes the true rate
+3/6 = 0.5, fixed by marking the decline as a reply).
+
+Ratchet fix (coordinator, same pattern as K4): the worker's
+code grew `puspa/world/model.py` 1,397 -> 1,443, past its
+1,397 baseline. Not re-baselined: the ingest hook moved to
+`AgentModelMixin.feed_task_result` (compacted: a key loop
+instead of spelling the 13 interaction fields out, same
+keys and values), the per-contact state to
+`AgentModelMixin.__init__` (runs via `super().__init__()` in
+`WorldModel.__init__`; `CausalExpectationMixin` defines no
+`__init__`, so the chain reaches it), and the `Prediction`
+dataclass moved to `puspa/world/beliefs.py` (a forecast is a
+belief about a future outcome; `dataclass` import left with
+it). No logic change, only the seam. model.py shrank
+1,443 -> 1,395; baseline re-recorded DOWN to 1,395.
+`puspa/world/agents.py` crossed 1000 in the same move
+(997 -> 1,047): recorded as a NEW baseline entry at 1,047
+with its reason (K5 module: goal-model types + in-memory
+store + keyword inferrer + mixin in one place) and its split
+candidate (the inferrer, or the store, into its own module).
+`puspa/world/beliefs.py` grew 238 -> 250 (docstring +
+Prediction), still under 1000. Re-verified after the fix:
+ratchet 3 passed, mypy clean, the 194-test set still passed.
+
+Suite (coordinator, SOLO, log
+hidden_files/suite-wave25-k5.log): 3,353 passed, 23 skipped,
+1 warning, 21m05s, EXIT 0.
+Reconciliation: 3,319 (Wave 24) + 34 (K5 module tests) = 3,353.
+
+Honest limits: confidence is bookkeeping, not a calibrated
+probability (0.5 / +0.1 / -0.2 are chosen, not measured);
+accuracy is tracked per model (`accuracy`, `stats`) so it can
+be checked against outcomes. The keyword inferrer is a weak
+heuristic; unknown text infers nothing. The model has no
+theory of mind: it cannot tell polite agreement from real
+commitment, and a goal that stopped being mentioned looks
+the same as a goal that was achieved. `message_contact` in
+the planner is a rehearsal, not a message being sent.
+`puspa/world/agents.py` is now over 1000 lines with a
+recorded baseline: the next wave that touches it must split
+it first (inferrer or store seam). No LICENSE or billing
+model decision was made.
+
+Remaining: Kosmos K6, K10, K11, K12, K13, then B features
+(B6, B9, B10, B11, B12, B13), then B15 culture LAST. Then uji
++ 15 gates + 10 reference tasks (waiting on Nero's decisions).
+
