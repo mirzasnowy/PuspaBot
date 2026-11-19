@@ -36,6 +36,10 @@ fastapi==0.163.1
 httpx==0.28.1
 uvicorn==0.54.0
 playwright==1.65.2
+# B7 mockup PNG export (puspa/mockup/export.py rasterises with Pillow;
+# PDF export is stdlib-only). Already in the venv as a transitive
+# dependency; pinned here so it is an explicit Puspa dependency.
+Pillow==13.0.0
 # Brain phase dependency: local embedding model for the learning loop
 # and memory retrieval. Pinned to 0.9.1 because fastembed requires
 # loguru<0.8, so loguru is pinned to 0.7.3 above (which still satisfies

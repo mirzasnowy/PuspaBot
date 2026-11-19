@@ -1,0 +1,551 @@
+# Mockup editor API contract (B7 prompt to visual mockup, drag and drop).
+#
+# Split out of docs/openapi-pwa.yaml the way the graph contract was:
+# the main spec references this file with $ref stubs; the generated
+# client is produced from the main spec with openapi-typescript, which
+# resolves external $refs. The Error schema stays in the main spec
+# and is referenced back from here. The PWA client types for mockups
+# live in apps/pwa/src/state/mockup.ts (the doc mirror), not in the
+# generated file.
+openapi: 3.0.3
+info:
+  title: Puspa mockup editor API
+  version: 1.0.0
+paths:
+  /api/mockups/templates:
+    get:
+      tags: [mockup]
+      summary: The five beta templates and their slots
+      responses:
+        "200":
+          description: Template list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockupTemplates"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/mockups/generate:
+    post:
+      tags: [mockup]
+      summary: Build 2-3 mockup variants from a text prompt
+      description: |
+        B7: deterministic template filling (no live model call).
+        Intent keywords pick the template; quoted text becomes the
+        headline, the first Rp... becomes the price. Each variant is
+        self-critiqued (clipped text, contrast, collisions) and
+        auto-fixed once; remaining issues ride along.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt:
+                  type: string
+      responses:
+        "200":
+          description: Variants (docs are not stored yet)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockupGeneration"
+        "400":
+          description: Empty prompt
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/mockups:
+    get:
+      tags: [mockup]
+      summary: List the user's mockups, newest first
+      responses:
+        "200":
+          description: Mockup summaries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockupList"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    post:
+      tags: [mockup]
+      summary: Store a mockup doc, or build one from a template
+      description: |
+        B7: either {"doc": <design doc>} or {"template": ..., "fields": {...}}.
+        The doc is validated (whitelisted components, no scripts) before
+        it is stored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MockupCreate"
+      responses:
+        "200":
+          description: Stored doc
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockupDoc"
+        "400":
+          description: Unknown template or invalid doc
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/mockups/{mockup_id}:
+    get:
+      tags: [mockup]
+      summary: Fetch one mockup doc
+      parameters:
+        - name: mockup_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Design doc
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockupDoc"
+        "404":
+          description: Not found or not the user's
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    delete:
+      tags: [mockup]
+      summary: Delete a mockup
+      parameters:
+        - name: mockup_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: string
+        "404":
+          description: Not found or not the user's
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/mockups/{mockup_id}/ops:
+    post:
+      tags: [mockup]
+      summary: Apply one numbered op to a mockup
+      description: |
+        B7: the drag-and-drop editor and the LLM patcher both write
+        ops here. The op is numbered, appended to the op log, and the
+        doc version bumps by one.
+      parameters:
+        - name: mockup_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [op]
+              properties:
+                op:
+                  $ref: "#/components/schemas/MockupOp"
+      responses:
+        "200":
+          description: Updated doc
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockupDoc"
+        "400":
+          description: Invalid op
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/mockups/{mockup_id}/patch:
+    post:
+      tags: [mockup]
+      summary: Apply a word-change instruction as ops
+      description: |
+        B7: "besarkan harga, ganti warna jadi hijau" becomes ops on
+        the doc. Unparseable instructions are 400, never guessed.
+      parameters:
+        - name: mockup_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instruction]
+              properties:
+                instruction:
+                  type: string
+      responses:
+        "200":
+          description: Updated doc
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockupDoc"
+        "400":
+          description: Instruction could not be parsed into ops
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/mockups/{mockup_id}/undo:
+    post:
+      tags: [mockup]
+      summary: Undo the last op
+      parameters:
+        - name: mockup_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated doc
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockupDoc"
+        "400":
+          description: Nothing to undo
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/mockups/{mockup_id}/redo:
+    post:
+      tags: [mockup]
+      summary: Redo the last undone op
+      parameters:
+        - name: mockup_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated doc
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockupDoc"
+        "400":
+          description: Nothing to redo
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/mockups/{mockup_id}/assets:
+    post:
+      tags: [mockup]
+      summary: Add an image asset (data URI only) to a mockup
+      parameters:
+        - name: mockup_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [asset_id, data_uri]
+              properties:
+                asset_id:
+                  type: string
+                data_uri:
+                  type: string
+                name:
+                  type: string
+      responses:
+        "200":
+          description: Updated doc
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockupDoc"
+        "400":
+          description: Asset is not an image data URI
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/mockups/{mockup_id}/critique:
+    get:
+      tags: [mockup]
+      summary: Self-critique issues for a mockup
+      parameters:
+        - name: mockup_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Issues (empty means the mockup passes)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  issues:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MockupIssue"
+  /api/mockups/{mockup_id}/render.svg:
+    get:
+      tags: [mockup]
+      summary: Deterministic SVG render
+      parameters:
+        - name: mockup_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SVG
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+  /api/mockups/{mockup_id}/render.html:
+    get:
+      tags: [mockup]
+      summary: Safe HTML render (strict CSP header)
+      parameters:
+        - name: mockup_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+  /api/mockups/{mockup_id}/export.png:
+    get:
+      tags: [mockup]
+      summary: PNG export (rendered output)
+      parameters:
+        - name: mockup_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: PNG
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+  /api/mockups/{mockup_id}/export.pdf:
+    get:
+      tags: [mockup]
+      summary: PDF export (rendered output)
+      parameters:
+        - name: mockup_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+components:
+  schemas:
+    MockupTemplates:
+      type: object
+      properties:
+        templates:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              fields:
+                type: array
+                items:
+                  type: string
+    MockupDoc:
+      type: object
+      description: Declarative design doc (see docs/mockup-editor.md).
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        template:
+          type: string
+          enum: [hajatan_invitation, promo_banner, warung_menu, chat_catalog, lebaran_card]
+        frame:
+          type: object
+          properties:
+            width:
+              type: number
+            height:
+              type: number
+        theme:
+          type: object
+          additionalProperties: true
+        assets:
+          type: object
+          additionalProperties: true
+        nodes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        version:
+          type: integer
+        ops:
+          type: array
+          items:
+            $ref: "#/components/schemas/MockupOp"
+        decisions:
+          type: array
+          items:
+            type: object
+            properties:
+              seq:
+                type: integer
+              note:
+                type: string
+    MockupOp:
+      type: object
+      properties:
+        seq:
+          type: integer
+        type:
+          type: string
+          enum: [add_node, remove_node, move_node, set_text, set_style, set_image, reorder, set_theme, set_title]
+        node_id:
+          type: string
+        parent_id:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        note:
+          type: string
+    MockupIssue:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [clipped_text, low_contrast, collision]
+        node_id:
+          type: string
+          nullable: true
+        detail:
+          type: string
+    MockupGeneration:
+      type: object
+      properties:
+        template:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+        variants:
+          type: array
+          items:
+            type: object
+            properties:
+              doc:
+                $ref: "#/components/schemas/MockupDoc"
+              issues:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MockupIssue"
+    MockupList:
+      type: object
+      properties:
+        mockups:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              title:
+                type: string
+              template:
+                type: string
+              updated_at:
+                type: string
+    MockupCreate:
+      type: object
+      description: Either a full doc or a template + fields.
+      properties:
+        doc:
+          $ref: "#/components/schemas/MockupDoc"
+        template:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string

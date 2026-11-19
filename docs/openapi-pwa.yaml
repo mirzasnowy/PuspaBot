@@ -649,6 +649,34 @@ paths:
     $ref: './openapi-graph.yaml#/paths/~1api~1graph~1edges'
   /api/graph/search:
     $ref: './openapi-graph.yaml#/paths/~1api~1graph~1search'
+  /api/mockups/templates:
+    $ref: './openapi-mockup.yaml#/paths/~1api~1mockups~1templates'
+  /api/mockups/generate:
+    $ref: './openapi-mockup.yaml#/paths/~1api~1mockups~1generate'
+  /api/mockups:
+    $ref: './openapi-mockup.yaml#/paths/~1api~1mockups'
+  /api/mockups/{mockup_id}:
+    $ref: './openapi-mockup.yaml#/paths/~1api~1mockups~1{mockup_id}'
+  /api/mockups/{mockup_id}/ops:
+    $ref: './openapi-mockup.yaml#/paths/~1api~1mockups~1{mockup_id}~1ops'
+  /api/mockups/{mockup_id}/patch:
+    $ref: './openapi-mockup.yaml#/paths/~1api~1mockups~1{mockup_id}~1patch'
+  /api/mockups/{mockup_id}/undo:
+    $ref: './openapi-mockup.yaml#/paths/~1api~1mockups~1{mockup_id}~1undo'
+  /api/mockups/{mockup_id}/redo:
+    $ref: './openapi-mockup.yaml#/paths/~1api~1mockups~1{mockup_id}~1redo'
+  /api/mockups/{mockup_id}/assets:
+    $ref: './openapi-mockup.yaml#/paths/~1api~1mockups~1{mockup_id}~1assets'
+  /api/mockups/{mockup_id}/critique:
+    $ref: './openapi-mockup.yaml#/paths/~1api~1mockups~1{mockup_id}~1critique'
+  /api/mockups/{mockup_id}/render.svg:
+    $ref: './openapi-mockup.yaml#/paths/~1api~1mockups~1{mockup_id}~1render.svg'
+  /api/mockups/{mockup_id}/render.html:
+    $ref: './openapi-mockup.yaml#/paths/~1api~1mockups~1{mockup_id}~1render.html'
+  /api/mockups/{mockup_id}/export.png:
+    $ref: './openapi-mockup.yaml#/paths/~1api~1mockups~1{mockup_id}~1export.png'
+  /api/mockups/{mockup_id}/export.pdf:
+    $ref: './openapi-mockup.yaml#/paths/~1api~1mockups~1{mockup_id}~1export.pdf'
   /api/onboarding:
     get:
       tags: [onboarding]

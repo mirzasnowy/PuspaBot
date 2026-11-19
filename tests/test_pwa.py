@@ -21,15 +21,15 @@ def client(make_user):
         yield c
 
 
-def test_nine_screens_exist_and_200(client):
+def test_ten_screens_exist_and_200(client):
     for screen in SCREENS:
         resp = client.get(f"/{screen}")
         assert resp.status_code == 200, screen
         assert "Puspa" in resp.text
 
 
-def test_no_tenth_screen_exists():
-    assert len(SCREENS) == 9
+def test_no_eleventh_screen_exists():
+    assert len(SCREENS) == 10
     assert set(SCREENS) == {
         "chat",
         "tasks",
@@ -40,6 +40,7 @@ def test_no_tenth_screen_exists():
         "office",
         "insights",
         "onboarding",
+        "mockup",
     }
 
 
