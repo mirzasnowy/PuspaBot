@@ -29,10 +29,11 @@ ROOMS_TABLES = (
     "room_channel_links",
     "delegated_tasks",
     "delegated_task_steps",
+    "room_research_links",
     "room_splits",
-    "split_shares",
     "split_payments",
     "split_settlements",
+    "split_shares",
 )
 
 
