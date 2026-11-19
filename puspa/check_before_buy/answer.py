@@ -28,6 +28,8 @@ from __future__ import annotations
 import statistics
 from dataclasses import dataclass, field
 
+from puspa.graphs.shared import seller_reputation, shared_fair_price
+
 from .classifier import classify_input
 from .records import PriceObservation, RecordStore, normalize_product_key
 
@@ -199,11 +201,19 @@ def check_before_buy(
     store: RecordStore | None = None,
     product_key: str | None = None,
     mode: str = "recorded",
+    shared_dsn: str | None = None,
 ) -> CheckAnswer:
     """Answer one forwarded input from recorded data only.
 
     ``mode="recorded"`` (the default) uses the supplied store.
     ``mode="live"`` returns a held answer and reads nothing.
+    ``shared_dsn`` (ticket B3) consults the shared graphs: a
+    seller flagged by another user flags the seller here too,
+    and when the local store has no price observations at all,
+    the shared fair-price estimate is offered as an
+    ``uncertain`` hint. Without it the answer is exactly the
+    B1 recorded-only answer; the shared flag reason is never
+    shown, only the aggregate count.
     """
     classified = classify_input(text)
     if mode == "live":
@@ -216,6 +226,19 @@ def check_before_buy(
 
     observations = store.price_observations(key) if key else []
     fair_price = _fair_price(observations, key)
+    if fair_price.status == STATUS_CANNOT_VERIFY and key and shared_dsn is not None:
+        shared = shared_fair_price(shared_dsn, key)
+        if shared is not None:
+            fair_price = FairPrice(
+                status=STATUS_UNCERTAIN,
+                value=shared.value,
+                sources=list(shared.sources),
+                basis=(
+                    f"shared fair-price estimate from {shared.observations} "
+                    "observations across users (median)"
+                ),
+                reason="shared estimate only; no recorded observations of your own",
+            )
 
     seller_record = store.seller_record(classified.seller_name)
     if classified.seller_name is None:
@@ -244,6 +267,29 @@ def check_before_buy(
             reports=seller_record.reports,
             note=seller_record.note or "no adverse reports on record",
         )
+
+    # B3: a seller flagged once in the shared graph is flagged
+    # for every other user, even when the local store says
+    # nothing (cannot_verify) or clean. The shared flag reason
+    # is never shown: only the aggregate flag count reaches
+    # this answer, so no flagger is identified.
+    if (
+        seller.status != STATUS_FLAGGED
+        and classified.seller_name is not None
+        and shared_dsn is not None
+    ):
+        reputation = seller_reputation(shared_dsn, classified.seller_name)
+        if reputation is not None and reputation.flagged:
+            seller = SellerSection(
+                status=STATUS_FLAGGED,
+                name=classified.seller_name,
+                reports=reputation.flag_count,
+                note=(
+                    f"flagged in the shared graph by {reputation.flag_count} "
+                    "user(s); the flagger is not shown"
+                ),
+                reason="seller is flagged in the shared graph",
+            )
 
     if classified.account_number is None:
         account = AccountSection(
