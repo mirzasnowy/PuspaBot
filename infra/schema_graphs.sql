@@ -186,6 +186,38 @@ CREATE TABLE IF NOT EXISTS tos_checks (
     keputusan TEXT NOT NULL DEFAULT 'awaiting_nero_decision'
 );
 
+-- B3 shared graphs (anti-fraud + prices, per-user privacy).
+-- Shared tables have NO user_id column: a contributor is recorded
+-- only as a hash of (user, subject) for de-duplication, and that
+-- hash is never returned by any read code.
+-- Private records live in their own table, with user_id.
+CREATE TABLE IF NOT EXISTS shared_seller_flags (
+    seller_key TEXT NOT NULL,
+    reporter_hash TEXT NOT NULL,
+    flag_reason TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (seller_key, reporter_hash)
+);
+CREATE TABLE IF NOT EXISTS shared_price_observations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_key TEXT NOT NULL,
+    source TEXT NOT NULL,
+    price NUMERIC NOT NULL,
+    observer_hash TEXT NOT NULL,
+    observed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (product_key, source, observer_hash)
+);
+CREATE TABLE IF NOT EXISTS shared_graph_private_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    subject_key TEXT NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_private_records_user
+    ON shared_graph_private_records(user_id, kind, created_at DESC);
+
 -- RLS: semua tabel ber-user_id memakai kebijakan yang sama
 -- (app.current_user_id). Penegakan nyata hanya untuk koneksi sebagai
 -- peran puspa_app (pola Fase 0/1/2). Tabel tanpa user_id
@@ -205,12 +237,13 @@ ALTER TABLE monthly_credits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE token_metrics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workflow_library ENABLE ROW LEVEL SECURITY;
 ALTER TABLE block_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE shared_graph_private_records ENABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE
     t TEXT;
 BEGIN
-    FOREACH t IN ARRAY ARRAY['listing_links','price_series','watchlist','read_budgets','source_readings','procedure_versions','procedure_uses','canary_runs','false_reports','monthly_credits','token_metrics','workflow_library','block_requests'] LOOP
+    FOREACH t IN ARRAY ARRAY['listing_links','price_series','watchlist','read_budgets','source_readings','procedure_versions','procedure_uses','canary_runs','false_reports','monthly_credits','token_metrics','workflow_library','block_requests','shared_graph_private_records'] LOOP
         EXECUTE format('DROP POLICY IF EXISTS %I ON %I', 'isolasi_' || t, t);
         EXECUTE format(
             'CREATE POLICY %I ON %I USING (current_setting(%L, true) = user_id::text) WITH CHECK (current_setting(%L, true) = user_id::text)',
