@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 
 from puspa.evidence.evidence import record_evidence, save_evidence
+from puspa.evidence.proof import answer_proof
 from puspa.evidence.verifier import verify
 from puspa.ledger import Ledger
 
@@ -34,10 +35,12 @@ def record_outcome(
 ) -> dict:
     """Persist one answer: evidence rows + one ledger event.
 
-    Returns ``{"evidence_ids": [...], "ledger_event": {...}}``.
-    Evidence rows are only written for price observations that
-    carry a source URL; a ``cannot_verify`` section writes no row
-    and no number, by design.
+    Returns ``{"evidence_ids": [...], "ledger_event": {...},
+    "proof": {...}}``. The ``proof`` block is the B4 proof
+    surface on this answer: its evidence entries, the receipt
+    for the ledger event it was recorded as, and — when the
+    answer could not verify anything — the unverified sections
+    named, never silently shown as proven.
     """
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
     by_url = {obs.source_url: obs for obs in answer.observations}
@@ -76,10 +79,15 @@ def record_outcome(
         "cannot_verify": list(answer.cannot_verify),
         "live_execution_held": answer.live_execution_held,
     }
-    event = Ledger(dsn).append_event(
+    ledger = Ledger(dsn)
+    event = ledger.append_event(
         task_id=task_id,
         agent_id=agent_id,
         event_type="evidence_recorded",
         content=content,
     )
-    return {"evidence_ids": evidence_ids, "ledger_event": event}
+    return {
+        "evidence_ids": evidence_ids,
+        "ledger_event": event,
+        "proof": answer_proof(answer, event, ledger),
+    }
