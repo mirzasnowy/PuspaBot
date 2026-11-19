@@ -617,3 +617,52 @@ reinstalled postgresql-16 + pgvector 0.6.0, started the
 cluster, re-applied `infra/schema_core.sql`, recreated DBs
 puspa_test / puspa_test_w1 / puspa_test_w2, verified RLS,
 then re-ran the full suite green.
+
+## Wave 33 — B1 + B2 (2 workers parallel, pipeline rule, 19 Nov 2026)
+
+B1 "Cek Sebelum Beli" beta slice (commit f19ed121) and B2
+verified outcome records (commit 34241f7b) — the first two
+items of the B queue (coordinator 4bab3713, continued by
+ae20593d after 4bab3713 stopped mid-flight at 21:48 WIB
+with the central suite still running). B1: new
+puspa/check_before_buy package (classifier, answer,
+outcome, records, wiring) + cassette + docs/beta-slice.md,
+wired into the turn intercepts; evidence rules enforced
+(fair price = median of recorded observations, verified
+needs 2+ sources; seller/account only from the recorded
+store; advice acts only when all applicable checks are
+green); mode="live" refused outright per decision 15 (ToS
+gate still open), no fetch attempted; account numbers
+masked. B2: new puspa/evidence/outcomes.py single shared
+writer (records without evidence rejected with
+OutcomeError); B6/B9-B13 modules routed through it;
+outcome indexes in the ledger schema;
+docs/outcome-records.md.
+
+Central suite Wave 33, first run: 22 failed, 3,701 passed,
+23 skipped, 13 errors, SUITE_EXIT 1 (31m32s). Root cause of
+34 of the 35 problems: the suite ran with the dirty NO_PROXY
+(bracketed-IPv6 [::1]), which breaks httpx (ValueError:
+invalid literal for int(): ':1]') — channels (15),
+rooms_routing (3), reranker setup errors (13), billing
+fixtures (2), phase-3 gate e2e (1). Fix: re-run with
+NO_PROXY=localhost,127.0.0.1 (documented in ~/TOOLS.md).
+NO B1/B2 test failed — all 50 new tests passed. The 35th
+problem was real (B2's doing): the ratchet —
+puspa/rooms/delegation.py grew 998 -> 1,039 lines and
+puspa/rooms/splitting.py 1,000 -> 1,031 lines, both past
+the 1000-line soft cap; recorded in BASELINE_LINES with a
+reason + split candidate (agents.py precedent), riding in
+the B2 commit. Ratchet test alone: 3 passed.
+
+Central suite Wave 33 re-run (sanitized NO_PROXY): 3,736
+passed, 23 skipped, 1 warning, EXIT 0, 29m22s (3,686 + 29
+B1 + 21 B2, exact). Both items pushed: B1 f19ed121, B2
+34241f7b. Pre-existing drift NOT pushed with these items:
+build/README.md is the stale Phase-0 text (HEAD has the new
+README), and build/puspa/rooms/rooms_api.py is a stale local
+file (the repo has puspa/pwa/rooms_api.py instead). Also:
+the /tmp/head snapshot is incomplete (missing
+test_file_size_ratchet.py, docs/status-maturity.md) — verify
+file-vs-HEAD via the GitHub contents API + git hash-object,
+not /tmp/head alone.
