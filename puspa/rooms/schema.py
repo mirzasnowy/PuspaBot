@@ -29,6 +29,10 @@ ROOMS_TABLES = (
     "room_channel_links",
     "delegated_tasks",
     "delegated_task_steps",
+    "room_splits",
+    "split_shares",
+    "split_payments",
+    "split_settlements",
 )
 
 
@@ -49,7 +53,7 @@ def create_schema(dsn=None):
 
 
 def reset_tables(dsn=None):
-    """Empty all seven room tables (for tests). Cascades into the
+    """Empty all room tables (for tests). Cascades into the
     tables that reference them; the ``users`` table is untouched.
     """
     with psycopg.connect(resolve_dsn(dsn)) as conn:
