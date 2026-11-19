@@ -26,6 +26,8 @@ from datetime import UTC, datetime, timedelta
 
 import psycopg
 
+from puspa.proactivity.budget import Initiative, InterruptionBudget
+
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 HEARTBEAT_STALE_SECONDS = 120
 TRIGGER_TYPES = (
@@ -39,6 +41,23 @@ TRIGGER_TYPES = (
     "dream",
     "sentinel_scan",
 )
+
+#: Proactive trigger types pay from the interruption budget (K10):
+#: trigger type -> (initiative kind, assessed value). Only
+#: system-initiated pings pay. A user-created schedule, a manual
+#: trigger, and the silent system jobs (backup, consolidation,
+#: dream, trust-root refresh, sentinel scan) never pay: the user
+#: asked for the first two, and the rest never interrupt anyone.
+#: The value is fixed per type because the scheduler has no
+#: per-event benefit signal yet (see docs/interruption-budget.md):
+#: a bill about to fall due (0.85) is time-critical and costly
+#: to miss, so it also clears the scarcity bar; a price drop
+#: (0.70) saves money but is rarely urgent, so it is suppressed
+#: first when the budget thins.
+PROACTIVE_TRIGGER_TYPES = {
+    "price_drop": ("price_drop", 0.70),
+    "due_date_bill": ("bill_due", 0.85),
+}
 
 
 class SchedulerError(Exception):
@@ -131,7 +150,13 @@ def list_due_triggers(dsn=None, now: datetime | None = None) -> list[Trigger]:
 
 
 def run_trigger(
-    trigger: Trigger, *, sink=None, missed: bool = False, dsn=None, now: datetime | None = None
+    trigger: Trigger,
+    *,
+    sink=None,
+    missed: bool = False,
+    dsn=None,
+    now: datetime | None = None,
+    budget: InterruptionBudget | None = None,
 ) -> dict | None:
     """Jalankan satu pemicu (sekali, idempotent).
 
@@ -139,8 +164,27 @@ def run_trigger(
     idempotensi sudah pernah dipakai (pemicu yang sama tidak pernah
     menjalankan dua tugas). Mencatat `pemicu_terpicu` (atau
     `pemicu_terlewat`) ke Buku Kerja lewat `sink(jenis, isi)`.
+
+    With `budget` (K10), a proactive trigger (`price_drop`,
+    `due_date_bill`) pays from the daily interruption budget
+    first: when the budget denies it, return None WITHOUT
+    writing a run row and WITHOUT moving `pemicu_berikutnya` —
+    the trigger stays due and is evaluated again on the next
+    round (or tomorrow, when the budget resets). The denial is
+    recorded in `budget.spend_log()`, not in the ledger: there
+    is no ledger event type for "held back", and the 31 revisi-7
+    event types are closed.
     """
     now = now or _now()
+    if budget is not None:
+        spec = PROACTIVE_TRIGGER_TYPES.get(trigger.event_type)
+        if spec is not None:
+            kind, value = spec
+            decision = budget.try_spend(
+                Initiative(kind=kind, value=value, label=trigger.id), day=now.date()
+            )
+            if not decision.allowed:
+                return None
     key = f"{trigger.id}:{trigger.next_trigger_at.isoformat()}"
     task_id = f"tugas-{uuid.uuid4().hex[:12]}"
     with _connect(dsn) as conn:
@@ -175,12 +219,14 @@ def run_trigger(
     return {"trigger_id": trigger.id, "task_id": task_id, "missed": missed}
 
 
-def run_missed(*, sink=None, dsn=None, now: datetime | None = None) -> list[dict]:
+def run_missed(*, sink=None, dsn=None, now: datetime | None = None, budget=None) -> list[dict]:
     """Saat bangun: jalankan sekali tiap pemicu terlewat + laporkan.
 
     Pemicu dianggap terlewat bila `pemicu_berikutnya` sudah lewat
     lebih dari 1 jam dari sekarang (bukan sekadar baru jatuh tempo —
-    yang baru jatuh tempo ditangani `tick` biasa).
+    yang baru jatuh tempo ditangani `tick` biasa). Dengan `budget`,
+    pemicu proaktif yang terlewat membayar dari budget seperti
+    pemicu biasa (lihat `run_trigger`).
     """
     now = now or _now()
     cutoff = now - timedelta(hours=1)
@@ -203,7 +249,7 @@ def run_missed(*, sink=None, dsn=None, now: datetime | None = None) -> list[dict
             next_trigger_at=r["next_trigger_at"],
             active=r["active"],
         )
-        run = run_trigger(trigger, sink=sink, missed=True, dsn=dsn, now=now)
+        run = run_trigger(trigger, sink=sink, missed=True, dsn=dsn, now=now, budget=budget)
         if run is not None:
             result.append(run)
     return result
@@ -232,7 +278,9 @@ def is_healthy(dsn=None, now: datetime | None = None) -> bool:
     return (now - row[0]).total_seconds() < HEARTBEAT_STALE_SECONDS
 
 
-def tick(*, sink=None, dsn=None, now: datetime | None = None, curriculum=None) -> list[dict]:
+def tick(
+    *, sink=None, dsn=None, now: datetime | None = None, curriculum=None, budget=None
+) -> list[dict]:
     """Satu putaran penjadwal: detak + jalankan pemicu jatuh tempo.
 
     When ``curriculum`` is given (a ``CurriculumRunner`` instance
@@ -241,11 +289,16 @@ def tick(*, sink=None, dsn=None, now: datetime | None = None, curriculum=None) -
     The default (``curriculum=None``) runs no curriculum work, so
     trigger behaviour is unchanged. Curriculum work never changes
     the returned trigger runs and never raises into the tick.
+
+    When ``budget`` is given (an ``InterruptionBudget``), the
+    proactive triggers (``price_drop``, ``due_date_bill``) pay
+    from it first (see ``run_trigger``); a denied trigger is
+    simply not run, and the budget's spend log records why.
     """
     heartbeat(dsn=dsn, now=now)
     result = []
     for trigger in list_due_triggers(dsn=dsn, now=now):
-        run = run_trigger(trigger, sink=sink, dsn=dsn, now=now)
+        run = run_trigger(trigger, sink=sink, dsn=dsn, now=now, budget=budget)
         if run is not None:
             result.append(run)
     if curriculum is not None:
