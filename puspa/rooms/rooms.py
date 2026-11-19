@@ -28,7 +28,7 @@ Rules, all enforced here (never left to the caller):
   ownerless. An owner who wants to leave a room they solely own
   must delete the room instead.
 - ``delete_room`` is owner-only and deletes the room row; members,
-  invites, memories, tasks, approvals, and channel links cascade
+  invites, memories, tasks, approvals, splits, and channel links cascade
   in the database (``ON DELETE CASCADE`` in
   ``infra/schema_rooms.sql``).
 - Leaving is always allowed for a non-owner member, and for an

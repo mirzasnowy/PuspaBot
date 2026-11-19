@@ -621,6 +621,12 @@ paths:
     $ref: './openapi-rooms.yaml#/paths/~1api~1rooms~1{room_id}~1tasks~1{task_id}~1steps~1{step_id}~1approve'
   /api/rooms/{room_id}/tasks/{task_id}/steps/{step_id}/reject:
     $ref: './openapi-rooms.yaml#/paths/~1api~1rooms~1{room_id}~1tasks~1{task_id}~1steps~1{step_id}~1reject'
+  /api/rooms/{room_id}/splits:
+    $ref: './openapi-rooms.yaml#/paths/~1api~1rooms~1{room_id}~1splits'
+  /api/rooms/{room_id}/splits/{split_id}/payments:
+    $ref: './openapi-rooms.yaml#/paths/~1api~1rooms~1{room_id}~1splits~1{split_id}~1payments'
+  /api/rooms/{room_id}/splits/{split_id}/settlements/{debtor_user_id}/prepare:
+    $ref: './openapi-rooms.yaml#/paths/~1api~1rooms~1{room_id}~1splits~1{split_id}~1settlements~1{debtor_user_id}~1prepare'
   /api/onboarding:
     get:
       tags: [onboarding]
@@ -1089,6 +1095,12 @@ components:
       $ref: './openapi-rooms.yaml#/components/schemas/DelegatedStep'
     DelegatedStepDecision:
       $ref: './openapi-rooms.yaml#/components/schemas/DelegatedStepDecision'
+    SplitShare:
+      $ref: './openapi-rooms.yaml#/components/schemas/SplitShare'
+    Split:
+      $ref: './openapi-rooms.yaml#/components/schemas/Split'
+    PreparedSettlement:
+      $ref: './openapi-rooms.yaml#/components/schemas/PreparedSettlement'
     ModelSettings:
       type: object
       description: |

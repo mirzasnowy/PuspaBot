@@ -134,7 +134,12 @@ BASELINE_LINES = {
     # generated client (openapi-typescript 7.13.0) resolves the
     # external refs, verified by regenerating. The main spec is
     # now 1,727 lines; the ratchet resumes from 1727.
-    "docs/openapi-pwa.yaml": 1727,
+    # Wave 31 (B11): +12 lines for the Split $ref stubs (3 paths
+    # + 3 schemas: Split, SplitShare, PreparedSettlement) so the
+    # generated client carries the split types; the full contract
+    # stays in docs/openapi-rooms.yaml. The ratchet resumes from
+    # 1739.
+    "docs/openapi-pwa.yaml": 1739,
     # Maturity phase status log: re-added 19 Nov 2026 at 1055
     # lines (regrown past the soft cap with the Waves 15-16
     # entries) and archived again the same day — Waves 9-13
