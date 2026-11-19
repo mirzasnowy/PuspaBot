@@ -36,7 +36,7 @@ class BackendUnavailable(Exception):
     unless the operator explicitly chose that fallback. The Docker
     backend raises this on hosts where containers cannot start
     (this dev VM rejects the ``setns`` syscall); the first live
-    Docker check is on a Docker host or VPS, after the MVP.
+    Docker check is the CI sandbox lane (.github/workflows/ci.yml).
     """
 
 
