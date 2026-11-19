@@ -198,6 +198,17 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None, draft_sender=N
     def home(request: Request):
         return RedirectResponse("/chat")
 
+    @app.get("/app", response_class=HTMLResponse)
+    def app_entry(request: Request):
+        # E-05: the SPA entry point. Unauthenticated on purpose, like
+        # /masuk: it serves only the built SPA shell (no user data —
+        # the bootstrap carries an empty context), and the SPA itself
+        # routes an anonymous visitor to login. The image smoke test
+        # requests this path and checks the React bundle is served;
+        # without the built dist it falls back to the Jinja template,
+        # which the smoke check rejects as "not the SPA".
+        return spa_or_template("chat", request, {})
+
     @app.get("/masuk", response_class=HTMLResponse)
     def login(request: Request):
         # G1: the login screen is part of the SPA; "masuk.html" never

@@ -25,13 +25,16 @@
 #              the runner's default image (puspa-sandbox:3.12-local)
 #              is built locally on the dev VM and is on no registry,
 #              and installs Chromium with `playwright install
-#              --with-deps chromium`. A final step parses the JUnit
-#              XML and fails the lane if any of those live tests
-#              skipped, so a broken image or browser can never
-#              silently turn the lane back into skips. Needs the same
-#              Postgres service as the test lane, because the shared
-#              tests/conftest.py fixture creates schemas for every
-#              test file in this directory.
+#              --with-deps chromium`. It also builds the deploy image
+#              (Dockerfile, E-05) and runs the image smoke test in
+#              tests/test_image_smoke.py, which runs that image and
+#              checks /app serves the React bundle. A final step
+#              parses the JUnit XML and fails the lane if any of those
+#              live tests skipped, so a broken image or browser can
+#              never silently turn the lane back into skips. Needs the
+#              same Postgres service as the test lane, because the
+#              shared tests/conftest.py fixture creates schemas for
+#              every test file in this directory.
 #   checks   — dependency-light checks that need no database: the
 #              file-size ratchet and the docs-drift test, plus a parse
 #              check of this workflow file itself.
@@ -231,6 +234,17 @@ jobs:
           docker build -f infra/sandbox.Dockerfile -t puspa-sandbox:3.12-local .
           docker run --rm puspa-sandbox:3.12-local /usr/bin/python3.12 -c 'print("sandbox-image-ok")'
 
+      - name: Build the deploy image
+        env:
+          DOCKER_BUILDKIT: "1"
+        run: |
+          # E-05: the deploy image (Dockerfile) builds the React SPA
+          # in its Node stage and copies dist into the runtime stage.
+          # The image smoke test below runs this image and checks
+          # /app serves the React bundle. The build installs the full
+          # requirements.txt (torch included), so it takes minutes.
+          docker build -t puspa:local .
+
       - name: Install Chromium for Playwright
         run: |
           # Downloads the browser the Chromium reader test drives.
@@ -239,7 +253,7 @@ jobs:
           python -m playwright install --with-deps chromium
 
       - name: Run the live container + Chromium tests
-        run: python -m pytest tests/test_sandbox.py tests/test_computer_backends.py tests/test_readers.py -v --junitxml=sandbox-tests.xml
+        run: python -m pytest tests/test_sandbox.py tests/test_computer_backends.py tests/test_readers.py tests/test_image_smoke.py -v --junitxml=sandbox-tests.xml
 
       - name: Fail if a live test skipped
         run: |
@@ -256,6 +270,7 @@ jobs:
               "test_run_network_to_domain_outside_allowlist_rejected",
               "test_run_cannot_write_to_host",
               "test_playwright_reader_reads_test_site_when_browser_exists",
+              "test_image_smoke_live",
           ]
 
           # Two docker conformance tests skip by design even on a
