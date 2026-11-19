@@ -29,6 +29,11 @@
 - ``puspa.world.beliefs``: the belief data holders split out of
   ``model.py`` (K4 ratchet fix) — the six belief dataclasses, the
   price-key helper, and the three constants only the beliefs need.
+- ``puspa.world.agents``: other-agent goal models (Kosmos K5) —
+  per-contact goals and scored predictions about what a contact
+  will do next, built on the contact beliefs, read through
+  ``WorldModel.predict_agent``; the ``AgentModelMixin`` gives a
+  model the same read path.
 - ``puspa.world.causal``: causal hypotheses (Kosmos K4) — "X ->
   Y under condition C" with strength, evidence, and expiry,
   proposed and updated from the learning loop's outcomes, read
@@ -36,6 +41,14 @@
   gives a model the same read path (``WorldModel.expect``).
 """
 
+from .agents import (
+    AgentGoal,
+    AgentGoalModel,
+    AgentGoalStore,
+    AgentPrediction,
+    GoalInferrer,
+    KeywordGoalInferrer,
+)
 from .bitemporal import (
     BeliefVersion,
     BitemporalBeliefStore,
@@ -60,19 +73,23 @@ from .noisy_simulator import (
 from .planner import plan
 from .simulator import SimulatedWorld, run_episode, run_episodes
 from .store import (
+    apply_agent_migration,
     apply_bitemporal_migration,
     apply_causal_migration,
     beliefs_known_at,
     beliefs_valid_at,
     causal_hypotheses_valid_at,
+    delete_agent_models,
     delete_belief_history,
     delete_causal_hypotheses,
     delete_world_state,
     deserialize_state,
+    load_agent_models,
     load_belief_history,
     load_causal_ledger,
     load_world_model,
     load_world_state,
+    save_agent_models,
     save_belief_versions,
     save_causal_hypotheses,
     save_world_state,
@@ -83,14 +100,21 @@ from .store import (
 )
 
 __all__ = [
+    "AgentGoal",
+    "AgentGoalModel",
+    "AgentGoalStore",
+    "AgentPrediction",
     "BeliefVersion",
     "BitemporalBeliefStore",
     "CausalHypothesis",
     "CausalLedger",
+    "GoalInferrer",
+    "KeywordGoalInferrer",
     "NoisySimulatedWorld",
     "Prediction",
     "SimulatedWorld",
     "WorldModel",
+    "apply_agent_migration",
     "apply_bitemporal_migration",
     "apply_causal_migration",
     "belief_key",
@@ -99,10 +123,12 @@ __all__ = [
     "causal_effect_key",
     "causal_hypotheses_valid_at",
     "create_world_schema",
+    "delete_agent_models",
     "delete_belief_history",
     "delete_causal_hypotheses",
     "delete_world_state",
     "deserialize_state",
+    "load_agent_models",
     "load_belief_history",
     "load_causal_ledger",
     "load_world_model",
@@ -112,6 +138,7 @@ __all__ = [
     "run_episodes",
     "run_noisy_episode",
     "run_noisy_episodes",
+    "save_agent_models",
     "save_belief_versions",
     "save_causal_hypotheses",
     "save_world_state",

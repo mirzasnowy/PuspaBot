@@ -64,7 +64,24 @@ BASELINE_LINES = {
     # the CausalExpectationMixin in puspa/world/causal.py. No logic
     # change, only the seam the comment above anticipated. The file
     # shrank 1,626 -> 1,397; the ratchet resumes from 1397.
-    "puspa/world/model.py": 1397,
+    # Split 19 Nov 2026 (K5 ratchet fix): the K5 other-agent wiring
+    # grew the file to 1,443, past this baseline, so the ingest hook
+    # moved to AgentModelMixin.feed_task_result and the per-contact
+    # state to AgentModelMixin.__init__ (both in puspa/world/agents),
+    # and the Prediction dataclass moved to puspa/world/beliefs.
+    # No logic change, only the same seam. The file shrank
+    # 1,443 -> 1,395; the ratchet resumes from 1395.
+    "puspa/world/model.py": 1395,
+    # Other-agent goal models (Kosmos K5): the goal-model types,
+    # the in-memory store, the keyword inferrer, and the mixin
+    # that wires them into the world model, in one place. New
+    # file, 19 Nov 2026, recorded at 1,047 lines with this reason
+    # instead of slipping in: it crossed 1000 when the ingest
+    # hook and the per-contact state moved here out of model.py
+    # (the K5 ratchet fix). Split candidate when it grows again:
+    # the inferrer (GoalInferrer + KeywordGoalInferrer) into a
+    # goal_inference module, or the store into its own module.
+    "puspa/world/agents.py": 1047,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Phase status log, append-only by design; shrinks only by archiving
