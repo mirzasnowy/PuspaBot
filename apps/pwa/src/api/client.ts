@@ -8,6 +8,7 @@
  * JSON posts and how to turn HTTP failures into ApiError.
  */
 import type { components } from "./generated-types";
+import type { MockupDoc, MockupOp, MockupVariant } from "../state/mockup";
 
 export type ChatMessage = components["schemas"]["ChatMessage"];
 export type Agent = components["schemas"]["Agent"];
@@ -456,4 +457,60 @@ export function searchGraph(
 ): Promise<GraphSearchResponse> {
   const params = new URLSearchParams({ q: query, top_k: String(topK) });
   return getJson<GraphSearchResponse>(`/api/graph/search?${params.toString()}`, fetchFn);
+}
+
+/** Mockup editor API (B7). Types live in `../state/mockup`; the
+ * fetch helpers here are thin wrappers over the shared helpers. */
+export interface MockupTemplate {
+  id: string;
+  fields: string[];
+}
+
+export interface MockupSummary {
+  id: string;
+  title: string;
+  template: string;
+  updated_at: string;
+}
+
+export function fetchMockupTemplates(fetchFn: FetchFn = fetch): Promise<{ templates: MockupTemplate[] }> {
+  return getJson<{ templates: MockupTemplate[] }>("/api/mockups/templates", fetchFn);
+}
+
+export function generateMockups(
+  prompt: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ template: string; fields: Record<string, string>; variants: MockupVariant[] }> {
+  return postJson("/api/mockups/generate", { prompt }, fetchFn);
+}
+
+export function createMockup(
+  body: { doc: MockupDoc } | { template: string; fields: Record<string, string> },
+  fetchFn: FetchFn = fetch,
+): Promise<MockupDoc> {
+  return postJson<MockupDoc>("/api/mockups", body, fetchFn);
+}
+
+export function fetchMockups(fetchFn: FetchFn = fetch): Promise<{ mockups: MockupSummary[] }> {
+  return getJson<{ mockups: MockupSummary[] }>("/api/mockups", fetchFn);
+}
+
+export function fetchMockup(id: string, fetchFn: FetchFn = fetch): Promise<MockupDoc> {
+  return getJson<MockupDoc>(`/api/mockups/${encodeURIComponent(id)}`, fetchFn);
+}
+
+export function applyMockupOp(id: string, op: MockupOp, fetchFn: FetchFn = fetch): Promise<MockupDoc> {
+  return postJson<MockupDoc>(`/api/mockups/${encodeURIComponent(id)}/ops`, { op }, fetchFn);
+}
+
+export function patchMockup(id: string, instruction: string, fetchFn: FetchFn = fetch): Promise<MockupDoc> {
+  return postJson<MockupDoc>(`/api/mockups/${encodeURIComponent(id)}/patch`, { instruction }, fetchFn);
+}
+
+export function undoMockup(id: string, fetchFn: FetchFn = fetch): Promise<MockupDoc> {
+  return postJson<MockupDoc>(`/api/mockups/${encodeURIComponent(id)}/undo`, {}, fetchFn);
+}
+
+export function redoMockup(id: string, fetchFn: FetchFn = fetch): Promise<MockupDoc> {
+  return postJson<MockupDoc>(`/api/mockups/${encodeURIComponent(id)}/redo`, {}, fetchFn);
 }

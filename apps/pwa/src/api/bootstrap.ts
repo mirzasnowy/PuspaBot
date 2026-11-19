@@ -25,6 +25,7 @@ export type ScreenName =
   | "office"
   | "insights"
   | "onboarding"
+  | "mockup"
   | "login";
 
 export const SCREENS: { name: ScreenName; path: string; label: string }[] = [
@@ -37,6 +38,7 @@ export const SCREENS: { name: ScreenName; path: string; label: string }[] = [
   { name: "office", path: "/office", label: "Kantor" },
   { name: "insights", path: "/insights", label: "Insights" },
   { name: "onboarding", path: "/onboarding", label: "Onboarding" },
+  { name: "mockup", path: "/mockup", label: "Mockup" },
 ];
 
 export function readBootstrap(): Bootstrap {

@@ -164,7 +164,12 @@ BASELINE_LINES = {
     # lines, Wave 30 precedent: the inline graph contract would
     # have pushed the main spec past the 2000-line hard cap).
     # The ratchet resumes from 1785.
-    "docs/openapi-pwa.yaml": 1785,
+    # B7 (mockup editor): +28 lines of $ref stubs in the main
+    # spec — 14 mockup paths (contract split out to
+    # docs/openapi-mockup.yaml, 551 lines, Wave 30 precedent: the
+    # inline mockup contract would have pushed the main spec
+    # past the 2000-line hard cap). The ratchet resumes from 1813.
+    "docs/openapi-pwa.yaml": 1813,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:
