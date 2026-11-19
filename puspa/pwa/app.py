@@ -63,7 +63,7 @@ def _jinja(template_dir=None):
     return Environment(loader=FileSystemLoader(str(template_dir or TEMPLATE_DIR)), autoescape=True)
 
 
-def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
+def create_app(*, dsn=None, test_user_id=None, template_dir=None, draft_sender=None) -> FastAPI:
     """Bangun aplikasi FastAPI PWA."""
     app = FastAPI(title="Puspa")
     jinja = _jinja(template_dir)
@@ -78,6 +78,11 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     app.state.event = []
     app.state.approval = {}
     app.state.time_onboarding = []
+    # B13: delivery channel for approved draft sends. Unset by
+    # default: until a channel (Telegram / WhatsApp / email) is
+    # wired in, approved sends are refused with 501 and nothing
+    # is claimed as sent (see puspa/pwa/drafts_api.py).
+    app.state.draft_sender = draft_sender
 
     # -- G31: serve modes (local operator vs hosted) ---------------------
     # One web codebase, two serve modes (decision locked by Nero, see
@@ -712,11 +717,12 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     # exist through the SCREENS loop above. Insights and Onboarding
     # fetch all their data through these APIs, so _context_screen
     # needs no new bootstrap data for them.
-    from puspa.pwa import insights_api, onboarding_api, rooms_api
+    from puspa.pwa import drafts_api, insights_api, onboarding_api, rooms_api
 
     insights_api.register_routes(app, need_user)
     onboarding_api.register_routes(app, need_user)
     rooms_api.register_routes(app, need_user)
+    drafts_api.register_routes(app, need_user)
     # -- end G28 ---------------------------------------------------------
 
     @app.post("/api/onboarding/waktu")
