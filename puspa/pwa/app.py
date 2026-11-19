@@ -724,6 +724,7 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None, draft_sender=N
         insights_api,
         mockup_api,
         onboarding_api,
+        payments_api,
         proof_api,
         rooms_api,
     )
@@ -736,6 +737,7 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None, draft_sender=N
     rooms_api.register_routes(app, need_user)
     drafts_api.register_routes(app, need_user)
     proof_api.register_routes(app, need_user)
+    payments_api.register_routes(app, need_user)
     # -- end G28 ---------------------------------------------------------
 
     @app.post("/api/onboarding/waktu")

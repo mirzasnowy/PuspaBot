@@ -677,6 +677,20 @@ paths:
     $ref: './openapi-mockup.yaml#/paths/~1api~1mockups~1{mockup_id}~1export.png'
   /api/mockups/{mockup_id}/export.pdf:
     $ref: './openapi-mockup.yaml#/paths/~1api~1mockups~1{mockup_id}~1export.pdf'
+  /api/payments:
+    $ref: './openapi-payments.yaml#/paths/~1api~1payments'
+  /api/payments/payable:
+    $ref: './openapi-payments.yaml#/paths/~1api~1payments~1payable'
+  /api/payments/{preparation_id}:
+    $ref: './openapi-payments.yaml#/paths/~1api~1payments~1{preparation_id}'
+  /api/payments/{preparation_id}/approve:
+    $ref: './openapi-payments.yaml#/paths/~1api~1payments~1{preparation_id}~1approve'
+  /api/payments/{preparation_id}/reject:
+    $ref: './openapi-payments.yaml#/paths/~1api~1payments~1{preparation_id}~1reject'
+  /api/payments/{preparation_id}/mark-paid:
+    $ref: './openapi-payments.yaml#/paths/~1api~1payments~1{preparation_id}~1mark-paid'
+  /api/payments/{preparation_id}/execute:
+    $ref: './openapi-payments.yaml#/paths/~1api~1payments~1{preparation_id}~1execute'
   /api/onboarding:
     get:
       tags: [onboarding]
@@ -1175,6 +1189,16 @@ components:
       $ref: './openapi-graph.yaml#/components/schemas/GraphSearchResult'
     GraphSearchResponse:
       $ref: './openapi-graph.yaml#/components/schemas/GraphSearchResponse'
+    PaymentRail:
+      $ref: './openapi-payments.yaml#/components/schemas/PaymentRail'
+    Recipient:
+      $ref: './openapi-payments.yaml#/components/schemas/Recipient'
+    PreparePaymentRequest:
+      $ref: './openapi-payments.yaml#/components/schemas/PreparePaymentRequest'
+    PreparedPayment:
+      $ref: './openapi-payments.yaml#/components/schemas/PreparedPayment'
+    PreparedPaymentList:
+      $ref: './openapi-payments.yaml#/components/schemas/PreparedPaymentList'
     ModelSettings:
       type: object
       description: |
