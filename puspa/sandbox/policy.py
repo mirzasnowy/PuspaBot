@@ -32,11 +32,13 @@ Honest limit: the network policy is enforced at admission
 (session creation) and, for the Docker backend, by the
 ``--network none`` run flag when the policy allows no host.
 A policy that *does* allow hosts needs OpenShell's filtered
-egress (an HTTP CONNECT proxy with DNS mediation); Puspa has
-no such proxy yet, so the runner refuses to run with a
-non-empty policy instead of silently running with the network
-on. See :mod:`puspa.sandbox.runner` and
-``docs/sandbox-deepening.md``.
+egress (an HTTP CONNECT proxy with DNS mediation); E-03 built
+that proxy as :mod:`puspa.sandbox.egress`, so the runner now
+routes a non-empty policy through a configured
+:class:`~puspa.sandbox.egress.EgressProxy` — and still refuses
+to run with a non-empty policy when no proxy is configured,
+instead of silently running with the network on. See
+:mod:`puspa.sandbox.runner` and ``docs/sandbox-deepening.md``.
 """
 
 from __future__ import annotations
@@ -201,10 +203,12 @@ class NetworkPolicy:
 
         ``"none"`` (empty policy) is enforced today with
         ``--network none``. ``"proxy"`` means a filtered egress
-        proxy is required; Puspa has no such proxy yet, so the
-        runner refuses to run in that mode rather than opening
-        the network. The mode name is returned (not silently
-        downgraded) so the refusal is diagnosable.
+        proxy is required; the runner routes the container
+        through a configured
+        :class:`puspa.sandbox.egress.EgressProxy` in that mode,
+        and refuses to run when none is configured, rather
+        than opening the network. The mode name is returned
+        (not silently downgraded) so the refusal is diagnosable.
         """
         return "proxy" if self.endpoints else "none"
 

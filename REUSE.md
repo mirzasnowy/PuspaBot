@@ -771,3 +771,50 @@ and the first live check is on a Docker host/VPS); no filtered
 egress proxy yet (a policy admitting hosts is validated and stored
 but refuses to run); no GPU provisioning; sessions are in-memory
 and process-local; no live browser (no Chromium launched anywhere).
+
+## Maturity phase (E-03 — Sandbox hardening, plan 4.3)
+
+Source repo: moby/moby (https://github.com/moby/moby, Apache
+License 2.0). Vendored file only: `profiles/seccomp/default.json`
+from tag `v28.0.0`, fetched 20 Nov 2026, stored verbatim as
+`puspa/sandbox/seccomp-default.json` (832 lines, 428 syscall
+names, `defaultAction` `SCMP_ACT_ERRNO`). The strict profile
+`puspa/sandbox/seccomp-strict.json` is derived from it by
+`puspa/sandbox/seccomp.py:derive_strict` (default minus 26
+syscalls no Python agent workload needs) and is Puspa's own
+generated data, not upstream code.
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| Docker default seccomp profile (default-deny syscall allowlist) | moby/moby (Apache-2.0) | The profile JSON, vendored verbatim | `puspa/sandbox/seccomp.py` (load + validate + strict derivation + `docker_flag()`; a profile with a non-ERRNO default action, a missing file, or bad JSON fails closed before any container is built) |
+| Filtered egress: HTTP CONNECT proxy + DNS mediation + per-request log | NVIDIA/OpenShell (Apache-2.0, G34 study) | The enforcement shape (proxy + DNS mediation + fail-closed default) | `puspa/sandbox/egress.py` (`EgressProxy`: CONNECT + absolute-form forwarding, policy check before DNS, pinned UDP DNS client to 1.1.1.1/8.8.8.8, blocked-range check incl. 169.254.169.254, hash-chained JSONL egress ledger; `EgressProxyConfig`, `ensure_internal_network`) |
+| Stronger-isolation runtime (gVisor/Kata) measured against the spawn target | — (plan 4.3 + gate 9) | Nothing from another repo | `puspa/sandbox/runtime.py` (`RuntimeConfig`: runc/runsc/kata + `--runtime` flag + availability validation; `measure_spawn`/`evaluate_runtimes` harness against the 3 s target; `docker_spawn_probe`, `list_docker_runtimes`) |
+| Warm pool that deletes instead of cleaning | — (plan 4.3) | Nothing from another repo | `puspa/sandbox/warmpool.py` (`WarmPool`: pre-created never-run containers, one user per slot, release always `rm -f` + refill; `ContainerRuntime` protocol + `DockerContainerRuntime`) |
+| Runner hardening: tmpfs writes, seccomp + runtime flags, proxy-mode network, flag audit | — (Puspa's own runner) | Nothing from another repo | `puspa/sandbox/runner.py` (`--tmpfs /tmp:rw,size=<quota-derived>m`, seccomp + `--runtime` flags, proxy-mode flags from a running `EgressProxy`, `audit_docker_flags` refusing any volume/mount flag or `docker.sock` reference, warm-pool run path) |
+
+No new dependency was added for E-03 (standard library only).
+Tests: `tests/test_sandbox_e03_seccomp.py` (vendored profile
+shape, strict derivation, validation, runner wiring) +
+`tests/test_sandbox_e03_egress.py` (blocked ranges, pinned DNS
+against a fake UDP server + wire-format test, live CONNECT
+tunnelling to a local server, denial before DNS, DNS-rebinding
+refusal, absolute-form forwarding, hash-chained ledger +
+tamper detection, internal-network creation via a fake docker
+binary) + `tests/test_sandbox_e03_runtime.py` (runtime config +
+validation, spawn measurement with a fake clock, docker probes
+via a fake docker binary) + `tests/test_sandbox_e03_warmpool.py`
+(fake runtime: acquire/release/refill, never-reused container
+ids, wrong-user + double-release refusal, shutdown) +
+`tests/test_sandbox_e03_runner.py` (tmpfs size formula, flag
+audit, proxy-mode flags, pooled runs). Honest limits: no live
+container has ever run on this VM (Docker cannot start a
+container here — kernel rejects `setns` — so flag derivation,
+the proxy-mode network flags, and the pool's create/start/remove
+path are constructed and unit-tested, not executed; the first
+live check is on a Docker host/VPS); the proxy itself is tested
+live in-process over real sockets, but the container-side
+wiring (`--network` internal, `--dns 127.0.0.1`, `--add-host`)
+awaits that host; the pinned-DNS live test is skipped on this VM
+(the VM blocks UDP send with EPERM) and runs where UDP works;
+the gVisor/Kata choice is not made here — the harness exists so
+it is decided from measured spawn times on the real host.

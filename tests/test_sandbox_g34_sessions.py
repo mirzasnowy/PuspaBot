@@ -184,7 +184,7 @@ def test_session_is_expired_and_is_idle_helpers():
 
 def test_network_policy_with_hosts_is_admitted_but_flagged(tmp_path):
     """A session may carry an allow-host policy (admission), even
-    though running with it needs the missing egress proxy."""
+    though running with it needs a configured egress proxy."""
     manager = SessionManager(base_dir=tmp_path)
     policy = SandboxPolicy(network=NetworkPolicy.from_hosts(["api.openai.com"]))
     session = manager.create("user-a", policy=policy)
