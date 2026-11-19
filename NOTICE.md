@@ -723,3 +723,38 @@ the action gateway (`puspa/policy/gateway.py`,
 
 No new dependency was added for G31. No external code was copied,
 vendored, or depended on for this item.
+
+# NOTICE - Puspa maturity phase, G34 (19 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **NVIDIA/OpenShell** (https://github.com/NVIDIA/OpenShell,
+  Apache License 2.0, Copyright (c) 2025-2026 NVIDIA CORPORATION
+  & AFFILIATES) — pattern only, studied at commit
+  `5c0d71641fbc9d62a4ee2f33de235f6662ae196c` (shallow clone,
+  19 Nov 2026): persistent sandbox sessions with a lifecycle and
+  admission before execution; deny-by-default network policy
+  with explicit `host:port` endpoints; filesystem allow lists
+  and run-as user/group; typed resource requirements (RFC 0004);
+  root-anchored file transfer; bounded streaming exec with a
+  separate exit report; PTY terminal with resize; a browser as a
+  workload inside the sandbox. Used as patterns in
+  `puspa/sandbox/session.py`, `puspa/sandbox/policy.py`,
+  `puspa/sandbox/quota.py`, `puspa/sandbox/filesystem.py`,
+  `puspa/sandbox/exec.py`, `puspa/sandbox/terminal.py`,
+  `puspa/sandbox/browser.py`, and the quota/policy wiring in
+  `puspa/sandbox/runner.py`; documented in
+  `docs/sandbox-deepening.md`. No OpenShell code was copied,
+  ported, vendored, or depended on: all Puspa code in this item
+  was written from scratch in Python, and OpenShell is a Rust
+  codebase. Full license text: Apache License 2.0
+  (https://www.apache.org/licenses/LICENSE-2.0).
+
+## New dependency: none
+
+No new dependency was added for G34. All new modules use only
+the standard library plus Puspa's existing backend ABC
+(`puspa.computer.backends`), scope, and error types; tests use
+the local backend, fake clocks, and mock-free refusal checks
+for Docker paths (no live containers). No code from any other
+repo was copied, vendored, or depended on for this item.
