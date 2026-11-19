@@ -4,6 +4,7 @@
 -- room_tasks, room_money_approvals, room_channel_links,
 -- delegated_tasks, delegated_task_steps, room_splits,
 -- split_shares, split_payments, split_settlements.
+-- delegated_tasks, delegated_task_steps, room_research_links.
 --
 -- B9 adds the last two: a delegation row per room task handed
 -- to the agent or to a teammate (puspa/rooms/delegation.py), and
@@ -102,6 +103,8 @@
 --     member of the room the split belongs to (the payer's
 --     identity and every debtor's balance are group-visible;
 --     a guest may read them, like the rest of the room).
+--   - room_research_links: visible / created / deleted only by a
+--     member of the room (B12).
 --
 -- No password anywhere in this file: auth is peer auth (local
 -- socket, OS user = Postgres role). Do not add a password here.
@@ -298,6 +301,23 @@ CREATE TABLE IF NOT EXISTS split_settlements (
     prepared_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_split_settlements_split_id ON split_settlements(split_id);
+-- Collected product links (B12): one row per product link a room
+-- member collected for the group comparison. A link is collected
+-- once per room (UNIQUE room_id + url); the label is the name the
+-- member gave the option. `source` is the marketplace the URL
+-- belongs to (Tokopedia / Shopee / Blibli) or "other" for an
+-- allowlisted host outside the three marketplaces.
+CREATE TABLE IF NOT EXISTS room_research_links (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    room_id    UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+    url        TEXT NOT NULL,
+    label      TEXT NOT NULL DEFAULT '',
+    source     TEXT NOT NULL,
+    added_by   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (room_id, url)
+);
+CREATE INDEX IF NOT EXISTS idx_room_research_links_room_id ON room_research_links(room_id);
 
 -- Application-role grants (same shape as infra/schema_teams.sql):
 -- puspa_app may read/write all seven tables; isolation between
@@ -321,6 +341,7 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON split_shares TO puspa_app;
         GRANT SELECT, INSERT, UPDATE, DELETE ON split_payments TO puspa_app;
         GRANT SELECT, INSERT, UPDATE, DELETE ON split_settlements TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON room_research_links TO puspa_app;
     END IF;
 END $$;
 
@@ -357,6 +378,7 @@ ALTER TABLE room_splits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE split_shares ENABLE ROW LEVEL SECURITY;
 ALTER TABLE split_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE split_settlements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE room_research_links ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS rooms_select ON rooms;
 CREATE POLICY rooms_select ON rooms FOR SELECT TO puspa_app
@@ -605,3 +627,12 @@ CREATE POLICY split_settlements_update ON split_settlements FOR UPDATE TO puspa_
             AND is_room_member(s.room_id, current_setting('app.current_user_id', TRUE)::UUID)
         )
     );
+DROP POLICY IF EXISTS room_research_links_select ON room_research_links;
+CREATE POLICY room_research_links_select ON room_research_links FOR SELECT TO puspa_app
+    USING (is_room_member(room_id, current_setting('app.current_user_id', TRUE)::UUID));
+DROP POLICY IF EXISTS room_research_links_insert ON room_research_links;
+CREATE POLICY room_research_links_insert ON room_research_links FOR INSERT TO puspa_app
+    WITH CHECK (is_room_member(room_id, current_setting('app.current_user_id', TRUE)::UUID));
+DROP POLICY IF EXISTS room_research_links_delete ON room_research_links;
+CREATE POLICY room_research_links_delete ON room_research_links FOR DELETE TO puspa_app
+    USING (is_room_member(room_id, current_setting('app.current_user_id', TRUE)::UUID));

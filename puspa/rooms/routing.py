@@ -60,6 +60,7 @@ from puspa.channels.inbound import InboundOutcome
 
 from .delegation import is_board_command, render_board
 from .errors import NotRoomMemberError
+from .research import is_compare_command
 from .rooms import RoomStore, _validate_uuid
 
 __all__ = [
@@ -213,6 +214,7 @@ def handle_group_inbound(
     ledger=None,
     delivery: DeliveryService | None = None,
     delegation=None,
+    research=None,
 ) -> InboundOutcome | None:
     """Handle one group message for the room pipeline.
 
@@ -231,6 +233,15 @@ def handle_group_inbound(
     board ("@puspa board" / "@puspa tasks" / "@puspa tugas"),
     the reply is the rendered shared task board and the agent is
     never called — the board is data, not a turn.
+
+    Compare command (B12): when ``research`` (a
+    ``ResearchService``) is passed and the message asks to compare
+    the room's collected links ("@puspa compare" / "@puspa
+    bandingkan harga"), the reply is the rendered group
+    comparison and the agent is never called — the comparison
+    is data, not a turn. The sender must be a room member; a
+    non-member sender gets a short refusal instead of the
+    comparison.
     """
     if not event.is_group:
         return None
@@ -256,6 +267,22 @@ def handle_group_inbound(
         room = delegation.rooms.get_room(room_id)
         rows = delegation.board_for_chat(room_id)
         reply = render_board(room.name if room is not None else room_id, rows)
+        if delivery_service is not None:
+            delivery_service.send(
+                adapter,
+                chat_id=event.chat_id,
+                text=reply,
+                reply_to_dedup_key=event.dedup_key,
+            )
+        else:
+            adapter.send_text(event.chat_id, reply)
+        return InboundOutcome("answered", user_id=room_principal_id(room_id), reply=reply)
+
+    if research is not None and is_compare_command(event.text):
+        try:
+            reply = research.answer_compare_command(room_id, requested_by_user_id=event.sender_id)
+        except NotRoomMemberError:
+            reply = "Only members of this room can ask Puspa to compare links."
         if delivery_service is not None:
             delivery_service.send(
                 adapter,

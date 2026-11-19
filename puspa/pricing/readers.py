@@ -53,6 +53,7 @@ class ResultRead:
     reason: str = ""
     text_excerpt: str = ""
     page_hash: str = ""
+    seller: str = ""  # store/seller name when the page reports one, else ""
 
 
 def _mark_data(text: str) -> str:
@@ -73,12 +74,28 @@ def _parse_rupiah(text: str) -> float | None:
         return None
 
 
+def _seller_from_jsonld(item: dict, offers) -> str:
+    """Seller name from generic JSON-LD: ``offers.seller.name`` or
+    the item's own ``seller``. Returns "" when the page does not
+    report one — the seller is never guessed from the URL."""
+    seller = None
+    if isinstance(offers, dict):
+        seller = offers.get("seller")
+    if seller is None:
+        seller = item.get("seller")
+    if isinstance(seller, dict):
+        return str(seller.get("name", ""))[:EXCERPT_MAX]
+    if isinstance(seller, str):
+        return seller[:EXCERPT_MAX]
+    return ""
+
+
 def extract_price_from_html(html: str) -> dict:
     """Ekstrak harga/nama dari HTML lewat JSON-LD + meta generik.
 
-    Kembalikan {"harga": float|None, "nama": str, "potongan": str}.
-    Tidak ada angka yang ditebak: tanpa JSON-LD/meta yang cocok,
-    harga None.
+    Kembalikan {"harga": float|None, "nama": str, "potongan": str,
+    "seller": str}. Tidak ada angka yang ditebak: tanpa JSON-LD/meta
+    yang cocok, harga None; tanpa seller di halaman, seller "".
     """
     if not html:
         return {"price": None, "name": "", "excerpt": ""}
@@ -105,6 +122,7 @@ def extract_price_from_html(html: str) -> dict:
                         "price": float(price),
                         "name": str(item.get("name", ""))[:EXCERPT_MAX],
                         "excerpt": _mark_data(item.get("name", "")),
+                        "seller": _seller_from_jsonld(item, offers),
                     }
                 except (TypeError, ValueError):
                     pass
@@ -115,11 +133,17 @@ def extract_price_from_html(html: str) -> dict:
             "price": float(meta_match.group(1)),
             "name": "",
             "excerpt": _mark_data(meta_match.group(0)),
+            "seller": "",
         }
     # Pola teks "Rp..." pertama sebagai jalan terakhir yang jujur:
     # hanya dipakai bila halaman memuat SATU harga yang jelas.
     price = _parse_rupiah(html)
-    return {"price": price, "name": "", "excerpt": _mark_data(html[:EXCERPT_MAX]) if price else ""}
+    return {
+        "price": price,
+        "name": "",
+        "excerpt": _mark_data(html[:EXCERPT_MAX]) if price else "",
+        "seller": "",
+    }
 
 
 @dataclass
@@ -194,6 +218,7 @@ class HttpReader:
             name=extracted["name"],
             text_excerpt=extracted["excerpt"],
             page_hash=hashlib.sha256(resp.text.encode("utf-8")).hexdigest(),
+            seller=extracted.get("seller", ""),
         )
 
 
@@ -274,6 +299,7 @@ class PlaywrightReader:
             name=extracted["name"],
             text_excerpt=extracted["excerpt"],
             page_hash=hashlib.sha256(html.encode("utf-8")).hexdigest(),
+            seller=extracted.get("seller", ""),
         )
 
 
