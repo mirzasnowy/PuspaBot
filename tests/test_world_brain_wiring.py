@@ -176,10 +176,15 @@ def test_no_brain_is_plain_runner():
     assert runner.run(_estimate_task()).status == "completed"
     assert _events_of(runner, "world_prediction") == []
     assert _events_of(runner, "world_misprediction") == []
+    # E-06 write-ahead: one heartbeat + intent before the effect,
+    # one result after it, per step.
     assert [e["type"] for e in runner.event_memory()] == [
         "task_created",
         "plan_created",
+        "heartbeat",
+        "tool_called",
         "handoff_proposed",
+        "tool_completed",
         "handoff_handed_over",
         "verification_completed",
         "task_completed",

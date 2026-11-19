@@ -34,6 +34,12 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+# E-06 write-ahead: every executed step records its intent before
+# the effect and its result after it, through the same sink the
+# rest of the run uses. The key is stable per (task, step, args),
+# so a crash between intent and result is detectable from the
+# ledger alone (see puspa/consistency/).
+from puspa.consistency.idempotency import idempotency_key
 from puspa.runtime.budget import BudgetExhausted, BudgetTracker
 from puspa.runtime.handoff import Handoff, HandoffContract
 
@@ -364,7 +370,7 @@ class TaskRunner:
         failed_step: Step | None = None
         failure_kind: str | None = None
         try:
-            for step in task.plan:
+            for step_index, step in enumerate(task.plan):
                 current_step = step
                 current_action = None
                 self.budget.record_step(1)
@@ -379,6 +385,30 @@ class TaskRunner:
                     completion_definition=step.completion_condition or step.name,
                 )
                 handoff = Handoff(contract)
+                # E-06 write-ahead: heartbeat + intent BEFORE the
+                # effect runs, result AFTER it. The intent and the
+                # result share one idempotency key (task, step,
+                # args), so a crash between them leaves an
+                # "uncertain" step that recovery can resolve
+                # without ever double-running an outbound effect.
+                # Best-effort like every other sink write here: a
+                # dead ledger must not kill the turn (Fase 0 no. 9).
+                step_key = idempotency_key(task.task_id, step_index, step.inputs)
+                self._record(
+                    "heartbeat",
+                    {"task_id": task.task_id, "step": step.name, "step_index": step_index},
+                )
+                self._record(
+                    "tool_called",
+                    {
+                        "task_id": task.task_id,
+                        "step": step.name,
+                        "step_index": step_index,
+                        "idempotency_key": step_key,
+                        "kind": "step_intent",
+                        "outbound": step.outbound_action,
+                    },
+                )
                 # Brain (advisory): predict the step's world action
                 # before anything runs. A missing model, an
                 # unmapped step, or a failed prediction means no
@@ -436,6 +466,26 @@ class TaskRunner:
                         reason=f"{type(exc).__name__}: {exc}",
                     )
                     raise TaskError(f"langkah {step.name!r} gagal: {exc}") from exc
+                # E-06 write-ahead, second half: the effect ran, so
+                # record its result under the same idempotency key
+                # as the intent above. Recorded before the handoff
+                # check: the tool did run and produce this result
+                # even when the handoff later rejects it.
+                self._record(
+                    "tool_completed",
+                    {
+                        "task_id": task.task_id,
+                        "step": step.name,
+                        "step_index": step_index,
+                        "idempotency_key": step_key,
+                        "kind": "step_result",
+                        "result_type": (
+                            result.get("type")
+                            if isinstance(result, dict)
+                            else type(result).__name__
+                        ),
+                    },
+                )
                 hand_over_status = handoff.hand_over(result)
                 if hand_over_status == "rejected":
                     # serahkan() sudah menandai status 'ditolak' + alasan.
