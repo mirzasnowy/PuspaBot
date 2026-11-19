@@ -10,6 +10,8 @@ or pay path in this slice at all.
 
 from __future__ import annotations
 
+from puspa.local_data.rates import RateStore
+
 from .answer import check_before_buy
 from .outcome import record_outcome
 from .records import RecordStore
@@ -25,6 +27,7 @@ def handle_check_before_buy(
     dsn: str | None = None,
     mode: str = "recorded",
     shared_dsn: str | None = None,
+    rate_store: RateStore | None = None,
 ) -> dict:
     """Run one check and return the structured answer plus its reply.
 
@@ -33,6 +36,9 @@ def handle_check_before_buy(
     is also recorded; without it the answer is computed only.
     ``shared_dsn`` (ticket B3) consults the shared graphs for
     the seller signal and the shared fair-price fallback.
+    ``rate_store`` (ticket B5) supplies the shipping rates for
+    the lane named in the input; it defaults to the seeded
+    sample rates.
     """
     text = arguments.get("text") or arguments.get("input") or ""
     if not isinstance(text, str) or not text.strip():
@@ -43,6 +49,7 @@ def handle_check_before_buy(
         product_key=arguments.get("product_key"),
         mode=arguments.get("mode", mode),
         shared_dsn=shared_dsn,
+        rate_store=rate_store,
     )
     recorded: dict | None = None
     if dsn is not None and user_id is not None:
