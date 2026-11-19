@@ -55,6 +55,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime import
 
 from .budget import IterationBudget, SubagentIterationBudget, TurnBudgetExceeded
 from .config import TurnConfig
+from .conflict_wiring import apply_conflict_gate
 from .intercepts import InterceptedTools
 from .interrupt import TurnInterrupted, TurnTimeout
 from .messages import InternalMessage, enforce_alternation
@@ -110,6 +111,8 @@ class TurnResult:
     #: when no dial is wired in — the loop's behaviour without a
     #: dial is unchanged.
     dial_decisions: list = field(default_factory=list)
+    #: Conflict verdicts the gate gave during this turn (K13), one per tool call, in order.
+    conflict_decisions: list = field(default_factory=list)
 
 
 class TurnLoop:
@@ -153,6 +156,13 @@ class TurnLoop:
     the mapping cannot place in an area is not gated by the dial
     (fail-open). Without a dial the loop behaves exactly as
     before.
+    ``conflict_gate`` is an optional K13
+    :class:`puspa.policy.conflicts.ConflictGate`: consulted after
+    the dial, before dispatching a registry tool call — on
+    ``surface`` the call is NOT run and the model gets a payload
+    telling it to show the conflict to the user instead. The gate
+    runs after the dial on purpose: even at ``do_silently`` a
+    conflicted action is surfaced, never run silently.
     """
 
     def __init__(
@@ -173,6 +183,7 @@ class TurnLoop:
         intent_advisor=None,
         autonomy_dial=None,
         dial_area_for_tool=None,
+        conflict_gate=None,
     ) -> None:
         self.config = config or TurnConfig()
         self.model_call = model_call
@@ -188,6 +199,7 @@ class TurnLoop:
         self.intent_advisor = intent_advisor
         self.autonomy_dial = autonomy_dial
         self.dial_area_for_tool = dict(dial_area_for_tool) if dial_area_for_tool else {}
+        self.conflict_gate = conflict_gate
         self._refusal_message = ""
         self._event: list[dict] = []
         self.sink = sink or (
@@ -354,6 +366,7 @@ class TurnLoop:
         hops: list = []
         intent_decisions: list = []
         dial_decisions: list = []
+        conflict_decisions: list = []
         cost_rp = 0
         tier_used = ""
         self._record(
@@ -497,16 +510,14 @@ class TurnLoop:
                     task_id,
                     intent_decisions=intent_decisions,
                     dial_decisions=dial_decisions,
+                    conflict_decisions=conflict_decisions,
                 )
-            history, turn_intent_decisions, turn_dial_decisions = self._run_tool_calls(
-                history,
-                reply,
-                agent_id=agent_id,
-                task_id=task_id,
-                tool_call=tool_call,
+            history, turn_intent, turn_dial, turn_conflict = self._run_tool_calls(
+                history, reply, agent_id=agent_id, task_id=task_id, tool_call=tool_call
             )
-            intent_decisions.extend(turn_intent_decisions)
-            dial_decisions.extend(turn_dial_decisions)
+            intent_decisions.extend(turn_intent)
+            dial_decisions.extend(turn_dial)
+            conflict_decisions.extend(turn_conflict)
 
     def run_subagent_turn(
         self,
@@ -583,13 +594,13 @@ class TurnLoop:
         agent_id: str,
         task_id: str | None,
         tool_call=None,
-    ) -> tuple[list[InternalMessage], list, list]:
-        """Dispatch the reply's tool calls; return (history, intent decisions, dial decisions).
+    ) -> tuple[list[InternalMessage], list, list, list]:
+        """Dispatch the reply's tool calls; return (history, intent decisions, dial decisions, conflict decisions).
 
         Intercepted tools run first, as before — they are internal
         state operations, not user-facing actions, so the intent
-        advisor and the autonomy dial never see them. For a
-        registry tool, when an intent advisor is wired in, the
+        advisor, the autonomy dial, and the conflict gate never
+        see them. For a registry tool, when an intent advisor is wired in, the
         advisor is consulted first with the last user message: on
         ``ask`` the tool is NOT run and the model gets the ask
         payload (with the clarifying question) as the tool result
@@ -607,10 +618,16 @@ class TurnLoop:
         never breaks the turn either: it fails open to running
         the call. A tool the dial cannot place in an area is not
         gated by it.
+
+        A conflict gate (K13, :mod:`puspa.turns.conflict_wiring`)
+        is consulted last, after the dial: on ``surface`` the tool
+        is NOT run and the model gets the surface payload instead.
+        Even at ``do_silently`` a conflicted action is surfaced.
         """
         registry = tool_call if tool_call is not None else self.tool_call
         intent_decisions: list = []
         dial_decisions: list = []
+        conflict_decisions: list = []
         for call in reply.tool_calls:
             name = call.get("name", "")
             arguments = call.get("arguments") or {}
@@ -677,6 +694,17 @@ class TurnLoop:
                         )
                         continue
             if registry is not None:
+                # The conflict gate (K13): last check before the call runs, after the dial.
+                if self.conflict_gate is not None:
+                    conflict_decision, event, message = apply_conflict_gate(
+                        self.conflict_gate, name, agent_id, task_id, call_id
+                    )
+                    if conflict_decision is not None:
+                        conflict_decisions.append(conflict_decision)
+                        if event is not None and message is not None:
+                            self._record("conflict_surfaced", event)
+                            history.append(message)
+                            continue
                 try:
                     raw = registry(name, arguments)
                     result_text = _result_text(raw)
@@ -715,7 +743,7 @@ class TurnLoop:
                 )
                 is_error = True
             history.append(InternalMessage.tool_result(call_id, result_text, is_error=is_error))
-        return history, intent_decisions, dial_decisions
+        return history, intent_decisions, dial_decisions, conflict_decisions
 
     def _consult_intent_advisor(self, name: str, arguments: dict, history) -> ActAskDecision | None:
         """Ask the intent advisor about one tool call, failing open.
@@ -768,6 +796,7 @@ class TurnLoop:
         task_id,
         intent_decisions=None,
         dial_decisions=None,
+        conflict_decisions=None,
     ) -> TurnResult:
         self._record(
             "turn_completed",
@@ -793,6 +822,7 @@ class TurnLoop:
             notes=notes,
             intent_decisions=list(intent_decisions) if intent_decisions is not None else [],
             dial_decisions=list(dial_decisions) if dial_decisions is not None else [],
+            conflict_decisions=list(conflict_decisions) if conflict_decisions is not None else [],
         )
 
     def _finish_interrupted(
