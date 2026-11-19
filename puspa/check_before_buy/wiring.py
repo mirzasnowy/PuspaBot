@@ -24,12 +24,15 @@ def handle_check_before_buy(
     task_id: str | None = None,
     dsn: str | None = None,
     mode: str = "recorded",
+    shared_dsn: str | None = None,
 ) -> dict:
     """Run one check and return the structured answer plus its reply.
 
     ``arguments`` carries ``text`` (the forwarded input) and
     optionally ``product_key``. When ``dsn`` is given the outcome
     is also recorded; without it the answer is computed only.
+    ``shared_dsn`` (ticket B3) consults the shared graphs for
+    the seller signal and the shared fair-price fallback.
     """
     text = arguments.get("text") or arguments.get("input") or ""
     if not isinstance(text, str) or not text.strip():
@@ -39,6 +42,7 @@ def handle_check_before_buy(
         store=store or RecordStore(),
         product_key=arguments.get("product_key"),
         mode=arguments.get("mode", mode),
+        shared_dsn=shared_dsn,
     )
     recorded: dict | None = None
     if dsn is not None and user_id is not None:

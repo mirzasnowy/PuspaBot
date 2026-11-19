@@ -1,12 +1,14 @@
-"""Graf moat Fase 3 (§3.2, §3.3 revisi 7).
+"""Phase 3 moat graphs (revision 7 §3.2, §3.3).
 
-- `puspa.graphs.identity`: Graf Identitas dan Harga.
-- `puspa.graphs.service`: Graf Alur Layanan (canary, pakai ulang,
-  versi/rollback) di atas tabel `prosedur` Fase 1.
+- `puspa.graphs.identity`: Identity and Price graphs.
+- `puspa.graphs.service`: Service Flow graphs (canary, reuse,
+  version/rollback) over the Phase 1 `procedures` table.
+- `puspa.graphs.shared`: B3 shared graphs (anti-fraud + prices,
+  per-user privacy).
 
-Penyimpanan graf: Postgres + pgvector (§7 definisi). BUKAN graph DB
-eksternal — pola graf embedded LadybugDB (MIT) hanya dipakai sebagai
-referensi pola (node + edge sebagai baris relasional), lihat REUSE.md.
+Graph storage: Postgres + pgvector (§7 definition). NOT an external
+graph DB — the embedded-graph LadybugDB (MIT) pattern is used only
+as a pattern reference (node + edge as relational rows), see REUSE.md.
 """
 
 from __future__ import annotations
@@ -35,11 +37,14 @@ TABLES = (
     "workflow_library",
     "block_requests",
     "tos_checks",
+    "shared_seller_flags",
+    "shared_price_observations",
+    "shared_graph_private_records",
 )
 
 
 def create_schema(dsn: str | None = None) -> None:
-    """Jalankan `infra/schema_graphs.sql` (idempotent)."""
+    """Run `infra/schema_graphs.sql` (idempotent)."""
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
     sql = (Path(__file__).resolve().parent.parent.parent / "infra" / "schema_graphs.sql").read_text(
         encoding="utf-8"
@@ -49,7 +54,7 @@ def create_schema(dsn: str | None = None) -> None:
 
 
 def reset_tables(dsn: str | None = None) -> None:
-    """Kosongkan semua tabel Fase 3 (hanya untuk tes)."""
+    """Empty all Phase 3 tables (tests only)."""
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
     with psycopg.connect(dsn) as conn:
         conn.execute("TRUNCATE " + ", ".join(TABLES) + " CASCADE")
