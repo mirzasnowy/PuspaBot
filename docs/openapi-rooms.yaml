@@ -580,6 +580,303 @@ paths:
             application/json:
               schema:
                 $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/drafts:
+    post:
+      tags: [drafts]
+      summary: Draft a message, document, or email in the user's voice
+      description: |
+        B13: the agent drafts in the user's recorded voice (greeting,
+        closing, rules, preferences) and checks the brief against
+        recorded past decisions. A draft whose brief contradicts a
+        recorded decision is still created, but carries the decision
+        in `decision_flags` as a warning — never a silent rewrite.
+        Creating a draft never sends anything.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, brief]
+              properties:
+                kind:
+                  type: string
+                  enum: [message, document, email]
+                brief:
+                  type: string
+                  description: What the draft should say, in the user's own words.
+                recipient:
+                  type: string
+                  nullable: true
+                  description: Who the draft is for (message/email), when known.
+                channel:
+                  type: string
+                  nullable: true
+                  description: Delivery channel the draft is meant for, when known.
+      responses:
+        "200":
+          description: The created draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
+        "400":
+          description: Unknown kind or empty brief
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    get:
+      tags: [drafts]
+      summary: List the logged-in user's drafts
+      description: |
+        B13: the user's drafts, oldest first.
+      responses:
+        "200":
+          description: The user's drafts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [drafts]
+                properties:
+                  drafts:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Draft"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/drafts/{draft_id}:
+    get:
+      tags: [drafts]
+      summary: Read one draft
+      description: |
+        B13: one draft of the logged-in user.
+      parameters:
+        - name: draft_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Draft"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown draft, or one that belongs to another user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/drafts/{draft_id}/approve:
+    post:
+      tags: [drafts]
+      summary: Approve a draft for sending
+      description: |
+        B13 / G4: the user's explicit approval to send this draft.
+        Single-use, 24 hours, bound to the SHA-256 of the draft
+        text right now; editing the draft afterwards voids it.
+        Approving does not send anything.
+      parameters:
+        - name: draft_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The recorded approval
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approval]
+                properties:
+                  approval:
+                    $ref: "#/components/schemas/DraftApproval"
+        "400":
+          description: The draft was already sent
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown draft, or one that belongs to another user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/drafts/{draft_id}/send:
+    post:
+      tags: [drafts]
+      summary: Send an approved draft
+      description: |
+        B13 / G4: sends the draft through the app's delivery
+        channel. Requires `approval_id` — a recorded approval
+        for this exact draft text, granted by the draft owner,
+        not expired, not already used. 403 when there is no
+        usable approval; 501 when no delivery channel is wired
+        into the app (the approval is kept, nothing is sent,
+        nothing is claimed as sent). A draft never sends without
+        approval.
+      parameters:
+        - name: draft_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approval_id]
+              properties:
+                approval_id:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: The sent draft, the consumed approval, and the delivery result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [draft, approval, delivery]
+                properties:
+                  draft:
+                    $ref: "#/components/schemas/Draft"
+                  approval:
+                    $ref: "#/components/schemas/DraftApproval"
+                  delivery:
+                    type: object
+                    description: Whatever the delivery channel returned.
+        "400":
+          description: Bad send body, or the draft was already sent
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: No usable approval for this draft text
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown draft, or one that belongs to another user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "501":
+          description: No delivery channel is wired into the app
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/voice/profile:
+    get:
+      tags: [drafts]
+      summary: Read the user's voice profile
+      description: |
+        B13: the voice profile as the agent reads it from the
+        user's memory facts — greeting, closing, parsed rules,
+        style notes, preferences, and recorded decisions.
+      responses:
+        "200":
+          description: The voice profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceProfile"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/voice/corrections:
+    post:
+      tags: [drafts]
+      summary: Correct the user's voice
+      description: |
+        B13: records a voice correction as a memory fact
+        (`voice.correction.<id>`, source user-confirmed), so
+        later drafts change. The response carries the updated
+        voice profile.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [correction]
+              properties:
+                correction:
+                  type: string
+                  description: The correction in the user's own words.
+      responses:
+        "200":
+          description: The recorded fact and the updated voice profile
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [fact, voice]
+                properties:
+                  fact:
+                    type: object
+                    description: The recorded memory fact.
+                  voice:
+                    $ref: "#/components/schemas/VoiceProfile"
+        "400":
+          description: Empty correction
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
 components:
   schemas:
     RoomSummary:
@@ -825,3 +1122,126 @@ components:
         executed:
           type: boolean
           description: Always false — a prepared settlement never executes.
+    Draft:
+      type: object
+      description: |
+        B13: one draft in the user's voice. `decision_flags`
+        are recorded past decisions the brief contradicts
+        (a warning, never a silent rewrite);
+        `related_decisions` are the decisions the brief
+        touches; `voice_rules_applied` names the voice rules
+        that shaped the text.
+      required: [id, user_id, kind, brief, text, status, recipient, channel, decision_flags, related_decisions, voice_rules_applied, created_at, updated_at, sent_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [message, document, email]
+        brief:
+          type: string
+        text:
+          type: string
+        status:
+          type: string
+          enum: [draft, approved, sent]
+        recipient:
+          type: string
+          nullable: true
+        channel:
+          type: string
+          nullable: true
+        decision_flags:
+          type: array
+          items:
+            type: string
+        related_decisions:
+          type: array
+          items:
+            type: string
+        voice_rules_applied:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+    DraftApproval:
+      type: object
+      description: |
+        B13: one recorded approval to send a draft. Single-use,
+        24 hours, bound to the SHA-256 of the draft text at
+        approval time; editing the draft afterwards voids it.
+      required: [id, draft_id, user_id, content_hash, status, granted_at, expires_at, consumed_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        draft_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        content_hash:
+          type: string
+          description: SHA-256 of the draft text at approval time.
+        status:
+          type: string
+          enum: [granted, consumed]
+        granted_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        consumed_at:
+          type: string
+          format: date-time
+          nullable: true
+    VoiceProfile:
+      type: object
+      description: |
+        B13: the user's voice as the agent reads it from their
+        memory facts — greeting, closing, parsed rules, style
+        notes the parser could not apply mechanically,
+        preferences, and recorded decisions.
+      required: [user_id, greeting, closing, rules, style_notes, preferences, decisions]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        greeting:
+          type: string
+          nullable: true
+        closing:
+          type: string
+          nullable: true
+        rules:
+          type: array
+          items:
+            type: string
+        style_notes:
+          type: array
+          items:
+            type: string
+        preferences:
+          type: array
+          items:
+            type: string
+        decisions:
+          type: array
+          items:
+            type: string

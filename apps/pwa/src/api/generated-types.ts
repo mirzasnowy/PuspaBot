@@ -2013,6 +2013,473 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the logged-in user's drafts
+         * @description B13: the user's drafts, oldest first.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The user's drafts */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            drafts: components["schemas"]["Draft"][];
+                        };
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Draft a message, document, or email in the user's voice
+         * @description B13: the agent drafts in the user's recorded voice (greeting,
+         *     closing, rules, preferences) and checks the brief against
+         *     recorded past decisions. A draft whose brief contradicts a
+         *     recorded decision is still created, but carries the decision
+         *     in `decision_flags` as a warning — never a silent rewrite.
+         *     Creating a draft never sends anything.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        kind: "message" | "document" | "email";
+                        /** @description What the draft should say, in the user's own words. */
+                        brief: string;
+                        /** @description Who the draft is for (message/email), when known. */
+                        recipient?: string | null;
+                        /** @description Delivery channel the draft is meant for, when known. */
+                        channel?: string | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description The created draft */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Draft"];
+                    };
+                };
+                /** @description Unknown kind or empty brief */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one draft
+         * @description B13: one draft of the logged-in user.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    draft_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The draft */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Draft"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown draft, or one that belongs to another user */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/drafts/{draft_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a draft for sending
+         * @description B13 / G4: the user's explicit approval to send this draft.
+         *     Single-use, 24 hours, bound to the SHA-256 of the draft
+         *     text right now; editing the draft afterwards voids it.
+         *     Approving does not send anything.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    draft_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The recorded approval */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            approval: components["schemas"]["DraftApproval"];
+                        };
+                    };
+                };
+                /** @description The draft was already sent */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown draft, or one that belongs to another user */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/drafts/{draft_id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send an approved draft
+         * @description B13 / G4: sends the draft through the app's delivery
+         *     channel. Requires `approval_id` — a recorded approval
+         *     for this exact draft text, granted by the draft owner,
+         *     not expired, not already used. 403 when there is no
+         *     usable approval; 501 when no delivery channel is wired
+         *     into the app (the approval is kept, nothing is sent,
+         *     nothing is claimed as sent). A draft never sends without
+         *     approval.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    draft_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        approval_id: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The sent draft, the consumed approval, and the delivery result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            draft: components["schemas"]["Draft"];
+                            approval: components["schemas"]["DraftApproval"];
+                            /** @description Whatever the delivery channel returned. */
+                            delivery: Record<string, never>;
+                        };
+                    };
+                };
+                /** @description Bad send body, or the draft was already sent */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No usable approval for this draft text */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown draft, or one that belongs to another user */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No delivery channel is wired into the app */
+                501: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the user's voice profile
+         * @description B13: the voice profile as the agent reads it from the
+         *     user's memory facts — greeting, closing, parsed rules,
+         *     style notes, preferences, and recorded decisions.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The voice profile */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VoiceProfile"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Correct the user's voice
+         * @description B13: records a voice correction as a memory fact
+         *     (`voice.correction.<id>`, source user-confirmed), so
+         *     later drafts change. The response carries the updated
+         *     voice profile.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description The correction in the user's own words. */
+                        correction: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The recorded fact and the updated voice profile */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @description The recorded memory fact. */
+                            fact: Record<string, never>;
+                            voice: components["schemas"]["VoiceProfile"];
+                        };
+                    };
+                };
+                /** @description Empty correction */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/onboarding": {
         parameters: {
             query?: never;
@@ -2963,6 +3430,76 @@ export interface components {
             prepared_at: string;
             /** @description Always false — a prepared settlement never executes. */
             executed: boolean;
+        };
+        /**
+         * @description B13: one draft in the user's voice. `decision_flags`
+         *     are recorded past decisions the brief contradicts
+         *     (a warning, never a silent rewrite);
+         *     `related_decisions` are the decisions the brief
+         *     touches; `voice_rules_applied` names the voice rules
+         *     that shaped the text.
+         */
+        Draft: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            user_id: string;
+            /** @enum {string} */
+            kind: "message" | "document" | "email";
+            brief: string;
+            text: string;
+            /** @enum {string} */
+            status: "draft" | "approved" | "sent";
+            recipient: string | null;
+            channel: string | null;
+            decision_flags: string[];
+            related_decisions: string[];
+            voice_rules_applied: string[];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string | null;
+            /** Format: date-time */
+            sent_at: string | null;
+        };
+        /**
+         * @description B13: one recorded approval to send a draft. Single-use,
+         *     24 hours, bound to the SHA-256 of the draft text at
+         *     approval time; editing the draft afterwards voids it.
+         */
+        DraftApproval: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            draft_id: string;
+            /** Format: uuid */
+            user_id: string;
+            /** @description SHA-256 of the draft text at approval time. */
+            content_hash: string;
+            /** @enum {string} */
+            status: "granted" | "consumed";
+            /** Format: date-time */
+            granted_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            consumed_at: string | null;
+        };
+        /**
+         * @description B13: the user's voice as the agent reads it from their
+         *     memory facts — greeting, closing, parsed rules, style
+         *     notes the parser could not apply mechanically,
+         *     preferences, and recorded decisions.
+         */
+        VoiceProfile: {
+            /** Format: uuid */
+            user_id: string;
+            greeting: string | null;
+            closing: string | null;
+            rules: string[];
+            style_notes: string[];
+            preferences: string[];
+            decisions: string[];
         };
         /**
          * @description The user's own-model selection (G33). Carries no key

@@ -627,6 +627,18 @@ paths:
     $ref: './openapi-rooms.yaml#/paths/~1api~1rooms~1{room_id}~1splits~1{split_id}~1payments'
   /api/rooms/{room_id}/splits/{split_id}/settlements/{debtor_user_id}/prepare:
     $ref: './openapi-rooms.yaml#/paths/~1api~1rooms~1{room_id}~1splits~1{split_id}~1settlements~1{debtor_user_id}~1prepare'
+  /api/drafts:
+    $ref: './openapi-rooms.yaml#/paths/~1api~1drafts'
+  /api/drafts/{draft_id}:
+    $ref: './openapi-rooms.yaml#/paths/~1api~1drafts~1{draft_id}'
+  /api/drafts/{draft_id}/approve:
+    $ref: './openapi-rooms.yaml#/paths/~1api~1drafts~1{draft_id}~1approve'
+  /api/drafts/{draft_id}/send:
+    $ref: './openapi-rooms.yaml#/paths/~1api~1drafts~1{draft_id}~1send'
+  /api/voice/profile:
+    $ref: './openapi-rooms.yaml#/paths/~1api~1voice~1profile'
+  /api/voice/corrections:
+    $ref: './openapi-rooms.yaml#/paths/~1api~1voice~1corrections'
   /api/onboarding:
     get:
       tags: [onboarding]
@@ -1101,6 +1113,12 @@ components:
       $ref: './openapi-rooms.yaml#/components/schemas/Split'
     PreparedSettlement:
       $ref: './openapi-rooms.yaml#/components/schemas/PreparedSettlement'
+    Draft:
+      $ref: './openapi-rooms.yaml#/components/schemas/Draft'
+    DraftApproval:
+      $ref: './openapi-rooms.yaml#/components/schemas/DraftApproval'
+    VoiceProfile:
+      $ref: './openapi-rooms.yaml#/components/schemas/VoiceProfile'
     ModelSettings:
       type: object
       description: |

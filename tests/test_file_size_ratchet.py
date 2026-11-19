@@ -139,7 +139,16 @@ BASELINE_LINES = {
     # generated client carries the split types; the full contract
     # stays in docs/openapi-rooms.yaml. The ratchet resumes from
     # 1739.
-    "docs/openapi-pwa.yaml": 1739,
+    # Wave 32 (B13): +18 lines of $ref stubs in the main spec —
+    # 6 draft paths + 3 draft schemas, contract in
+    # docs/openapi-rooms.yaml. The ratchet resumes from 1757.
+    "docs/openapi-pwa.yaml": 1757,
+    # Shared-rooms API contract: grew past the soft cap with the
+    # B13 draft contract (6 paths + 3 schemas on top of rooms /
+    # delegation / splits), now 1,247 lines. It stays one file:
+    # splitting it again per feature would scatter one API
+    # surface; the ratchet resumes from 1247.
+    "docs/openapi-rooms.yaml": 1247,
     # Maturity phase status log: re-added 19 Nov 2026 at 1055
     # lines (regrown past the soft cap with the Waves 15-16
     # entries) and archived again the same day — Waves 9-13
