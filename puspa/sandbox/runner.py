@@ -38,6 +38,8 @@ import subprocess
 import uuid
 
 from .allowlist import DEFAULT_ALLOWLIST, Allowlist
+from .policy import SandboxPolicy
+from .quota import DEFAULT_QUOTA, ResourceQuota
 
 __all__ = ["DEFAULT_IMAGE", "DEFAULT_PYTHON_BIN", "Sandbox", "SandboxUnavailable"]
 
@@ -55,7 +57,16 @@ class SandboxUnavailable(Exception):
 
 
 class Sandbox:
-    """Menjalankan kode Python di container Docker sekali pakai."""
+    """Menjalankan kode Python di container Docker sekali pakai.
+
+    G34: the container flags now derive from a
+    :class:`puspa.sandbox.quota.ResourceQuota` and a
+    :class:`puspa.sandbox.policy.SandboxPolicy` instead of
+    hard-coded values. The defaults are the flags this class
+    always passed (256 MB, 0.5 CPU, 64 processes, ``--network
+    none``, non-root 65534), so behaviour without an explicit
+    quota/policy is unchanged.
+    """
 
     def __init__(
         self,
@@ -63,6 +74,8 @@ class Sandbox:
         *,
         image: str = DEFAULT_IMAGE,
         python_bin: str = DEFAULT_PYTHON_BIN,
+        quota: ResourceQuota | None = None,
+        policy: SandboxPolicy | None = None,
     ) -> None:
         if allowlist is None:
             self.allowlist = Allowlist(DEFAULT_ALLOWLIST)
@@ -72,7 +85,50 @@ class Sandbox:
             self.allowlist = Allowlist(allowlist)
         self.image = image
         self.python_bin = python_bin
+        self.quota = quota if quota is not None else DEFAULT_QUOTA
+        self.policy = policy if policy is not None else SandboxPolicy()
+        self.policy.validate()
         self._available_cache: bool | None = None
+
+    def docker_flags(self) -> list[str]:
+        """The ``docker run`` hardening + resource flags for this sandbox.
+
+        Derived from the quota (memory/CPU/pids) and the policy
+        (network mode, run-as user), so a quota or policy change
+        is one place, not a flag hunt. The network flag is
+        ``--network none`` when the policy admits no host; a
+        policy that admits hosts needs a filtered egress proxy
+        Puspa does not have yet, so :meth:`run` refuses that
+        mode instead of returning flags that would open the
+        network (see :meth:`_check_network_policy`).
+        """
+        network_policy = self.policy.network
+        if network_policy.docker_network_mode() != "none":
+            raise SandboxUnavailable(
+                "network policy admits hosts, but Puspa has no filtered "
+                "egress proxy yet (OpenShell enforces this with an HTTP "
+                "CONNECT proxy + DNS mediation); refusing to run with the "
+                "network on. Use a deny-all network policy until the "
+                "proxy exists. See docs/sandbox-deepening.md."
+            )
+        return [
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            *self.quota.docker_flags(),
+            "--user",
+            self.policy.docker_user_flag(),
+            "--workdir",
+            "/tmp",
+        ]
+
+    def _check_network_policy(self) -> None:
+        """Refuse a run whose network policy needs the missing proxy."""
+        self.docker_flags()
 
     # -- ketersediaan --------------------------------------------------------
 
@@ -167,6 +223,10 @@ class Sandbox:
         if cmd is None:
             return None
         container_name = f"{name}-{uuid.uuid4().hex[:8]}"
+        try:
+            hardening_flags = self.docker_flags()
+        except SandboxUnavailable:
+            return None
         docker_argv = [
             *cmd,
             "run",
@@ -174,23 +234,7 @@ class Sandbox:
             "-i",
             "--name",
             container_name,
-            "--network",
-            "none",
-            "--read-only",
-            "--cap-drop",
-            "ALL",
-            "--security-opt",
-            "no-new-privileges",
-            "--memory",
-            "256m",
-            "--cpus",
-            "0.5",
-            "--pids-limit",
-            "64",
-            "--user",
-            "65534:65534",
-            "--workdir",
-            "/tmp",
+            *hardening_flags,
             self.image,
             self.python_bin,
             "-",
@@ -256,6 +300,10 @@ class Sandbox:
             raise ValueError(f"code melebihi {_MAX_CODE_CHARS} karakter")
         if timeout_s <= 0:
             raise ValueError("timeout_s harus > 0")
+        # Admission first (G34): a network policy that needs the
+        # missing egress proxy is refused before Docker is even
+        # probed, so the refusal does not depend on host state.
+        self._check_network_policy()
         if not self.check_available():
             raise SandboxUnavailable(
                 "Docker tidak tersedia atau container tidak bisa start; "

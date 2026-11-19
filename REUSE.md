@@ -727,3 +727,47 @@ panel stays at zero decisions until a real action path calls `gateway.decide()`
 (the PWA takes no computer actions itself); the pairing store is in-memory and
 process-local; the panels poll every 5 s rather than arriving over SSE; hosted
 serving end to end needs the cloud backend, which is not in this repo.
+
+## Maturity phase (G34 — Sandbox deepening, NVIDIA/OpenShell pattern)
+
+Source repo: NVIDIA/OpenShell (https://github.com/NVIDIA/OpenShell,
+Apache License 2.0, ~21,780 stars), shallow-cloned 19 Nov 2026 at
+commit `5c0d71641fbc9d62a4ee2f33de235f6662ae196c`. Study-only: the
+mechanisms below were studied in the clone (README, RFC 0001 core
+architecture, RFC 0004 resource requirements, `proto/sandbox.proto`,
+`proto/sandbox_protocol.proto`, `proto/openshell.proto`,
+`crates/openshell-sandbox/src/sftp.rs`, `crates/openshell-sandbox/src/pty.rs`,
+`docs/how-it-works/sandboxes/overview.mdx`,
+`crates/openshell-supervisor-network/src/`) and REWRITTEN as Puspa's
+own Python code. No OpenShell code was copied, ported, vendored, or
+depended on (no new dependency; OpenShell is Rust, Puspa is Python).
+
+| Big idea | From which repo (license) | What was adapted | What was rewritten from scratch |
+| --- | --- | --- | --- |
+| Long-lived named sandbox with a lifecycle, admission before execution (Attach + Confirm), idle/orphan reaping | NVIDIA/OpenShell (Apache-2.0) | The persistent-session idea + admission order (validate first, build the backend after) + idle-session reaping | `puspa/sandbox/session.py` (`SandboxSession`, `SessionManager`: create/get/list/kill, `reap_expired`, fake-clock testable; Docker admission fails closed, quota released, no session left) |
+| Deny-by-default network policy, named rules, explicit host:port endpoints; filesystem allow lists; process run-as user/group | NVIDIA/OpenShell (Apache-2.0) | The policy-object shape (deny-by-default network + host:port endpoints, read-only/read-write filesystem lists, non-root run-as) | `puspa/sandbox/policy.py` (`NetworkPolicy`/`NetworkEndpoint` — hosts must already be on the session allowlist, policy only narrows it; `FilesystemPolicy`; `SandboxPolicy` with version + root refusal) |
+| Typed resource requirements (RFC 0004): portable compute + device, driver prefilter, separate driver config | NVIDIA/OpenShell (Apache-2.0) | The typed-requirement idea (CPU/memory/disk/pids) + refusing a GPU that does not exist yet | `puspa/sandbox/quota.py` (`ResourceQuota` + `docker_flags()` extending the runner's existing flags, `QuotaRegistry` per-user overrides + live-session cap + `measure_disk_usage`) |
+| Root-anchored file transfer (SFTP), bounded | NVIDIA/OpenShell (Apache-2.0) | The root-anchored file-transfer idea + size bounds | `puspa/sandbox/filesystem.py` (`SandboxFilesystem`, `LocalSandboxFilesystem` scoped + disk-quota enforced, `DockerSandboxFilesystem` uniform refusal, `filesystem_for_backend`) |
+| Exec with admission deadline, bounded output frames, exit reported separately | NVIDIA/OpenShell (Apache-2.0) | The ExecRequest/ExecResult shape + streaming chunks (stdout/stderr/exit, 64 KiB chunks) | `puspa/sandbox/exec.py` (`ExecRequest` argv-or-code, `run_exec`, `exec_stream` live on local via Popen, chunked-after-completion on Docker) |
+| Retained PTY + resize, dedicated process group | NVIDIA/OpenShell (Apache-2.0) | The PTY terminal idea + resize + process group | `puspa/sandbox/terminal.py` (`TerminalSession`: real PTY on local, `send_input`/`read_output`/`resize`/`close`; `start_terminal` refuses Docker honestly) |
+| Browser as a workload inside the sandbox, reached over its own endpoint | NVIDIA/OpenShell (Apache-2.0) | The in-sandbox browser idea + one session per sandbox session | `puspa/sandbox/browser.py` (`SandboxBrowserSession`/`SandboxBrowserManager`: profile dir inside the workdir, planned CDP endpoint, `launch` refuses until a container host exists) |
+| Runner flags derived from quota + policy | — (Puspa's own runner) | Nothing from another repo | `puspa/sandbox/runner.py` (`Sandbox(quota=..., policy=...)`, `docker_flags()`; proxy-mode policy refused before Docker is probed) + `puspa/sandbox/__init__.py` exports + `docs/sandbox-deepening.md` |
+
+No new dependency was added for G34. Tests:
+`tests/test_sandbox_g34_policy_quota.py` (policy matching, quota
+bounds/flags/GPU refusal, registry cap, disk accounting) +
+`tests/test_sandbox_g34_sessions.py` (create/get/list/kill,
+per-user cap, credential-env refusal, reaping with a fake clock,
+Docker admission failing closed) +
+`tests/test_sandbox_g34_exec_filesystem.py` (filesystem round-trip
++ escape refusal + disk quota, Docker filesystem refusal, one-shot
+and streaming exec, runner flag derivation, proxy-policy refusal)
++ `tests/test_sandbox_g34_terminal_browser.py` (real PTY echo/exit/
+resize/scope jail, Docker terminal refusal, browser bookkeeping +
+launch refusal). Honest limits: no live container has ever run on
+this VM (Docker cannot start a container here — kernel rejects
+`setns` — so Docker flag derivation is constructed, not executed,
+and the first live check is on a Docker host/VPS); no filtered
+egress proxy yet (a policy admitting hosts is validated and stored
+but refuses to run); no GPU provisioning; sessions are in-memory
+and process-local; no live browser (no Chromium launched anywhere).

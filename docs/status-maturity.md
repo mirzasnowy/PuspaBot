@@ -664,3 +664,115 @@ recorded for a later wave (verified by the coordinator: no
 Remaining: Kosmos K5, K6, K10, K11, K12, K13, then B features
 (B6, B9, B10, B11, B12, B13), then B15 culture LAST. Then uji
 + 15 gates + 10 reference tasks (waiting on Nero's decisions).
+
+## Wave 24: G34 (Sandbox deepening from NVIDIA/OpenShell, DONE 19 Nov 2026)
+
+New item from Nero (19 Nov ~08:24 WIB), after K4. The worker
+studied NVIDIA/OpenShell first (shallow clone to /tmp, commit
+`5c0d71641fbc9d62a4ee2f33de235f6662ae196c`, 19 Nov 2026:
+README, RFC 0001 gateway/supervisor architecture, RFC 0004
+typed resource requirements, `proto/sandbox.proto`,
+`proto/sandbox_protocol.proto`, `proto/openshell.proto`,
+`sftp.rs`, `pty.rs`, sandbox docs, supervisor-network) and
+rewrote the mechanisms as Puspa's own Python code — no line
+copied (worker d91c5051, verified centrally by the coordinator;
+the clone is still at /tmp/openshell, commit verified by the
+coordinator).
+
+What was built (7 new modules, all in `puspa/sandbox/`):
+- `policy.py` (309 lines) — `NetworkPolicy` deny-by-default +
+  explicit `host:port` endpoints (a host must already be on the
+  session allowlist; a policy only narrows it, never widens
+  it), `FilesystemPolicy` (read-only/read-write +
+  `include_workdir`), `SandboxPolicy` (version + root refusal,
+  validated at admission).
+- `quota.py` (273 lines) — `ResourceQuota` (CPU/memory/disk/
+  pids; `gpu_count > 0` is refused, never silently downgraded
+  to CPU), `docker_flags()`, `QuotaRegistry` (per-user
+  overrides, live-session cap per user, reserve/release),
+  `measure_disk_usage` (symlinks not followed).
+- `session.py` (374 lines) — `SandboxSession` +
+  `SessionManager` (create/get/list/kill, `reap_expired`
+  lifetime + idle, fake-able clock; admission order: validate
+  policy -> reserve quota -> build backend; any failure
+  releases the reservation with no session left).
+- `filesystem.py` (309 lines) — `SandboxFilesystem`
+  (read/write/list/stat/delete, upload/download),
+  `LocalSandboxFilesystem` (real, bound to the scope +
+  disk quota checked before write), `DockerSandboxFilesystem`
+  (uniform refusal: no persistent filesystem),
+  `filesystem_for_backend`.
+- `exec.py` (355 lines) — `ExecRequest` (argv *or* code, no
+  shell string), `run_exec`, `exec_stream` (chunked
+  stdout/stderr/exit, 64 KiB chunks; live via Popen on local,
+  chunked-after-completion on Docker).
+- `terminal.py` (245 lines) — `TerminalSession`, a real PTY on
+  the local backend (`send_input` / `read_output` / `resize`
+  TIOCSWINSZ + SIGWINCH / `close` kills the process group);
+  `start_terminal` honestly refuses Docker.
+- `browser.py` (197 lines) — `SandboxBrowserSession` +
+  `SandboxBrowserManager` (one live session per sandbox
+  session, profile dir inside the workdir, CDP endpoint only
+  planned; `launch` refuses until a container host exists).
+
+Changed:
+- `puspa/sandbox/runner.py` (272 -> 320 lines) —
+  `Sandbox(quota=..., policy=...)`, `docker_flags()` derived
+  from quota + policy (defaults unchanged: 256 MB, 0.5 CPU,
+  64 processes, `--network none`, non-root 65534). A policy
+  that admits hosts is refused in `run()` *before* Docker is
+  probed (it needs a filtered egress proxy that does not exist
+  yet; never opened silently).
+- `puspa/sandbox/__init__.py` (13 -> 81 lines) — exports all
+  new APIs.
+- `docs/sandbox-deepening.md` (169 lines) — the OpenShell
+  mechanisms taken + mapping table to Puspa code + honest
+  limits.
+- `REUSE.md` (+44 lines, now 773) and `NOTICE.md` (+35 lines,
+  now 760) — OpenShell Apache-2.0 attribution, study-only, no
+  code copied.
+
+One trap fixed by the worker: importing `puspa.computer` in
+the sandbox `__init__` caused a circular import through
+`puspa.harness` — all computer/harness imports in the new
+sandbox modules are now lazy (inside functions) or
+`TYPE_CHECKING`. Both import orders (`computer` first and
+`sandbox` first) were verified working by the coordinator.
+
+Suite (coordinator, SOLO, 19 Nov 2026): 3,319 passed, 23 skipped,
+1 warning, 19m30s, EXIT 0 (log hidden_files/suite-wave24-g34.log).
+Reconciliation: 3,260 (Wave 23) + 59 (G34 module tests) = 3,319;
+skipped unchanged at 23. NOTE: the first suite attempt was SIGTERM'd
+at 96% (no failures visible) by a VM replacement; the recovery took
+three VM replacements in about an hour (the replay did not reinstall
+Postgres within 15 minutes, a manual apt install failed on missing
+package lists and was killed by the next replacement, then the replay
+installed postgresql-16 16.15 + pgvector 0.6.0 itself). The coordinator
+restarted the cluster, recreated role root, re-ran
+infra/schema_core.sql, re-verified RLS, and re-ran the suite to green.
+Module tests (coordinator re-run): 136 passed, 18 skipped
+(test_sandbox_g34*.py + test_sandbox.py + test_computer*.py +
+test_file_size_ratchet.py — 59 new G34 tests, all passed; the
+18 skips are the live-Docker tests that cannot run on this VM).
+Four failures during development, all fixed and re-run green
+(3 test bugs; 1 real code bug: `list_dir` returned paths
+relative to the listed directory, not the root — fixed in code,
+not in the test). Ruff check + format: clean. Mypy: clean.
+File-size ratchet: clean (all new files under 1000 lines).
+
+Honest limits: still no live container on this VM (the kernel
+rejects `setns`): `check_available()` is False, Docker
+admission fails closed (tests prove the quota is released and
+no session is left), Docker flags are only *built*, never
+*executed*. The first live check waits for a Docker host /
+VPS. No filtered egress proxy yet: a policy that admits hosts
+is validated and stored, but exec under it is refused. No GPU;
+sessions are in-memory (lost on restart); no live browser
+(no Chromium is run anywhere). `LocalBackend` still executes
+on the host (not a container); G34 only binds it to the
+scope temp-dir jail + refuses credential-smelling env in
+sessions, exec, and terminals.
+
+Remaining: Kosmos K5, K6, K10, K11, K12, K13, then B features
+(B6, B9, B10, B11, B12, B13), then B15 culture LAST. Then uji
++ 15 gates + 10 reference tasks (waiting on Nero's decisions).
