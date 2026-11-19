@@ -74,3 +74,27 @@ BEGIN
         REVOKE UPDATE, DELETE ON events FROM puspa_app;
     END IF;
 END $$;
+
+-- Kill switch (K12, docs/audit-kill-switch-export.md): one row, the
+-- single flag that stops the agent. The application role may only
+-- READ it (SELECT); only the table owner (the operator connection)
+-- may INSERT/UPDATE it, so the agent can neither arm nor disarm it.
+-- The row also records the last change (actor, reason, time); the
+-- transitions themselves are recorded in the ledger as well (see
+-- puspa/ledger/kill_switch.py).
+CREATE TABLE IF NOT EXISTS kill_switch (
+    id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    active BOOLEAN NOT NULL DEFAULT FALSE,
+    actor TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+REVOKE INSERT, UPDATE, DELETE ON kill_switch FROM PUBLIC;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'puspa_app') THEN
+        GRANT SELECT ON kill_switch TO puspa_app;
+        REVOKE INSERT, UPDATE, DELETE ON kill_switch FROM puspa_app;
+    END IF;
+END $$;

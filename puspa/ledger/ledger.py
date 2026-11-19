@@ -32,6 +32,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -41,6 +42,12 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from .errors import InvalidEventTypeError, LedgerError
+
+#: Role names must match this: ``SET ROLE`` takes an identifier, so
+#: a role name is validated and interpolated, never passed as a
+#: value parameter (a parameter would be read as a string literal
+#: and rejected by Postgres).
+_ROLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
 
 #: Nilai `hash_sebelumnya` untuk kejadian pertama dalam satu tugas.
 GENESIS = "GENESIS"
@@ -150,16 +157,35 @@ def _row_to_event(row: dict) -> dict:
 class Ledger:
     """Buku Kerja: append-only, rantai hash per tugas."""
 
-    def __init__(self, dsn: str | None = None):
+    def __init__(self, dsn: str | None = None, *, role: str | None = None):
+        """``role`` (K12): when given, every connection runs as that
+        Postgres role (``SET ROLE`` right after connecting), so the
+        ledger is written through the role's privileges — the agent
+        role ``puspa_app`` can INSERT and SELECT but never UPDATE or
+        DELETE (see ``schema.sql``). ``None`` (the default) keeps
+        the old behaviour: the connection runs as the DSN user.
+        ``create_schema`` always runs as the DSN user, never as the
+        role: schema setup is an operator step."""
+        if role is not None and not _ROLE_NAME_RE.match(role):
+            raise LedgerError(f"invalid role name: {role!r}")
         self.dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
+        self.role = role
 
     def _connect(self, **kwargs):
-        return psycopg.connect(self.dsn, row_factory=dict_row, **kwargs)
+        conn = psycopg.connect(self.dsn, row_factory=dict_row, **kwargs)
+        if self.role is not None:
+            with conn.cursor() as cur:
+                cur.execute(f"SET ROLE {self.role}")
+        return conn
 
     def create_schema(self) -> None:
-        """Menjalankan `schema.sql` (CREATE TABLE IF NOT EXISTS + REVOKE)."""
+        """Menjalankan `schema.sql` (CREATE TABLE IF NOT EXISTS + REVOKE).
+
+        Always as the DSN user (the table owner), never as ``role``:
+        schema setup is an operator step, not an agent step.
+        """
         sql = (Path(__file__).parent / "schema.sql").read_text(encoding="utf-8")
-        with self._connect(autocommit=True) as conn:
+        with psycopg.connect(self.dsn, autocommit=True) as conn:
             conn.execute(sql)
 
     def append_event(
