@@ -29,6 +29,14 @@ import statistics
 from dataclasses import dataclass, field
 
 from puspa.graphs.shared import seller_reputation, shared_fair_price
+from puspa.local_data.language import extract_courier, extract_destination_city
+from puspa.local_data.rails import PaymentRail, detect_rail
+from puspa.local_data.rates import (
+    RateStore,
+    ShippingQuote,
+    UnknownCityError,
+    UnknownCourierError,
+)
 
 from .classifier import classify_input
 from .records import PriceObservation, RecordStore, normalize_product_key
@@ -92,6 +100,83 @@ class SellerSection:
 
 
 @dataclass
+class PaymentRailSection:
+    """The Indonesian payment rail named in the input, if any.
+
+    Naming only: this section says which rail the seller or user
+    mentioned (QRIS, virtual account, bank transfer, GoPay, OVO,
+    DANA, COD). It never prepares or executes a payment — that is
+    ticket B8.
+    """
+
+    rail_id: str
+    display_name: str
+    kind: str
+    bank: str = ""
+    note: str = ""
+
+    @classmethod
+    def from_rail(cls, rail: PaymentRail) -> PaymentRailSection:
+        return cls(
+            rail_id=rail.rail_id,
+            display_name=rail.display_name,
+            kind=rail.kind,
+            bank=rail.bank,
+            note=rail.note,
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "rail_id": self.rail_id,
+            "display_name": self.display_name,
+            "kind": self.kind,
+            "bank": self.bank,
+            "note": self.note,
+        }
+
+
+@dataclass
+class ShippingSection:
+    """Shipping cost for the lane named in the input, if any.
+
+    The cost comes from the local data layer's seeded sample
+    rates (see ``puspa.local_data.rates``): the quote always
+    carries its provenance, and a lane or courier with no rate
+    on record is ``cannot_verify``, never a guessed number.
+    """
+
+    status: str  # "verified" | "cannot_verify" | "not_applicable"
+    city: str | None = None
+    courier: str | None = None
+    cost_idr: int | None = None
+    cod_available: bool | None = None
+    source_label: str = ""
+    reason: str = ""
+
+    @classmethod
+    def from_quote(cls, quote: ShippingQuote) -> ShippingSection:
+        return cls(
+            status=STATUS_VERIFIED,
+            city=quote.destination,
+            courier=quote.courier,
+            cost_idr=quote.cost_idr,
+            cod_available=quote.cod_available,
+            source_label=quote.source_label,
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "status": self.status,
+            "city": self.city,
+            "courier": self.courier,
+            "cost_idr": self.cost_idr,
+            "cod_available": self.cod_available,
+            "source_label": self.source_label,
+            "reason": self.reason,
+        }
+
+
+@dataclass
 class AccountSection:
     status: str
     masked_number: str | None = None
@@ -124,6 +209,12 @@ class CheckAnswer:
     cannot_verify: list[str] = field(default_factory=list)
     live_execution_held: bool = False
     text: str = ""
+    # Shipping quote for the lane named in the input (B5), and
+    # the payment rail named in the input (B5, naming only).
+    shipping: ShippingSection = field(
+        default_factory=lambda: ShippingSection(status="not_applicable")
+    )
+    payment_rail: PaymentRailSection | None = None
     # Recorded observations the fair price rests on. Kept out of
     # to_dict(); the outcome writer turns them into evidence rows.
     observations: list[PriceObservation] = field(default_factory=list, repr=False)
@@ -140,6 +231,8 @@ class CheckAnswer:
             "advice_reasons": list(self.advice_reasons),
             "cannot_verify": list(self.cannot_verify),
             "live_execution_held": self.live_execution_held,
+            "shipping": self.shipping.to_dict(),
+            "payment_rail": self.payment_rail.to_dict() if self.payment_rail else None,
             "text": self.text,
         }
 
@@ -190,9 +283,45 @@ def _held_answer(input_kind: str) -> CheckAnswer:
         advice_reasons=[LIVE_EXECUTION_HELD_REASON],
         cannot_verify=["fair_price", "seller", "account"],
         live_execution_held=True,
+        shipping=ShippingSection(status=STATUS_CANNOT_VERIFY, reason=LIVE_EXECUTION_HELD_REASON),
     )
     answer.text = render_text(answer)
     return answer
+
+
+def _shipping_section(text: str, rate_store: RateStore) -> ShippingSection:
+    """Shipping quote for the lane named in ``text`` (B5).
+
+    No destination city means the section does not apply. A
+    named city with no rate on record (or a courier with no rate
+    on that lane) is ``cannot_verify`` — the store's fail-loud
+    errors are reported, never swallowed into a guessed number.
+    With no courier named, the cheapest courier on the lane is
+    quoted and named. The quote is for 1 kg from Jakarta, the
+    seed's origin hub; the section carries its provenance.
+    """
+    city = extract_destination_city(text)
+    if city is None:
+        return ShippingSection(
+            status=STATUS_NOT_APPLICABLE,
+            reason="no destination city in the forwarded input",
+        )
+    courier = extract_courier(text)
+    try:
+        if courier is not None:
+            quote = rate_store.quote(
+                origin="Jakarta", destination=city, courier=courier, weight_kg=1.0
+            )
+        else:
+            cheapest = rate_store.cheapest(origin="Jakarta", destination=city)
+            quote = rate_store.quote(
+                origin="Jakarta", destination=city, courier=cheapest.courier, weight_kg=1.0
+            )
+    except (UnknownCityError, UnknownCourierError) as exc:
+        return ShippingSection(
+            status=STATUS_CANNOT_VERIFY, city=city, courier=courier, reason=str(exc)
+        )
+    return ShippingSection.from_quote(quote)
 
 
 def check_before_buy(
@@ -202,6 +331,7 @@ def check_before_buy(
     product_key: str | None = None,
     mode: str = "recorded",
     shared_dsn: str | None = None,
+    rate_store: RateStore | None = None,
 ) -> CheckAnswer:
     """Answer one forwarded input from recorded data only.
 
@@ -214,6 +344,10 @@ def check_before_buy(
     ``uncertain`` hint. Without it the answer is exactly the
     B1 recorded-only answer; the shared flag reason is never
     shown, only the aggregate count.
+    ``rate_store`` (ticket B5) supplies the shipping rates for
+    the lane named in the input; it defaults to the seeded
+    sample rates. The answer also names the payment rail the
+    input mentions (naming only, no payment is prepared).
     """
     classified = classify_input(text)
     if mode == "live":
@@ -333,6 +467,14 @@ def check_before_buy(
 
     advice, reasons = _decide_advice(classified.kind, fair_price, seller, account)
 
+    # B5: shipping quote for the lane named in the input, and
+    # the payment rail the input mentions (naming only).
+    shipping = _shipping_section(text, rate_store or RateStore())
+    rail = detect_rail(text)
+    payment_rail = PaymentRailSection.from_rail(rail) if rail is not None else None
+    if shipping.status == STATUS_CANNOT_VERIFY:
+        cannot_verify.append("shipping")
+
     answer = CheckAnswer(
         input_kind=classified.kind,
         product_key=key,
@@ -344,6 +486,8 @@ def check_before_buy(
         advice_reasons=reasons,
         cannot_verify=cannot_verify,
         observations=observations,
+        shipping=shipping,
+        payment_rail=payment_rail,
     )
     answer.text = render_text(answer)
     return answer
@@ -418,6 +562,20 @@ def render_text(answer: CheckAnswer) -> str:
         lines.append(f"Account {account.masked_number}: clean on record.")
     elif account.status == STATUS_CANNOT_VERIFY:
         lines.append(f"Account {account.masked_number}: I could not verify this. {account.reason}")
+
+    shipping = answer.shipping
+    if shipping.status == STATUS_VERIFIED and shipping.cost_idr is not None:
+        cod = "COD is available" if shipping.cod_available else "COD is not available"
+        lines.append(
+            f"Shipping to {shipping.city} via {shipping.courier}: "
+            f"Rp{shipping.cost_idr:,.0f} for 1 kg from Jakarta. {cod}. "
+            f"({shipping.source_label}; sample rates, not a live tariff.)"
+        )
+    elif shipping.status == STATUS_CANNOT_VERIFY:
+        lines.append(f"Shipping: I could not verify this. {shipping.reason}")
+
+    if answer.payment_rail is not None:
+        lines.append(f"Payment: {answer.payment_rail.note}")
 
     if answer.advice == ADVICE_ACT:
         lines.append("Advice: you can go ahead. " + "; ".join(answer.advice_reasons) + ".")
