@@ -710,6 +710,54 @@ Central suite Wave 34 re-run: 3,786 passed, 23 skipped, 1
 warning, EXIT 0, 29m58s (3,736 + 23 B3 + 27 B4, exact).
 Both items pushed: B3 2befcd89, B4 c0039687.
 
+## Wave 36 — B8 agent payments phase 1 (1 worker, 20 Nov 2026)
+
+B8 agent payments, phase 1: prepare only (commit
+805409a9). New puspa/payments package: models (verified
+Recipient, integer-Rupiah amounts, B5 rail resolution with
+COD refused, evidence-must-name-recipient rule) and
+prepare (PreparationService: prepare / approve / reject /
+list / list-payable / get / mark-paid-by-user, plus the
+execute_payment guard — always raises ExecutionRefused
+after recording the refusal; EXECUTION_LIMIT_RUPIAH = 0
+as a module constant, no executor, gateway client, or
+payment credential anywhere). Every preparation writes a
+payment_prepared outcome record through the shared B2
+writer plus an approval_requested ledger event (G4 kind
+prepare_payment); rows start awaiting_approval and become
+payable only after owner approval; idempotency key returns
+the same preparation, same key with different content is
+refused; expiry defaults to 24h and is enforced on
+approve/mark-paid/read; mark_paid_by_user is a user
+assertion (payment_paid_by_user outcome, evidence kind
+user_assertion), never an execution. PWA payments API (8
+routes, execute always 403) registered in app.py;
+infra/schema_payments.sql (owner-only RLS, per-user
+idempotency key); docs/agent-payments.md +
+docs/openapi-payments.yaml (main spec gains 24 lines of
+$ref stubs, baseline re-recorded 1813 to 1837 with
+reason).
+
+Coordinator verification fixes (in the B8 commit, not the
+worker's): the worker's API never applied its schema — a
+server that only ran schema_core.sql would fail on the
+missing table. Fixed with the B7 mockup pattern (lazy
+create_schema on first request, once per app) plus a test
+that drops the table and proves the first request
+recreates it; and the worker shipped no OpenAPI contract,
+so docs/openapi-payments.yaml + stubs were added
+following the B7/B13/B18 split precedent.
+
+Central suite Wave 36: 3,899 passed, 23 skipped, 1
+warning, EXIT 0, 34m24s (3,864 + 27 B8 module + 8 API,
+exact). B8 pushed: 805409a9. Notion B8 row Done / Suite
+green. Honest limits: no live gateway, no real rails
+integration, no execution; paid-by-user is an assertion,
+not a verified payment; recipient verification is against
+the evidence supplied, not a bank/wallet registry; no
+account-reference well-formedness check; phase 2 is not
+ticketed.
+
 ## Wave 35 — B5 + B7 (2 workers parallel, pipeline rule, 20 Nov 2026)
 
 B5 local Indonesian data layer (commit e7e71067) and B7
