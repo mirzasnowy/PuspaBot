@@ -104,6 +104,12 @@ class TurnResult:
     #: on, in order. Empty when no advisor is wired in — the loop's
     #: behaviour without an advisor is unchanged.
     intent_decisions: list = field(default_factory=list)
+    #: Autonomy-dial verdicts the dial gave during this turn (K11,
+    #: ``puspa.autonomy.dial.AutonomyDial``): one ``DialDecision``
+    #: per tool call the dial was consulted on, in order. Empty
+    #: when no dial is wired in — the loop's behaviour without a
+    #: dial is unchanged.
+    dial_decisions: list = field(default_factory=list)
 
 
 class TurnLoop:
@@ -133,6 +139,20 @@ class TurnLoop:
     before dispatching a tool call to the registry — on ``ask`` the call is not run and the model
     gets a payload telling it to ask the user the clarifying question instead (K1). Without an
     advisor the loop behaves exactly as before.
+    ``autonomy_dial`` is an optional
+    :class:`puspa.autonomy.dial.AutonomyDial`: when wired in, the
+    loop consults it before dispatching a registry tool call to
+    the area the tool belongs to (K11) — on ``propose`` the call
+    is not run and the model gets a payload telling it to propose
+    the action to the user instead; on ``do_and_show`` and
+    ``do_silently`` the call runs, and the executed outcome is
+    reported back to the dial as that area's calibration (a run
+    as expected counts correct, an error counts wrong).
+    ``dial_area_for_tool`` is an optional ``tool name -> area``
+    override for the dial's default tool-to-area mapping; a tool
+    the mapping cannot place in an area is not gated by the dial
+    (fail-open). Without a dial the loop behaves exactly as
+    before.
     """
 
     def __init__(
@@ -151,6 +171,8 @@ class TurnLoop:
         narrowing_skills=(),
         narrowing_selector=None,
         intent_advisor=None,
+        autonomy_dial=None,
+        dial_area_for_tool=None,
     ) -> None:
         self.config = config or TurnConfig()
         self.model_call = model_call
@@ -164,6 +186,8 @@ class TurnLoop:
         self.narrowing_skills = list(narrowing_skills)
         self.narrowing_selector = narrowing_selector
         self.intent_advisor = intent_advisor
+        self.autonomy_dial = autonomy_dial
+        self.dial_area_for_tool = dict(dial_area_for_tool) if dial_area_for_tool else {}
         self._refusal_message = ""
         self._event: list[dict] = []
         self.sink = sink or (
@@ -329,6 +353,7 @@ class TurnLoop:
         attempts: list = []
         hops: list = []
         intent_decisions: list = []
+        dial_decisions: list = []
         cost_rp = 0
         tier_used = ""
         self._record(
@@ -471,8 +496,9 @@ class TurnLoop:
                     agent_id,
                     task_id,
                     intent_decisions=intent_decisions,
+                    dial_decisions=dial_decisions,
                 )
-            history, turn_intent_decisions = self._run_tool_calls(
+            history, turn_intent_decisions, turn_dial_decisions = self._run_tool_calls(
                 history,
                 reply,
                 agent_id=agent_id,
@@ -480,6 +506,7 @@ class TurnLoop:
                 tool_call=tool_call,
             )
             intent_decisions.extend(turn_intent_decisions)
+            dial_decisions.extend(turn_dial_decisions)
 
     def run_subagent_turn(
         self,
@@ -556,21 +583,34 @@ class TurnLoop:
         agent_id: str,
         task_id: str | None,
         tool_call=None,
-    ) -> tuple[list[InternalMessage], list]:
-        """Dispatch the reply's tool calls; return (history, intent decisions).
+    ) -> tuple[list[InternalMessage], list, list]:
+        """Dispatch the reply's tool calls; return (history, intent decisions, dial decisions).
 
         Intercepted tools run first, as before — they are internal
         state operations, not user-facing actions, so the intent
-        advisor never sees them. For a registry tool, when an
-        intent advisor is wired in, the advisor is consulted first
-        with the last user message: on ``ask`` the tool is NOT run
-        and the model gets the ask payload (with the clarifying
-        question) as the tool result instead; on ``act`` the call
-        runs exactly as before. An advisor failure never breaks
-        the turn: it fails open to running the call.
+        advisor and the autonomy dial never see them. For a
+        registry tool, when an intent advisor is wired in, the
+        advisor is consulted first with the last user message: on
+        ``ask`` the tool is NOT run and the model gets the ask
+        payload (with the clarifying question) as the tool result
+        instead; on ``act`` the call runs exactly as before. An
+        advisor failure never breaks the turn: it fails open to
+        running the call.
+
+        When an autonomy dial is wired in (K11), it is consulted
+        next, for the area the tool belongs to: on ``propose``
+        the tool is NOT run and the model gets the dial ask
+        payload instead; on ``do_and_show`` / ``do_silently``
+        the call runs, and the executed outcome is reported back
+        to the dial as that area's calibration (ran as expected
+        counts correct, an error counts wrong). A dial failure
+        never breaks the turn either: it fails open to running
+        the call. A tool the dial cannot place in an area is not
+        gated by it.
         """
         registry = tool_call if tool_call is not None else self.tool_call
         intent_decisions: list = []
+        dial_decisions: list = []
         for call in reply.tool_calls:
             name = call.get("name", "")
             arguments = call.get("arguments") or {}
@@ -606,6 +646,36 @@ class TurnLoop:
                             )
                         )
                         continue
+            dial_area: str | None = None
+            dial_decision = None
+            if self.autonomy_dial is not None:
+                dial_decision = self._consult_autonomy_dial(name)
+                if dial_decision is not None:
+                    dial_area = dial_decision.area
+                    dial_decisions.append(dial_decision)
+                    if not dial_decision.run:
+                        self._record(
+                            "dial_ask",
+                            {
+                                "agent_id": agent_id,
+                                "task_id": task_id,
+                                "tool": name,
+                                "area": dial_area,
+                                "stage": dial_decision.stage,
+                                "score": dial_decision.score,
+                                "reason": dial_decision.reason,
+                            },
+                        )
+                        from puspa.autonomy.dial import dial_ask_payload
+
+                        history.append(
+                            InternalMessage.tool_result(
+                                call_id,
+                                dial_ask_payload(dial_decision, tool_name=name),
+                                is_error=False,
+                            )
+                        )
+                        continue
             if registry is not None:
                 try:
                     raw = registry(name, arguments)
@@ -618,6 +688,26 @@ class TurnLoop:
                     "tool_called",
                     {"agent_id": agent_id, "task_id": task_id, "tool": name},
                 )
+                if dial_decision is not None and dial_area is not None:
+                    # The executed outcome feeds the dial as this
+                    # area's calibration: ran as expected counts
+                    # correct, an error counts wrong. A failure
+                    # here never breaks the turn.
+                    with contextlib.suppress(Exception):
+                        self.autonomy_dial.record_outcome(
+                            dial_area, correct=not is_error, note=f"tool {name}"
+                        )
+                    self._record(
+                        "dial_silent" if not dial_decision.show else "dial_show",
+                        {
+                            "agent_id": agent_id,
+                            "task_id": task_id,
+                            "tool": name,
+                            "area": dial_area,
+                            "stage": dial_decision.stage,
+                            "score": dial_decision.score,
+                        },
+                    )
             else:
                 result_text = (
                     f"tool {name!r} is not available: no tool registry is wired "
@@ -625,7 +715,7 @@ class TurnLoop:
                 )
                 is_error = True
             history.append(InternalMessage.tool_result(call_id, result_text, is_error=is_error))
-        return history, intent_decisions
+        return history, intent_decisions, dial_decisions
 
     def _consult_intent_advisor(self, name: str, arguments: dict, history) -> ActAskDecision | None:
         """Ask the intent advisor about one tool call, failing open.
@@ -636,6 +726,24 @@ class TurnLoop:
         """
         try:
             return self.intent_advisor.advise(_last_user_text(history), name, arguments)
+        except Exception:
+            return None
+
+    def _consult_autonomy_dial(self, name: str):
+        """Ask the autonomy dial about one tool call, failing open.
+
+        Returns the dial's ``DialDecision`` for the tool's area,
+        or None when the tool cannot be placed in an area or the
+        dial raised (the call then runs as if no dial were wired
+        in — a broken signal must never block the turn).
+        """
+        try:
+            from puspa.autonomy.dial import area_for_tool
+
+            area = area_for_tool(name, overrides=self.dial_area_for_tool or None)
+            if area is None:
+                return None
+            return self.autonomy_dial.advise(area)
         except Exception:
             return None
 
@@ -659,6 +767,7 @@ class TurnLoop:
         agent_id,
         task_id,
         intent_decisions=None,
+        dial_decisions=None,
     ) -> TurnResult:
         self._record(
             "turn_completed",
@@ -683,6 +792,7 @@ class TurnLoop:
             repairs=repairs,
             notes=notes,
             intent_decisions=list(intent_decisions) if intent_decisions is not None else [],
+            dial_decisions=list(dial_decisions) if dial_decisions is not None else [],
         )
 
     def _finish_interrupted(
