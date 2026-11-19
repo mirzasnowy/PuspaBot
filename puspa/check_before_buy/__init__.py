@@ -21,7 +21,12 @@ data, writes evidence rows and one ledger event, and returns text.
 
 from __future__ import annotations
 
-from .answer import CheckAnswer, check_before_buy
+from .answer import (
+    CheckAnswer,
+    PaymentRailSection,
+    ShippingSection,
+    check_before_buy,
+)
 from .classifier import ClassifiedInput, classify_input
 from .records import (
     AccountRecord,
@@ -36,9 +41,11 @@ __all__ = [
     "AccountRecord",
     "CheckAnswer",
     "ClassifiedInput",
+    "PaymentRailSection",
     "PriceObservation",
     "RecordStore",
     "SellerRecord",
+    "ShippingSection",
     "check_before_buy",
     "classify_input",
     "handle_check_before_buy",
