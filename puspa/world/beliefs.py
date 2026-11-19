@@ -4,9 +4,12 @@ The world model was 1,605 lines and its file-size baseline forbids
 growth, so the belief data holders live here: the six belief
 dataclasses, the price-key helper, and the three constants only
 the beliefs need (``DEFAULT_CONFIDENCE`` is the default confidence
-of a fresh belief; the other two tune habit patterns). The model
-itself (``puspa.world.model.WorldModel``) imports them back, so
-``puspa.world.model._PriceBelief`` and friends keep resolving.
+of a fresh belief; the other two tune habit patterns). The forecast
+dataclass ``Prediction`` lives here too: a forecast is a belief
+about a future outcome, and it moved here for the same size
+reason. The model itself (``puspa.world.model.WorldModel``)
+imports them back, so ``puspa.world.model._PriceBelief`` and
+friends keep resolving.
 """
 
 from __future__ import annotations
@@ -236,3 +239,12 @@ class _HabitBelief:
 
 def _price_key(product_id: str, store: str) -> str:
     return f"{product_id}@{store}"
+
+
+@dataclass
+class Prediction:
+    """One forecast made before an action is taken."""
+
+    action: dict
+    outcome: dict
+    confidence: float

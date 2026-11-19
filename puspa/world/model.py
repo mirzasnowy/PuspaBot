@@ -75,11 +75,12 @@ No database, no network, no new dependency. All state is in memory.
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass
 
+from .agents import AgentModelMixin
 from .beliefs import (
     DEFAULT_CONFIDENCE,
     INTERVAL_TOLERANCE_DAYS,
+    Prediction,
     _BillBelief,
     _CapabilityBelief,
     _ContactBelief,
@@ -138,19 +139,11 @@ ACTION_TYPES = (
 STEP_FAILURE_KINDS = ("gate_rejected", "world_failed")
 
 
-@dataclass
-class Prediction:
-    """One forecast made before an action is taken."""
-
-    action: dict
-    outcome: dict
-    confidence: float
-
-
-class WorldModel(CausalExpectationMixin):
+class WorldModel(CausalExpectationMixin, AgentModelMixin):
     """Structured world model with predict, update, and correction."""
 
     def __init__(self) -> None:
+        super().__init__()
         self.entities: dict[str, dict] = {}
         self.relations: list[dict] = []
         self.day: int = 0
@@ -204,6 +197,7 @@ class WorldModel(CausalExpectationMixin):
             "capability_beliefs": copy.deepcopy(self._capability_beliefs),
             "contact_beliefs": copy.deepcopy(self._contact_beliefs),
             "habit_beliefs": copy.deepcopy(self._habit_beliefs),
+            "agent_models": copy.deepcopy(self._agent_models),
             "belief_contradictions": copy.deepcopy(self.belief_contradictions),
         }
 
@@ -217,6 +211,7 @@ class WorldModel(CausalExpectationMixin):
         self._capability_beliefs = copy.deepcopy(state.get("capability_beliefs") or {})
         self._contact_beliefs = copy.deepcopy(state.get("contact_beliefs") or {})
         self._habit_beliefs = copy.deepcopy(state.get("habit_beliefs") or {})
+        self._agent_models = copy.deepcopy(state.get("agent_models") or {})
         self.belief_contradictions = copy.deepcopy(state.get("belief_contradictions") or [])
 
     # -- building the model from memory graphs and task results --------
@@ -313,6 +308,9 @@ class WorldModel(CausalExpectationMixin):
                 ),
                 day=day,
             )
+            # The same observed interaction also feeds the
+            # contact's goal model (K5, AgentModelMixin).
+            self.feed_task_result(result, day)
         if "duration_days" in result:
             self._apply_schedule_observation(
                 task_kind=task_kind,

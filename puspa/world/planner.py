@@ -12,6 +12,12 @@ Supported tasks (all values English):
   when it is unpaid, then check again to verify it is paid.
 - ``{"goal": "find_cheapest_price", "product_id": ...}``: check the
   price at every known store, then buy from the cheapest one.
+- ``{"goal": "message_contact", "contact_id": ...}``: ask what the
+  contact will do next (K5, ``WorldModel.predict_agent``) and plan
+  the message only when a reply is likely; when an ``"ask"`` goal
+  is given, the plan also checks whether the contact is predicted
+  to agree to it. The plan never sends anything: it is a rehearsal
+  that accounts for the other person's reaction.
 - ``{"goal": "sequence", "steps": [action, ...]}``: simulate the
   given actions in order.
 
@@ -37,6 +43,8 @@ def plan(model: WorldModel, task: dict) -> dict:
         return _plan_pay_bill(model, task)
     if goal == "find_cheapest_price":
         return _plan_find_cheapest(model, task)
+    if goal == "message_contact":
+        return _plan_message_contact(model, task)
     if goal == "sequence":
         return _plan_sequence(model, task)
     return {
@@ -128,6 +136,61 @@ def _plan_find_cheapest(model: WorldModel, task: dict) -> dict:
         "steps": steps,
         "feasible": True,
         "predicted_outcome": {"cheapest_store": cheapest_store, "cheapest_price": cheapest_price},
+    }
+
+
+def _plan_message_contact(model: WorldModel, task: dict) -> dict:
+    """Plan a message to a contact, accounting for their reaction.
+
+    The real caller for the K5 goal models: the plan asks the
+    model what the contact will do next (``predict_agent``) and
+    is feasible only when a reply is likely. With an ``"ask"``
+    goal, feasibility also needs a predicted agreement with
+    confidence at least 0.5; otherwise the plan is infeasible
+    with reason ``"agreement_unlikely"`` and the user sees the
+    prediction instead of a sent message. Nothing here sends
+    anything: the step is the message as planned, with the
+    prediction attached.
+    """
+    contact_id = str(task["contact_id"])
+    proposed = {"goal": task["ask"]} if task.get("ask") else None
+    forecast = model.predict_agent(contact_id, proposed)
+    action = {
+        "type": "message_contact",
+        "contact_id": contact_id,
+        "channel": task.get("channel") or forecast.get("preferred_channel"),
+        "ask": task.get("ask"),
+    }
+    if not forecast["known"]:
+        return {
+            "task": task,
+            "steps": [{"action": action, "predicted_outcome": forecast, "confidence": 0.0}],
+            "feasible": False,
+            "predicted_outcome": forecast,
+            "reason": "unknown_contact",
+        }
+    reply_prediction = next(
+        (item for item in forecast["predictions"] if item["kind"] == "reply"), None
+    )
+    reply_likely = forecast["reply_likely"] is True
+    confidence = reply_prediction["confidence"] if reply_prediction is not None else 0.0
+    agreement = next(
+        (item for item in forecast["predictions"] if item["kind"] == "agreement"), None
+    )
+    if agreement is not None and agreement["confidence"] < 0.5:
+        return {
+            "task": task,
+            "steps": [{"action": action, "predicted_outcome": forecast, "confidence": confidence}],
+            "feasible": False,
+            "predicted_outcome": forecast,
+            "reason": "agreement_unlikely",
+        }
+    return {
+        "task": task,
+        "steps": [{"action": action, "predicted_outcome": forecast, "confidence": confidence}],
+        "feasible": reply_likely,
+        "predicted_outcome": forecast,
+        "reason": None if reply_likely else "reply_unlikely",
     }
 
 

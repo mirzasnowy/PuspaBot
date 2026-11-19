@@ -109,3 +109,42 @@ BEGIN
         USING (current_setting('app.current_user_id', true) = user_id::text)
         WITH CHECK (current_setting('app.current_user_id', true) = user_id::text);
 END $$;
+
+-- Other-agent goal models (Kosmos K5, docs/other-agent-models.md).
+-- One row per (user, agent, contact): the goals that contact is
+-- pursuing plus the interaction counts, scored predictions, and
+-- accuracy counters. The same DDL lives in
+-- infra/migrate_agent_goal_models.sql (the upgrade path for
+-- existing databases); the two copies must stay identical.
+CREATE TABLE IF NOT EXISTS agent_goal_models (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+    contact_id TEXT NOT NULL,
+    goals JSONB NOT NULL DEFAULT '{}',
+    observations INT NOT NULL DEFAULT 0,
+    replies INT NOT NULL DEFAULT 0,
+    reply_delays JSONB NOT NULL DEFAULT '[]',
+    channels JSONB NOT NULL DEFAULT '{}',
+    last_day INT,
+    predictions JSONB NOT NULL DEFAULT '[]',
+    stats JSONB NOT NULL DEFAULT '{"predictions": 0, "correct": 0}',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (user_id, agent_id, contact_id),
+    CHECK (observations >= 0),
+    CHECK (replies >= 0),
+    CHECK (replies <= observations)
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_goal_models_contact ON agent_goal_models
+    (user_id, agent_id, contact_id);
+
+ALTER TABLE agent_goal_models ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    DROP POLICY IF EXISTS isolasi_agent_goal_models ON agent_goal_models;
+    CREATE POLICY isolasi_agent_goal_models ON agent_goal_models
+        USING (current_setting('app.current_user_id', true) = user_id::text)
+        WITH CHECK (current_setting('app.current_user_id', true) = user_id::text);
+END $$;
