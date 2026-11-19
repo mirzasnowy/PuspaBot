@@ -1,0 +1,592 @@
+# Second-brain graph API contract (B18 graph view).
+#
+# Split out of docs/openapi-pwa.yaml on 19 Nov 2026 (Wave 32 ratchet
+# fix): the graph contract (5 endpoints + 9 schemas) would have
+# pushed the main spec past the 2000-line hard cap, so it earned
+# its own file, following the rooms split of Wave 30. The main
+# spec references this file with $ref stubs; the generated client
+# is produced from the main spec with openapi-typescript, which
+# resolves external $refs. The Error schema stays in the main
+# spec and is referenced back from here.
+openapi: 3.0.3
+info:
+  title: Puspa second-brain graph API
+  version: 1.0.0
+paths:
+  /api/graph:
+    get:
+      tags: [graph]
+      summary: Bounded knowledge-graph page for the logged-in user
+      description: |
+        B18: one page of the user's knowledge graph, read from the
+        real KnowledgeGraph (seeded from episodic memory, then the
+        user's ledger corrections replayed). Nodes are sorted by
+        name; `limit` is capped at 100, `offset` pages through
+        them. Edges are only the ones touching a returned node,
+        also capped at `limit`. `kind` keeps nodes of one kind;
+        `since` (ISO-8601) keeps nodes seen at or after that time.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: kind
+          in: query
+          schema:
+            type: string
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Graph page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphPage"
+        "400":
+          description: Bad limit, offset, or since value
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/graph/nodes/{name}:
+    get:
+      tags: [graph]
+      summary: Inspect one graph node (facts + provenance)
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Node detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphNodeDetail"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown node
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    patch:
+      tags: [graph]
+      summary: Rename a graph node
+      description: |
+        B18: renames the node and rewrites every edge and passage
+        link that mentions it; recorded in the ledger as a user
+        correction. Renaming a code-graph node is refused with 403.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        "200":
+          description: Renamed node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphNode"
+        "400":
+          description: Bad input
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Code-graph node is read-only
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown node
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    delete:
+      tags: [graph]
+      summary: Delete a graph node and its edges
+      description: |
+        B18: deletes the node and every edge touching it;
+        recorded in the ledger as a user correction. Deleting a
+        code-graph node is refused with 403.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted node name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: string
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Code-graph node is read-only
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown node
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/graph/nodes:
+    post:
+      tags: [graph]
+      summary: Add a node to the user's graph
+      description: |
+        B18: the node is written to the KnowledgeGraph and the
+        edit is recorded in the ledger as a user correction
+        (`evidence_recorded`, kind `user_correction`). A
+        code-graph kind (file, function, class, module, table,
+        config) is refused with 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GraphNodeInput"
+      responses:
+        "200":
+          description: Added node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphNode"
+        "400":
+          description: Bad input, or the node already exists
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Code-graph kind is read-only
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/graph/edges:
+    post:
+      tags: [graph]
+      summary: Add an edge to the user's graph
+      description: |
+        B18: missing endpoint nodes are created (kind unknown);
+        recorded in the ledger as a user correction. An edge
+        touching a code-graph node is refused with 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GraphEdgeInput"
+      responses:
+        "200":
+          description: Added edge
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphEdge"
+        "400":
+          description: Bad input, or the edge already exists
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Code-graph node is read-only
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    patch:
+      tags: [graph]
+      summary: Change an edge, or correct a fact
+      description: |
+        B18: changes an edge's relation and/or object. With
+        `operation: correct_fact` the ledger records the edit as
+        a fact correction rather than a rewording. Recorded in
+        the ledger as a user correction either way. An edge
+        touching a code-graph node is refused with 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GraphEdgeChangeInput"
+      responses:
+        "200":
+          description: Changed edge
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphEdge"
+        "400":
+          description: Bad input, or the changed edge already exists
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Code-graph node is read-only
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown edge
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    delete:
+      tags: [graph]
+      summary: Delete an edge from the user's graph
+      description: |
+        B18: recorded in the ledger as a user correction. An
+        edge touching a code-graph node is refused with 403.
+      parameters:
+        - name: subject
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: relation
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: object
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted edge
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    $ref: "#/components/schemas/GraphEdgeInput"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Code-graph node is read-only
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown edge
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/graph/search:
+    get:
+      tags: [graph]
+      summary: Retrieve passages from the user's graph (HippoRAG)
+      description: |
+        B18: runs the HippoRAG retriever over the same graph
+        object the view edits, so a correction changes the next
+        answer. `graph_score` is 0 and `seed_nodes` is empty when
+        the query matched no node and the answer fell back to
+        plain vector ranking.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: top_k
+          in: query
+          schema:
+            type: integer
+            default: 5
+            minimum: 1
+      responses:
+        "200":
+          description: Retrieval results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphSearchResponse"
+        "400":
+          description: Bad query or top_k
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    GraphNode:
+      type: object
+      description: |
+        B18: one knowledge-graph node. `sources` are the passage
+        ids (or `user_correction`) the node came from; `seen_at`
+        is the newest episode time that mentions the node, or the
+        correction time for a user-added node; `is_code_node`
+        marks G29 code-graph nodes, which are read-only here.
+      required: [name, sources, fact_count, is_code_node]
+      properties:
+        name:
+          type: string
+        kind:
+          type: string
+          nullable: true
+        description:
+          type: string
+        sources:
+          type: array
+          items:
+            type: string
+        fact_count:
+          type: integer
+        seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_code_node:
+          type: boolean
+    GraphEdge:
+      type: object
+      description: "B18: one directed knowledge-graph edge (triple)."
+      required: [subject, relation, object, sources]
+      properties:
+        subject:
+          type: string
+        relation:
+          type: string
+        object:
+          type: string
+        sources:
+          type: array
+          items:
+            type: string
+    GraphPage:
+      type: object
+      description: |
+        B18: one bounded page of the graph. `nodes` are at most
+        `limit` (capped at 100); `edges` are only the ones
+        touching a returned node, also capped at `limit`.
+      required: [nodes, edges, total_nodes, total_edges, limit, offset]
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphNode"
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphEdge"
+        total_nodes:
+          type: integer
+        total_edges:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+    GraphNodeDetail:
+      type: object
+      description: |
+        B18: one node with its facts (triples touching it) and
+        provenance (the passages the facts came from, with text).
+      required: [name, sources, fact_count, is_code_node, facts, provenance]
+      properties:
+        name:
+          type: string
+        kind:
+          type: string
+          nullable: true
+        description:
+          type: string
+        sources:
+          type: array
+          items:
+            type: string
+        fact_count:
+          type: integer
+        seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_code_node:
+          type: boolean
+        facts:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphEdge"
+        provenance:
+          type: array
+          items:
+            type: object
+            required: [passage_id, text]
+            properties:
+              passage_id:
+                type: string
+              text:
+                type: string
+    GraphNodeInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        kind:
+          type: string
+          nullable: true
+        description:
+          type: string
+    GraphEdgeInput:
+      type: object
+      required: [subject, relation, object]
+      properties:
+        subject:
+          type: string
+        relation:
+          type: string
+        object:
+          type: string
+    GraphEdgeChangeInput:
+      type: object
+      description: |
+        B18: change one edge. `operation` is `change_edge` or
+        `correct_fact` (a fact correction, recorded as such).
+      required: [subject, relation, object]
+      properties:
+        subject:
+          type: string
+        relation:
+          type: string
+        object:
+          type: string
+        new_relation:
+          type: string
+          nullable: true
+        new_object:
+          type: string
+          nullable: true
+        operation:
+          type: string
+          enum: [change_edge, correct_fact]
+          default: change_edge
+    GraphSearchResult:
+      type: object
+      required: [passage_id, text, score, graph_score, seed_nodes, evidence_id]
+      properties:
+        passage_id:
+          type: string
+        text:
+          type: string
+        score:
+          type: number
+        graph_score:
+          type: number
+        seed_nodes:
+          type: array
+          items:
+            type: string
+        evidence_id:
+          type: string
+    GraphSearchResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphSearchResult"

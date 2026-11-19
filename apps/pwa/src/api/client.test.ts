@@ -4,8 +4,13 @@ import {
   createTask,
   decideApproval,
   deleteAgent,
+  changeGraphEdge,
+  deleteGraphEdge,
+  fetchGraphNode,
+  fetchGraphPage,
   fetchRoomBoard,
   fetchRooms,
+  renameGraphNode,
   fetchOperatorStatus,
   formatRupiah,
   getJson,
@@ -260,6 +265,86 @@ describe("room boards (B9)", () => {
     const fetchMock = mockFetch({ error: "not a member" }, 403);
     await expect(
       fetchRoomBoard("room-1", fetchMock as unknown as typeof fetch),
+    ).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("graph client (B18)", () => {
+  it("fetchGraphPage passes limit, offset, and kind as query params", async () => {
+    const page = {
+      nodes: [],
+      edges: [],
+      total_nodes: 0,
+      total_edges: 0,
+      limit: 50,
+      offset: 0,
+    };
+    const fetchMock = mockFetch(page);
+    const result = await fetchGraphPage(
+      { limit: 50, offset: 0, kind: "phone" },
+      fetchMock as unknown as typeof fetch,
+    );
+    expect(fetchMock).toHaveBeenCalledWith("/api/graph?limit=50&offset=0&kind=phone", {
+      credentials: "same-origin",
+    });
+    expect(result.total_nodes).toBe(0);
+  });
+
+  it("renameGraphNode PATCHes the node with the new name", async () => {
+    const fetchMock = mockFetch({ name: "pixel 9 pro", sources: [], fact_count: 0, is_code_node: false });
+    const result = await renameGraphNode(
+      "samsung galaxy s24",
+      "Pixel 9 Pro",
+      fetchMock as unknown as typeof fetch,
+    );
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/graph/nodes/samsung%20galaxy%20s24");
+    expect(init.method).toBe("PATCH");
+    expect(String(init.body)).toBe(JSON.stringify({ name: "Pixel 9 Pro" }));
+    expect(result.name).toBe("pixel 9 pro");
+  });
+
+  it("changeGraphEdge records a fact correction with operation correct_fact", async () => {
+    const fetchMock = mockFetch({
+      subject: "samsung galaxy s24",
+      relation: "sells",
+      object: "shopee",
+      sources: ["user_correction"],
+    });
+    const result = await changeGraphEdge(
+      {
+        subject: "samsung galaxy s24",
+        relation: "sells",
+        object: "tokopedia",
+        new_object: "Shopee",
+        operation: "correct_fact",
+      },
+      fetchMock as unknown as typeof fetch,
+    );
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/graph/edges");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(String(init.body)).operation).toBe("correct_fact");
+    expect(result.object).toBe("shopee");
+  });
+
+  it("deleteGraphEdge sends the triple as query params", async () => {
+    const fetchMock = mockFetch({
+      deleted: { subject: "a", relation: "sells", object: "b" },
+    });
+    await deleteGraphEdge(
+      { subject: "a", relation: "sells", object: "b" },
+      fetchMock as unknown as typeof fetch,
+    );
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/graph/edges?subject=a&relation=sells&object=b");
+    expect(init.method).toBe("DELETE");
+  });
+
+  it("fetchGraphNode throws ApiError on 404", async () => {
+    const fetchMock = mockFetch({ error: "unknown node" }, 404);
+    await expect(
+      fetchGraphNode("nope", fetchMock as unknown as typeof fetch),
     ).rejects.toBeInstanceOf(ApiError);
   });
 });

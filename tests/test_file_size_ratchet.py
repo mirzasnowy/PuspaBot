@@ -139,10 +139,14 @@ BASELINE_LINES = {
     # generated client carries the split types; the full contract
     # stays in docs/openapi-rooms.yaml. The ratchet resumes from
     # 1739.
-    # Wave 32 (B13): +18 lines of $ref stubs in the main spec —
-    # 6 draft paths + 3 draft schemas, contract in
-    # docs/openapi-rooms.yaml. The ratchet resumes from 1757.
-    "docs/openapi-pwa.yaml": 1757,
+    # Wave 32 (B13 + B18): +46 lines of $ref stubs in the main
+    # spec — 6 draft paths + 3 draft schemas (B13, contract in
+    # docs/openapi-rooms.yaml) and 5 graph paths + 9 graph schemas
+    # (B18, contract split out to docs/openapi-graph.yaml, 592
+    # lines, Wave 30 precedent: the inline graph contract would
+    # have pushed the main spec past the 2000-line hard cap).
+    # The ratchet resumes from 1785.
+    "docs/openapi-pwa.yaml": 1785,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:

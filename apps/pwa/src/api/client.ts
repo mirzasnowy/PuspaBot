@@ -44,6 +44,15 @@ export type FirstTaskResult = components["schemas"]["FirstTaskResult"];
 export type OnboardingHint = components["schemas"]["Hint"];
 export type HintsResponse = components["schemas"]["HintsResponse"];
 export type HintSeenResult = components["schemas"]["HintSeenResult"];
+export type GraphNode = components["schemas"]["GraphNode"];
+export type GraphEdge = components["schemas"]["GraphEdge"];
+export type GraphPage = components["schemas"]["GraphPage"];
+export type GraphNodeDetail = components["schemas"]["GraphNodeDetail"];
+export type GraphNodeInput = components["schemas"]["GraphNodeInput"];
+export type GraphEdgeInput = components["schemas"]["GraphEdgeInput"];
+export type GraphEdgeChangeInput = components["schemas"]["GraphEdgeChangeInput"];
+export type GraphSearchResult = components["schemas"]["GraphSearchResult"];
+export type GraphSearchResponse = components["schemas"]["GraphSearchResponse"];
 
 export type FetchFn = typeof fetch;
 
@@ -104,6 +113,32 @@ export async function postJson<T>(
 /** The single shared JSON GET helper (see `postJson`). */
 export async function getJson<T>(path: string, fetchFn: FetchFn = fetch): Promise<T> {
   const response = await fetchFn(path, { credentials: "same-origin" });
+  if (!response.ok) throw new ApiError(response.status, await readError(response));
+  return (await response.json()) as T;
+}
+
+/** The single shared JSON PATCH helper (see `postJson`). */
+export async function patchJson<T>(
+  path: string,
+  body: unknown,
+  fetchFn: FetchFn = fetch,
+): Promise<T> {
+  const response = await fetchFn(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw new ApiError(response.status, await readError(response));
+  return (await response.json()) as T;
+}
+
+/** The single shared JSON DELETE helper (see `postJson`). */
+export async function deleteJson<T>(path: string, fetchFn: FetchFn = fetch): Promise<T> {
+  const response = await fetchFn(path, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
   if (!response.ok) throw new ApiError(response.status, await readError(response));
   return (await response.json()) as T;
 }
@@ -328,4 +363,97 @@ export function fetchRoomBoard(
   fetchFn: FetchFn = fetch,
 ): Promise<RoomBoard> {
   return getJson<RoomBoard>(`/api/rooms/${encodeURIComponent(roomId)}/tasks`, fetchFn);
+}
+
+/** Read one bounded page of the user's knowledge graph (B18). */
+export function fetchGraphPage(
+  params: { limit?: number; offset?: number; kind?: string; since?: string } = {},
+  fetchFn: FetchFn = fetch,
+): Promise<GraphPage> {
+  const query = new URLSearchParams();
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  if (params.offset !== undefined) query.set("offset", String(params.offset));
+  if (params.kind) query.set("kind", params.kind);
+  if (params.since) query.set("since", params.since);
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+  return getJson<GraphPage>(`/api/graph${suffix}`, fetchFn);
+}
+
+/** Inspect one graph node: its facts and provenance (B18). */
+export function fetchGraphNode(
+  name: string,
+  fetchFn: FetchFn = fetch,
+): Promise<GraphNodeDetail> {
+  return getJson<GraphNodeDetail>(`/api/graph/nodes/${encodeURIComponent(name)}`, fetchFn);
+}
+
+/** Add a node to the user's graph (B18). */
+export function addGraphNode(
+  input: GraphNodeInput,
+  fetchFn: FetchFn = fetch,
+): Promise<GraphNode> {
+  return postJson<GraphNode>("/api/graph/nodes", input, fetchFn);
+}
+
+/** Rename a graph node (B18). */
+export function renameGraphNode(
+  oldName: string,
+  newName: string,
+  fetchFn: FetchFn = fetch,
+): Promise<GraphNode> {
+  return patchJson<GraphNode>(
+    `/api/graph/nodes/${encodeURIComponent(oldName)}`,
+    { name: newName },
+    fetchFn,
+  );
+}
+
+/** Delete a graph node and its edges (B18). */
+export function deleteGraphNode(
+  name: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ deleted: string }> {
+  return deleteJson<{ deleted: string }>(
+    `/api/graph/nodes/${encodeURIComponent(name)}`,
+    fetchFn,
+  );
+}
+
+/** Add an edge to the user's graph (B18). */
+export function addGraphEdge(
+  input: GraphEdgeInput,
+  fetchFn: FetchFn = fetch,
+): Promise<GraphEdge> {
+  return postJson<GraphEdge>("/api/graph/edges", input, fetchFn);
+}
+
+/** Change an edge, or correct a fact (B18). */
+export function changeGraphEdge(
+  input: GraphEdgeChangeInput,
+  fetchFn: FetchFn = fetch,
+): Promise<GraphEdge> {
+  return patchJson<GraphEdge>("/api/graph/edges", input, fetchFn);
+}
+
+/** Delete an edge from the user's graph (B18). */
+export function deleteGraphEdge(
+  input: GraphEdgeInput,
+  fetchFn: FetchFn = fetch,
+): Promise<{ deleted: GraphEdgeInput }> {
+  const query = new URLSearchParams({
+    subject: input.subject,
+    relation: input.relation,
+    object: input.object,
+  });
+  return deleteJson<{ deleted: GraphEdgeInput }>(`/api/graph/edges?${query.toString()}`, fetchFn);
+}
+
+/** Retrieve passages from the user's graph (B18). */
+export function searchGraph(
+  query: string,
+  topK = 5,
+  fetchFn: FetchFn = fetch,
+): Promise<GraphSearchResponse> {
+  const params = new URLSearchParams({ q: query, top_k: String(topK) });
+  return getJson<GraphSearchResponse>(`/api/graph/search?${params.toString()}`, fetchFn);
 }
