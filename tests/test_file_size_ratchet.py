@@ -195,6 +195,11 @@ BASELINE_LINES = {
     # sections into a dated archive doc, never by deleting history.
     # (No "docs/status-maturity.md" entry while it stays under
     # 1000 lines; re-add it with a reason if it ever crosses.)
+    # 20 Nov 2026: the live log crossed the cap again (1026 lines
+    # after the Wave 38 entry), so Waves 35-36 were archived to
+    # docs/status-maturity-archive-2026-11-20-waves-35-36.md
+    # (105 lines); the live log is now 925 lines, still under
+    # the cap, so no entry is added.
 }
 
 #: Puspa-owned top-level directories covered by the ratchet.
