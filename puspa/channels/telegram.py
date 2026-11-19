@@ -24,8 +24,9 @@ an ``httpx.Client`` built on ``MockTransport`` and never touch
 Bot-loop guard: an update whose ``from.is_bot`` is true, or whose
 sender id equals the bot's own id (when known), is normalised
 with ``is_bot=True`` and the pipeline refuses it. Group messages
-are normalised with ``is_group=True`` and are not answered yet
-(DM-only in this iteration — see ``docs/channels.md``).
+are normalised with ``is_group=True``; they are answered only when
+a room is linked to the group chat (B6, ``puspa/rooms/routing.py``)
+— unlinked groups are still dropped by the pipeline.
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ import httpx
 
 from .base import ChannelAdapter
 from .errors import DeliveryError
-from .events import MessageEvent
+from .events import MessageEvent, mentions_puspa
 
 __all__ = ["TELEGRAM_API_BASE", "TelegramAdapter"]
 
@@ -126,16 +127,29 @@ class TelegramAdapter(ChannelAdapter):
         is_bot = bool(sender.get("is_bot"))
         if self._bot_user_id is not None and sender.get("id") == self._bot_user_id:
             is_bot = True
+        text = str(message.get("text") or message.get("caption") or "")
+        # A mention entity naming the bot, or "@puspa" in the text,
+        # marks the message as addressed to Puspa (group routing, B6).
+        mentions_bot = mentions_puspa(text)
+        if not mentions_bot:
+            for entity in message.get("entities") or []:
+                if not isinstance(entity, dict) or entity.get("type") != "mention":
+                    continue
+                start, length = entity.get("offset", 0), entity.get("length", 0)
+                if text[start : start + length].lower() == "@puspa":
+                    mentions_bot = True
+                    break
         return [
             MessageEvent(
                 platform="telegram",
                 chat_id=str(chat.get("id", "")),
                 sender_id=sender_id,
-                text=str(message.get("text") or message.get("caption") or ""),
+                text=text,
                 message_id=str(message.get("message_id", payload.get("update_id", ""))),
                 timestamp=_parse_timestamp(message.get("date")),
                 is_bot=is_bot,
                 is_group=str(chat.get("type", "private")) != "private",
+                mentions_bot=mentions_bot,
                 raw=payload,
             )
         ]
