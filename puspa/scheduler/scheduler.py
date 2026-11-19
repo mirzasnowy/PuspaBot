@@ -26,6 +26,7 @@ from datetime import UTC, datetime, timedelta
 
 import psycopg
 
+from puspa.ledger.kill_switch import is_kill_switch_active
 from puspa.proactivity.budget import Initiative, InterruptionBudget
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
@@ -157,6 +158,7 @@ def run_trigger(
     dsn=None,
     now: datetime | None = None,
     budget: InterruptionBudget | None = None,
+    kill_switch=None,
 ) -> dict | None:
     """Jalankan satu pemicu (sekali, idempotent).
 
@@ -174,8 +176,16 @@ def run_trigger(
     recorded in `budget.spend_log()`, not in the ledger: there
     is no ledger event type for "held back", and the 31 revisi-7
     event types are closed.
+
+    With `kill_switch` (K12), an active switch stops the trigger
+    before anything runs: return None WITHOUT writing a run row,
+    WITHOUT moving `pemicu_berikutnya`, and WITHOUT calling the
+    sink — the trigger stays due and runs after the switch is
+    disarmed.
     """
     now = now or _now()
+    if is_kill_switch_active(kill_switch):
+        return None
     if budget is not None:
         spec = PROACTIVE_TRIGGER_TYPES.get(trigger.event_type)
         if spec is not None:
@@ -219,7 +229,9 @@ def run_trigger(
     return {"trigger_id": trigger.id, "task_id": task_id, "missed": missed}
 
 
-def run_missed(*, sink=None, dsn=None, now: datetime | None = None, budget=None) -> list[dict]:
+def run_missed(
+    *, sink=None, dsn=None, now: datetime | None = None, budget=None, kill_switch=None
+) -> list[dict]:
     """Saat bangun: jalankan sekali tiap pemicu terlewat + laporkan.
 
     Pemicu dianggap terlewat bila `pemicu_berikutnya` sudah lewat
@@ -249,7 +261,15 @@ def run_missed(*, sink=None, dsn=None, now: datetime | None = None, budget=None)
             next_trigger_at=r["next_trigger_at"],
             active=r["active"],
         )
-        run = run_trigger(trigger, sink=sink, missed=True, dsn=dsn, now=now, budget=budget)
+        run = run_trigger(
+            trigger,
+            sink=sink,
+            missed=True,
+            dsn=dsn,
+            now=now,
+            budget=budget,
+            kill_switch=kill_switch,
+        )
         if run is not None:
             result.append(run)
     return result
@@ -279,7 +299,13 @@ def is_healthy(dsn=None, now: datetime | None = None) -> bool:
 
 
 def tick(
-    *, sink=None, dsn=None, now: datetime | None = None, curriculum=None, budget=None
+    *,
+    sink=None,
+    dsn=None,
+    now: datetime | None = None,
+    curriculum=None,
+    budget=None,
+    kill_switch=None,
 ) -> list[dict]:
     """Satu putaran penjadwal: detak + jalankan pemicu jatuh tempo.
 
@@ -294,11 +320,19 @@ def tick(
     proactive triggers (``price_drop``, ``due_date_bill``) pay
     from it first (see ``run_trigger``); a denied trigger is
     simply not run, and the budget's spend log records why.
+
+    When ``kill_switch`` is given (K12) and active, the whole
+    tick is a no-op: no heartbeat (a stopped scheduler must not
+    report itself healthy), no trigger runs, no curriculum work.
     """
+    if is_kill_switch_active(kill_switch):
+        return []
     heartbeat(dsn=dsn, now=now)
     result = []
     for trigger in list_due_triggers(dsn=dsn, now=now):
-        run = run_trigger(trigger, sink=sink, dsn=dsn, now=now, budget=budget)
+        run = run_trigger(
+            trigger, sink=sink, dsn=dsn, now=now, budget=budget, kill_switch=kill_switch
+        )
         if run is not None:
             result.append(run)
     if curriculum is not None:

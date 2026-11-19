@@ -54,240 +54,11 @@ Waves 18-19 were archived to
 with the Wave 26 entry). Waves 20-21 were archived to
 `docs/status-maturity-archive-2026-11-19-waves-20-21.md` on 19 Nov
 2026, when the live log approached the soft cap again (980 lines
-before the Wave 28 entry).
+before the Wave 28 entry). Waves 22-23 were archived to
+`docs/status-maturity-archive-2026-11-19-waves-22-23.md` on 19 Nov
+2026, when the live log passed the soft cap again (1,051 lines
+with the Wave 28 K12 entry).
 History is never deleted, only archived.
-
-## Wave 22: Kosmos K3 (Bitemporal state, DONE 19 Nov 2026)
-
-Second Kosmos item (K1 done, Wave 21). K3 adds valid time vs
-known time on beliefs and ledger entries (kosmos-design.md
-section C point 3). Mechanism complete, tested, pushed by the
-coordinator (worker d3ba4e51, verified centrally).
-
-What was built:
-- `puspa/world/bitemporal.py` (451 lines, pure Python, no DB,
-  no network) — `BeliefVersion` (frozen; key/value/version,
-  valid_from/valid_to, known_from/known_to, supersedes) and
-  `BitemporalBeliefStore` with `record()` / `correct()` /
-  `current()` / `history()` / `known_as_of()` / `valid_as_of()`
-  / `as_of()` plus `to_dict` / `from_dict` with history
-  validation. Intervals are half-open `[from, to)`; exactly
-  one open version per key at any moment. Naive datetimes and
-  out-of-order known times are rejected (fail-closed).
-  Corrections NEVER update a row in place: a correction appends
-  a new version and always closes the old version's `known_to`;
-  it closes the old `valid_to` only when the caller passes
-  `end_previous_valid_at` (the world really changed). A late
-  correction about the past leaves the old valid interval as
-  believed. New beliefs default valid time to known time.
-  As-of rule: `valid_as_of` returns the latest version whose
-  valid interval covers the asked time (a late correction
-  overrides the past it covers; a world-change correction does
-  not cover the old interval, so the old fact still reads true
-  then).
-- Ledger — `Ledger.append_event(..., valid_at=...)` in
-  `puspa/ledger/ledger.py`: `valid_at` defaults to
-  `created_at`, lives in its own column, and is NOT a hash
-  input — `compute_event_hash` signature and inputs are
-  byte-identical to before, pinned by a regression test on a
-  fixed hash vector (`98b22fbe...`). New
-  `events_by_valid_time()` orders by when events were true,
-  not when recorded (with `COALESCE(valid_at, created_at)`
-  fallback for unmigrated DBs). Append tolerates a
-  pre-migration DB (retries without the column instead of
-  failing the write). One design point: an event gets a single
-  valid instant, not a pair — an event is a point in valid
-  time; beliefs are intervals. No 32nd event type added (the
-  31 revisi-7 types stay closed, G6 precedent).
-- Postgres — new table `belief_versions` (one row per version,
-  CHECKs on both intervals, RLS like `world_beliefs`) in
-  `infra/schema_world.sql`, plus `events.valid_at` in
-  `puspa/ledger/schema.sql`. New idempotent migration
-  `infra/migrate_bitemporal.sql` (71 lines): creates the table,
-  adds `valid_at`, backfills `valid_at = created_at` honestly.
-  `puspa/world/store.py` gains `apply_bitemporal_migration()`,
-  `save_belief_versions()` (immutable re-save inserts 0 rows),
-  `load_belief_history()`, `beliefs_known_at()` /
-  `beliefs_valid_at()` SQL as-of queries,
-  `delete_belief_history()` (tests only). The `world_beliefs`
-  JSON snapshot is untouched — the version table is purely
-  additive.
-- `docs/bitemporal-state.md` (282 lines): the two time pairs,
-  the two correction cases, as-of queries, the ledger hash
-  decision and its consequence (`verify_chain` does not
-  authenticate `valid_at`; the `puspa_app` UPDATE ban is the
-  protection), migration instructions, honest limits.
-
-One real bug caught by the worker's own tests and fixed in
-code: the first `valid_as_of` only consulted the current
-version, so after a world-change correction the old fact's
-interval became unreadable (2 tests failed). The correct rule,
-now implemented in both the in-memory store and the SQL query
-(`DISTINCT ON ... ORDER BY version DESC`): the latest version
-whose valid interval covers the asked time wins. The docs were
-corrected to match.
-
-Suite (coordinator, SOLO, 19 Nov 2026): 3,222 passed, 23 skipped,
-1 warning, 19m59s, EXIT 0 (log hidden_files/suite-wave22-k3.log).
-Reconciliation: 3,200 (Wave 21) + 22 (K3 module tests) = 3,222;
-skipped unchanged at 23. NOTE: the first suite attempt was SIGTERM'd
-at 64% (no failures visible) by a VM replacement that wiped
-Postgres; the replay reinstalled postgresql-16 16.15 + pgvector
-0.6.0, the coordinator restarted the cluster, recreated role root,
-re-ran infra/schema_core.sql, re-verified RLS, and re-ran the suite
-to green. Module tests (coordinator re-run): 22 passed
-(test_bitemporal.py — correction appends without deleting
-history; known-time query returns the old belief; valid-time
-query returns the fact true then; hash pin; chain verifies
-after migration + backfill; migration run twice is idempotent,
-simulating a pre-K3 DB by dropping the column/table first).
-Neighbors (coordinator re-run): 105 passed
-(test_world_*.py + test_ledger*.py + test_bitemporal.py) and
-55 passed (test_sentinel.py + test_sentinel_logs_traces.py +
-test_sentinel_trajectory_insights.py). Ruff check + format:
-clean. Mypy on the changed files: clean.
-
-Honest limits: `valid_at` / default valid times are claims,
-not measurements; nothing checks them against the world. The
-ledger hash does not cover `valid_at` — tampering with it alone
-is invisible to `verify_chain`. The world model itself is not
-yet wired to record versions automatically (`WorldModel`
-beliefs still update in place); callers needing history record
-versions explicitly. That wiring is a FOLLOW-UP, not claimed
-here — recorded for a later wave. No delete API for versions
-(append-only by design); no cross-key in-memory queries (use
-the Postgres as-of queries); model-day clock vs wall-clock UTC
-is not reconciled; out-of-order known-time ingestion is
-rejected rather than spliced in.
-
-Remaining: Kosmos K4, K5, K6, K10, K11, K12, K13, then B
-features (B6, B9, B10, B11, B12, B13), then B15 culture LAST.
-Then uji + 15 gates + 10 reference tasks (waiting on Nero's
-decisions).
-
-## Wave 23: Kosmos K4 (Causal Ledger, DONE 19 Nov 2026)
-
-Third Kosmos item (K1, K3 done). K4 adds hypotheses "X -> Y
-under condition C" with strength, evidence, expiry, extending
-the learning loop (kosmos-design.md section C point 4).
-Mechanism complete, tested, pushed by the coordinator
-(worker 10ea8c40, verified centrally).
-
-What was built (home `puspa/world/causal.py`, 580 lines —
-hypotheses are beliefs about cause and effect, so they live
-with the world model, not in `puspa/memory/`; the learning
-loop calls into it):
-- `CausalHypothesis` — cause X, effect Y (canonical key + the
-  real `effect_value`), condition C ("" = unconditional),
-  strength 0..1, evidence links (`ledger_event` /
-  `observation` ids, deduped, newest 100 kept), `created_at`
-  (known time), `expires_at` (TTL), `valid_from` /
-  `valid_to` (valid time), status `active` / `expired` /
-  `contradicted`, supporting/contradicting counts.
-- Update rule (deterministic, documented in the module
-  docstring and docs): first observation proposes at 0.5
-  (neutral, not proof); consistent +0.1 (cap 1.0) and
-  refreshes expiry; contradicting -0.2 (floor 0.0) —
-  asymmetric on purpose, one counterexample disproves more
-  than one success proves; below 0.2 -> `contradicted`;
-  90-day TTL with no confirmation -> `expired`. Propose is
-  idempotent; contradiction never creates a hypothesis;
-  expired/contradicted are terminal (re-observing starts a
-  fresh hypothesis, old one kept as history). Expiry is swept
-  on every read/write, so expired hypotheses are never
-  returned by the read path.
-- Wiring: `LearningLoop(causal_ledger=...)` is opt-in (a plain
-  loop behaves exactly as before). `record_misprediction`
-  contradicts the predicted outcome and proposes the observed
-  one; `record_feedback` "correct" strengthens, "wrong"
-  contradicts and proposes the correction — except a
-  correction held as a manual-edit proposal is deliberately
-  NOT proposed (tested: it cannot leak back into predictions
-  through the ledger). `predict` falls back to the strongest
-  active hypothesis when no correction exists, so hypotheses
-  genuinely influence predictions. Read path
-  `expect(cause, condition)` exists on `CausalLedger`,
-  `LearningLoop`, and `WorldModel`; `TaskRunner` and
-  `AgentBrain` share the loop's ledger with the model (never
-  wiping one the model already has). Both accept `condition=`
-  and `evidence_event_id=` for evidence linkage. NO 32nd
-  ledger event type — hypotheses cite ledger events by id
-  only (test asserts `len(EVENT_TYPES) == 31`).
-- Persistence: table `causal_hypotheses`, idempotent additive
-  migration `infra/migrate_causal_ledger.sql` + identical DDL
-  in `infra/schema_world.sql`; `apply_causal_migration` /
-  `save_causal_hypotheses` (upsert by id) /
-  `load_causal_ledger` / `causal_hypotheses_valid_at` /
-  `delete_causal_hypotheses` in `puspa/world/store.py` (K3
-  precedent). One real bug found by the worker's tests and
-  fixed in code: Postgres returns UUIDs dashed while
-  in-memory ids are undashed hex — load now normalizes.
-- Bitemporality: the valid interval applies to the claim
-  itself (`valid_to` set on contradiction/expiry;
-  `causal_hypotheses_valid_at` answers "which claims held at
-  T"). It does NOT apply to strength — the score is a running
-  summary updated in place, so no as-of strength query;
-  documented as such.
-- `docs/causal-ledger.md` (204 lines): the record, the update
-  rule, the lifecycle, the read path, honest limits.
-
-Three test failures during development, all fixed and re-run
-green (2 test bugs: strength-cap arithmetic, expiry
-arithmetic; 1 real determinism wart: same-instant sort ties
-fell back to random UUID order — sort key now
-`(-strength, created_at, effect, condition)`).
-
-Suite (coordinator, SOLO, 19 Nov 2026): first run 3,259 passed,
-23 skipped, 1 warning, 1 FAILED, 21m13s, EXIT 1 (log
-hidden_files/suite-wave23-k4.log) — the single failure was the
-file-size ratchet: `puspa/world/model.py` grew to 1,626 lines,
-past its 1,605 baseline, from the K4 `expect` + ledger slot the
-worker added. The coordinator did NOT re-baseline new-logic
-growth (the ratchet only sanctions mechanical re-baselines);
-instead the file was split on the clean seam its own baseline
-comment anticipates: the six belief dataclasses + price-key
-helper + three constants moved to new `puspa/world/beliefs.py`
-(238 lines), and the causal read path to the
-`CausalExpectationMixin` in `puspa/world/causal.py`
-(`WorldModel.expect` unchanged as API). model.py shrank
-1,626 -> 1,397; baseline re-recorded down to 1,397 with the
-reason in the test file. The affected set re-ran green after
-the split (161 passed, same as before). Full central suite
-re-run after the fix (coordinator, SOLO, 19 Nov 2026):
-3,260 passed, 23 skipped, 1 warning, 21m11s, EXIT 0 (log
-hidden_files/suite-wave23-k4.log). Reconciliation: 3,222 (Wave 22)
-+ 38 (K4 module tests) = 3,260; skipped unchanged at 23.
-Module tests (coordinator re-run): 38 passed
-(test_causal_ledger.py 17 + test_causal_learning_wiring.py 16
-+ test_causal_store.py 5, Postgres live). Affected existing
-tests run together with the new ones (coordinator re-run):
-161 passed (incl. test_learning_loop, test_feedback,
-test_loop_persistence, test_loop_persistence_db,
-test_world_model, test_world_beliefs, test_world_store,
-test_bitemporal, test_world_brain_wiring,
-test_failed_steps_teach, test_turn_loop). Ruff check + format:
-clean. Mypy on the changed files: clean.
-
-Honest limits: strength is counting with fixed steps, not a
-probability — 0.8 must never be presented as "80% likely".
-One observation proposes a hypothesis; a single coincidence
-becomes a claim at 0.5 (mitigated by the neutral start and
-fast contradiction, not cured). Conditions are exact strings,
-no condition language; the loop passes "" unless the caller
-names one, so most loop-formed hypotheses are unconditional.
-`75000` vs `"75000"` are different effects; evidence caps at
-100 links. The ledger only observes correlation, never proves
-causation. THE PLANNER DOES NOT CONSULT HYPOTHESES YET — the
-read path exists on the world model, but `planner.py` still
-plans from price/bill/schedule/capability beliefs only;
-wiring causal expectations into plan steps is a FOLLOW-UP,
-recorded for a later wave (verified by the coordinator: no
-"causal" / "expect(" in puspa/world/planner.py).
-
-Remaining: Kosmos K5, K6, K10, K11, K12, K13, then B features
-(B6, B9, B10, B11, B12, B13), then B15 culture LAST. Then uji
-+ 15 gates + 10 reference tasks (waiting on Nero's decisions).
-
 
 ## Wave 24: G34 (Sandbox deepening from NVIDIA/OpenShell, DONE 19 Nov 2026)
 
@@ -902,4 +673,157 @@ billing model decision was made.
 Remaining: Kosmos K12, K13, then B features
 (B6, B9, B10, B11, B12, B13), then B15 culture LAST. Then uji
 + 15 gates + 10 reference tasks (waiting on Nero's decisions).
+## Wave 28 (continued) — Kosmos K12: audit log outside agent reach + kill switch + export (DONE 19 Nov 2026)
 
+K12 is the audit log the agent cannot touch, the kill switch
+that stops it, and the export that lets the user take their
+data home. Second item of the 2-worker mode: worker 2 in
+worktree `build-w2` on `puspa_test_w2`; the coordinator
+verified, merged, and runs the suite in `build/` on
+`puspa_test`. (The worker's own suite hit the same backup
+mismatch as K11's — see the K11 section above; the fix
+rides with K11 and is already in `build/`.)
+
+Audit log: no second ledger — the existing `puspa/ledger/`
+hash chain is hardened. New `AuditWriter`
+(`puspa/ledger/audit_writer.py`, 108 lines): a `Ledger`
+bound to the `puspa_app` role (`SET ROLE` right after
+connecting; `Ledger` takes an optional `role`, validated
+against a role-name regex because `SET ROLE` takes an
+identifier, never a parameter). Postgres itself enforces
+the role: `events` is SELECT + INSERT only for
+`puspa_app` (UPDATE/DELETE revoked, pre-existing in
+`schema.sql`); the agent role can append and read, never
+rewrite history. `probe_tamper` proves it: it attempts
+UPDATE and DELETE on a log row as the agent role and
+reports both blocked (`InsufficientPrivilege`); each
+attempt runs in its own transaction and is rolled back
+afterwards, and the probe re-issues `SET ROLE` before
+each attempt because a rollback resets the role to the
+session user — a psycopg behaviour documented in
+`docs/audit-kill-switch-export.md`. `ensure_audit_role`
+creates the role when missing (operator step, superuser);
+the schema grants apply only when the role already
+exists, so the role must exist before `create_schema`
+runs — the test suite's shared fixture does this once per
+session.
+
+Kill switch: one row in a new `kill_switch` table
+(`schema.sql` 76 -> 100 lines; `puspa/ledger/kill_switch.py`,
+304 lines). The application role has SELECT only on the
+flag table; only the table owner (the operator
+connection) can INSERT/UPDATE it, so the agent can
+neither arm nor disarm it. `KillSwitch.activate` /
+`deactivate` are explicit operator calls (actor +
+reason required, both non-empty); the flag flips FIRST
+and the ledger write follows, so if the ledger is
+unreachable the agent still stops and `KillSwitchError`
+is raised (fail-closed, safe direction). Activation is
+recorded as `task_stopped`, deactivation as
+`user_message` — existing types only, the 31 revisi-7
+types stay closed. The harness
+(`puspa/harness/loop.py`, 788 -> 821 lines) takes an
+optional `kill_switch`: a new `STATUS_KILLED` outcome,
+checked before the run, before each attempt, and in
+plan/answer modes, so a switch flipped mid-run stops the
+run before the next attempt (0 generator/executor calls
+when active from the start). The scheduler
+(`puspa/scheduler/scheduler.py`, 410 -> 444 lines) takes
+`kill_switch` in `tick` / `run_trigger` / `run_missed`:
+while active, `tick` is a total no-op (no heartbeat) and
+triggers stay due. `is_kill_switch_active` accepts None
+(no switch wired: behaviour unchanged), a callable, an
+object with `is_active()`, or a boolean `.active`
+attribute — anything else raises `TypeError` instead of
+silently reading as "off". A missing `kill_switch` table
+raises `KillSwitchError`, never reads as "off".
+
+Export: `puspa/ledger/export.py` (227 lines) —
+`export_user_data` / `build_user_export` writes one
+portable JSON file, atomically, with 10 sections
+(profile, episodic, procedural, summaries, slice
+grants, style examples, onboarding, consent, ledger
+events, vault metadata) and an explicit `excluded` list
+so the gap is visible, not silent. Never any secrets:
+no `password_hash`, no session token hashes, no vault
+ciphertext (entry names + update times only), no slice-
+grant `token_ref` values (written as `«withheld»`), and
+every string passes through `redact_secrets`, so a
+password the user pasted into a chat line is redacted
+(`«redacted»`). Export is a point-in-time snapshot; no
+incremental/scheduled export yet.
+
+Files (worker 9b6c42d8 in build-w2, merged by the
+coordinator): created `puspa/ledger/kill_switch.py`
+(304 lines), `puspa/ledger/audit_writer.py` (108 lines),
+`puspa/ledger/export.py` (227 lines),
+`tests/test_audit_kill_switch.py` (492 lines, 16 tests),
+`docs/audit-kill-switch-export.md` (170 lines); changed
+`puspa/ledger/schema.sql` (76 -> 100),
+`puspa/ledger/ledger.py` (457 -> 483),
+`puspa/ledger/__init__.py` (79 lines),
+`puspa/harness/loop.py` (788 -> 821),
+`puspa/scheduler/scheduler.py` (410 -> 444). No file
+over 1000 lines; `puspa/world/model.py` (1,395) and
+`puspa/world/agents.py` untouched. The merge deliberately
+did NOT copy w2's `puspa/turns/loop.py` (K11's version in
+`build/` is newer), `tests/test_backup.py` (the
+coordinator's DSN-aware fix in `build/` is newer), or
+`tests/test_file_size_ratchet.py` (the archive note in
+`build/` is newer).
+
+Verification (coordinator, re-ran herself in build-w2 on
+`puspa_test_w2`): module tests
+`tests/test_audit_kill_switch.py`: 16 passed. Neighbour
+regression (ledger / event types / audit trail /
+bitemporal / coding harness / harness modes / harness
+unified / scheduler push / RLS / access): 188 passed.
+Ledger/audit set (K12 module + ledger + event types +
+audit trail): 72 passed. Ruff check + format: clean.
+Mypy: clean. Read in full: `kill_switch.py` (flag
+lifecycle, fail-closed reads, flip-before-record),
+`audit_writer.py` (SET ROLE + `probe_tamper`), the
+`schema.sql` grants (events SELECT+INSERT only,
+kill_switch SELECT only), the harness + scheduler
+wiring, and the export exclusions (verified
+`password_hash` / ciphertext / `token_ref` handling +
+`redact_secrets` in code). Event types still 31
+(checked live).
+
+Worktree suite (worker, build-w2, `puspa_test_w2`):
+3,407 passed, 23 skipped, 1 failed, 36m49s, EXIT=1 —
+total 3,408 tests, exactly 3,392 (Wave 27) + 16 K12. The
+single failure was the same backup-test mismatch as
+K11's (hardcoded `"puspa_test"` vs the real DSN
+database `puspa_test_w2`); fixed by the coordinator in
+the K11 merge.
+
+Suite (coordinator, SOLO in build/ on `puspa_test`, log
+hidden_files/suite-wave28-k12.log): 3,444 passed, 23 skipped,
+1 warning, 21m52s, EXIT 0.
+Reconciliation: 3,392 (Wave 27) + 36 (K11 module) + 16 (K12
+module) = 3,444.
+
+Honest limits: tampering by the owner/superuser is only
+DETECTED (the hash chain breaks and `verify_chain`
+flags the row), not prevented — prevention at that
+level is detection. The kill switch stops new actions,
+not an action already running (checks run between
+attempts, not inside one execution). The flag lives in
+Postgres: if the database is down the switch cannot be
+read, and a missing table raises `KillSwitchError`
+instead of reading "off". A caller that does not wire a
+switch (`kill_switch=None`) has no protection — wiring
+it into the production entry point is a deployment step,
+not part of this change. `probe_tamper` proves the grants
+on the database it runs against; a new database whose
+`create_schema` ran before the `puspa_app` role existed
+is unprotected — run `ensure_audit_role` first, then
+`create_schema`. The `kill_switch` table is not
+TRUNCATE'd by the shared conftest fixture; the K12
+module-test fixture resets the flag itself before/after
+each test. No LICENSE or billing model decision was made.
+
+Remaining: Kosmos K13, then B features
+(B6, B9, B10, B11, B12, B13), then B15 culture LAST. Then uji
++ 15 gates + 10 reference tasks (waiting on Nero's decisions).

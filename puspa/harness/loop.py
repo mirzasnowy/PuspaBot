@@ -122,6 +122,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from puspa.computer.errors import BackendUnavailable
+from puspa.ledger.kill_switch import is_kill_switch_active
 from puspa.policy import Gate
 from puspa.policy.tokens import tool_permission
 from puspa.runtime.budget import CEILING_RP_PER_TASK, BudgetExhausted, BudgetTracker
@@ -166,6 +167,7 @@ STATUS_DENIED = "denied"
 STATUS_REPRODUCTION_MISSING = "reproduction_missing"
 STATUS_PLANNED = "planned"
 STATUS_ANSWERED = "answered"
+STATUS_KILLED = "killed"
 
 
 class HarnessError(Exception):
@@ -288,6 +290,7 @@ class CodingHarness:
         reproduce_first: bool = False,
         mode: str | None = None,
         workspace_root: str | Path | None = None,
+        kill_switch=None,
     ) -> None:
         if max_attempts < 1:
             raise HarnessError("max_attempts must be at least 1")
@@ -330,6 +333,13 @@ class CodingHarness:
         self.mode = mode
         self.mode_spec = mode_spec
         self.workspace_root = workspace_root
+        # Kill switch (K12): None means no switch is wired in and
+        # behaviour is unchanged; otherwise a KillSwitch, a
+        # ``() -> bool`` callable, or any object with ``is_active()``
+        # (see ``puspa.ledger.kill_switch.is_kill_switch_active``).
+        # The switch is checked before the run and before every
+        # attempt, so a flag flipped mid-run stops the next attempt.
+        self.kill_switch = kill_switch
         self._event: list[dict] = []
         self.sink = sink or (
             lambda event_type, content: self._event.append({"type": event_type, "content": content})
@@ -344,6 +354,20 @@ class CodingHarness:
             executor, "test_only", False
         )
         self.budget = BudgetTracker(rupiah_max=cost_ceiling_rp, step_max=max_attempts)
+
+    # -- kill switch (K12) ------------------------------------------------
+    def _killed(self, task: CodingTask, outcome: HarnessOutcome) -> HarnessOutcome:
+        """Stop the run because the kill switch is active.
+
+        No new action starts: the generator and the executor are
+        never called after this point. The stop is recorded so the
+        run's event log shows why it ended.
+        """
+        outcome.status = STATUS_KILLED
+        outcome.reason = "kill switch is active"
+        self._record("harness_killed", {"task_id": task.task_id})
+        self._record("harness_failed", {"task_id": task.task_id, "status": outcome.status})
+        return outcome
 
     # -- events ---------------------------------------------------------
     def _record(self, event_type: str, content: dict) -> None:
@@ -379,6 +403,7 @@ class CodingHarness:
             production=self.production,
             mode=mode,
             workspace_root=self.workspace_root,
+            kill_switch=self.kill_switch,
         )
 
     # -- permissions ----------------------------------------------------
@@ -421,6 +446,8 @@ class CodingHarness:
             profile=self.profile,
             mode=self.mode,
         )
+        if is_kill_switch_active(self.kill_switch):
+            return self._killed(task, outcome)
         self._record("harness_started", {"task_id": task.task_id, "description": task.description})
         if self.mode == MODE_ARCHITECT:
             return self._run_plan(task, outcome)
@@ -482,6 +509,8 @@ class CodingHarness:
         # this; a full-program attempt replaces it.
         current_code = task.starter_code
         for attempt_no in range(1, self.max_attempts + 1):
+            if is_kill_switch_active(self.kill_switch):
+                return self._killed(task, outcome)
             try:
                 self.budget.record_cost(self.cost_per_attempt_rp)
                 self.budget.record_step(1)
@@ -661,6 +690,8 @@ class CodingHarness:
             "mode_enforced",
             {"task_id": task.task_id, "mode": MODE_ARCHITECT, "profile": self.profile},
         )
+        if is_kill_switch_active(self.kill_switch):
+            return self._killed(task, outcome)
         if not self._charge_one_step(task, outcome):
             return outcome
         repo_map_text: str | None = None
@@ -693,6 +724,8 @@ class CodingHarness:
             "mode_enforced",
             {"task_id": task.task_id, "mode": MODE_ASK, "profile": self.profile},
         )
+        if is_kill_switch_active(self.kill_switch):
+            return self._killed(task, outcome)
         if not self._charge_one_step(task, outcome):
             return outcome
         answer = _call_generator(self.generator, task, [])
