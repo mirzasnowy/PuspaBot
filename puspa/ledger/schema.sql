@@ -52,6 +52,19 @@ ALTER TABLE events ADD CONSTRAINT event_jenis_check CHECK (type IN (
     'false_report', 'data_consent'
 ));
 
+-- Bitemporal (K3, docs/bitemporal-state.md): one valid instant per
+-- entry. An event is a point in valid time (when the described
+-- event was true in the world); the recorded time stays
+-- `created_at` (chain order). `valid_at` is metadata recorded
+-- alongside, OUTSIDE the hashed payload — the hash inputs are
+-- exactly as before, so the chain is untouched. Backfill is
+-- honest: the past has no separately recorded valid time, so
+-- existing entries get valid_at = created_at. New entries get
+-- valid_at from the caller, defaulting to created_at.
+ALTER TABLE events ADD COLUMN IF NOT EXISTS valid_at TIMESTAMPTZ;
+UPDATE events SET valid_at = created_at WHERE valid_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_event_valid_at ON events (valid_at);
+
 -- Izin: peran aplikasi hanya INSERT + SELECT. Tanpa UPDATE/DELETE.
 REVOKE UPDATE, DELETE ON events FROM PUBLIC;
 DO $$

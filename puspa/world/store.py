@@ -30,6 +30,15 @@ attribute (and is documented as lossy for that attribute only).
 Connection pattern follows ``puspa.ledger``: DSN from the argument,
 else ``PUSPA_TEST_DSN``, else the peer-auth default. No new
 dependency (``psycopg`` only).
+
+Bitemporal beliefs (Kosmos K3, ``puspa.world.bitemporal``) are
+persisted separately from the snapshot, in table
+``belief_versions`` (one row per belief version, two time pairs
+per row; see ``infra/schema_world.sql`` and
+``infra/migrate_bitemporal.sql``). The snapshot in
+``world_beliefs.state`` keeps working exactly as before — the
+version table is additive, and existing callers never see it
+unless they ask for it.
 """
 
 from __future__ import annotations
@@ -37,12 +46,14 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
 
+from .bitemporal import BeliefVersion, BitemporalBeliefStore
 from .model import (
     WorldModel,
     _BillBelief,
@@ -202,6 +213,182 @@ def delete_world_state(user_id, agent_id, *, dsn=None) -> bool:
         with conn.cursor() as cur:
             cur.execute(
                 "DELETE FROM world_beliefs WHERE user_id = %s AND agent_id = %s",
+                (str(user_id), str(agent_id)),
+            )
+            deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted
+
+
+# -- bitemporal belief versions (Kosmos K3) ---------------------------
+def apply_bitemporal_migration(dsn: str | None = None) -> None:
+    """Run `infra/migrate_bitemporal.sql` (idempotent).
+
+    Creates table `belief_versions` when missing and adds
+    `events.valid_at` (backfilled from `created_at`) when the
+    ledger table exists. Safe to run repeatedly and safe to run
+    against a database that already has both. Run this once
+    against an existing database; fresh databases get the same
+    objects from `create_schema` (`schema_world.sql`) and
+    `Ledger.create_schema` (`puspa/ledger/schema.sql`).
+    """
+    sql = (
+        Path(__file__).resolve().parent.parent.parent / "infra" / "migrate_bitemporal.sql"
+    ).read_text(encoding="utf-8")
+    with psycopg.connect(_resolve_dsn(dsn), autocommit=True) as conn:
+        conn.execute(sql)
+
+
+def _belief_row_to_version(row: dict) -> BeliefVersion:
+    return BeliefVersion(
+        key=row["belief_key"],
+        value=row["value"],
+        version=row["version"],
+        valid_from=row["valid_from"],
+        valid_to=row["valid_to"],
+        known_from=row["known_from"],
+        known_to=row["known_to"],
+        supersedes=row["supersedes"],
+    )
+
+
+def _belief_version_to_dict(version: BeliefVersion) -> dict:
+    return {
+        "belief_key": version.key,
+        "version": version.version,
+        "value": version.value,
+        "valid_from": version.valid_from.isoformat(),
+        "valid_to": version.valid_to.isoformat() if version.valid_to else None,
+        "known_from": version.known_from.isoformat(),
+        "known_to": version.known_to.isoformat() if version.known_to else None,
+        "supersedes": version.supersedes,
+    }
+
+
+def save_belief_versions(user_id, agent_id, history, *, dsn=None) -> int:
+    """Persist a bitemporal history (one row per belief version).
+
+    ``history`` is a ``BitemporalBeliefStore``. Versions are
+    immutable: re-saving the same history inserts nothing
+    (`ON CONFLICT DO NOTHING` on the (user, agent, key, version)
+    primary key). Returns the number of rows actually inserted.
+    """
+    if not isinstance(history, BitemporalBeliefStore):
+        raise ValueError("history must be a BitemporalBeliefStore")
+    rows = [version for key in history for version in history.history(key)]
+    if not rows:
+        return 0
+    with psycopg.connect(_resolve_dsn(dsn)) as conn:
+        with conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO belief_versions"
+                " (user_id, agent_id, belief_key, version, value,"
+                "  valid_from, valid_to, known_from, known_to, supersedes)"
+                " VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)"
+                " ON CONFLICT (user_id, agent_id, belief_key, version)"
+                " DO NOTHING",
+                [
+                    (
+                        str(user_id),
+                        str(agent_id),
+                        version.key,
+                        version.version,
+                        json.dumps(version.value, ensure_ascii=False),
+                        version.valid_from,
+                        version.valid_to,
+                        version.known_from,
+                        version.known_to,
+                        version.supersedes,
+                    )
+                    for version in rows
+                ],
+            )
+            inserted = cur.rowcount
+        conn.commit()
+    return inserted
+
+
+def load_belief_history(user_id, agent_id, *, dsn=None) -> BitemporalBeliefStore | None:
+    """Load the full version history, or None when nothing was saved."""
+    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT belief_key, version, value, valid_from, valid_to,"
+            " known_from, known_to, supersedes FROM belief_versions"
+            " WHERE user_id = %s AND agent_id = %s"
+            " ORDER BY belief_key, version",
+            (str(user_id), str(agent_id)),
+        )
+        rows = cur.fetchall()
+    if not rows:
+        return None
+    return BitemporalBeliefStore.from_versions([_belief_row_to_version(row) for row in rows])
+
+
+def beliefs_known_at(
+    user_id, agent_id, at: datetime, *, belief_key: str | None = None, dsn=None
+) -> list[dict]:
+    """Beliefs as the system knew them at ``at`` (known time).
+
+    One row per key: the version whose known interval contains
+    ``at``. ``at`` must be timezone-aware. Pass ``belief_key``
+    to ask about one belief only.
+    """
+    if at.tzinfo is None:
+        raise ValueError("at must be a timezone-aware datetime")
+    query = (
+        "SELECT belief_key, version, value, valid_from, valid_to,"
+        " known_from, known_to, supersedes FROM belief_versions"
+        " WHERE user_id = %s AND agent_id = %s"
+        " AND known_from <= %s AND (known_to IS NULL OR known_to > %s)"
+    )
+    params: list[Any] = [str(user_id), str(agent_id), at, at]
+    if belief_key is not None:
+        query += " AND belief_key = %s"
+        params.append(belief_key)
+    query += " ORDER BY belief_key"
+    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+        cur.execute(query, params)
+        rows = cur.fetchall()
+    return [_belief_version_to_dict(_belief_row_to_version(row)) for row in rows]
+
+
+def beliefs_valid_at(
+    user_id, agent_id, at: datetime, *, belief_key: str | None = None, dsn=None
+) -> list[dict]:
+    """Beliefs true at ``at`` under current knowledge (valid time).
+
+    Per key, the latest version whose valid interval covers
+    ``at``: a later correction overrides an earlier claim for
+    the valid times it covers, and a world-change correction
+    does not cover the old fact's interval, so the old fact
+    still reads true then. ``at`` must be timezone-aware.
+    """
+    if at.tzinfo is None:
+        raise ValueError("at must be a timezone-aware datetime")
+    query = (
+        "SELECT DISTINCT ON (belief_key) belief_key, version, value,"
+        " valid_from, valid_to, known_from, known_to, supersedes"
+        " FROM belief_versions"
+        " WHERE user_id = %s AND agent_id = %s"
+        " AND valid_from <= %s AND (valid_to IS NULL OR valid_to > %s)"
+    )
+    params: list[Any] = [str(user_id), str(agent_id), at, at]
+    if belief_key is not None:
+        query += " AND belief_key = %s"
+        params.append(belief_key)
+    query += " ORDER BY belief_key, version DESC"
+    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+        cur.execute(query, params)
+        rows = cur.fetchall()
+    return [_belief_version_to_dict(_belief_row_to_version(row)) for row in rows]
+
+
+def delete_belief_history(user_id, agent_id, *, dsn=None) -> bool:
+    """Delete all saved belief versions for one (user, agent). Tests only."""
+    with psycopg.connect(_resolve_dsn(dsn)) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM belief_versions WHERE user_id = %s AND agent_id = %s",
                 (str(user_id), str(agent_id)),
             )
             deleted = cur.rowcount > 0
