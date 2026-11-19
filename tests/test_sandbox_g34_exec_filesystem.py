@@ -254,16 +254,22 @@ def test_exec_stream_docker_fails_closed(tmp_path):
 
 
 def test_runner_flags_derive_from_quota_and_policy():
+    from puspa.sandbox.seccomp import default_profile
+
     quota = ResourceQuota(cpu_cores=1, memory_mb=512, disk_mb=512, max_pids=32)
     sandbox = Sandbox(quota=quota)
     assert sandbox.docker_flags() == [
         "--network",
         "none",
         "--read-only",
+        "--tmpfs",
+        "/tmp:rw,size=256m",
         "--cap-drop",
         "ALL",
         "--security-opt",
         "no-new-privileges",
+        "--security-opt",
+        f"seccomp={default_profile().path}",
         "--memory",
         "512m",
         "--cpus",
@@ -287,7 +293,7 @@ def test_runner_flags_default_match_previous_hardening():
 
 
 def test_runner_with_allow_host_policy_refuses_before_docker(monkeypatch, tmp_path):
-    """A policy needing the missing egress proxy is refused even
+    """A policy with no configured egress proxy is refused even
     when Docker is absent: admission order is policy first."""
     monkeypatch.setenv("PATH", str(tmp_path))
     policy = SandboxPolicy(network=NetworkPolicy.from_hosts(["api.openai.com"]))
