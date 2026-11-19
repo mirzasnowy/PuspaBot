@@ -66,8 +66,11 @@ Module map (`puspa/channels/`):
 1. Telegram sends an `Update` (webhook POST) or the gateway polls
    `getUpdates`. WhatsApp sends a webhook POST. The adapter turns
    the payload into `MessageEvent`s.
-2. The pipeline drops bot messages, the bot's own messages, and
-   group messages (DM-only in this iteration).
+2. The pipeline drops bot messages and the bot's own messages.
+   Group messages go to the optional `group_handler` hook (B6,
+   `puspa/rooms/routing.py`): a group chat linked to a room
+   answers @Puspa messages with the room as principal; unlinked
+   groups, and group chatter without a mention, are dropped.
 3. A bare 6-digit code in a DM is a pairing attempt (see below).
 4. The ledger is checked by `dedup_key`: a redelivered update is
    dropped silently (exactly-once).
@@ -203,8 +206,10 @@ fabricated answer). No second agent is built here.
 - **No live bot verified.** No real Telegram/WhatsApp token, no
   real DM answered, no real message sent. Tests use
   `httpx.MockTransport` only.
-- **DM-only.** Group messages are dropped (normalised with
-  `is_group=True`). Group support is a follow-up.
+- **DM-only by default.** Group messages are dropped unless a
+  room is linked to the group chat (B6, `docs/rooms-b6.md`):
+  the link plus an @Puspa mention routes the message to the room.
+  Group support is otherwise a follow-up.
 - **Pairing bindings are in-memory.** They die with the process;
   the durable binding table is a follow-up.
 - **Production agent executor not wired.** The seam exists and is

@@ -15,8 +15,21 @@ exactly once.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+
+#: A group message counts as addressed to Puspa when its text
+#: contains "@puspa" (case-insensitive). The adapters set
+#: ``mentions_bot`` from the platform payload when they can (a
+#: Telegram mention entity); the text scan is the fallback, and
+#: ``puspa/rooms/routing.py`` uses the same rule.
+_MENTION_RE = re.compile(r"@puspa\b", re.IGNORECASE)
+
+
+def mentions_puspa(text: str) -> bool:
+    """True when the text mentions @puspa (case-insensitive)."""
+    return bool(_MENTION_RE.search(text or ""))
 
 
 @dataclass(frozen=True)
@@ -30,7 +43,8 @@ class MessageEvent:
     message_id: str  # platform message id (dedup key part)
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     is_bot: bool = False  # sender is a bot (never answered)
-    is_group: bool = False  # group/channel message (never answered yet)
+    is_group: bool = False  # group/channel message (answered only via a room link, B6)
+    mentions_bot: bool = False  # message mentions the bot (group routing, B6)
     raw: dict = field(default_factory=dict, repr=False)  # original payload
 
     @property

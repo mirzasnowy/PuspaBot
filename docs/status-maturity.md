@@ -824,6 +824,59 @@ TRUNCATE'd by the shared conftest fixture; the K12
 module-test fixture resets the flag itself before/after
 each test. No LICENSE or billing model decision was made.
 
-Remaining: Kosmos K13, then B features
-(B6, B9, B10, B11, B12, B13), then B15 culture LAST. Then uji
-+ 15 gates + 10 reference tasks (waiting on Nero's decisions).
+Remaining: B features (B9, B10, B11, B12, B13), then B18
+(second-brain graph view), then culture LAST (B15, B16, B17, in
+that order). Then uji + 15 gates + 10 reference tasks (waiting
+on Nero's decisions).
+
+## Wave 29 — K13 + B6 (2 workers parallel, 19 Nov 2026)
+
+K13 anti-manipulation design rule (`puspa/policy/conflicts.py`,
+991 lines; `ConflictGate`, five closed conflict kinds,
+`ConflictSpec`, `ConflictStore`, Postgres table
+`conflict_records` via `infra/migrate_conflict_records.sql`).
+Wired into the turn loop after the intent advisor (K1) and the
+autonomy dial (K11), so even a `do_silently` action is surfaced
+when it carries a conflict. Surfacing writes
+`approval_requested` and the choice writes
+`approval_granted`/`approval_rejected` through the existing
+ledger event types — no 32nd event type. Review checklist in
+`docs/anti-manipulation.md` covers every implemented K item
+(K1, K3, K4, K5, K6, K10, K11, K12); K2, K7, K8, K9 gain a row
+when they land. The loop seam lives in
+`puspa/turns/conflict_wiring.py` (loop.py kept at 999 lines,
+under the ratchet cap). Module tests: 32 passed
+(`tests/test_anti_manipulation.py`, verified by coordinator).
+Honest limits: store in-memory by default (restart loses
+unpersisted records); detector scores are caller-assessed,
+not calibrated; nothing yet maps the user's reply text to
+`record_user_choice` — follow-up wiring needs a decision.
+
+B6 shared rooms (`puspa/rooms/`: rooms, invites, memory,
+tasks, money, routing; `infra/schema_rooms.sql`, 7 tables +
+RLS). Invite by link (7-day TTL) or one-time 6-digit code
+(24-hour TTL), hash-only secrets, roles Owner/Member/Guest,
+5-person beta cap, last-owner rule; leaving deletes the
+leaver's private memories and money approvals in the same
+transaction. Three-layer memory (personal never in a room,
+room-visible, private answers). Money gate: owner alone, or
+two people. Routing: linked group + @Puspa mention answers
+with the room as principal; channel `handle_inbound` gained
+an optional `group_handler` hook — without it group messages
+are still dropped (DM-only default preserved). Module tests:
+83 passed (verified by coordinator). Honest limits: no live
+Telegram/WhatsApp bot verified (MockTransport level, as G14);
+WhatsApp groups postponed per plan §12.4; summaries are
+deterministic, not model-written; room actions are not ledger
+event types (B2 follow-up).
+
+Verification note: both workers claimed full worktree suites
+green (K13 3,476; B6 3,527) but neither left a suite log file,
+and the elapsed time does not fit a 40-minute suite, so both
+claims are treated as unverified. The central suite below is
+the deciding gate. Postgres recovery during this wave: the VM
+was replaced and Postgres was gone entirely; coordinator
+reinstalled postgresql-16 + pgvector 0.6.0, started the
+cluster, recreated role root + DBs puspa_test /
+puspa_test_w1 / puspa_test_w2, applied `schema_core.sql` to
+all three, verified RLS.
