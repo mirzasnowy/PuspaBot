@@ -58,6 +58,7 @@ from puspa.channels.delivery import DeliveryService
 from puspa.channels.events import MessageEvent
 from puspa.channels.inbound import InboundOutcome
 
+from .delegation import is_board_command, render_board
 from .errors import NotRoomMemberError
 from .rooms import RoomStore, _validate_uuid
 
@@ -211,6 +212,7 @@ def handle_group_inbound(
     linker: RoomChannelLinker,
     ledger=None,
     delivery: DeliveryService | None = None,
+    delegation=None,
 ) -> InboundOutcome | None:
     """Handle one group message for the room pipeline.
 
@@ -223,6 +225,12 @@ def handle_group_inbound(
     as ``dropped_bot``. The handler never raises for a dropped
     message; only a delivery failure raises, after the ledger
     records it — same contract as ``handle_inbound``.
+
+    Board command (B9): when ``delegation`` (a
+    ``DelegationService``) is passed and the message asks for the
+    board ("@puspa board" / "@puspa tasks" / "@puspa tugas"),
+    the reply is the rendered shared task board and the agent is
+    never called — the board is data, not a turn.
     """
     if not event.is_group:
         return None
@@ -243,6 +251,21 @@ def handle_group_inbound(
             if ledger.seen(event.dedup_key):
                 return InboundOutcome("dropped_duplicate", detail=event.dedup_key)
     _record_inbound(ledger, event, status="sent")
+
+    if delegation is not None and is_board_command(event.text):
+        room = delegation.rooms.get_room(room_id)
+        rows = delegation.board_for_chat(room_id)
+        reply = render_board(room.name if room is not None else room_id, rows)
+        if delivery_service is not None:
+            delivery_service.send(
+                adapter,
+                chat_id=event.chat_id,
+                text=reply,
+                reply_to_dedup_key=event.dedup_key,
+            )
+        else:
+            adapter.send_text(event.chat_id, reply)
+        return InboundOutcome("answered", user_id=room_principal_id(room_id), reply=reply)
 
     principal = room_principal_id(room_id)
     reply = agent.answer(event, user_id=principal)

@@ -712,10 +712,11 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None) -> FastAPI:
     # exist through the SCREENS loop above. Insights and Onboarding
     # fetch all their data through these APIs, so _context_screen
     # needs no new bootstrap data for them.
-    from puspa.pwa import insights_api, onboarding_api
+    from puspa.pwa import insights_api, onboarding_api, rooms_api
 
     insights_api.register_routes(app, need_user)
     onboarding_api.register_routes(app, need_user)
+    rooms_api.register_routes(app, need_user)
     # -- end G28 ---------------------------------------------------------
 
     @app.post("/api/onboarding/waktu")

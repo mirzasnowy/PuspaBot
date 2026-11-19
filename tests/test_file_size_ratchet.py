@@ -126,7 +126,15 @@ BASELINE_LINES = {
     # OnboardingStatus, FirstTaskResult and Hint schemas: +610
     # lines, all new API surface ordered by the maturity work.
     # The ratchet resumes from 1707.
-    "docs/openapi-pwa.yaml": 1707,
+    # Split 19 Nov 2026 (Wave 30 ratchet fix): the B9 rooms
+    # contract (5 endpoints + 5 schemas) grew the file to 2,152,
+    # past the 2000-line hard cap, so the rooms paths + schemas
+    # moved to docs/openapi-rooms.yaml (461 lines, its own
+    # contract) and the main spec keeps $ref stubs to it; the
+    # generated client (openapi-typescript 7.13.0) resolves the
+    # external refs, verified by regenerating. The main spec is
+    # now 1,727 lines; the ratchet resumes from 1727.
+    "docs/openapi-pwa.yaml": 1727,
     # Maturity phase status log: re-added 19 Nov 2026 at 1055
     # lines (regrown past the soft cap with the Waves 15-16
     # entries) and archived again the same day — Waves 9-13

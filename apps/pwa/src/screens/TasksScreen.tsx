@@ -1,5 +1,13 @@
-import { useState } from "react";
-import { createTask, decideApproval, stopTask, type Bootstrap } from "../api/client";
+import { useEffect, useState } from "react";
+import {
+  createTask,
+  decideApproval,
+  fetchRoomBoard,
+  fetchRooms,
+  stopTask,
+  type Bootstrap,
+  type RoomBoard,
+} from "../api/client";
 import {
   addTaskOutcome,
   initialTasksState,
@@ -21,6 +29,26 @@ export function TasksScreen({ bootstrap }: { bootstrap: Bootstrap }) {
     initialApprovalsState(bootstrap.approvals ?? []),
   );
   const [purpose, setPurpose] = useState("");
+  const [boards, setBoards] = useState<RoomBoard[]>([]);
+  const [boardsError, setBoardsError] = useState<string | null>(null);
+
+  // Shared task boards (B9): the user's rooms and each room's
+  // board, fetched once when the screen opens. A room with no
+  // tasks still renders, so the group board is never hidden.
+  useEffect(() => {
+    let cancelled = false;
+    fetchRooms()
+      .then((result) => Promise.all(result.rooms.map((room) => fetchRoomBoard(room.id))))
+      .then((loaded) => {
+        if (!cancelled) setBoards(loaded);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setBoardsError(err instanceof Error ? err.message : "Gagal memuat papan tugas.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function onCreate(event: React.FormEvent) {
     event.preventDefault();
@@ -109,6 +137,45 @@ export function TasksScreen({ bootstrap }: { bootstrap: Bootstrap }) {
         ))
       )}
       {running.length > 0 ? <p className="muted">{running.length} tugas berjalan.</p> : null}
+
+      <h2>Papan tugas bersama</h2>
+      <p className="muted">
+        Tugas yang dibagikan di grup: pemilik, tenggat, status, dan siapa yang mengerjakannya.
+        Langkah yang tidak bisa dibatalkan menunggu persetujuan pemilik tugas.
+      </p>
+      {boardsError ? <p role="alert" className="error">{boardsError}</p> : null}
+      {boards.length === 0 && !boardsError ? (
+        <p className="muted">Belum ada grup yang kamu ikuti.</p>
+      ) : (
+        boards.map((board) => (
+          <div key={board.room_id}>
+            <h3>{board.room_name}</h3>
+            {board.tasks.length === 0 ? (
+              <p className="muted">Belum ada tugas di papan ini.</p>
+            ) : (
+              board.tasks.map((task) => (
+                <div key={task.id} className="card">
+                  <strong>{task.title}</strong>
+                  <p className="muted">
+                    Status: {task.status}
+                    {task.due_at ? ` · tenggat: ${task.due_at}` : " · tanpa tenggat"}
+                    {task.delegation
+                      ? ` · dikerjakan ${task.delegation.delegate_kind === "agent" ? "agen" : "rekan"} (${task.delegation.status})`
+                      : ""}
+                  </p>
+                  {task.delegation?.last_report ? <p>Laporan: {task.delegation.last_report}</p> : null}
+                  {task.delegation?.blocked_reason ? (
+                    <p>Terhambat: {task.delegation.blocked_reason}</p>
+                  ) : null}
+                  {task.pending_steps > 0 ? (
+                    <p>{task.pending_steps} langkah menunggu persetujuan atau eksekusi.</p>
+                  ) : null}
+                </div>
+              ))
+            )}
+          </div>
+        ))
+      )}
 
       <h2>Antrean persetujuan</h2>
       <p className="muted">

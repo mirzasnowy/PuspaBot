@@ -611,6 +611,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/rooms:
+    $ref: './openapi-rooms.yaml#/paths/~1api~1rooms'
+  /api/rooms/{room_id}/tasks:
+    $ref: './openapi-rooms.yaml#/paths/~1api~1rooms~1{room_id}~1tasks'
+  /api/rooms/{room_id}/tasks/{task_id}/steps:
+    $ref: './openapi-rooms.yaml#/paths/~1api~1rooms~1{room_id}~1tasks~1{task_id}~1steps'
+  /api/rooms/{room_id}/tasks/{task_id}/steps/{step_id}/approve:
+    $ref: './openapi-rooms.yaml#/paths/~1api~1rooms~1{room_id}~1tasks~1{task_id}~1steps~1{step_id}~1approve'
+  /api/rooms/{room_id}/tasks/{task_id}/steps/{step_id}/reject:
+    $ref: './openapi-rooms.yaml#/paths/~1api~1rooms~1{room_id}~1tasks~1{task_id}~1steps~1{step_id}~1reject'
   /api/onboarding:
     get:
       tags: [onboarding]
@@ -1069,6 +1079,16 @@ components:
       properties:
         error:
           type: string
+    RoomSummary:
+      $ref: './openapi-rooms.yaml#/components/schemas/RoomSummary'
+    RoomBoardTask:
+      $ref: './openapi-rooms.yaml#/components/schemas/RoomBoardTask'
+    RoomBoard:
+      $ref: './openapi-rooms.yaml#/components/schemas/RoomBoard'
+    DelegatedStep:
+      $ref: './openapi-rooms.yaml#/components/schemas/DelegatedStep'
+    DelegatedStepDecision:
+      $ref: './openapi-rooms.yaml#/components/schemas/DelegatedStepDecision'
     ModelSettings:
       type: object
       description: |

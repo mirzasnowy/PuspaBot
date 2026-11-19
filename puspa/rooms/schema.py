@@ -27,6 +27,8 @@ ROOMS_TABLES = (
     "room_tasks",
     "room_money_approvals",
     "room_channel_links",
+    "delegated_tasks",
+    "delegated_task_steps",
 )
 
 

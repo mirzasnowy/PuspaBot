@@ -1,7 +1,15 @@
 -- Shared-room schema for group chat (B6).
 --
 -- Tables: rooms, room_members, room_invites, room_memories,
--- room_tasks, room_money_approvals, room_channel_links.
+-- room_tasks, room_money_approvals, room_channel_links,
+-- delegated_tasks, delegated_task_steps.
+--
+-- B9 adds the last two: a delegation row per room task handed
+-- to the agent or to a teammate (puspa/rooms/delegation.py), and
+-- one row per proposed step of a delegated task. A step marked
+-- irreversible may only run after approval through the G4/G5
+-- approval path; the step row is what records that decision, so
+-- the gate is never bypassed by a caller that forgets to ask.
 --
 -- Run AFTER infra/schema_core.sql (the users table must exist
 -- first), as a Postgres superuser, from the build/ directory:
@@ -69,6 +77,12 @@
 --     INSERT only by a member, for themselves.
 --   - room_channel_links: visible / created / deleted only by a
 --     member of the room.
+--   - delegated_tasks: visible / created / updated only by a
+--     member of the room (the room task itself is visible to
+--     members under the room_tasks policy; the delegation row
+--     follows the same rule).
+--   - delegated_task_steps: visible / created / updated only by
+--     a member of the room the task belongs to.
 --
 -- No password anywhere in this file: auth is peer auth (local
 -- socket, OS user = Postgres role). Do not add a password here.
@@ -148,6 +162,57 @@ CREATE TABLE IF NOT EXISTS room_channel_links (
 );
 CREATE INDEX IF NOT EXISTS idx_room_channel_links_room ON room_channel_links(room_id);
 
+-- Delegated tasks (B9): one row per room task handed to the agent
+-- or to a teammate. The room task itself (room_tasks) keeps its
+-- owner, deadline, and open/done status; this row adds the
+-- delegation: who works on it (an agent subagent id, or a
+-- teammate user id), and the delegation status. A task that was
+-- never delegated has no row here.
+CREATE TABLE IF NOT EXISTS delegated_tasks (
+    task_id        UUID PRIMARY KEY REFERENCES room_tasks(id) ON DELETE CASCADE,
+    room_id        UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+    delegate_kind  TEXT NOT NULL CHECK (delegate_kind IN ('agent', 'teammate')),
+    assignee_ref   TEXT NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'delegated'
+                   CHECK (status IN ('delegated', 'in_progress', 'awaiting_approval', 'blocked', 'done')),
+    last_report    TEXT,
+    reported_at    TIMESTAMPTZ,
+    started_at     TIMESTAMPTZ,
+    blocked_reason TEXT,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_delegated_tasks_room_id ON delegated_tasks(room_id);
+CREATE INDEX IF NOT EXISTS idx_delegated_tasks_status ON delegated_tasks(status);
+
+-- Proposed steps of a delegated task (B9). A step is one unit of
+-- work the agent wants to do; ``irreversible`` marks steps that
+-- must wait for approval (delete, send, share, post, pay, or any
+-- step the worker flags irreversible). ``content`` is the exact
+-- action payload the approval binds to (same content-hash idea
+-- as the G4/G5 gate). ``result`` holds the executor's return
+-- value once, so re-executing an executed step returns the
+-- stored result instead of running twice.
+CREATE TABLE IF NOT EXISTS delegated_task_steps (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    task_id             UUID NOT NULL REFERENCES room_tasks(id) ON DELETE CASCADE,
+    description         TEXT NOT NULL,
+    tool_name           TEXT NOT NULL,
+    irreversible        BOOLEAN NOT NULL DEFAULT FALSE,
+    status              TEXT NOT NULL DEFAULT 'proposed'
+                        CHECK (status IN ('proposed', 'awaiting_approval', 'approved', 'rejected', 'executed')),
+    content             JSONB NOT NULL DEFAULT '{}'::jsonb,
+    approval_request_id TEXT,
+    approved_by         UUID REFERENCES users(id) ON DELETE SET NULL,
+    decided_at          TIMESTAMPTZ,
+    executed_at         TIMESTAMPTZ,
+    result              TEXT,
+    created_by          UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_delegated_task_steps_task_id ON delegated_task_steps(task_id);
+CREATE INDEX IF NOT EXISTS idx_delegated_task_steps_status ON delegated_task_steps(status);
+
 -- Application-role grants (same shape as infra/schema_teams.sql):
 -- puspa_app may read/write all seven tables; isolation between
 -- users is enforced by the RLS policies below, not by revoking
@@ -164,6 +229,8 @@ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON room_tasks TO puspa_app;
         GRANT SELECT, INSERT, UPDATE, DELETE ON room_money_approvals TO puspa_app;
         GRANT SELECT, INSERT, UPDATE, DELETE ON room_channel_links TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON delegated_tasks TO puspa_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON delegated_task_steps TO puspa_app;
     END IF;
 END $$;
 
@@ -194,6 +261,8 @@ ALTER TABLE room_memories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE room_tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE room_money_approvals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE room_channel_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE delegated_tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE delegated_task_steps ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS rooms_select ON rooms;
 CREATE POLICY rooms_select ON rooms FOR SELECT TO puspa_app
@@ -291,3 +360,53 @@ CREATE POLICY room_channel_links_insert ON room_channel_links FOR INSERT TO pusp
 DROP POLICY IF EXISTS room_channel_links_delete ON room_channel_links;
 CREATE POLICY room_channel_links_delete ON room_channel_links FOR DELETE TO puspa_app
     USING (is_room_member(room_id, current_setting('app.current_user_id', TRUE)::UUID));
+
+DROP POLICY IF EXISTS delegated_tasks_select ON delegated_tasks;
+CREATE POLICY delegated_tasks_select ON delegated_tasks FOR SELECT TO puspa_app
+    USING (is_room_member(room_id, current_setting('app.current_user_id', TRUE)::UUID));
+DROP POLICY IF EXISTS delegated_tasks_insert ON delegated_tasks;
+CREATE POLICY delegated_tasks_insert ON delegated_tasks FOR INSERT TO puspa_app
+    WITH CHECK (is_room_member(room_id, current_setting('app.current_user_id', TRUE)::UUID));
+DROP POLICY IF EXISTS delegated_tasks_update ON delegated_tasks;
+CREATE POLICY delegated_tasks_update ON delegated_tasks FOR UPDATE TO puspa_app
+    USING (is_room_member(room_id, current_setting('app.current_user_id', TRUE)::UUID));
+DROP POLICY IF EXISTS delegated_tasks_delete ON delegated_tasks;
+CREATE POLICY delegated_tasks_delete ON delegated_tasks FOR DELETE TO puspa_app
+    USING (is_room_member(room_id, current_setting('app.current_user_id', TRUE)::UUID));
+
+DROP POLICY IF EXISTS delegated_task_steps_select ON delegated_task_steps;
+CREATE POLICY delegated_task_steps_select ON delegated_task_steps FOR SELECT TO puspa_app
+    USING (
+        EXISTS (
+            SELECT 1 FROM room_tasks t
+            WHERE t.id = delegated_task_steps.task_id
+            AND is_room_member(t.room_id, current_setting('app.current_user_id', TRUE)::UUID)
+        )
+    );
+DROP POLICY IF EXISTS delegated_task_steps_insert ON delegated_task_steps;
+CREATE POLICY delegated_task_steps_insert ON delegated_task_steps FOR INSERT TO puspa_app
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM room_tasks t
+            WHERE t.id = delegated_task_steps.task_id
+            AND is_room_member(t.room_id, current_setting('app.current_user_id', TRUE)::UUID)
+        )
+    );
+DROP POLICY IF EXISTS delegated_task_steps_update ON delegated_task_steps;
+CREATE POLICY delegated_task_steps_update ON delegated_task_steps FOR UPDATE TO puspa_app
+    USING (
+        EXISTS (
+            SELECT 1 FROM room_tasks t
+            WHERE t.id = delegated_task_steps.task_id
+            AND is_room_member(t.room_id, current_setting('app.current_user_id', TRUE)::UUID)
+        )
+    );
+DROP POLICY IF EXISTS delegated_task_steps_delete ON delegated_task_steps;
+CREATE POLICY delegated_task_steps_delete ON delegated_task_steps FOR DELETE TO puspa_app
+    USING (
+        EXISTS (
+            SELECT 1 FROM room_tasks t
+            WHERE t.id = delegated_task_steps.task_id
+            AND is_room_member(t.room_id, current_setting('app.current_user_id', TRUE)::UUID)
+        )
+    );
