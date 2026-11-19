@@ -223,6 +223,26 @@ spend log, not the ledger — no 32nd event type.
 3. A test or check proves one conflict scenario is surfaced to the user.
 4. The rule is checked against every other K item (review checklist).
 
+Implemented 19 Nov 2026 (`puspa/policy/conflicts.py`,
+`infra/migrate_conflict_records.sql`, `docs/anti-manipulation.md`):
+a deterministic detector over five closed conflict kinds
+(`engagement_vs_goal`, `seller_vs_user`, `provider_vs_user`,
+`retention_vs_independence`, `attention_vs_benefit`); a
+`ConflictGate` that refuses to run a conflicted action until
+the user chooses proceed / alternative / decline
+(`require_resolved` raises while unresolved); records
+persisted in Postgres table `conflict_records` (in-memory
+store when no DSN is given, with the same honest restart
+limit as K10/K11) and audited through the existing ledger
+event types `approval_requested` / `approval_granted` /
+`approval_rejected` — no 32nd event type. Wired into the
+turn loop after the intent advisor (K1) and the autonomy dial
+(K11), so even a `do_silently` action is surfaced when it
+carries a conflict. The review checklist in
+`docs/anti-manipulation.md` covers every implemented K item
+(K1, K3, K4, K5, K6, K10, K11, K12); K2, K7, K8, K9 gain a
+row when they land.
+
 ### Explicitly NOT taken literally
 
 - Presence sensory signals (silence, pulse, texture, warmth): poetry, not a buildable spec for a phone PWA. The buildable core is kept: minimal interface, universal undo, layered "why?", rarely speak, one sentence.
