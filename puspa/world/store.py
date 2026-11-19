@@ -39,6 +39,13 @@ per row; see ``infra/schema_world.sql`` and
 ``world_beliefs.state`` keeps working exactly as before — the
 version table is additive, and existing callers never see it
 unless they ask for it.
+
+Causal hypotheses (Kosmos K4, ``puspa.world.causal``) are
+persisted the same way, in table ``causal_hypotheses`` (one
+row per hypothesis; see ``infra/schema_world.sql`` and
+``infra/migrate_causal_ledger.sql``). Hypotheses mutate in
+place (strength updates, status changes), so saving upserts
+by id; expired and contradicted rows are kept as history.
 """
 
 from __future__ import annotations
@@ -53,9 +60,7 @@ from typing import Any
 import psycopg
 from psycopg.rows import dict_row
 
-from .bitemporal import BeliefVersion, BitemporalBeliefStore
-from .model import (
-    WorldModel,
+from .beliefs import (
     _BillBelief,
     _CapabilityBelief,
     _ContactBelief,
@@ -63,6 +68,9 @@ from .model import (
     _PriceBelief,
     _ScheduleBelief,
 )
+from .bitemporal import BeliefVersion, BitemporalBeliefStore
+from .causal import CausalHypothesis, CausalLedger
+from .model import WorldModel
 
 #: DSN default (peer auth sebagai user OS, tanpa password).
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
@@ -389,6 +397,182 @@ def delete_belief_history(user_id, agent_id, *, dsn=None) -> bool:
         with conn.cursor() as cur:
             cur.execute(
                 "DELETE FROM belief_versions WHERE user_id = %s AND agent_id = %s",
+                (str(user_id), str(agent_id)),
+            )
+            deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted
+
+
+# -- causal hypotheses (Kosmos K4) ------------------------------------
+def apply_causal_migration(dsn: str | None = None) -> None:
+    """Run `infra/migrate_causal_ledger.sql` (idempotent).
+
+    Creates table `causal_hypotheses` when missing. Safe to run
+    repeatedly and safe to run against a database that already
+    has it. Run this once against an existing database; fresh
+    databases get the same objects from `create_schema`
+    (`schema_world.sql`).
+    """
+    sql = (
+        Path(__file__).resolve().parent.parent.parent / "infra" / "migrate_causal_ledger.sql"
+    ).read_text(encoding="utf-8")
+    with psycopg.connect(_resolve_dsn(dsn), autocommit=True) as conn:
+        conn.execute(sql)
+
+
+def _causal_row_to_hypothesis(row: dict) -> CausalHypothesis:
+    # Postgres returns a UUID object (dashed form); in-memory ids
+    # are `uuid4().hex` (no dashes), so normalize on load, or a
+    # loaded ledger would never match the ids it was saved with.
+    return CausalHypothesis(
+        id=str(row["id"]).replace("-", ""),
+        cause=row["cause"],
+        effect=row["effect"],
+        condition=row["condition"],
+        strength=float(row["strength"]),
+        evidence=[dict(link) for link in (row["evidence"] or [])],
+        created_at=row["created_at"],
+        expires_at=row["expires_at"],
+        valid_from=row["valid_from"],
+        valid_to=row["valid_to"],
+        status=row["status"],
+        effect_value=row["effect_value"],
+        supporting=int(row["supporting"]),
+        contradicting=int(row["contradicting"]),
+    )
+
+
+def _causal_hypothesis_to_dict(hypothesis: CausalHypothesis) -> dict:
+    return hypothesis.to_dict()
+
+
+def save_causal_hypotheses(user_id, agent_id, ledger, *, dsn=None) -> int:
+    """Persist a causal ledger (one row per hypothesis).
+
+    `ledger` is a `CausalLedger`. Hypotheses mutate in place
+    (strength updates, status changes), so saving upserts by id
+    (`ON CONFLICT (id) DO UPDATE`): re-saving the same ledger
+    writes the same rows again with their current values.
+    Expired and contradicted hypotheses are saved too — they
+    are history, and the read path filters them. Returns the
+    number of rows written.
+    """
+    if not isinstance(ledger, CausalLedger):
+        raise ValueError("ledger must be a CausalLedger")
+    rows = [CausalHypothesis.from_dict(row) for row in ledger.list_all(include_terminal=True)]
+    if not rows:
+        return 0
+    with psycopg.connect(_resolve_dsn(dsn)) as conn:
+        with conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO causal_hypotheses"
+                " (id, user_id, agent_id, cause, effect, effect_value,"
+                "  condition, strength, evidence, created_at, expires_at,"
+                "  valid_from, valid_to, status, supporting, contradicting,"
+                "  updated_at)"
+                " VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s::jsonb,"
+                "  %s, %s, %s, %s, %s, %s, %s, now())"
+                " ON CONFLICT (id) DO UPDATE SET"
+                "  strength = EXCLUDED.strength,"
+                "  evidence = EXCLUDED.evidence,"
+                "  expires_at = EXCLUDED.expires_at,"
+                "  valid_to = EXCLUDED.valid_to,"
+                "  status = EXCLUDED.status,"
+                "  effect_value = EXCLUDED.effect_value,"
+                "  supporting = EXCLUDED.supporting,"
+                "  contradicting = EXCLUDED.contradicting,"
+                "  updated_at = now()",
+                [
+                    (
+                        hypothesis.id,
+                        str(user_id),
+                        str(agent_id),
+                        hypothesis.cause,
+                        hypothesis.effect,
+                        json.dumps(hypothesis.effect_value, ensure_ascii=False, default=str),
+                        hypothesis.condition,
+                        hypothesis.strength,
+                        json.dumps(hypothesis.evidence, ensure_ascii=False),
+                        hypothesis.created_at,
+                        hypothesis.expires_at,
+                        hypothesis.valid_from,
+                        hypothesis.valid_to,
+                        hypothesis.status,
+                        hypothesis.supporting,
+                        hypothesis.contradicting,
+                    )
+                    for hypothesis in rows
+                ],
+            )
+            written = cur.rowcount
+        conn.commit()
+    return written
+
+
+def load_causal_ledger(user_id, agent_id, *, dsn=None) -> CausalLedger | None:
+    """Load the full causal history, or None when nothing was saved.
+
+    Returns every hypothesis including expired and
+    contradicted ones (history is preserved); the read path
+    (`CausalLedger.expect`) filters to active ones.
+    """
+    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, cause, effect, effect_value, condition, strength,"
+            " evidence, created_at, expires_at, valid_from, valid_to,"
+            " status, supporting, contradicting FROM causal_hypotheses"
+            " WHERE user_id = %s AND agent_id = %s"
+            " ORDER BY created_at, id",
+            (str(user_id), str(agent_id)),
+        )
+        rows = cur.fetchall()
+    if not rows:
+        return None
+    return CausalLedger.from_dict(
+        {"hypotheses": [_causal_hypothesis_to_dict(_causal_row_to_hypothesis(row)) for row in rows]}
+    )
+
+
+def causal_hypotheses_valid_at(
+    user_id, agent_id, at: datetime, *, cause: str | None = None, dsn=None
+) -> list[dict]:
+    """Causal claims that held at ``at`` (valid time).
+
+    Every hypothesis whose valid interval covers ``at`` — one
+    row per claim, including expired and contradicted ones
+    whose interval still covers the moment asked about. This
+    is the K3 bitemporal question applied to causal claims:
+    "what did the system believe caused what, then?" ``at``
+    must be timezone-aware. Pass ``cause`` to ask about one
+    cause only.
+    """
+    if at.tzinfo is None:
+        raise ValueError("at must be a timezone-aware datetime")
+    query = (
+        "SELECT id, cause, effect, effect_value, condition, strength,"
+        " evidence, created_at, expires_at, valid_from, valid_to,"
+        " status, supporting, contradicting FROM causal_hypotheses"
+        " WHERE user_id = %s AND agent_id = %s"
+        " AND valid_from <= %s AND (valid_to IS NULL OR valid_to > %s)"
+    )
+    params: list[Any] = [str(user_id), str(agent_id), at, at]
+    if cause is not None:
+        query += " AND cause = %s"
+        params.append(cause)
+    query += " ORDER BY cause, condition, effect"
+    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+        cur.execute(query, params)
+        rows = cur.fetchall()
+    return [_causal_hypothesis_to_dict(_causal_row_to_hypothesis(row)) for row in rows]
+
+
+def delete_causal_hypotheses(user_id, agent_id, *, dsn=None) -> bool:
+    """Delete all saved causal hypotheses for one (user, agent). Tests only."""
+    with psycopg.connect(_resolve_dsn(dsn)) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM causal_hypotheses WHERE user_id = %s AND agent_id = %s",
                 (str(user_id), str(agent_id)),
             )
             deleted = cur.rowcount > 0
