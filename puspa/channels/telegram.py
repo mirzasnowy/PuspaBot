@@ -162,15 +162,61 @@ class TelegramAdapter(ChannelAdapter):
         :meth:`next_offset`). A failed poll raises
         :class:`DeliveryError` — the gateway logs it and polls again.
         """
-        params: dict = {"timeout": timeout}
-        if offset is not None:
-            params["offset"] = offset
-        result = self._post("getUpdates", params=params)
+        result = self.fetch_updates(offset=offset, timeout=timeout)
         events: list[MessageEvent] = []
         for update in result:
             events.extend(self.parse_update(update))
         self._last_update_ids = [u.get("update_id") for u in result if "update_id" in u]
         return events
+
+    def fetch_updates(self, *, offset: int | None = None, timeout: int = 30) -> list[dict]:
+        """One ``getUpdates`` batch as raw update dicts.
+
+        ``poll_once`` is built on this; callers that need
+        non-message updates (button taps, see
+        :meth:`parse_callback_query`) use this directly. The
+        offset is not advanced here — the caller owns it.
+        """
+        params: dict = {"timeout": timeout}
+        if offset is not None:
+            params["offset"] = offset
+        result = self._post("getUpdates", params=params)
+        return list(result) if isinstance(result, list) else []
+
+    def parse_callback_query(self, update: dict) -> dict | None:
+        """Parse a button tap out of one raw ``Update``.
+
+        Returns ``{"callback_query_id", "chat_id", "sender_id",
+        "data"}`` for a ``callback_query`` update, else None.
+        Message updates (the :meth:`parse_update` path) never
+        produce a callback. The nightly smoke lane uses this to
+        prove one approval via a button tap.
+        """
+        callback = update.get("callback_query")
+        if not isinstance(callback, dict):
+            return None
+        message = callback.get("message") or {}
+        chat = message.get("chat") or {}
+        sender = callback.get("from") or {}
+        return {
+            "callback_query_id": str(callback.get("id", "")),
+            "chat_id": str(chat.get("id", "")),
+            "sender_id": str(sender.get("id", "")),
+            "data": str(callback.get("data", "")),
+        }
+
+    def answer_callback_query(self, callback_query_id: str, *, text: str | None = None) -> bool:
+        """Answer a button tap (``answerCallbackQuery``).
+
+        Returns True when Telegram accepted the answer; raises
+        :class:`DeliveryError` otherwise. ``text`` is the short
+        toast shown to the user who tapped, when given.
+        """
+        payload: dict = {"callback_query_id": callback_query_id}
+        if text is not None:
+            payload["text"] = text
+        self._post("answerCallbackQuery", payload)
+        return True
 
     @staticmethod
     def next_offset(update_ids: list[int | None], current: int | None) -> int | None:
@@ -198,19 +244,21 @@ class TelegramAdapter(ChannelAdapter):
 
     # -- outbound ---------------------------------------------------------
 
-    def send_text(self, chat_id: str, text: str) -> dict:
+    def send_text(self, chat_id: str, text: str, *, reply_markup: dict | None = None) -> dict:
         """Send one message via ``sendMessage`` (bounded retry + backoff).
 
         Returns the Telegram ``result`` object (the sent message).
         Raises :class:`DeliveryError` after all attempts fail.
+        ``reply_markup`` attaches an inline keyboard (the nightly
+        smoke lane sends an Approve/Reject keyboard with its ping).
         """
+        payload: dict = {"chat_id": chat_id, "text": text}
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
         last_error: Exception | None = None
         for attempt in range(1, MAX_SEND_ATTEMPTS + 1):
             try:
-                return self._post(
-                    "sendMessage",
-                    {"chat_id": chat_id, "text": text},
-                )
+                return self._post("sendMessage", payload)
             except (DeliveryError, httpx.HTTPError) as exc:
                 last_error = exc
                 if attempt < MAX_SEND_ATTEMPTS:
