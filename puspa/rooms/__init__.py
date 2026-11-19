@@ -18,6 +18,11 @@ Public surface:
 - :class:`RoomTaskStore` — the shared task board (owner,
   deadline, status) plus the deterministic chat summariser and
   task splitter.
+- :class:`DelegationService` — delegated tasks with approval
+  (B9): hand a room task to the agent or a teammate, propose
+  steps, and wait for approval on irreversible steps through
+  the G4/G5 path; the board rendered for the PWA and the group
+  chat.
 - :class:`MoneyGate` — money actions need two people, or the
   room owner alone.
 - :class:`RoomChannelLinker` / :func:`handle_group_inbound` —
@@ -49,6 +54,28 @@ scope for this iteration.
 
 from __future__ import annotations
 
+from .delegation import (
+    DELEGATION_STATUSES,
+    STEP_STATUSES,
+    BoardRow,
+    DelegatedStep,
+    DelegatedTask,
+    DelegationService,
+    approve_step,
+    board,
+    classify_task_due,
+    complete_delegated_task,
+    delegate_to_agent,
+    delegate_to_teammate,
+    execute_step,
+    is_board_command,
+    propose_step,
+    reject_step,
+    reminder_lines,
+    render_board,
+    report_progress,
+    start_work,
+)
 from .errors import (
     InviteError,
     LastOwnerError,
@@ -140,6 +167,7 @@ from .tasks import (
 
 __all__ = [
     "CODE_TTL_HOURS",
+    "DELEGATION_STATUSES",
     "INVITE_LINK_TTL_DAYS",
     "JOIN_LINK_BASE",
     "MAX_MEMORY_CONTENT_CHARS",
@@ -151,6 +179,11 @@ __all__ = [
     "ROLE_MEMBER",
     "ROLE_OWNER",
     "ROOMS_TABLES",
+    "STEP_STATUSES",
+    "BoardRow",
+    "DelegatedStep",
+    "DelegatedTask",
+    "DelegationService",
     "InviteError",
     "LastOwnerError",
     "MoneyApprovalError",
@@ -176,16 +209,24 @@ __all__ = [
     "add_member",
     "add_task",
     "approve_money_action",
+    "approve_step",
+    "board",
+    "classify_task_due",
+    "complete_delegated_task",
     "complete_task",
     "create_room",
     "create_schema",
+    "delegate_to_agent",
+    "delegate_to_teammate",
     "delete_memory",
     "delete_room",
     "due_soon",
+    "execute_step",
     "get_invite",
     "get_room",
     "handle_group_inbound",
     "is_addressed_to_puspa",
+    "is_board_command",
     "is_member",
     "is_money_approved",
     "is_owner",
@@ -201,11 +242,16 @@ __all__ = [
     "list_tasks",
     "member_count",
     "overdue",
+    "propose_step",
     "purge_expired",
     "record_decision",
     "record_memory",
     "record_summary",
+    "reject_step",
+    "reminder_lines",
     "remove_member",
+    "render_board",
+    "report_progress",
     "reset_tables",
     "resolve_room",
     "revoke_invite",
@@ -214,6 +260,7 @@ __all__ = [
     "schema_path",
     "set_role",
     "split_tasks",
+    "start_work",
     "summarize_messages",
     "unlink_channel",
 ]

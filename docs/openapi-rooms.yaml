@@ -1,0 +1,461 @@
+# Shared-rooms API contract (B6 rooms, B9 delegation).
+#
+# Split out of docs/openapi-pwa.yaml on 19 Nov 2026 (Wave 30 ratchet
+# fix): the rooms contract earned its own file once it passed 5
+# endpoints + 5 schemas, and the main spec had crossed the 2000-line
+# hard cap. The main spec references this file with $ref stubs; the
+# generated client is produced from the main spec with
+# openapi-typescript, which resolves external $refs. The Error schema
+# stays in the main spec and is referenced back from here.
+openapi: 3.0.3
+info:
+  title: Puspa shared rooms API
+  version: 1.0.0
+paths:
+  /api/rooms:
+    get:
+      tags: [rooms]
+      summary: List the logged-in user's shared rooms
+      description: |
+        B9: the rooms the user belongs to, with their role in
+        each. A user with no rooms gets an empty list.
+      responses:
+        "200":
+          description: The user's rooms
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rooms]
+                properties:
+                  rooms:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RoomSummary"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/rooms/{room_id}/tasks:
+    get:
+      tags: [rooms]
+      summary: Read the shared task board of one room
+      description: |
+        B9: every task of the room with owner, deadline, status,
+        its delegation (null when never delegated), and how many
+        steps wait for approval or execution. Only a room member
+        may read the board.
+      parameters:
+        - name: room_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The shared board
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomBoard"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not a member of the room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    post:
+      tags: [rooms]
+      summary: Create a task on the shared board, optionally delegated
+      description: |
+        B9: creates the task on the B6 board and, when
+        `delegate_kind` is given, hands it to the agent
+        (`assignee_ref` is the subagent handle/id) or to a
+        teammate (`assignee_ref` is the teammate user id) at
+        once. A guest may never be handed work.
+      parameters:
+        - name: room_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                owner_user_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                due_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                delegate_kind:
+                  type: string
+                  enum: [agent, teammate]
+                assignee_ref:
+                  type: string
+      responses:
+        "200":
+          description: The created task, as a board row
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomBoardTask"
+        "400":
+          description: Bad input (empty title, unknown delegate_kind)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not a member of the room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/rooms/{room_id}/tasks/{task_id}/steps:
+    post:
+      tags: [rooms]
+      summary: Propose a step of work on a delegated task
+      description: |
+        B9: a reversible step is proposed and may run without
+        approval. An irreversible step waits for the task owner
+        to approve it; with no approval policy wired into the
+        HTTP layer it stays awaiting approval and can never run
+        (fail-closed).
+      parameters:
+        - name: room_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [description, tool_name]
+              properties:
+                description:
+                  type: string
+                tool_name:
+                  type: string
+                irreversible:
+                  type: boolean
+                  default: false
+                content:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "200":
+          description: The proposed step
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DelegatedStep"
+        "400":
+          description: Bad input
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not a member of the room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown task
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/rooms/{room_id}/tasks/{task_id}/steps/{step_id}/approve:
+    post:
+      tags: [rooms]
+      summary: Approve a step waiting for approval
+      description: |
+        B9: only the task owner (or the creator when the task
+        has no owner) may approve an irreversible step.
+      parameters:
+        - name: room_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: step_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The decided step
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DelegatedStepDecision"
+        "400":
+          description: The step is not awaiting approval
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not the task owner
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/rooms/{room_id}/tasks/{task_id}/steps/{step_id}/reject:
+    post:
+      tags: [rooms]
+      summary: Reject a step waiting for approval
+      description: |
+        B9: only the task owner (or the creator when the task
+        has no owner) may reject an irreversible step. A
+        rejected step never runs.
+      parameters:
+        - name: room_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: step_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The decided step
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DelegatedStepDecision"
+        "400":
+          description: The step is not awaiting approval
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not the task owner
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    RoomSummary:
+      type: object
+      description: |
+        B9: one shared room the user belongs to, with their role
+        in it.
+      required: [id, name, role]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        role:
+          type: string
+          enum: [owner, member, guest]
+    RoomBoardTask:
+      type: object
+      description: |
+        B9: one row of the shared task board: the B6 task (owner,
+        deadline, status) plus its delegation (null when the task
+        was never delegated) and how many steps wait for approval
+        or execution.
+      required: [id, room_id, title, owner_user_id, due_at, status, created_by, created_at, completed_at, delegation, pending_steps]
+      properties:
+        id:
+          type: string
+          format: uuid
+        room_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        owner_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: [open, done]
+        created_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        delegation:
+          type: object
+          nullable: true
+          required: [delegate_kind, assignee_ref, status, last_report, reported_at, started_at, blocked_reason]
+          properties:
+            delegate_kind:
+              type: string
+              enum: [agent, teammate]
+            assignee_ref:
+              type: string
+              description: Subagent handle/id for an agent, user id for a teammate.
+            status:
+              type: string
+              enum: [delegated, in_progress, awaiting_approval, blocked, done]
+            last_report:
+              type: string
+              nullable: true
+            reported_at:
+              type: string
+              format: date-time
+              nullable: true
+            started_at:
+              type: string
+              format: date-time
+              nullable: true
+            blocked_reason:
+              type: string
+              nullable: true
+        pending_steps:
+          type: integer
+    RoomBoard:
+      type: object
+      description: |
+        B9: the shared task board of one room.
+      required: [room_id, room_name, tasks]
+      properties:
+        room_id:
+          type: string
+          format: uuid
+        room_name:
+          type: string
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomBoardTask"
+    DelegatedStep:
+      type: object
+      description: |
+        B9: one proposed unit of work on a delegated task. An
+        irreversible step may only run after the task owner
+        approves it.
+      required: [id, task_id, description, tool_name, irreversible, status, approval_request_id]
+      properties:
+        id:
+          type: string
+          format: uuid
+        task_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+        tool_name:
+          type: string
+        irreversible:
+          type: boolean
+        status:
+          type: string
+          enum: [proposed, awaiting_approval, approved, rejected, executed]
+        approval_request_id:
+          type: string
+          nullable: true
+    DelegatedStepDecision:
+      type: object
+      description: |
+        B9: the outcome of approving or rejecting a step.
+      required: [id, task_id, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        task_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [proposed, awaiting_approval, approved, rejected, executed]

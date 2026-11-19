@@ -1265,6 +1265,434 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/rooms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the logged-in user's shared rooms
+         * @description B9: the rooms the user belongs to, with their role in
+         *     each. A user with no rooms gets an empty list.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The user's rooms */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            rooms: components["schemas"]["RoomSummary"][];
+                        };
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rooms/{room_id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the shared task board of one room
+         * @description B9: every task of the room with owner, deadline, status,
+         *     its delegation (null when never delegated), and how many
+         *     steps wait for approval or execution. Only a room member
+         *     may read the board.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    room_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The shared board */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RoomBoard"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not a member of the room */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown room */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Create a task on the shared board, optionally delegated
+         * @description B9: creates the task on the B6 board and, when
+         *     `delegate_kind` is given, hands it to the agent
+         *     (`assignee_ref` is the subagent handle/id) or to a
+         *     teammate (`assignee_ref` is the teammate user id) at
+         *     once. A guest may never be handed work.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    room_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        title: string;
+                        /** Format: uuid */
+                        owner_user_id?: string | null;
+                        /** Format: date-time */
+                        due_at?: string | null;
+                        /** @enum {string} */
+                        delegate_kind?: "agent" | "teammate";
+                        assignee_ref?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The created task, as a board row */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RoomBoardTask"];
+                    };
+                };
+                /** @description Bad input (empty title, unknown delegate_kind) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not a member of the room */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rooms/{room_id}/tasks/{task_id}/steps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Propose a step of work on a delegated task
+         * @description B9: a reversible step is proposed and may run without
+         *     approval. An irreversible step waits for the task owner
+         *     to approve it; with no approval policy wired into the
+         *     HTTP layer it stays awaiting approval and can never run
+         *     (fail-closed).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    room_id: string;
+                    task_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        description: string;
+                        tool_name: string;
+                        /** @default false */
+                        irreversible?: boolean;
+                        content?: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description The proposed step */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DelegatedStep"];
+                    };
+                };
+                /** @description Bad input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not a member of the room */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown task */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rooms/{room_id}/tasks/{task_id}/steps/{step_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a step waiting for approval
+         * @description B9: only the task owner (or the creator when the task
+         *     has no owner) may approve an irreversible step.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    room_id: string;
+                    task_id: string;
+                    step_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The decided step */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DelegatedStepDecision"];
+                    };
+                };
+                /** @description The step is not awaiting approval */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not the task owner */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rooms/{room_id}/tasks/{task_id}/steps/{step_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject a step waiting for approval
+         * @description B9: only the task owner (or the creator when the task
+         *     has no owner) may reject an irreversible step. A
+         *     rejected step never runs.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    room_id: string;
+                    task_id: string;
+                    step_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The decided step */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DelegatedStepDecision"];
+                    };
+                };
+                /** @description The step is not awaiting approval */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not the task owner */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/onboarding": {
         parameters: {
             query?: never;
@@ -2059,6 +2487,90 @@ export interface components {
     schemas: {
         Error: {
             error: string;
+        };
+        /**
+         * @description B9: one shared room the user belongs to, with their role
+         *     in it.
+         */
+        RoomSummary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @enum {string} */
+            role: "owner" | "member" | "guest";
+        };
+        /**
+         * @description B9: one row of the shared task board: the B6 task (owner,
+         *     deadline, status) plus its delegation (null when the task
+         *     was never delegated) and how many steps wait for approval
+         *     or execution.
+         */
+        RoomBoardTask: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            room_id: string;
+            title: string;
+            /** Format: uuid */
+            owner_user_id: string | null;
+            /** Format: date-time */
+            due_at: string | null;
+            /** @enum {string} */
+            status: "open" | "done";
+            /** Format: uuid */
+            created_by: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            completed_at: string | null;
+            delegation: {
+                /** @enum {string} */
+                delegate_kind: "agent" | "teammate";
+                /** @description Subagent handle/id for an agent, user id for a teammate. */
+                assignee_ref: string;
+                /** @enum {string} */
+                status: "delegated" | "in_progress" | "awaiting_approval" | "blocked" | "done";
+                last_report: string | null;
+                /** Format: date-time */
+                reported_at: string | null;
+                /** Format: date-time */
+                started_at: string | null;
+                blocked_reason: string | null;
+            } | null;
+            pending_steps: number;
+        };
+        /** @description B9: the shared task board of one room. */
+        RoomBoard: {
+            /** Format: uuid */
+            room_id: string;
+            room_name: string;
+            tasks: components["schemas"]["RoomBoardTask"][];
+        };
+        /**
+         * @description B9: one proposed unit of work on a delegated task. An
+         *     irreversible step may only run after the task owner
+         *     approves it.
+         */
+        DelegatedStep: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            task_id: string;
+            description: string;
+            tool_name: string;
+            irreversible: boolean;
+            /** @enum {string} */
+            status: "proposed" | "awaiting_approval" | "approved" | "rejected" | "executed";
+            approval_request_id: string | null;
+        };
+        /** @description B9: the outcome of approving or rejecting a step. */
+        DelegatedStepDecision: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            task_id: string;
+            /** @enum {string} */
+            status: "proposed" | "awaiting_approval" | "approved" | "rejected" | "executed";
         };
         /**
          * @description The user's own-model selection (G33). Carries no key
