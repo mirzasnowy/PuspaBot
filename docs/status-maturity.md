@@ -710,6 +710,91 @@ Central suite Wave 34 re-run: 3,786 passed, 23 skipped, 1
 warning, EXIT 0, 29m58s (3,736 + 23 B3 + 27 B4, exact).
 Both items pushed: B3 2befcd89, B4 c0039687.
 
+## Wave 38 — E-05 + E-06 (2 workers parallel, pipeline rule, 20 Nov 2026)
+
+E-05 SPA inside the image (commit a6a4c688), E-06 Postgres
+and SQLite consistency plus kill -9 tests (commit e2e1a226).
+
+E-05: multi-stage Dockerfile — a Node stage (`node:20-slim`,
+`npm ci`, `npm run build`) builds the React SPA and the
+runtime stage copies `/pwa/dist` into `/app/apps/pwa/dist`,
+so the deployed image serves React instead of the Jinja
+fallback; new unauthenticated `/app` SPA entry route (same
+pattern as `/masuk`: shell only, empty context, the SPA
+routes anonymous visitors to login); new
+puspa/teams/image_smoke.py (pure-HTML shell/bundle checks
+plus run_image_smoke: build, run one container on a free
+127.0.0.1 port, wait for /manifest.json, check /app, always
+`docker rm -f`); offline deploy validation now requires a
+Node stage, `npm run build`, and a `COPY --from=<node
+stage> ... dist`; the CI sandbox lane builds the deploy
+image and runs test_image_smoke.py, with
+test_image_smoke_live in the fail-if-skipped list; new
+.dockerignore (dist is excluded on purpose: it is rebuilt
+in the Node stage, so a stale local dist cannot hide a
+broken Node build). Verified without Docker: an isolated
+copy of exactly the files the Dockerfile copies builds a
+dist/index.html byte-identical to a local `npm run build`
+(apps/pwa/static must be copied too, or the icon link
+differs). Honest limit: the image has never been built or
+run anywhere (no Docker daemon on this VM); the live smoke
+test skips here and the CI lane is its first real run; the
+image build takes minutes (torch is in requirements.txt).
+
+E-06: one-page consistency rules in docs/data-consistency.md
+plus the mechanism. Postgres is the authority for task
+status in the ledger; SQLite state.db holds only session
+transcripts + the search index and must be rebuildable
+(rebuild_sessions_from_ledger rebuilds transcripts from
+ledger user_message/agent_message events, marked
+recovered_from_ledger; a second rebuild is a no-op). New
+puspa/consistency/: idempotency keys (task_id:step:SHA-256
+of canonical JSON args), WriteAheadLog (intent
+`tool_called` before the effect, result `tool_completed`
+after it, same key, both ordinary ledger events so the
+31-type set stays closed and the hash chain keeps running),
+ConsistentStepRunner + recover_task (uncertain read-only
+steps retried once, uncertain outbound steps NEVER
+auto-retried — they land in needs_user_decision; a task
+completes only when every step has a result, otherwise
+interrupted), reconcile_startup (stale running tasks
+marked interrupted via append-only `task_stopped` with
+interrupted: true, then session housekeeping + FTS5
+rebuild/verify). TaskRunner now records heartbeat + intent
++ result per step (best-effort, like every other sink: a
+dead ledger must not kill the turn); the one exact event
+order assertion in test_world_brain_wiring.py was updated
+for the 3 new events per step. The kill drill
+(run_kill_drill, 7 cases: 5 boundaries on an outbound step
++ 2 read-only retry cases) proves it on this VM: every
+worker died with returncode -9, the hash chain stayed valid
+in all cases, the outbound effect ran 0x when killed before
+the effect and exactly 1x when killed after it (never 2x),
+the read-only-last-step kill recovered to completed, the
+rest recovered to interrupted with the uncertain outbound
+step in needs_user_decision. Honest limits: the drill is
+fault injection on processes on this VM, not kill -9 on a
+live container (waits for a Docker host); reconcile_startup
+is exported and tested but not yet wired to a call site —
+the app has no startup hook today (no lifespan, no
+production scheduler loop), so when one is added it is the
+function to call; the tasks projection table is not updated
+by E-06 (it is rebuilt from the ledger).
+
+VM replaced again mid-wave (~21:25 UTC, uptime 0 min): the
+E-06 verification run was killed by the service restart;
+Postgres packages were restored by the system replay
+itself (16.15 + pgvector 0.6.0, cluster down, started
+manually); role root recreated, schema_core.sql re-run,
+w1/w2 DBs recreated + ledger/accounts schemas applied, RLS
+true on users/sessions/vault in all three; the E-06
+verification run was re-run after recovery (180 passed).
+
+Central suite Wave 38 (log suite-wave38-e05-e06.log):
+4,089 passed, 25 skipped, 1 warning, SUITE_EXIT 0, 37m12s
+(4,065 + 14 E-05 + 10 E-06; the extra skip is the E-05
+live Docker smoke test).
+
 ## Wave 37 — B14 + E-01 + E-02 + E-03 + E-04 (2 workers parallel, pipeline rule, 20 Nov 2026)
 
 B14 Indonesian context pass (commit 096ed355), E-01 CI sandbox +
