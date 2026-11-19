@@ -90,6 +90,7 @@ from .beliefs import (
     _ScheduleBelief,
 )
 from .causal import CausalExpectationMixin
+from .ignorance import IgnoranceMixin
 
 TREND_CONFIRMATIONS = 3
 PRICE_TOLERANCE_RP = 0
@@ -139,7 +140,7 @@ ACTION_TYPES = (
 STEP_FAILURE_KINDS = ("gate_rejected", "world_failed")
 
 
-class WorldModel(CausalExpectationMixin, AgentModelMixin):
+class WorldModel(CausalExpectationMixin, AgentModelMixin, IgnoranceMixin):
     """Structured world model with predict, update, and correction."""
 
     def __init__(self) -> None:
@@ -160,9 +161,8 @@ class WorldModel(CausalExpectationMixin, AgentModelMixin):
         self.stats: dict[str, int] = {"predictions": 0, "correct": 0}
         self.episode_accuracies: list[float] = []
         self._episode_start: dict[str, int] | None = None
-        # Session learning loop, or None for the module-level default
-        # loop (see the learning-loop seam note above). Set by the
-        # session that owns this model; never part of state().
+        # Session learning loop (None: module-level default loop, see
+        # the seam note above). Set by the owning session; not state().
         self.learning_loop = None
 
     def _report_misprediction(self, record: dict) -> bool:
