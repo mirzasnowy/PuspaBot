@@ -377,3 +377,12 @@ def test_export_pdf_is_a_real_pdf():
     assert data.rstrip().endswith(b"%%EOF")
     assert b"Warung Sari" in data
     assert b"<script" not in data
+
+
+def test_extract_fields_understands_shorthand_money():
+    fields = extract_fields("poster promo diskon toko Kopi Senja harga 50rb", "promo_banner")
+    assert fields["price"] == "Rp50.000"
+    fields = extract_fields('promo "Diskon Besar" toko Kopi Senja 1,5 jt', "promo_banner")
+    assert fields["price"] == "Rp1.500.000"
+    fields = extract_fields("poster promo toko Kopi Senja Rp25.000", "promo_banner")
+    assert fields["price"] == "Rp25.000"

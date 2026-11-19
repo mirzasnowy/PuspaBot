@@ -31,6 +31,8 @@ import copy
 import json
 import re
 
+from puspa.local_data.money import format_rupiah, parse_rupiah_amount
+
 from .doc import ALLOWED_OP_TYPES, DesignError, find_node, validate_doc
 from .render import absolute_boxes, contrast_ratio, estimate_text_width
 from .templates import fill_template
@@ -93,24 +95,25 @@ def detect_template(prompt: str) -> str:
     return best
 
 
-_PRICE_RE = re.compile(r"rp\s?([\d.,]+)", re.IGNORECASE)
 _QUOTED_RE = re.compile(r'"([^"]+)"')
 
 
 def extract_fields(prompt: str, template: str) -> dict:
     """Pull slot values out of a prompt with small deterministic rules.
 
-    Quoted text becomes the headline/title; the first ``Rp...``
-    becomes the price; the first capitalised phrase after "toko" or
+    Quoted text becomes the headline/title; the first money amount
+    (``Rp25.000``, ``50rb``, ``1,5 jt`` — see
+    ``puspa.local_data.money``) becomes the price, rendered the
+    local way; the first capitalised phrase after "toko" or
     "warung" becomes the shop name. Anything not found stays
     missing and the template default fills it — extraction never
     invents a value.
     """
     fields: dict[str, str] = {}
     quoted = _QUOTED_RE.findall(prompt)
-    price = _PRICE_RE.search(prompt)
-    if price:
-        fields["price"] = f"Rp{price.group(1)}"
+    amount = parse_rupiah_amount(prompt)
+    if amount is not None:
+        fields["price"] = format_rupiah(amount)
     shop = re.search(r"(?:toko|warung|kedai)\s+([A-Z][\w' ]{1,30})", prompt)
     if shop:
         fields["shop"] = shop.group(1).split(" Rp")[0].strip()
