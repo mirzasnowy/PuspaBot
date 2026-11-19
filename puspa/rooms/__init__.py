@@ -1,0 +1,219 @@
+"""Shared rooms: invite and collaborate in group chat (B6).
+
+A room is a small group (beta-lite: 2-5 people, no shared funds)
+that shares one Puspa agent. The agent works for the group, not
+for one person: it summarises the chat, splits tasks, records
+decisions, and reminds owners about deadlines. Each member shares
+only what the group allows.
+
+Public surface:
+
+- :class:`RoomStore` — rooms, roles (owner/member/guest),
+  membership, leaving (private data leaves with the leaver).
+- :class:`RoomInviteStore` — invites by link or one-time code,
+  hash-only secrets, single use, revocation, idempotent accept.
+- :class:`RoomMemoryStore` — group memory in three layers:
+  personal (never in a room), room-visible, and private answers
+  only their author may read.
+- :class:`RoomTaskStore` — the shared task board (owner,
+  deadline, status) plus the deterministic chat summariser and
+  task splitter.
+- :class:`MoneyGate` — money actions need two people, or the
+  room owner alone.
+- :class:`RoomChannelLinker` / :func:`handle_group_inbound` —
+  routing a linked Telegram/WhatsApp group chat to its room, with
+  the room as principal; only @Puspa messages are answered.
+
+Reuse (mechanisms taken, rewritten as Puspa code, never copied
+verbatim):
+
+- ``puspa/teams`` (G13) — teams as their own entity, hash-only
+  invitation tokens, single-use idempotent acceptance, RLS
+  policies. Rooms follow the same shapes with group-chat roles
+  (owner/member/guest) and a 5-person beta cap.
+- ``puspa/channels`` (G14) — the adapter -> MessageEvent -> core
+  -> delivery-ledger pipeline. Group messages run the same
+  pipeline through the ``group_handler`` hook in
+  ``puspa/channels/inbound.py``.
+- ``puspa/memory`` (G7 + G24) — the layering idea: personal
+  memory stays personal; room memory is a separate store with
+  its own visibility rule.
+
+Honest limits (see ``docs/rooms-b6.md``): no live Telegram or
+WhatsApp bot is verified anywhere in this repo — channel tests
+use ``MockTransport`` (same as G14). WhatsApp groups are a
+postponed surface (plan section 12.4): the routing is
+transport-agnostic, but live WhatsApp-group delivery is out of
+scope for this iteration.
+"""
+
+from __future__ import annotations
+
+from .errors import (
+    InviteError,
+    LastOwnerError,
+    MoneyApprovalError,
+    NotRoomMemberError,
+    NotRoomOwnerError,
+    RoomError,
+    RoomFullError,
+    RoomNotFoundError,
+)
+from .invites import (
+    CODE_TTL_HOURS,
+    INVITE_LINK_TTL_DAYS,
+    JOIN_LINK_BASE,
+    RoomInvite,
+    RoomInviteStore,
+    accept_invite,
+    accept_invite_code,
+    get_invite,
+    issue_invite_code,
+    issue_invite_link,
+    list_invites,
+    purge_expired,
+    revoke_invite,
+)
+from .memory import (
+    MAX_MEMORY_CONTENT_CHARS,
+    MEMORY_KINDS,
+    RoomMemory,
+    RoomMemoryStore,
+    delete_memory,
+    list_room_memory,
+    record_decision,
+    record_memory,
+    record_summary,
+)
+from .money import (
+    REQUIRED_APPROVERS,
+    MoneyGate,
+    approve_money_action,
+    is_money_approved,
+    list_money_approvals,
+)
+from .rooms import (
+    MAX_ROOM_SIZE,
+    ROLE_GUEST,
+    ROLE_MEMBER,
+    ROLE_OWNER,
+    Room,
+    RoomMember,
+    RoomStore,
+    add_member,
+    create_room,
+    delete_room,
+    get_room,
+    is_member,
+    is_owner,
+    leave_room,
+    list_members,
+    list_rooms_for_user,
+    member_count,
+    remove_member,
+    role_of,
+    set_role,
+)
+from .routing import (
+    RoomChannelLink,
+    RoomChannelLinker,
+    handle_group_inbound,
+    is_addressed_to_puspa,
+    link_channel,
+    resolve_room,
+    room_principal_id,
+    unlink_channel,
+)
+from .schema import ROOMS_TABLES, create_schema, reset_tables, schema_path
+from .tasks import (
+    MAX_TASK_TITLE_CHARS,
+    RoomTask,
+    RoomTaskStore,
+    add_task,
+    complete_task,
+    due_soon,
+    list_tasks,
+    overdue,
+    split_tasks,
+    summarize_messages,
+)
+
+__all__ = [
+    "CODE_TTL_HOURS",
+    "INVITE_LINK_TTL_DAYS",
+    "JOIN_LINK_BASE",
+    "MAX_MEMORY_CONTENT_CHARS",
+    "MAX_ROOM_SIZE",
+    "MAX_TASK_TITLE_CHARS",
+    "MEMORY_KINDS",
+    "REQUIRED_APPROVERS",
+    "ROLE_GUEST",
+    "ROLE_MEMBER",
+    "ROLE_OWNER",
+    "ROOMS_TABLES",
+    "InviteError",
+    "LastOwnerError",
+    "MoneyApprovalError",
+    "MoneyGate",
+    "NotRoomMemberError",
+    "NotRoomOwnerError",
+    "Room",
+    "RoomChannelLink",
+    "RoomChannelLinker",
+    "RoomError",
+    "RoomFullError",
+    "RoomInvite",
+    "RoomInviteStore",
+    "RoomMember",
+    "RoomMemory",
+    "RoomMemoryStore",
+    "RoomNotFoundError",
+    "RoomStore",
+    "RoomTask",
+    "RoomTaskStore",
+    "accept_invite",
+    "accept_invite_code",
+    "add_member",
+    "add_task",
+    "approve_money_action",
+    "complete_task",
+    "create_room",
+    "create_schema",
+    "delete_memory",
+    "delete_room",
+    "due_soon",
+    "get_invite",
+    "get_room",
+    "handle_group_inbound",
+    "is_addressed_to_puspa",
+    "is_member",
+    "is_money_approved",
+    "is_owner",
+    "issue_invite_code",
+    "issue_invite_link",
+    "leave_room",
+    "link_channel",
+    "list_invites",
+    "list_members",
+    "list_money_approvals",
+    "list_room_memory",
+    "list_rooms_for_user",
+    "list_tasks",
+    "member_count",
+    "overdue",
+    "purge_expired",
+    "record_decision",
+    "record_memory",
+    "record_summary",
+    "remove_member",
+    "reset_tables",
+    "resolve_room",
+    "revoke_invite",
+    "role_of",
+    "room_principal_id",
+    "schema_path",
+    "set_role",
+    "split_tasks",
+    "summarize_messages",
+    "unlink_channel",
+]

@@ -21,7 +21,10 @@ Bot-loop guard: WhatsApp has no ``is_bot`` flag on inbound
 messages, so the guard here is the sender id — a message whose
 ``from`` equals the business phone number id (or the configured
 bot number) is normalised with ``is_bot=True``. Group messages do
-not exist on the Cloud API, so ``is_group`` is always False.
+not exist on the Cloud API, so ``is_group`` is always False
+(WhatsApp groups are a postponed surface, plan section 12.4);
+``mentions_bot`` is still set from the text, so the same routing
+rule applies if a group-capable WhatsApp transport ever arrives.
 """
 
 from __future__ import annotations
@@ -36,7 +39,7 @@ import httpx
 
 from .base import ChannelAdapter
 from .errors import DeliveryError, WebhookVerificationError
-from .events import MessageEvent
+from .events import MessageEvent, mentions_puspa
 
 __all__ = ["WHATSAPP_API_BASE", "WhatsAppAdapter"]
 
@@ -170,6 +173,7 @@ class WhatsAppAdapter(ChannelAdapter):
                                 and sender == self._bot_phone_number
                             ),
                             is_group=False,
+                            mentions_bot=mentions_puspa(text),
                             raw={"entry": entry, "message": message},
                         )
                     )

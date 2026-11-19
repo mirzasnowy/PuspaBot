@@ -4,8 +4,9 @@ An adapter hands the pipeline a normalised :class:`MessageEvent`;
 the pipeline runs the same steps whatever the platform:
 
 1. **Bot-loop guard** — a message from a bot, from Puspa itself,
-   or from a group is never answered (groups are DM-only in this
-   iteration).
+   or from an unlinked group is never answered (groups are
+   answered only through a room link, B6 — see ``group_handler``
+   below).
 2. **Pairing command** — a DM whose text looks like a 6-digit
    pairing code is a pairing attempt, not a task: it is verified
    against :class:`ChannelPairing` and answered with a short
@@ -22,10 +23,19 @@ the pipeline runs the same steps whatever the platform:
 
 The pipeline never raises for a dropped message: it returns a
 :class:`InboundOutcome` describing what happened (``answered``,
-``dropped_bot``, ``dropped_group``, ``dropped_duplicate``,
-``dropped_unauthorized``, ``paired``, ``pairing_failed``). Only a
-delivery failure raises, and only after the ledger records it —
-the caller decides whether to retry.
+``dropped_bot``, ``dropped_group``, ``dropped_not_addressed``,
+``dropped_duplicate``, ``dropped_unauthorized``, ``paired``,
+``pairing_failed``). Only a delivery failure raises, and only after
+the ledger records it — the caller decides whether to retry.
+
+``group_handler`` (B6) is an optional callable for group
+messages: ``group_handler(event, adapter=..., agent=...,
+ledger=..., delivery=...) -> InboundOutcome | None``. When set,
+a group message is offered to it first; a non-None outcome is
+returned as-is, and None falls through to ``dropped_group``.
+Without it, every group message is dropped exactly as before.
+The room handler lives in ``puspa.rooms.routing`` and is wired in
+by the caller — the pipeline itself knows nothing about rooms.
 
 Ledger writes are best-effort: a ledger failure must never drop
 a user message, so every ledger call here is wrapped in
@@ -53,6 +63,7 @@ OUTCOMES = (
     "answered",
     "dropped_bot",
     "dropped_group",
+    "dropped_not_addressed",
     "dropped_duplicate",
     "dropped_unauthorized",
     "paired",
@@ -85,14 +96,28 @@ def handle_inbound(
     allowlist: Allowlist | None = None,
     ledger=None,
     delivery: DeliveryService | None = None,
+    group_handler=None,
 ) -> InboundOutcome:
     """Run one normalised event through the shared pipeline."""
     delivery_service = delivery or (DeliveryService(ledger) if ledger is not None else None)
 
-    # 1. Bot-loop guard: never answer a bot, ourselves, or a group.
+    # 1. Bot-loop guard: never answer a bot or ourselves. A group
+    # message goes to the group handler when one is wired in (B6:
+    # a linked room answers @Puspa messages); without a handler,
+    # or when the handler declines (None), it is dropped.
     if event.is_bot:
         return InboundOutcome("dropped_bot", detail="sender is a bot")
     if event.is_group:
+        if group_handler is not None:
+            handled = group_handler(
+                event,
+                adapter=adapter,
+                agent=agent,
+                ledger=ledger,
+                delivery=delivery_service,
+            )
+            if handled is not None:
+                return handled
         return InboundOutcome("dropped_group", detail="group messages are not answered yet")
 
     # 2. Pairing command: a bare 6-digit code in a DM is a pairing

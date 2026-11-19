@@ -43,7 +43,7 @@ from .errors import (
     UnauthorizedChatError,
     WebhookVerificationError,
 )
-from .events import MessageEvent
+from .events import MessageEvent, mentions_puspa
 from .heartbeat import Heartbeat, HeartbeatStore
 from .inbound import InboundOutcome, handle_inbound
 from .ledger import (
@@ -86,6 +86,7 @@ __all__ = [
     "create_schema",
     "handle_inbound",
     "load_config",
+    "mentions_puspa",
     "notification_text",
     "notify",
     "reset_tables",
