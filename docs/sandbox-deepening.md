@@ -87,13 +87,14 @@ proxy. Puspa already has its own credential broker
 
 - Empty network policy: `--network none` (as before).
 - Non-empty network policy (hosts admitted): the runner
-  *refuses to run* (`SandboxUnavailable`, naming the missing
-  filtered egress proxy). OpenShell enforces this with an HTTP
-  CONNECT proxy + DNS mediation; Puspa has no such proxy yet,
-  so running with the network on would be a silent widening.
-  The refusal happens at admission (`run()` checks the policy
-  before probing Docker), and `docker_flags()` raises the same
-  refusal instead of returning flags that open the network.
+  routes the container through a configured, running
+  `EgressProxy` (E-03, `puspa/sandbox/egress.py`), and
+  *refuses to run* (`SandboxUnavailable`) when none is
+  configured — running with the network on and no proxy
+  would be a silent widening. The refusal happens at
+  admission (`run()` checks the policy before probing
+  Docker), and `docker_flags()` raises the same refusal
+  instead of returning flags that open the network.
 - The Docker backend still runs one ephemeral container per
   exec. A Puspa session is therefore a control-plane record
   plus a workspace, not a live process: `READY` means admitted
@@ -120,12 +121,21 @@ proxy. Puspa already has its own credential broker
    flag derivation (`docker_flags()`), the quota-derived
    `--memory`/`--cpus`/`--pids-limit`, and the `--network none`
    enforcement are *constructed* here, not *executed* here.
-   The first live check is on a Docker host or VPS.
-2. **No filtered egress proxy.** A policy that admits hosts is
-   validated and stored, but no exec runs under it until the
-   proxy exists. Do not "fix" this by passing
-   `--network bridge` or similar: that would silently grant
-   unmediated egress.
+   The first live check is the CI sandbox lane
+   (.github/workflows/ci.yml), which builds the sandbox image and
+   runs the live container tests on every PR.
+2. **Filtered egress proxy: BUILT (E-03).** A policy that
+   admits hosts is now enforced by
+   :mod:`puspa.sandbox.egress` (`EgressProxy`: HTTP CONNECT +
+   absolute-form forwarding, policy check before DNS, pinned
+   DNS to 1.1.1.1/8.8.8.8, blocked-range check including the
+   cloud metadata address, every request logged to a
+   hash-chained egress ledger). The runner routes a non-empty
+   policy through a configured, running proxy (internal Docker
+   network, dead container DNS, proxy env) and still refuses
+   when no proxy is configured. The proxy itself is tested
+   live in-process over real sockets; the container side
+   awaits a Docker host (see the E-03 section below).
 3. **No GPU provisioning.** `gpu_count > 0` is refused at
    quota-build time.
 4. **Sessions are in-memory and process-local** (like the G16
@@ -137,11 +147,16 @@ proxy. Puspa already has its own credential broker
    record stays `PENDING_HOST` with `cdp_url: None`. A host
    browser must never be launched as a stand-in: it would not
    be inside the sandbox at all.
-6. **No kernel enforcement.** Puspa has no Landlock/seccomp
-   layer; the container flags (`--read-only`, `--cap-drop
-   ALL`, `no-new-privileges`, non-root, resource caps) are the
-   enforcement that exists, plus policy validation at
-   admission.
+6. **Kernel enforcement: seccomp profiled, not yet executed
+   (E-03).** Puspa now ships a pinned seccomp profile (the
+   vendored Docker default plus a strict variant, validated at
+   load; see the E-03 section below) and passes it with
+   `--security-opt seccomp=<path>`, alongside `--read-only`,
+   `--cap-drop ALL`, `no-new-privileges`, non-root, and
+   resource caps. There is still no Landlock layer, and no
+   container has executed under the profile on this VM — the
+   profile is constructed and validated here, and its live
+   effect awaits a Docker host.
 
 ## Tests
 
@@ -166,4 +181,112 @@ proxy. Puspa already has its own credential broker
 
 Run: `NO_PROXY=localhost,127.0.0.1 no_proxy=localhost,127.0.0.1
 .venv/bin/python -m pytest tests/test_sandbox_g34*.py
-tests/test_sandbox.py tests/test_computer*.py -q` (SOLO, no `-n`).
+tests/test_sandbox_e03*.py tests/test_sandbox.py tests/test_computer*.py -q` (SOLO, no `-n`).
+
+## E-03: hardening (plan 4.3, 20 Nov 2026)
+
+What already existed (G34 + earlier), not rebuilt here:
+
+- Rootless-ish execution: non-root user 65534, `--cap-drop
+  ALL`, `no-new-privileges`, `--read-only` root filesystem
+  (`puspa/sandbox/runner.py`).
+- Per-job limits: CPU, memory, process count from
+  `ResourceQuota` (`puspa/sandbox/quota.py`); runtime limit
+  per job (`timeout_s` in `Sandbox.run`); disk quota enforced
+  on the workspace before writes (`measure_disk_usage`).
+- Fresh container per job (`docker run --rm`, one container
+  per exec; `puspa/computer/docker.py` runs one ephemeral
+  container per exec too).
+- No volume mounts anywhere (code arrives on stdin); the
+  Docker socket was never mounted — but nothing *checked* that.
+- Deny-by-default network policy (`NetworkPolicy`,
+  `NetworkEndpoint`, allowlist narrowing) — with the runner
+  refusing any non-empty policy for lack of a proxy.
+
+What E-03 added (the gaps in plan 4.3):
+
+- **Egress proxy** (`puspa/sandbox/egress.py`): `EgressProxy`
+  speaks CONNECT (https) and absolute-form requests (http).
+  Policy is checked *before* DNS, so a denied host is never
+  even resolved. DNS is pinned: a minimal stdlib UDP client
+  talks only to 1.1.1.1 / 8.8.8.8 (no new dependency); the
+  container's own resolver is dead (`--dns 127.0.0.1`) and the
+  proxy is reached by a static `/etc/hosts` entry
+  (`host.docker.internal:host-gateway`). After resolving, any
+  non-global address is refused — RFC 1918, loopback,
+  link-local (including `169.254.169.254`, the cloud metadata
+  endpoint), CGNAT, multicast, reserved, documentation ranges
+  — so DNS rebinding cannot reach the internal network. Every
+  request (allowed *and* denied) is recorded once in an
+  `EgressLedger`: append-only JSON lines, each entry carrying
+  the previous entry's SHA-256, so tampering breaks the chain
+  (`verify_chain`). That file is the egress ledger: the
+  Postgres `Ledger` has a closed set of 31 event types with no
+  network event, so bridging these entries into Postgres needs
+  a new event type (an operator/schema decision, not smuggled
+  in under an unrelated type). The container runs on a Docker
+  `--internal` network (`ensure_internal_network` creates it,
+  idempotently; a creation failure fails closed), which has no
+  external route at all — the proxy is the only way out.
+- **Seccomp** (`puspa/sandbox/seccomp.py` +
+  `seccomp-default.json` + `seccomp-strict.json`): Docker's
+  own default profile, vendored verbatim from moby/moby
+  `v28.0.0` (Apache-2.0, attribution in `REUSE.md` /
+  `NOTICE.md`), plus a strict variant (default minus 26
+  syscalls: ptrace, bpf, perf_event_open, cross-process memory
+  access, module loading, mount/umount2, reboot, clock
+  setting, hostname changes, and friends — all verified
+  present in the default, none needed by a Python workload).
+  Profiles are validated at load (`defaultAction` must be
+  `SCMP_ACT_ERRNO`, non-empty `syscalls` list, known actions);
+  a missing, malformed, or unsafe profile fails before any
+  container is built. The runner passes
+  `--security-opt seccomp=<path>` by default (`"strict"` and
+  `"docker-default"` are also selectable).
+- **Writable tmpfs** (runner): `--tmpfs
+  /tmp:rw,size=<n>m`, where `n = min(disk_mb, max(16,
+  memory_mb // 2))` — tmpfs pages count against the memory
+  cgroup, so the cap is half the memory limit and a runaway
+  write cannot OOM the workload. Default: 128 MiB.
+- **Flag audit** (`audit_docker_flags` in the runner): every
+  flag list is checked before use — any volume/mount flag, any
+  `docker.sock` reference, or any missing hardening flag
+  (`--read-only`, `--cap-drop ALL`, `no-new-privileges`,
+  non-root `--user`, `--network`, `--tmpfs`) refuses the run.
+  "Never mount the Docker socket" is now a check, not a
+  comment.
+- **Stronger-isolation runtimes** (`puspa/sandbox/runtime.py`):
+  `RuntimeConfig` for `runc` (default) / `runsc` (gVisor) /
+  `kata` (Kata), `--runtime` flag derivation, refusal when the
+  daemon does not offer the runtime, and a spawn measurement
+  harness (`measure_spawn`, `evaluate_runtimes`,
+  `docker_spawn_probe`) against the gate-9 target of under 3
+  seconds. The runtime choice is *not* made here: gVisor and
+  Kata both cost spawn time and CPU, so the harness exists to
+  decide from measured numbers on the real host (E-02's VPS).
+- **Warm pool** (`puspa/sandbox/warmpool.py`): pre-created,
+  never-run containers; `acquire` hands one to exactly one
+  user; `release` always destroys it (`docker rm -f`) and
+  refills with a fresh one. There is no "clean" path and no
+  code path that returns a used container to the pool; a
+  double release or a release by the wrong user raises. The
+  runner borrows a slot for one run and releases it in a
+  `finally`, even on timeout. The pool is opt-in; without one
+  the runner keeps its `docker run --rm` path.
+
+Honest limits (E-03, in addition to the list above):
+
+- No live container has run through any of this on this VM:
+  flag derivation, the proxy-mode network flags, and the
+  pool's create/start/remove path are constructed and tested
+  with fakes, not executed. First live check is a Docker host
+  (E-02's VPS): the internal network must actually let the
+  container reach the host gateway where the proxy listens,
+  and the seccomp profile must let a Python workload start.
+- The pinned-DNS live test is skipped on this VM (the VM
+  blocks UDP send with EPERM); the DNS wire format is still
+  tested without sockets, and the live test runs where UDP
+  works.
+- `puspa/sandbox/egress.py` is 967 lines, close to the 1000-line
+  ratchet soft cap: split it (proxy vs. ledger vs. DNS client)
+  before it grows further.

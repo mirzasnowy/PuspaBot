@@ -115,6 +115,18 @@ a failure or a cancellation fails the gate.
 Lanes:
 
 - `test` — the full suite SOLO on Postgres 16 + pgvector.
+- `sandbox` — the live container + Chromium tests that can never run
+  on the dev VM (its kernel rejects container namespaces): the 4 live
+  tests in `tests/test_sandbox.py`, the Docker backend conformance
+  tests in `tests/test_computer_backends.py`, and the Chromium reader
+  test in `tests/test_readers.py`. The lane builds
+  `infra/sandbox.Dockerfile` first (the runner's default image,
+  `puspa-sandbox:3.12-local`, is built locally on the dev VM and is on
+  no registry), installs Chromium with `playwright install --with-deps
+  chromium`, and fails if any of those live tests skip (it parses the
+  JUnit XML), so a broken image or browser can never silently turn the
+  lane back into skips. Honest limit: the lane has never run on GitHub
+  yet; its first real run happens there.
 - `checks` — the file-size ratchet and the docs-drift test, no database.
 - `lint` — `ruff check puspa tests demo` (rules in `pyproject.toml`
   `[tool.ruff.lint]`).
