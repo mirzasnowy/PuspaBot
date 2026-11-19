@@ -824,10 +824,61 @@ TRUNCATE'd by the shared conftest fixture; the K12
 module-test fixture resets the flag itself before/after
 each test. No LICENSE or billing model decision was made.
 
-Remaining: B features (B9, B10, B11, B12, B13), then B18
+Remaining: B features (B11, B12, B13), then B18
 (second-brain graph view), then culture LAST (B15, B16, B17, in
 that order). Then uji + 15 gates + 10 reference tasks (waiting
 on Nero's decisions).
+
+## Wave 30 — B9 + B10 (2 workers parallel, pipeline rule, 19 Nov 2026)
+
+B9 delegated tasks with approval (extends the B6 board, no
+second board). `puspa/rooms/delegation.py`: delegate to the
+agent (G25 handle verified, forged handles refused) or to a
+teammate (guests can neither receive nor delegate); cycle
+delegated → in_progress → done, block/resume, progress
+reports on the board; irreversible steps go through G4
+`ApprovalPolicy.decide` and, when filed, G5 `Gate.execute`
+bound to the content hash (24h expiry); with no policy wired
+in an irreversible step stays `awaiting_approval` and can
+never run. PWA API `puspa/pwa/rooms_api.py` (GET rooms/board,
+POST tasks/steps/approve/reject) + Tasks screen "Shared task
+boards" section + generated client types. Module tests: 30
+passed (23 delegation + 7 PWA API, verified by coordinator).
+Honest limits: the agent worker itself is not executed here
+(caller runs the child via `SubagentLifecycle`); no approval
+policy/gate wired into the HTTP layer; G9 decider not
+consulted for delegation decisions (later ticket).
+
+B10 meeting notes and follow-ups (`puspa/meetings/`:
+deterministic `parse.py`, `store.py`, `reminders.py`,
+`schema.py`; `infra/schema_meetings.sql`). Minutes from
+explicit markers only (`Decision:`, `Action:`/`TODO:`/`- [ ]`,
+`Title:`, `Attendees:`, `Note:`) — unmarked talk is ignored,
+never invented; owner via `@Name`, deadline via `by <date>` /
+weekday / `tomorrow` (English + Indonesian names). One B6
+board task per action item; each decision is a room-memory
+`decision` row AND a ledger `evidence_recorded` event
+(`kind: meeting_decision`); action items are ledger
+`task_created` events — no new event type (closed set of 31
+untouched). Reminders are queries + a G8 cron hook (12h,
+Asia/Jakarta), never sends. Module tests: 14 passed
+(verified by coordinator). Honest limits: B2 not built here
+(the ledger events are the stand-in B2 adopts later);
+extraction is marker-based; owner resolution needs the
+caller-supplied display-name map; `write_minutes` is not one
+cross-store transaction (partial write possible, minutes row
+is the anchor).
+
+Ratchet fix (Wave 30): the B9 rooms API grew
+`docs/openapi-pwa.yaml` to 2,152 lines, past the 2000-line
+hard cap. The rooms contract (5 endpoints + 5 schemas) was
+split into `docs/openapi-rooms.yaml` (461 lines); the main
+spec keeps $ref stubs and is now 1,727 lines (baseline
+re-recorded with this reason). The generated client
+(openapi-typescript 7.13.0) resolves the external refs —
+regenerated and verified (`tsc -b` clean, rooms types still
+present). The Error schema stays in the main spec and is
+referenced back from the rooms file.
 
 ## Wave 29 — K13 + B6 (2 workers parallel, 19 Nov 2026)
 
