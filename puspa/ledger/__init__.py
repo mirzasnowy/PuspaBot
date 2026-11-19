@@ -19,7 +19,15 @@ from .audit import (
     is_nobody_watching,
     sanitize_cell,
 )
+from .audit_writer import AuditWriter, ensure_audit_role
 from .errors import InvalidEventTypeError, LedgerError
+from .export import EXCLUDED, EXPORT_VERSION, UserExport, build_user_export, export_user_data
+from .kill_switch import (
+    KillSwitch,
+    KillSwitchActive,
+    KillSwitchError,
+    is_kill_switch_active,
+)
 from .ledger import (
     APP_ROLE,
     DEFAULT_DSN,
@@ -35,26 +43,37 @@ __all__ = [
     "AUDIT_RETENTION_ENV",
     "DEFAULT_DSN",
     "EVENT_TYPES",
+    "EXCLUDED",
+    "EXPORT_VERSION",
     "GENESIS",
     "INITIATOR_KINDS",
     "MAX_EXPORT_ROWS",
     "NOBODY_WATCHING_KINDS",
     "AuditExportLog",
+    "AuditWriter",
     "ControlRejected",
     "ControlState",
     "ExportResult",
     "Initiator",
     "InvalidEventTypeError",
+    "KillSwitch",
+    "KillSwitchActive",
+    "KillSwitchError",
     "Ledger",
     "LedgerError",
+    "UserExport",
     "attach_initiator",
     "audit_retention_days",
+    "build_user_export",
     "canonical_json",
     "compute_event_hash",
+    "ensure_audit_role",
     "export_events_csv",
+    "export_user_data",
     "file_audit_entry",
     "filter_nobody_watching",
     "initiator_of",
+    "is_kill_switch_active",
     "is_nobody_watching",
     "sanitize_cell",
 ]
