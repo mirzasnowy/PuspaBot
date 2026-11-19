@@ -862,3 +862,119 @@ model decision was made.
 Remaining: Kosmos K10, K11, K12, K13, then B features
 (B6, B9, B10, B11, B12, B13), then B15 culture LAST. Then uji
 + 15 gates + 10 reference tasks (waiting on Nero's decisions).
+## Wave 27 — Kosmos K10: interruption budget (DONE 19 Nov 2026)
+
+K10 gives proactivity a daily interruption budget: default
+silence, and the system "pays" for the user's attention from
+the budget, moving on its own only when the benefit exceeds
+the cost of interrupting. New package
+`puspa/proactivity/` (`budget.py`, 464 lines), deterministic,
+no LLM, in-memory by deliberate choice (see the honest
+limits).
+
+One day carries `DEFAULT_DAILY_BUDGET = 5` units of
+attention (the why-5 reasoning is in
+`docs/interruption-budget.md`). Every proactive initiative
+pays a cost by kind and must clear the kind's minimum value
+(0..1) to justify interrupting at all: `urgent_alert` 1
+(min 0.50), `bill_due` 1 (0.60), `price_drop` 2 (0.70),
+`reminder` 1 (0.60), `digest` 1 (0.50), `suggestion` 2
+(0.80), `silent_action` 0 (0.00). The decision checks run
+in order: value below the kind's minimum → denied, however
+full the budget is; silent action (cost 0) → allowed, it
+never interrupts so it never pays and is never gated;
+budget empty → denied (silence, no new notification);
+remaining below the cost → denied; budget scarce
+(remaining at or below `LOW_REMAINING_THRESHOLD = 2`) and
+value below the high-value bar (`HIGH_VALUE_THRESHOLD =
+0.85`) → denied, so the last units are reserved for what
+matters most; otherwise allowed and the cost is deducted.
+The kind set is closed: a kind not listed is rejected, so a
+caller cannot invent a cheap kind to dodge the budget.
+Every attempt is recorded in the spend log either way
+(`spend_log()`, with kind / label / value / cost / allowed /
+reason), and `summary()` reports one day in numbers. A
+denied attempt never deducts (`spent()` counts allowed
+records only). Spend-log days older than `MAX_KEPT_DAYS =
+30` are dropped; a reset day reads as a full budget again.
+
+Two wirings into paths that are really used, not new ones:
+(1) the scheduler (`puspa/scheduler/scheduler.py`): `tick`
+/ `run_trigger` / `run_missed` take an optional `budget`;
+only the system-initiated pings pay — `price_drop` (value
+0.70, saves money but rarely urgent, so it is suppressed
+first when the budget thins) and `due_date_bill` (0.85,
+time-critical, also clears the scarcity bar). A denied
+trigger is simply not run: no run row is written and
+`pemicu_berikutnya` is NOT moved — the trigger stays due
+and is evaluated again on the next round (or tomorrow, when
+the budget resets). User-created schedules, manual
+triggers, and the silent system jobs (backup,
+consolidation, dream, trust-root refresh, sentinel scan)
+never pay: the user asked for the first two, and the rest
+never interrupt anyone. (2) the channel gateway
+(`puspa/channels/run.py`): `GatewayRunner` owns one
+`InterruptionBudget` per profile, shared by every
+notification the runner sends; `notify(..., initiative=...)`
+pays from the budget first — denied means nothing is sent
+and it returns None. Without `initiative` the send is
+ungated: this path is for proactive pings only, and replies
+to the user never go through `notify`. The denial is
+recorded in `budget.spend_log()`, not in the ledger: there
+is no ledger event type for "held back", and the 31 revisi-7
+event types stay closed.
+
+Files (worker 1a0e2d46, not yet pushed): created
+`puspa/proactivity/budget.py` (464 lines),
+`puspa/proactivity/__init__.py` (45 lines),
+`tests/test_interruption_budget.py` (482 lines, 23 tests),
+`docs/interruption-budget.md` (165 lines); changed
+`puspa/scheduler/scheduler.py` (357 -> 409),
+`puspa/channels/run.py` (231 -> 260),
+`docs/kosmos-design.md` (+13 lines: implementation note
+under the K10 criteria). `puspa/world/model.py` and
+`puspa/world/agents.py` untouched.
+
+Verification (coordinator, re-ran herself): module tests
+`tests/test_interruption_budget.py`: 23 passed. Neighbour
+regression (scheduler push / cron / claim / due / execution
+/ holds / link / receipts / recovery / schedules,
+channels gateway, ledger event types, file-size ratchet):
+139 passed (162 with the module file). Ruff check +
+format: clean. Mypy: clean. Read in full: `try_spend`
+(the decision order), `spent()` (denied records never
+deduct), the scheduler wiring, the gateway wiring.
+Coordinator fix before push: the worker's new paragraph in
+the `run_trigger` docstring was written in Indonesian; it
+is now English, matching the worker's brief. Pre-existing
+note: `puspa/scheduler/scheduler.py` itself still carries
+Indonesian identifiers and docstrings from before K10
+(`pemicu_berikutnya`, `pemicu_terpicu`, ... — 24 matches on
+main); the K10 addition follows the file's existing
+language except for the translated paragraph. A full
+English rename of the scheduler module is a separate item,
+not part of K10.
+
+Suite (coordinator, SOLO, log
+hidden_files/suite-wave27-k10.log): 3,392 passed, 23 skipped,
+1 warning, 21m40s, EXIT 0.
+Reconciliation: 3,369 (Wave 26) + 23 (K10 module tests) = 3,392.
+
+Honest limits: the budget is in-memory, so a restart resets
+that day's spend — a restart can let through a ping that
+should have been held. Postgres persistence (table +
+migration, K3/K4/K5 pattern) is a documented follow-up, not
+done here. The scheduler's benefit values are still fixed
+per type (bill 0.85, price drop 0.70) because the scheduler
+has no per-event benefit signal yet — it cannot tell a
+small discount from a big one; per-event scoring from the
+world model is a follow-up. User-created cron routines and
+replies to the user are deliberately excluded (solicited,
+not interruptions). No ledger row exists for denials — if
+one is ever needed, it takes a revisi-7 decision to add an
+event type, since the 31 are closed. No LICENSE or billing
+model decision was made.
+
+Remaining: Kosmos K11, K12, K13, then B features
+(B6, B9, B10, B11, B12, B13), then B15 culture LAST. Then uji
++ 15 gates + 10 reference tasks (waiting on Nero's decisions).
