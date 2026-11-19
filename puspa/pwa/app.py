@@ -717,8 +717,10 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None, draft_sender=N
     # exist through the SCREENS loop above. Insights and Onboarding
     # fetch all their data through these APIs, so _context_screen
     # needs no new bootstrap data for them.
-    from puspa.pwa import drafts_api, insights_api, onboarding_api, rooms_api
+    from puspa.pwa import drafts_api, graph_api, insights_api, onboarding_api, rooms_api
 
+    app.state.graph_views = graph_api.GraphViewService(dsn=app.state.dsn)
+    graph_api.register_routes(app, need_user)
     insights_api.register_routes(app, need_user)
     onboarding_api.register_routes(app, need_user)
     rooms_api.register_routes(app, need_user)

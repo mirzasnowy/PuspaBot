@@ -639,6 +639,16 @@ paths:
     $ref: './openapi-rooms.yaml#/paths/~1api~1voice~1profile'
   /api/voice/corrections:
     $ref: './openapi-rooms.yaml#/paths/~1api~1voice~1corrections'
+  /api/graph:
+    $ref: './openapi-graph.yaml#/paths/~1api~1graph'
+  /api/graph/nodes/{name}:
+    $ref: './openapi-graph.yaml#/paths/~1api~1graph~1nodes~1{name}'
+  /api/graph/nodes:
+    $ref: './openapi-graph.yaml#/paths/~1api~1graph~1nodes'
+  /api/graph/edges:
+    $ref: './openapi-graph.yaml#/paths/~1api~1graph~1edges'
+  /api/graph/search:
+    $ref: './openapi-graph.yaml#/paths/~1api~1graph~1search'
   /api/onboarding:
     get:
       tags: [onboarding]
@@ -1119,6 +1129,24 @@ components:
       $ref: './openapi-rooms.yaml#/components/schemas/DraftApproval'
     VoiceProfile:
       $ref: './openapi-rooms.yaml#/components/schemas/VoiceProfile'
+    GraphNode:
+      $ref: './openapi-graph.yaml#/components/schemas/GraphNode'
+    GraphEdge:
+      $ref: './openapi-graph.yaml#/components/schemas/GraphEdge'
+    GraphPage:
+      $ref: './openapi-graph.yaml#/components/schemas/GraphPage'
+    GraphNodeDetail:
+      $ref: './openapi-graph.yaml#/components/schemas/GraphNodeDetail'
+    GraphNodeInput:
+      $ref: './openapi-graph.yaml#/components/schemas/GraphNodeInput'
+    GraphEdgeInput:
+      $ref: './openapi-graph.yaml#/components/schemas/GraphEdgeInput'
+    GraphEdgeChangeInput:
+      $ref: './openapi-graph.yaml#/components/schemas/GraphEdgeChangeInput'
+    GraphSearchResult:
+      $ref: './openapi-graph.yaml#/components/schemas/GraphSearchResult'
+    GraphSearchResponse:
+      $ref: './openapi-graph.yaml#/components/schemas/GraphSearchResponse'
     ModelSettings:
       type: object
       description: |

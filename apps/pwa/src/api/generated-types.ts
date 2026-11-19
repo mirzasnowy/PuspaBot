@@ -2480,6 +2480,589 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bounded knowledge-graph page for the logged-in user
+         * @description B18: one page of the user's knowledge graph, read from the
+         *     real KnowledgeGraph (seeded from episodic memory, then the
+         *     user's ledger corrections replayed). Nodes are sorted by
+         *     name; `limit` is capped at 100, `offset` pages through
+         *     them. Edges are only the ones touching a returned node,
+         *     also capped at `limit`. `kind` keeps nodes of one kind;
+         *     `since` (ISO-8601) keeps nodes seen at or after that time.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    offset?: number;
+                    kind?: string;
+                    since?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Graph page */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GraphPage"];
+                    };
+                };
+                /** @description Bad limit, offset, or since value */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph/nodes/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inspect one graph node (facts + provenance) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Node detail */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GraphNodeDetail"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown node */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /**
+         * Delete a graph node and its edges
+         * @description B18: deletes the node and every edge touching it;
+         *     recorded in the ledger as a user correction. Deleting a
+         *     code-graph node is refused with 403.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted node name */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            deleted: string;
+                        };
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Code-graph node is read-only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown node */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /**
+         * Rename a graph node
+         * @description B18: renames the node and rewrites every edge and passage
+         *     link that mentions it; recorded in the ledger as a user
+         *     correction. Renaming a code-graph node is refused with 403.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Renamed node */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GraphNode"];
+                    };
+                };
+                /** @description Bad input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Code-graph node is read-only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown node */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/graph/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a node to the user's graph
+         * @description B18: the node is written to the KnowledgeGraph and the
+         *     edit is recorded in the ledger as a user correction
+         *     (`evidence_recorded`, kind `user_correction`). A
+         *     code-graph kind (file, function, class, module, table,
+         *     config) is refused with 403.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["GraphNodeInput"];
+                };
+            };
+            responses: {
+                /** @description Added node */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GraphNode"];
+                    };
+                };
+                /** @description Bad input, or the node already exists */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Code-graph kind is read-only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph/edges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add an edge to the user's graph
+         * @description B18: missing endpoint nodes are created (kind unknown);
+         *     recorded in the ledger as a user correction. An edge
+         *     touching a code-graph node is refused with 403.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["GraphEdgeInput"];
+                };
+            };
+            responses: {
+                /** @description Added edge */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GraphEdge"];
+                    };
+                };
+                /** @description Bad input, or the edge already exists */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Code-graph node is read-only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /**
+         * Delete an edge from the user's graph
+         * @description B18: recorded in the ledger as a user correction. An
+         *     edge touching a code-graph node is refused with 403.
+         */
+        delete: {
+            parameters: {
+                query: {
+                    subject: string;
+                    relation: string;
+                    object: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted edge */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            deleted: components["schemas"]["GraphEdgeInput"];
+                        };
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Code-graph node is read-only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown edge */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /**
+         * Change an edge, or correct a fact
+         * @description B18: changes an edge's relation and/or object. With
+         *     `operation: correct_fact` the ledger records the edit as
+         *     a fact correction rather than a rewording. Recorded in
+         *     the ledger as a user correction either way. An edge
+         *     touching a code-graph node is refused with 403.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["GraphEdgeChangeInput"];
+                };
+            };
+            responses: {
+                /** @description Changed edge */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GraphEdge"];
+                    };
+                };
+                /** @description Bad input, or the changed edge already exists */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Code-graph node is read-only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown edge */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/graph/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Retrieve passages from the user's graph (HippoRAG)
+         * @description B18: runs the HippoRAG retriever over the same graph
+         *     object the view edits, so a correction changes the next
+         *     answer. `graph_score` is 0 and `seed_nodes` is empty when
+         *     the query matched no node and the answer fell back to
+         *     plain vector ranking.
+         */
+        get: {
+            parameters: {
+                query: {
+                    q: string;
+                    top_k?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Retrieval results */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GraphSearchResponse"];
+                    };
+                };
+                /** @description Bad query or top_k */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/onboarding": {
         parameters: {
             query?: never;
@@ -3500,6 +4083,99 @@ export interface components {
             style_notes: string[];
             preferences: string[];
             decisions: string[];
+        };
+        /**
+         * @description B18: one knowledge-graph node. `sources` are the passage
+         *     ids (or `user_correction`) the node came from; `seen_at`
+         *     is the newest episode time that mentions the node, or the
+         *     correction time for a user-added node; `is_code_node`
+         *     marks G29 code-graph nodes, which are read-only here.
+         */
+        GraphNode: {
+            name: string;
+            kind?: string | null;
+            description?: string;
+            sources: string[];
+            fact_count: number;
+            /** Format: date-time */
+            seen_at?: string | null;
+            is_code_node: boolean;
+        };
+        /** @description B18: one directed knowledge-graph edge (triple). */
+        GraphEdge: {
+            subject: string;
+            relation: string;
+            object: string;
+            sources: string[];
+        };
+        /**
+         * @description B18: one bounded page of the graph. `nodes` are at most
+         *     `limit` (capped at 100); `edges` are only the ones
+         *     touching a returned node, also capped at `limit`.
+         */
+        GraphPage: {
+            nodes: components["schemas"]["GraphNode"][];
+            edges: components["schemas"]["GraphEdge"][];
+            total_nodes: number;
+            total_edges: number;
+            limit: number;
+            offset: number;
+        };
+        /**
+         * @description B18: one node with its facts (triples touching it) and
+         *     provenance (the passages the facts came from, with text).
+         */
+        GraphNodeDetail: {
+            name: string;
+            kind?: string | null;
+            description?: string;
+            sources: string[];
+            fact_count: number;
+            /** Format: date-time */
+            seen_at?: string | null;
+            is_code_node: boolean;
+            facts: components["schemas"]["GraphEdge"][];
+            provenance: {
+                passage_id: string;
+                text: string;
+            }[];
+        };
+        GraphNodeInput: {
+            name: string;
+            kind?: string | null;
+            description?: string;
+        };
+        GraphEdgeInput: {
+            subject: string;
+            relation: string;
+            object: string;
+        };
+        /**
+         * @description B18: change one edge. `operation` is `change_edge` or
+         *     `correct_fact` (a fact correction, recorded as such).
+         */
+        GraphEdgeChangeInput: {
+            subject: string;
+            relation: string;
+            object: string;
+            new_relation?: string | null;
+            new_object?: string | null;
+            /**
+             * @default change_edge
+             * @enum {string}
+             */
+            operation: "change_edge" | "correct_fact";
+        };
+        GraphSearchResult: {
+            passage_id: string;
+            text: string;
+            score: number;
+            graph_score: number;
+            seed_nodes: string[];
+            evidence_id: string;
+        };
+        GraphSearchResponse: {
+            results: components["schemas"]["GraphSearchResult"][];
         };
         /**
          * @description The user's own-model selection (G33). Carries no key
