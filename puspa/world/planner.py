@@ -1,17 +1,27 @@
 """Multi-step planning by simulating against the world model.
 
 ``plan(model, task)`` never touches the real world and never mutates
-the live model: it copies the model state, forecasts each step with
-``WorldModel.predict`` on that copy, and applies each forecast with
-``WorldModel.apply_predicted`` to build the state the next step sees.
-A plan is therefore a rehearsal, not an execution.
+the live model's beliefs or state: it copies the model state,
+forecasts each step with ``WorldModel.predict`` on that copy, and
+applies each forecast with ``WorldModel.apply_predicted`` to build
+the state the next step sees. A plan is therefore a rehearsal, not
+an execution. One exception is metadata, not world state: when a
+plan cannot proceed for lack of evidence, it records the gap in
+the model's ignorance map (K6, ``puspa.world.ignorance``) — the
+beliefs and ``model.state`` are still unchanged by planning.
 
 Supported tasks (all values English):
 
 - ``{"goal": "pay_bill", "bill_id": ...}``: check the bill, pay it
   when it is unpaid, then check again to verify it is paid.
 - ``{"goal": "find_cheapest_price", "product_id": ...}``: check the
-  price at every known store, then buy from the cheapest one.
+  price at every known store, then buy from the cheapest one. When
+  no store has a known price the plan is infeasible with reason
+  ``"needs_probe"`` instead of guessing a store: the missing price
+  areas are recorded in the model's ignorance map (K6) and the plan
+  carries one probe step (check the price at the first store) plus
+  the ``"probe"`` and ``"unknown_areas"`` fields, so the caller can
+  go look once and re-plan with evidence.
 - ``{"goal": "message_contact", "contact_id": ...}``: ask what the
   contact will do next (K5, ``WorldModel.predict_agent``) and plan
   the message only when a reply is likely; when an ``"ask"`` goal
@@ -120,12 +130,31 @@ def _plan_find_cheapest(model: WorldModel, task: dict) -> dict:
         if step["predicted_outcome"].get("known")
     ]
     if not known:
+        # No store has a price: do not guess a store. Record the
+        # gap in the model's ignorance map (K6) and return one
+        # small probe — check the price at the first store — so
+        # the caller can go look once and re-plan with evidence.
+        # Registering the gap is metadata about the model's own
+        # blindness, not world state: the beliefs and model.state
+        # are unchanged by this plan.
+        unknown_areas = []
+        for store in stores:
+            area = model.register_unknown("price", f"{product_id}@{store}")
+            if area is not None:
+                unknown_areas.append(area.key)
+        probe = model.probe_for("price", f"{product_id}@{stores[0]}")
+        probe_steps: list[dict] = []
+        if probe is not None:
+            probe_steps, _ = _simulate_steps(model, [probe["action"]])
+            probe_steps[0]["probe"] = True
         return {
             "task": task,
-            "steps": steps,
+            "steps": probe_steps,
             "feasible": False,
             "predicted_outcome": {},
-            "reason": "no_known_price",
+            "reason": "needs_probe",
+            "probe": probe,
+            "unknown_areas": unknown_areas,
         }
     cheapest_store, cheapest_price = min(known, key=lambda item: item[1])
     buy = {"type": "buy_from_store", "product_id": product_id, "store": cheapest_store}
