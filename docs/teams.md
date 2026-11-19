@@ -214,6 +214,13 @@ unless its key is uncommented.
 
 ### The image (`Dockerfile`)
 
+- PWA stage (E-05): Node 20-slim, `npm ci` + `npm run build`,
+  builds the React SPA into `/pwa/dist`; the runtime stage
+  copies it to `/app/apps/pwa/dist`, so the deployed image
+  serves React at `/app`, not the Jinja fallback. The stage
+  also copies `apps/pwa/static` in, so the build output is
+  byte-identical to a local `npm run build`. `.dockerignore`
+  keeps the context lean (no `dist/`, `node_modules/`, `.venv/`).
 - Builder stage: Python 3.12-slim, venv at `/opt/venv`, pinned
   `requirements.txt` installed.
 - Runtime stage: Python 3.12-slim + s6-overlay 3.2.3.2 (noarch +
@@ -273,13 +280,19 @@ impossible here. `validate_dockerfile(path)` and
 they parse the files with pure Python and check the deploy rules
 (multi-stage, s6-overlay + `/init` entrypoint, non-root app via
 `s6-setuidgid`, UID/GID args, dashboard host default 127.0.0.1,
-no baked-in API key, HEALTHCHECK present; gateway + dashboard
-services exist, every published port binds 127.0.0.1, no API key
-set, home volume mounted, UID/GID args passed). They return a
-list of issue strings; empty means clean. The tests assert the
-shipped files are clean, plus negative cases on synthetic files.
-Passing these checks proves the files are well-formed and follow
-the rules — NOT that the image builds or runs.
+no baked-in API key, HEALTHCHECK present; E-05: a Node stage
+builds the PWA with `npm run build` and the runtime stage copies
+its `dist` in; gateway + dashboard services exist, every published
+port binds 127.0.0.1, no API key set, home volume mounted, UID/GID
+args passed). They return a list of issue strings; empty means
+clean. The tests assert the shipped files are clean, plus negative
+cases on synthetic files. Passing these checks proves the files are
+well-formed and follow the rules — NOT that the image builds or
+runs. That proof is the image smoke test
+(`tests/test_image_smoke.py`): it builds the image, runs one
+container, requests `/app`, and checks the React bundle is served.
+It runs in the CI sandbox lane (E-01), which fails if the live
+test skips.
 
 ### Live validation (required, on a VPS)
 
@@ -320,16 +333,16 @@ from another machine on the LAN (only through the tunnel).
   `bot_access_requests` (the audit trail for this iteration). A
   ledger event type is a follow-up owned by the ledger — the core
   ledger stays at 31 types.
-- **No live deploy validation.** The Dockerfile and compose file
-  are validated offline only (see above). The image has not been
-  built, the containers have not run, and no login through them
-  has been observed. First live run is on a VPS.
+- **No live deploy validation on a VPS yet.** The Dockerfile and
+  compose file are validated offline, and the image smoke test
+  (E-05) builds the image and checks `/app` serves React in the
+  CI sandbox lane — but the image has not been built on this VM
+  (no Docker daemon here), the containers have not run, and no
+  login through them has been observed. First live run is on a
+  VPS.
 - **Image size.** The image installs the full pinned
   `requirements.txt` including torch (~2.5 GB installed). A slim
   server-only requirements split is a follow-up.
-- **Built SPA not in the image.** The image serves the Jinja
-  templates; the built SPA (`apps/pwa/dist`) needs a node build
-  stage (follow-up).
 - **Entitlement revocation needs the DB.** A token-only check
   cannot see revocations; the home gate must be constructed with
   a DSN for revocation to apply.
@@ -361,4 +374,13 @@ from another machine on the LAN (only through the tunnel).
   illegal transitions refused, one active move per bot.
 - `tests/test_teams_deploy.py` — shipped Dockerfile + compose
   validate clean; negative cases (single-stage Dockerfile,
-  missing s6-overlay, 0.0.0.0 compose binding, API key set).
+  missing s6-overlay, 0.0.0.0 compose binding, API key set,
+  missing Node stage, missing dist copy, missing PWA build).
+- `tests/test_image_smoke.py` — image smoke (E-05): bundle
+  extraction + SPA-shell detection, `check_spa_at` against a
+  throwaway server (SPA ok, Jinja rejected, missing bundle
+  rejected, unreachable server reported), `GET /app` serves the
+  SPA shell from dist (fake and real) without login and falls
+  back to Jinja without dist; the live test builds the image,
+  runs one container, and checks `/app` serves React (skips
+  without a Docker daemon; the CI sandbox lane fails on skip).

@@ -29,10 +29,11 @@ def test_shipped_compose_validates_clean():
     assert issues == []
 
 
-def test_parse_dockerfile_finds_both_stages():
+def test_parse_dockerfile_finds_all_stages():
     info = parse_dockerfile((BUILD_ROOT / "Dockerfile").read_text(encoding="utf-8"))
     assert info.errors == []
-    assert [stage.name for stage in info.stages] == ["builder", "runtime"]
+    assert [stage.name for stage in info.stages] == ["pwa", "builder", "runtime"]
+    assert [stage.base.split(":")[0] for stage in info.stages] == ["node", "python", "python"]
     assert "ENTRYPOINT" in info.instructions
     assert "HEALTHCHECK" in info.instructions
 
@@ -42,6 +43,56 @@ def test_single_stage_dockerfile_is_rejected(tmp_path):
     bad.write_text("FROM python:3.12-slim\nRUN echo hi\n", encoding="utf-8")
     issues = validate_dockerfile(bad)
     assert any("multi-stage" in issue for issue in issues)
+
+
+def test_dockerfile_without_node_stage_is_rejected(tmp_path):
+    bad = tmp_path / "Dockerfile"
+    bad.write_text(
+        "FROM python:3.12-slim AS builder\nRUN echo hi\n"
+        "FROM python:3.12-slim AS runtime\n"
+        'ENTRYPOINT ["/init"]\n'
+        "ENV PUSPA_DASHBOARD_HOST=127.0.0.1\n"
+        "ENV PUSPA_UID=1000\nENV PUSPA_GID=1000\n"
+        "HEALTHCHECK CMD curl -f http://127.0.0.1:8000/manifest.json\n",
+        encoding="utf-8",
+    )
+    issues = validate_dockerfile(bad)
+    assert any("Node stage" in issue for issue in issues)
+
+
+def test_dockerfile_without_dist_copy_is_rejected(tmp_path):
+    bad = tmp_path / "Dockerfile"
+    bad.write_text(
+        "FROM node:20-slim AS pwa\n"
+        "RUN npm run build\n"
+        "FROM python:3.12-slim AS builder\nRUN echo hi\n"
+        "FROM python:3.12-slim AS runtime\n"
+        'ENTRYPOINT ["/init"]\n'
+        "ENV PUSPA_DASHBOARD_HOST=127.0.0.1\n"
+        "ENV PUSPA_UID=1000\nENV PUSPA_GID=1000\n"
+        "HEALTHCHECK CMD curl -f http://127.0.0.1:8000/manifest.json\n",
+        encoding="utf-8",
+    )
+    issues = validate_dockerfile(bad)
+    assert any("dist" in issue for issue in issues)
+
+
+def test_dockerfile_without_pwa_build_is_rejected(tmp_path):
+    bad = tmp_path / "Dockerfile"
+    bad.write_text(
+        "FROM node:20-slim AS pwa\n"
+        "RUN echo no-build-here\n"
+        "FROM python:3.12-slim AS builder\nRUN echo hi\n"
+        "FROM python:3.12-slim AS runtime\n"
+        'ENTRYPOINT ["/init"]\n'
+        "COPY --from=pwa /pwa/dist /app/apps/pwa/dist\n"
+        "ENV PUSPA_DASHBOARD_HOST=127.0.0.1\n"
+        "ENV PUSPA_UID=1000\nENV PUSPA_GID=1000\n"
+        "HEALTHCHECK CMD curl -f http://127.0.0.1:8000/manifest.json\n",
+        encoding="utf-8",
+    )
+    issues = validate_dockerfile(bad)
+    assert any("npm run build" in issue for issue in issues)
 
 
 def test_dockerfile_without_s6_overlay_is_rejected(tmp_path):

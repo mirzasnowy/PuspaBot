@@ -16,10 +16,14 @@
 # - The image installs the full pinned requirements.txt, including
 #   torch (~2.5 GB installed). The image is large. Splitting out a
 #   slim server-only requirements file is a follow-up, not done here.
-# - The PWA is served from the Jinja templates (apps/pwa/templates);
-#   the built SPA (apps/pwa/dist) is NOT copied — building it needs a
-#   node stage, also a follow-up. The app falls back to the templates
-#   when dist is absent (see puspa/pwa/app.py).
+# - The PWA is built in the Node stage below and copied into the
+#   runtime stage, so the deployed image serves the React SPA
+#   (E-05). Before E-05 the image served the Jinja templates only,
+#   because the built SPA (apps/pwa/dist) was never copied in.
+#   The image smoke test (tests/test_image_smoke.py) runs the
+#   image, requests /app, and checks the React bundle is served;
+#   it runs in the CI sandbox lane (E-01), because Docker cannot
+#   run on the dev VM (no daemon socket here).
 # - BuildKit is required (heredoc RUN blocks below):
 #   DOCKER_BUILDKIT=1 docker build .  (or: docker buildx build .)
 #
@@ -42,9 +46,30 @@
 #   key is uncommented).
 
 ARG PYTHON_VERSION=3.12
+ARG NODE_VERSION=20
 ARG S6_OVERLAY_VERSION=3.2.3.2
 ARG PUSPA_UID=1000
 ARG PUSPA_GID=1000
+
+# --- pwa: build the React SPA ---------------------------------------------
+# Node stage (E-05): installs the PWA dependencies with npm ci and
+# builds the SPA (tsc + vite) into /pwa/dist. The runtime stage
+# copies that dist in below, so the deployed image serves React,
+# not the Jinja fallback. The build output is gitignored (dist/),
+# so a checkout without this stage would serve Jinja only.
+# apps/pwa/static is copied in too: Vite bundles the PWA icon from
+# it, so the build output is identical to a local `npm run build`
+# (verified: same dist/index.html bytes with and without it, the
+# icon link differs without it).
+FROM node:${NODE_VERSION}-slim AS pwa
+
+WORKDIR /pwa
+COPY apps/pwa/package.json apps/pwa/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY apps/pwa/tsconfig.json apps/pwa/vite.config.ts apps/pwa/vitest.config.ts apps/pwa/index.html ./
+COPY apps/pwa/src ./src
+COPY apps/pwa/static ./static
+RUN npm run build
 
 # --- builder: install the pinned Python dependencies into a venv -------
 FROM python:${PYTHON_VERSION}-slim AS builder
@@ -84,12 +109,14 @@ RUN tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz
 ADD https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-x86_64.tar.xz /tmp
 RUN tar -C / -Jxpf /tmp/s6-overlay-x86_64.tar.xz
 
-# App + PWA templates/static. The venv comes from the builder stage.
+# App + PWA templates/static + built SPA. The venv comes from the
+# builder stage; the SPA dist comes from the pwa stage (E-05).
 COPY --from=builder /opt/venv /opt/venv
 WORKDIR /app
 COPY puspa /app/puspa
 COPY apps/pwa/templates /app/apps/pwa/templates
 COPY apps/pwa/static /app/apps/pwa/static
+COPY --from=pwa /pwa/dist /app/apps/pwa/dist
 
 # cont-init: fix home ownership (a fresh named volume is root-owned
 # on first mount) so the puspa user can write its home. Runs before

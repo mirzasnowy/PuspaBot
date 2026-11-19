@@ -19,6 +19,15 @@ shipped files, plus negative cases on synthetic files. A live deploy
 validation on a VPS is still required (see ``docs/teams.md``);
 passing these checks proves the files are well-formed and follow
 the rules, not that the image builds or runs.
+
+E-05 (plan 4.5): the image must also carry the built SPA — a Node
+stage that builds the PWA (``npm run build``) and a
+``COPY --from=<node stage>`` of ``dist`` into the runtime stage.
+The live proof is the image smoke test
+(``tests/test_image_smoke.py``), which runs the built image in
+the CI sandbox lane and checks ``/app`` serves the React bundle;
+these offline rules catch a Dockerfile that drops the Node stage
+or the dist copy before any image is built.
 """
 
 from __future__ import annotations
@@ -159,7 +168,10 @@ def validate_dockerfile(path: str | Path) -> list[str]:
     - the dashboard host defaults to 127.0.0.1 (never 0.0.0.0);
     - no API key is baked into the image (no ``ENV PUSPA_API_KEY=``
       with a value);
-    - a HEALTHCHECK exists (the liveness probe).
+    - a HEALTHCHECK exists (the liveness probe);
+    - (E-05) the SPA is built in the image: a Node stage builds
+      the PWA (``npm run build``) and the runtime stage copies its
+      ``dist`` in (``COPY --from=<node stage> ... dist``).
     """
     path = Path(path)
     if not path.exists():
@@ -169,6 +181,31 @@ def validate_dockerfile(path: str | Path) -> list[str]:
     issues = list(info.errors)
     if len(info.stages) < 2:
         issues.append(f"Dockerfile must be multi-stage (found {len(info.stages)} stage(s))")
+    node_stages = [stage for stage in info.stages if stage.base.lower().startswith("node:")]
+    if not node_stages:
+        issues.append(
+            "Dockerfile must build the SPA in a Node stage (no stage based on a 'node:' image)"
+        )
+    elif "npm run build" not in text:
+        issues.append("Node stage must build the PWA (missing 'npm run build')")
+    else:
+        node_names = {stage.name for stage in node_stages if stage.name}
+        dist_copied = False
+        for line in _join_continuations(text):
+            if not line.upper().startswith("COPY"):
+                continue
+            match = re.search(r"COPY\s+--from=(\S+)\s+(\S+)\s+(\S+)", line, re.IGNORECASE)
+            if (
+                match
+                and match.group(1) in node_names
+                and ("dist" in match.group(2) or "dist" in match.group(3))
+            ):
+                dist_copied = True
+        if not dist_copied:
+            issues.append(
+                "runtime stage must copy the built SPA dist from the Node stage "
+                "(missing 'COPY --from=<node stage> ... dist')"
+            )
     if "s6-overlay" not in text:
         issues.append("Dockerfile does not install s6-overlay")
     entrypoints = [
