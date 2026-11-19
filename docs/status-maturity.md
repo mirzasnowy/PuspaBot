@@ -710,6 +710,134 @@ Central suite Wave 34 re-run: 3,786 passed, 23 skipped, 1
 warning, EXIT 0, 29m58s (3,736 + 23 B3 + 27 B4, exact).
 Both items pushed: B3 2befcd89, B4 c0039687.
 
+## Wave 37 — B14 + E-01 + E-02 + E-03 + E-04 (2 workers parallel, pipeline rule, 20 Nov 2026)
+
+B14 Indonesian context pass (commit 096ed355), E-01 CI sandbox +
+Chromium lane (commit efc47e30), E-02 VPS validation +
+machine-replacement drill (commit ae0001c9), E-03 sandbox
+hardening (commit 4d2454ff), E-04 nightly live smoke lane
+(commit ae1acf20). B14: checklist pass
+over B1, B2, B3, B4, B5, B7, B8 only (plan §15, items
+15.1-15.12), recorded in docs/indonesian-context-pass.md
+with a per-ticket sign-off (all pass). Four real gaps found
+and fixed: new puspa/local_data/money.py
+(parse_rupiah_amount for `50rb`, `1,5 jt`, `seratus ribu`,
+`dua jeti` and friends, bare digit runs return None so an
+account number is never read as money; format_rupiah with
+dot thousands) + new puspa/graphs/fraud_patterns.py (the
+eleven 15.5 local scam patterns as data, match +
+classify_flag_reason), wired into B1 (a forwarded text
+matching a pattern gives do_not_act with the pattern named
+and its plain-language warning) and B7 price extraction
+(`harga 50rb` now fills the price slot); B1 replies now
+render Rupiah with dots (`Rp12.999.000`, was commas); B8
+approval records carry a `consequences` list and the render
+states what approving means (15.2). Recorded as future:
+per-contact register + profile timezone, admin-fee display,
+Harbolnas/THR/mudik templates, Indonesian proof-surface
+copy, Hijriah dates, offline/HP-OTP, the 20-person panel,
+parent-companion mode.
+
+E-01: new `sandbox` job in .github/workflows/ci.yml (8 jobs;
+Postgres service + schema_core.sql, requirements install,
+build infra/sandbox.Dockerfile into puspa-sandbox:3.12-local
++ smoke run, playwright install --with-deps chromium, pytest
+on test_sandbox.py + test_computer_backends.py +
+test_readers.py with JUnit, and an anti-skip guard that fails
+the lane if any live test skips; sandbox joins the
+all-checks-pass gate). The lane must build the image first:
+the default image exists only on the dev VM (docker import)
+and no registry. The Chromium reader test now also finds
+Playwright's managed browser; the Docker fail-closed test no
+longer assumes this VM (dead-endpoint DOCKER_HOST); one
+docker sync test skips by design (no persistent filesystem).
+Honest limit: the lane has never run on GitHub (Docker +
+Buildx on ubuntu-24.04 verified against the runner-images
+list; first real run happens there); the Dockerfile cannot
+be built on this VM (no docker daemon here).
+
+E-02: everything buildable without a VPS. New
+scripts/vps-rebuild.sh (one command, 11 timed steps, role
+root BEFORE schema_core.sql, idempotent, peer auth only, no
+credentials, --dry-run) + puspa/teams/vps.py health checks
+(Postgres connect + tables + RLS, dashboard HTTP probe on
+/manifest.json, Docker precondition, offline deploy-file
+validation, allowlist probe judging) +
+docs/vps-validation.md (ordered procedure + timed drill
+table + honest pending table) + 15 new tests in
+tests/test_vps_validation_e02.py (including a real
+encrypted backup-restore round trip on puspa_test_w2 with
+identical row counts). Honest limit: the Contabo VPS is NOT
+bought yet, so compose up, sandbox tests in a container,
+the allowlist probe on the real egress path, restore on a
+real VPS, and the timed live drill are all still PENDING.
+
+VM replaced mid-wave (~02:36 WIB 20 Nov, uptime 0 min):
+the first Wave 37 central suite was killed by SIGTERM at
+~65% (no SUITE_EXIT) and re-run from scratch after
+recovery. Postgres packages were restored by the system
+replay itself (16.15 + pgvector 0.6.0 present, cluster
+started manually); role root recreated, schema_core.sql
+re-run, w1/w2 DBs recreated, RLS true on
+users/sessions/vault in all three. New on this VM: a
+`docker` binary exists (29.1.3) but with no compose plugin
+and no daemon — coordinator fix in E-02 (in the E-02
+commit): test_check_docker_available_matches_reality
+assumed binary-present means the check passes; it now
+handles the third honest state (binary without working
+compose) and the stale "no docker binary" lines in the
+test docstring + docs/vps-validation.md were corrected.
+
+Central suite Wave 37 (re-run, log suite-wave37-b14-e01-e02-e03-e04-rerun.log):
+4,065 passed, 24 skipped, 1 warning, SUITE_EXIT 0, 32m13s
+(3,899 + 18 B14 + 0 net E-01 + 15 E-02 + 104 E-03 + 29 E-04).
+The first full run went red on exactly one test
+(test_backup_restore_round_trip_on_w2, E-02): the test
+hardcoded "puspa_test_w2" as the manifest database while the
+central suite runs on puspa_test — the same hardcoded-DB-name
+trap as the K11 backup test. Coordinator fix (in the E-02
+commit): the DB name is parsed from PUSPA_TEST_DSN and the
+scratch restore DB is per-DSN (<dbname>_restore), so parallel
+suites never race on a shared restore DB; the E-02 file then
+re-ran 15 passed on the central DSN. The VM was replaced a
+second time mid-wave (~02:48 WIB), killing the first retry
+at ~14%; Postgres was recovered by the E-04 worker itself
+(cluster start, role root, schema_core.sql, w1/w2 DBs, RLS
+verified). E-03: new puspa/sandbox/egress.py (filtered egress
+proxy: CONNECT + absolute-form, policy check before DNS,
+pinned UDP DNS to 1.1.1.1/8.8.8.8, blocked-range checks
+including 169.254.169.254, hash-chained JSONL egress ledger),
+seccomp.py + vendored Docker default profile (moby/moby
+v28.0.0, Apache-2.0, attributed in REUSE.md/NOTICE.md) + a
+derived strict profile, runtime.py (runc/runsc/kata config
++ spawn-measurement harness, no runtime decision made yet),
+warmpool.py (pre-created never-run containers, release
+always rm -f + refill), tmpfs writes and a docker-flag
+audit in the runner. Honest limits: no container has ever
+run on this VM, so the flag derivations and pool create/start
+paths are proven with fakes only; the egress ledger lives in
+a JSONL file, not Postgres (the ledger has 31 closed event
+types and no network type); egress.py is 967 lines, split it
+before it grows. E-04: new puspa/nightly/ (7 probes:
+OpenRouter turn + forced fallback, Ollama turn, skill
+discovery, Google login, Telegram roundtrip + approval;
+JSONL time-series store with pass rate, p50/p95 latency,
+cost, shape_changed flag; runner with --only and exit 0
+only when required probes pass) + .github/workflows/
+nightly-smoke.yml (daily 02:00 UTC + dispatch; secrets by
+name only) + Telegram callback-query support. Honest limits:
+the lane has never run on GitHub (first live run needs a
+human to create the low-capped keys and test accounts);
+Google refresh tokens expire after 7 days in Testing mode;
+the Telegram approval leg records a skip, not a pass, on
+nights nobody taps. Shared-file note: .github/workflows/
+ci.yml and docs/sandbox-deepening.md are shared by E-01,
+E-03 and E-04, so the E-01 commit also carries the E-04
+header comment and the E-03 section; the owning commits
+show no diff for those lines. Honest limits: B14 fraud
+table is a starting vocabulary, not a verdict; E-01 lane
+never ran on GitHub; E-02 live checks wait for the VPS.
+
 ## Wave 36 — B8 agent payments phase 1 (1 worker, 20 Nov 2026)
 
 B8 agent payments, phase 1: prepare only (commit
