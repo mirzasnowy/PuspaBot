@@ -31,6 +31,8 @@ from __future__ import annotations
 
 import threading
 
+from puspa.proactivity.budget import InterruptionBudget, initiative_from
+
 from .agent import ChannelAgent, TaskRunnerAgent
 from .authz import Allowlist, ChannelPairing
 from .base import ChannelAdapter
@@ -64,6 +66,7 @@ class GatewayRunner:
         ledger=None,
         heartbeat_store: HeartbeatStore | None = None,
         http_client=None,
+        budget: InterruptionBudget | None = None,
     ) -> None:
         self.profile = profile
         self.config = config or load_config()
@@ -72,6 +75,12 @@ class GatewayRunner:
         self.allowlist: Allowlist = self.config.allowlist
         self.ledger = ledger or InMemoryDeliveryLedger()
         self.delivery = DeliveryService(self.ledger)
+        # The interruption budget (K10) for this profile's
+        # proactive pings. One runner owns one budget, so the
+        # day's spend is shared by every notification the
+        # runner sends. In-memory: a restart resets the day
+        # (see puspa.proactivity.budget).
+        self.budget = budget if budget is not None else InterruptionBudget()
         self.heartbeat_store = heartbeat_store or HeartbeatStore(
             profile=profile, state_dir=self.config.state_dir
         )
@@ -214,12 +223,32 @@ class GatewayRunner:
 
     # -- notifications ------------------------------------------------------
 
-    def notify(self, platform: str, chat_id: str) -> dict | None:
+    def notify(
+        self,
+        platform: str,
+        chat_id: str,
+        *,
+        initiative=None,
+        budget: InterruptionBudget | None = None,
+    ) -> dict | None:
         """Send a content-free notification (bot name only) to a chat.
 
         See :mod:`puspa.channels.notify`: the notification carries
         no message content, only the bot name.
+
+        With ``initiative`` given (an :class:`Initiative` or a
+        ``{"kind", "value"}`` dict), the ping pays from the
+        interruption budget (K10) first — ``budget`` when given,
+        else this runner's own budget. A denied initiative sends
+        nothing and returns None; the denial is recorded in the
+        budget's spend log. Without ``initiative`` the send is
+        ungated: this path is for proactive pings only, and
+        replies to the user never go through :meth:`notify`.
         """
+        if initiative is not None:
+            decision = (budget or self.budget).try_spend(initiative_from(initiative))
+            if not decision.allowed:
+                return None
         from .notify import notify
 
         adapter = self.adapter_for(platform)
