@@ -79,6 +79,13 @@ class AgentBrain:
         # loop instead of the module-level default loop.
         with contextlib.suppress(Exception):
             self.world_model.learning_loop = self.learning_loop
+        # Share the loop's causal ledger with the model (K4 read
+        # path) when the loop has one; never wipe a ledger the
+        # model already carries.
+        with contextlib.suppress(Exception):
+            ledger = getattr(self.learning_loop, "causal_ledger", None)
+            if ledger is not None:
+                self.world_model.causal_ledger = ledger
 
 
 #: Session brains, keyed by (user_id, agent_id). In-memory only.

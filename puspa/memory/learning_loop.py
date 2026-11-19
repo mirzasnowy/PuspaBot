@@ -67,6 +67,24 @@ prediction. Feedback never overwrites a manual user edit: when
 `note_manual_edit` already holds a version for the task, a
 correction from feedback is stored as a proposal instead.
 
+Causal Ledger (Kosmos K4, ``puspa.world.causal``): when the
+loop is built with a ``causal_ledger`` (a ``CausalLedger``),
+every recorded outcome also feeds it. A misprediction
+contradicts the hypothesis "this task leads to the predicted
+outcome" and proposes "this task leads to the observed
+outcome"; a "correct" verdict strengthens the hypothesis for
+the predicted outcome; a "wrong" verdict without a correction
+only contradicts. The ledger is opt-in (default None): a loop
+without one behaves exactly as before. ``predict`` falls back
+to the ledger when no correction exists — the strongest active
+hypothesis for the task supplies the prediction — so
+hypotheses influence predictions, not just storage. The read
+path is ``LearningLoop.expect(cause, condition)``. Evidence
+links carry the experience id of the outcome plus, when the
+caller passes ``evidence_event_id``, the ledger event id of
+the real ledger event that recorded it. Causal updates are
+fail-open: a ledger failure never breaks recording.
+
 This module is deliberately in-memory: the loop state (log,
 corrections, drafts) lives in a `LearningLoop` instance so the
 behaviour is testable without a database. Durable storage is
@@ -129,9 +147,10 @@ def _check_gate_approval(gate, request_id, user_id):
 class LearningLoop:
     """In-memory learning loop: experience, curriculum, skills."""
 
-    def __init__(self, embedder=None, procedure_store=None):
+    def __init__(self, embedder=None, procedure_store=None, causal_ledger=None):
         self.embedder = embedder or HashEmbedding()
         self.procedure_store = procedure_store
+        self.causal_ledger = causal_ledger
         self.experiences = []
         self.corrections = {}
         self.gaps = {}
@@ -139,9 +158,68 @@ class LearningLoop:
         self.manual_edits = {}
         self.feedback_proposals = []
 
+    # -- causal ledger: hypotheses learn from the same outcomes ---
+
+    def _causal_links(self, experience_id, evidence_event_id):
+        """Evidence links for one outcome: its experience id, plus
+        the ledger event id when the caller recorded one."""
+        links = [{"kind": "observation", "id": experience_id}]
+        if evidence_event_id:
+            links.append({"kind": "ledger_event", "id": str(evidence_event_id)})
+        return links
+
+    def _causal_observe(self, cause, effect, *, consistent, condition, links):
+        """One causal observation, fail-open (never breaks recording)."""
+        ledger = self.causal_ledger
+        if ledger is None:
+            return None
+        try:
+            return ledger.observe(
+                cause,
+                effect,
+                condition,
+                consistent=consistent,
+                evidence=links,
+                effect_value=effect,
+            )
+        except Exception:
+            return None
+
+    def _causal_outcome(self, task, *, predicted, observed, condition, links):
+        """Fold one action -> outcome pair into the ledger.
+
+        The predicted outcome did not happen, so the hypothesis
+        for it is contradicted (when one exists); the observed
+        outcome did happen, so its hypothesis is proposed or
+        strengthened. Either side may be None: a missing
+        predicted means nothing to contradict, a missing
+        observed means nothing to propose.
+        """
+        if predicted is not None:
+            self._causal_observe(
+                task, predicted, consistent=False, condition=condition, links=links
+            )
+        if observed is not None:
+            self._causal_observe(task, observed, consistent=True, condition=condition, links=links)
+
+    def expect(self, cause, condition="", *, limit=None):
+        """Causal read path: what do we expect if `cause` under `condition`?
+
+        Active hypotheses for the cause, strongest first (see
+        ``puspa.world.causal.CausalLedger.expect``). Empty when
+        this loop has no causal ledger attached.
+        """
+        ledger = self.causal_ledger
+        if ledger is None:
+            return []
+        try:
+            return ledger.expect(cause, condition, limit=limit)
+        except Exception:
+            return []
+
     # -- experience: mispredictions correct the model ------------
 
-    def record_misprediction(self, record):
+    def record_misprediction(self, record, *, condition="", evidence_event_id=None):
         """Record one prediction error as correcting experience.
 
         `record` must hold task, predicted, observed, error and
@@ -150,6 +228,12 @@ class LearningLoop:
         curriculum proposes a retry task for the gap. A draft
         skill for the same task is marked suspect, so a wrong
         skill is never trusted again without re-verification.
+        When this loop has a causal ledger, the outcome also
+        feeds it: the predicted outcome is contradicted and the
+        observed outcome is proposed (see `_causal_outcome`).
+        `condition` names the condition the causal claim holds
+        under ("" when unknown); `evidence_event_id` links the
+        real ledger event that recorded the outcome.
         """
         if not isinstance(record, dict):
             raise ValueError("record must be a dict")
@@ -168,6 +252,13 @@ class LearningLoop:
             "context": record["context"],
         }
         self.experiences.append(experience)
+        self._causal_outcome(
+            task,
+            predicted=record["predicted"],
+            observed=record["observed"],
+            condition=condition,
+            links=self._causal_links(experience["id"], evidence_event_id),
+        )
         previous = self.corrections.get(task)
         self.corrections[task] = {
             "task": task,
@@ -188,7 +279,9 @@ class LearningLoop:
                 skill["status"] = "suspect"
         return dict(self.corrections[task])
 
-    def record_feedback(self, task, verdict, *, correction=None, source="user"):
+    def record_feedback(
+        self, task, verdict, *, correction=None, source="user", condition="", evidence_event_id=None
+    ):
         """Record user feedback about an answer for a task.
 
         `verdict` is "correct" or "wrong". A "wrong" verdict with
@@ -207,7 +300,14 @@ class LearningLoop:
         `note_manual_edit` already holds a version for the task,
         a correction from feedback is stored as a proposal with
         `conflicts_with_manual_edit` True instead of replacing
-        the manual version. Returns a result dict with `task`,
+        the manual version. When this loop has a causal ledger,
+        the outcome also feeds it: "correct" strengthens the
+        hypothesis for the predicted outcome, "wrong"
+        contradicts it and (when a correction is applied, never
+        when it is held as a manual-edit proposal) proposes the
+        correction. `condition` and `evidence_event_id` are the
+        causal condition and the ledger event id, as in
+        `record_misprediction`. Returns a result dict with `task`,
         `verdict`, `status` and `source`.
         """
         task = str(task)
@@ -237,6 +337,13 @@ class LearningLoop:
             "experience_id": experience["id"],
         }
         if verdict == "correct":
+            self._causal_observe(
+                task,
+                predicted,
+                consistent=True,
+                condition=condition,
+                links=self._causal_links(experience["id"], evidence_event_id),
+            )
             result["status"] = "recorded"
             result["predicted"] = predicted
             return result
@@ -249,6 +356,8 @@ class LearningLoop:
         for skill in self.skills.values():
             if skill["task"] == task and skill["status"] == "active":
                 skill["status"] = "suspect"
+        links = self._causal_links(experience["id"], evidence_event_id)
+        self._causal_observe(task, predicted, consistent=False, condition=condition, links=links)
         if correction is None:
             result["status"] = "recorded"
             result["correction"] = None
@@ -285,6 +394,11 @@ class LearningLoop:
         }
         result["status"] = "applied"
         result["correction"] = dict(self.corrections[task])
+        # The correction was applied, so the causal claim for it
+        # is proposed. (In the manual-edit branch above it is
+        # deliberately NOT proposed: the held proposal must not
+        # leak back into predictions through the ledger.)
+        self._causal_observe(task, correction, consistent=True, condition=condition, links=links)
         return result
 
     def list_feedback_proposals(self, task=None):
@@ -303,14 +417,20 @@ class LearningLoop:
         """Predict for a task, corrected by past experience.
 
         Returns the observed value from the latest misprediction
-        for the task when one exists, otherwise `default`. This
-        is the behaviour-change seam: the same call returns a
-        different (corrected) answer after experience.
+        for the task when one exists, otherwise the strongest
+        active causal hypothesis for the task (when this loop
+        has a ledger attached), otherwise `default`. This is
+        the behaviour-change seam: the same call returns a
+        different (corrected) answer after experience. A loop
+        without a ledger behaves exactly as before.
         """
         correction = self.corrections.get(str(task))
-        if correction is None:
-            return default
-        return correction["observed"]
+        if correction is not None:
+            return correction["observed"]
+        for row in self.expect(str(task)):
+            if row.get("effect_value") is not None:
+                return row["effect_value"]
+        return default
 
     # -- durable state: corrections survive a restart ----------
 
@@ -646,22 +766,37 @@ def reset_learning_loop():
     return _DEFAULT_LOOP
 
 
-def record_misprediction(record):
+def record_misprediction(record, *, condition="", evidence_event_id=None):
     """Record a prediction error as experience that corrects the model.
 
     `record` is a dict with keys `task`, `predicted`, `observed`,
     `error`, `context`. Returns the stored correction dict.
-    Delegates to the default `LearningLoop` instance.
+    Delegates to the default `LearningLoop` instance. `condition`
+    and `evidence_event_id` feed the causal ledger, as in
+    `LearningLoop.record_misprediction`.
     """
-    return _DEFAULT_LOOP.record_misprediction(record)
+    return _DEFAULT_LOOP.record_misprediction(
+        record, condition=condition, evidence_event_id=evidence_event_id
+    )
 
 
-def record_feedback(task, verdict, *, correction=None, source="user"):
+def record_feedback(
+    task, verdict, *, correction=None, source="user", condition="", evidence_event_id=None
+):
     """Record user feedback about an answer for a task.
 
     `verdict` is "correct" or "wrong"; `correction` is the right
     value when the answer was wrong. Returns the result dict
     from the default `LearningLoop` instance (see
-    `LearningLoop.record_feedback`).
+    `LearningLoop.record_feedback`). `condition` and
+    `evidence_event_id` feed the causal ledger, as in
+    `LearningLoop.record_feedback`.
     """
-    return _DEFAULT_LOOP.record_feedback(task, verdict, correction=correction, source=source)
+    return _DEFAULT_LOOP.record_feedback(
+        task,
+        verdict,
+        correction=correction,
+        source=source,
+        condition=condition,
+        evidence_event_id=evidence_event_id,
+    )
