@@ -352,3 +352,48 @@ def test_intercepted_tool_empty_text_is_error_result_not_crash():
 def test_unknown_tool_still_passes_through():
     tools = InterceptedTools(user_id="user-1", agent_id="puspa")
     assert tools.try_intercept("not_a_tool", {"text": "x"}) is None
+
+
+# ---------------------------------------------------------------------------
+# local scam patterns (15.5) and Rupiah display (15.6), B14
+# ---------------------------------------------------------------------------
+
+
+def test_forwarded_chat_matching_scam_pattern_is_do_not_act():
+    text = (
+        "seller: kak, paket kurirnya sudah jalan, tolong unduh apk ini buat cek resi ya\nbuyer: oke"
+    )
+    answer = check_before_buy(text, store=_seeded_store())
+    assert answer.advice == "do_not_act"
+    assert len(answer.fraud_patterns) == 1
+    assert answer.fraud_patterns[0]["pattern_id"] == "courier_apk"
+    assert "courier package with an APK file" in answer.text
+    assert "Never install a file" in answer.text
+
+
+def test_wrong_transfer_pattern_is_do_not_act_and_named():
+    text = "halo kak, saya salah transfer ke rekening kakak, tolong kembalikan ya"
+    answer = check_before_buy(text, store=RecordStore())
+    assert answer.advice == "do_not_act"
+    assert any(entry["pattern_id"] == "wrong_transfer_refund" for entry in answer.fraud_patterns)
+    assert "wrong transfer" in answer.text
+
+
+def test_clean_forward_has_no_fraud_patterns():
+    answer = check_before_buy(LINK, store=_seeded_store())
+    assert answer.fraud_patterns == []
+    assert "Warning" not in answer.text
+
+
+def test_fraud_patterns_ride_in_answer_dict():
+    text = "mama minta pulsa dong, ini mama"
+    data = check_before_buy(text, store=RecordStore()).to_dict()
+    assert data["fraud_patterns"][0]["pattern_id"] == "mama_minta_pulsa"
+    assert data["advice"] == "do_not_act"
+
+
+def test_reply_renders_rupiah_with_dot_thousands():
+    answer = check_before_buy(LINK, store=_seeded_store())
+    assert answer.fair_price.value == 12_749_000
+    assert "Rp12.749.000" in answer.text
+    assert "Rp12,749,000" not in answer.text

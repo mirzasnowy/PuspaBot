@@ -219,6 +219,15 @@ class PreparationService:
             "classification_signals": list(classification.signals),
             "auto_review_findings": [finding.code for finding in findings],
             "status": "requested",
+            # 15.2: an approval card shows consequences, not just an
+            # approve button. Approving makes the payment payable;
+            # it never moves money, and it can still be rejected
+            # until the preparation expires.
+            "consequences": [
+                "approving makes this payment payable; it never moves money by itself",
+                "you pay in your own bank or e-wallet app, to the named recipient only",
+                "you can still reject this preparation until it expires",
+            ],
             "note": (
                 "approval to show this prepared payment as payable; "
                 "approval never authorises execution, because there "

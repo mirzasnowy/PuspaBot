@@ -337,7 +337,9 @@ def render_prepared_payment(preparation: PreparedPayment, *, now: datetime | Non
     Always shows verified recipient + amount + rail +
     evidence + expiry, and states plainly that the agent
     never pays. An unapproved preparation says so: it is not
-    payable yet.
+    payable yet. It also states the consequences of approving
+    (15.2: an approval surface shows consequences, not just an
+    approve button), not only the current status.
     """
     lines = [
         (
@@ -354,11 +356,20 @@ def render_prepared_payment(preparation: PreparedPayment, *, now: datetime | Non
     ]
     if preparation.status == "awaiting_approval":
         lines.append("Status: waiting for your approval — not payable yet.")
+        lines.append(
+            "If you approve: this payment becomes payable, and you pay it "
+            "yourself in your bank or e-wallet app. Approving never moves "
+            "money by itself, and you can still reject it until it expires."
+        )
     elif preparation.status == "approved":
         if preparation.is_expired(now):
             lines.append("Status: approved, but expired — prepare it again.")
         else:
             lines.append("Status: approved — you can pay it now.")
+        lines.append(
+            "Approving never moved money by itself: you always pay in your "
+            "own bank or e-wallet app, to the named recipient only."
+        )
     elif preparation.status == "paid_by_user":
         lines.append("Status: you reported paying this in your own app.")
     else:

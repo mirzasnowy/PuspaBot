@@ -496,3 +496,38 @@ def test_preparations_never_leak_across_users(service, make_user):
     assert service.get_prepared_payment(preparation.id, user_id=other["user_id"]) is None
     assert service.list_prepared_payments(other["user_id"]) == []
     assert service.list_payable_payments(other["user_id"]) == []
+
+
+# --- approval shows consequences (15.2), B14 -----------------------------
+
+
+def test_render_states_consequences_of_approving(service, make_user):
+    user = make_user()
+    preparation = _prepare(service, user)
+    rendered = render_prepared_payment(preparation)
+    assert "If you approve" in rendered
+    assert "never moves money by itself" in rendered
+    assert "you can still reject it until it expires" in rendered
+
+
+def test_render_after_approval_states_consequence(service, make_user):
+    user = make_user()
+    preparation = _prepare(service, user)
+    approved = service.approve_preparation(preparation.id, user_id=user["user_id"])
+    rendered = render_prepared_payment(approved)
+    assert "you can pay it now" in rendered
+    assert "Approving never moved money by itself" in rendered
+
+
+def test_approval_record_carries_consequences(service, make_user):
+    from puspa.ledger import Ledger
+
+    user = make_user()
+    ledger = Ledger(service.dsn)
+    preparation = _prepare(service, user, ledger=ledger)
+    events = ledger.events(preparation.task_id, event_type="approval_requested")
+    assert len(events) == 1
+    consequences = events[0]["content"]["consequences"]
+    assert "approving makes this payment payable; it never moves money by itself" in consequences
+    assert "you pay in your own bank or e-wallet app, to the named recipient only" in consequences
+    assert "you can still reject this preparation until it expires" in consequences

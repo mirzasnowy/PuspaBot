@@ -23,7 +23,9 @@ from puspa.local_data import (
     detect_rail,
     extract_courier,
     extract_destination_city,
+    format_rupiah,
     normalize_id_text,
+    parse_rupiah_amount,
     rail_name,
 )
 from puspa.local_data.rates import SEED_SOURCE_LABEL, normalize_city, normalize_courier
@@ -375,7 +377,7 @@ def test_price_check_quotes_shipping_and_cod() -> None:
     assert answer.shipping.cost_idr == 12000
     assert answer.shipping.cod_available is True
     assert answer.shipping.source_label == SEED_SOURCE_LABEL
-    assert "Rp12,000" in answer.text
+    assert "Rp12.000" in answer.text
     assert "COD is available" in answer.text
     assert "sample rates" in answer.text
 
@@ -456,3 +458,55 @@ def test_answer_dict_carries_shipping_and_rail() -> None:
     assert data["shipping"]["cost_idr"] == 12000
     assert data["shipping"]["cod_available"] is True
     assert data["payment_rail"]["rail_id"] == "qris"
+
+
+# ---------------------------------------------------------------------------
+# money amounts as users write them (15.1, B14)
+# ---------------------------------------------------------------------------
+
+
+def test_parse_rupiah_amount_numeric_forms() -> None:
+    assert parse_rupiah_amount("Rp1.250.000") == 1_250_000
+    assert parse_rupiah_amount("Rp 1.250.000,50") == 1_250_000
+    assert parse_rupiah_amount("Rp1250000") == 1_250_000
+    assert parse_rupiah_amount("harganya 25.000") == 25_000
+    assert parse_rupiah_amount("Rp25.000") == 25_000
+
+
+def test_parse_rupiah_amount_shorthand_suffixes() -> None:
+    assert parse_rupiah_amount("harganya 50rb") == 50_000
+    assert parse_rupiah_amount("50k") == 50_000
+    assert parse_rupiah_amount("1,5 jt") == 1_500_000
+    assert parse_rupiah_amount("1.5 jt") == 1_500_000
+    assert parse_rupiah_amount("2 juta") == 2_000_000
+    assert parse_rupiah_amount("2jt") == 2_000_000
+    assert parse_rupiah_amount("500 ribu") == 500_000
+    assert parse_rupiah_amount("1.500 rb") == 1_500_000
+
+
+def test_parse_rupiah_amount_number_words() -> None:
+    assert parse_rupiah_amount("seratus ribu") == 100_000
+    assert parse_rupiah_amount("dua jeti") == 2_000_000
+    assert parse_rupiah_amount("satu juta lima ratus ribu") == 1_500_000
+    assert parse_rupiah_amount("dua ratus lima puluh ribu") == 250_000
+    assert parse_rupiah_amount("lima belas ribu") == 15_000
+    assert parse_rupiah_amount("seribu") == 1_000
+    assert parse_rupiah_amount("sejuta") == 1_000_000
+
+
+def test_parse_rupiah_amount_never_guesses() -> None:
+    assert parse_rupiah_amount("no amount here") is None
+    assert parse_rupiah_amount("akun 1234567890") is None
+    assert parse_rupiah_amount("50 barang") is None
+    assert parse_rupiah_amount("") is None
+    assert parse_rupiah_amount("Rp0") is None
+
+
+def test_format_rupiah_uses_dot_thousands() -> None:
+    assert format_rupiah(1_250_000) == "Rp1.250.000"
+    assert format_rupiah(50_000) == "Rp50.000"
+    assert format_rupiah(0) == "Rp0"
+    with pytest.raises(ValueError):
+        format_rupiah(-1)
+    with pytest.raises(ValueError):
+        format_rupiah(12.5)  # type: ignore[arg-type]
