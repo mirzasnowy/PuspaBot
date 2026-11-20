@@ -7,8 +7,15 @@ updates the design. Built for UMKM and online sellers: shop page
 mockup, promo poster, product catalogue.
 
 This ticket also covers the later P-06 ticket (mockup canvas v1,
-same plan section): P-06 is a delta-only verification on top of
-this, not a rebuild.
+same plan section): P-06 was a delta-only verification on top of
+this, not a rebuild. The delta it found and built: uploading an
+image used to mutate the stored doc without an op, so the next
+edit silently dropped the asset (now a numbered `add_asset` op);
+the editor had no reorder or image-change controls (now Naik/Turun
+buttons, Tambah gambar, and Ganti gambar); and the canvas hid
+nested children, so a catalogue card showed only "card" (now
+children render inside their parent, with the real picture for
+image nodes).
 
 ## Design doc (single source of truth)
 
@@ -57,10 +64,12 @@ ops, so undo, redo, and version history work on one log.
 
 Numbered from 1, one per edit, in order: `add_node`,
 `remove_node`, `move_node`, `set_text`, `set_style`, `set_image`,
-`reorder`, `set_theme`, `set_title`. An op may carry a `note`:
-the note is the design-decision record, so the workspace
-accumulates why a design looks the way it does, not just what it
-looks like. `version` equals the number of ops applied.
+`reorder`, `set_theme`, `set_title`, `add_asset` (P-06: an image
+upload is an op too, so the version bumps and the cached undo
+session never goes stale on an asset the store already has). An
+op may carry a `note`: the note is the design-decision record, so
+the workspace accumulates why a design looks the way it does, not
+just what it looks like. `version` equals the number of ops applied.
 
 ### Whitelisted components
 
@@ -102,7 +111,19 @@ is five): `cash_recap`.
   `/api/mockups/{id}/ops` and the stored doc is the doc the op
   log describes.
 - Text / colour / image edits are `set_text`, `set_style`,
-  `set_image` ops; reorder is a `reorder` op.
+  `set_image` ops; reorder is a `reorder` op. In the editor
+  screen the selected element has Naik/Turun buttons (a `reorder`
+  op to the neighbouring top-level slot) and, for an image element,
+  a Ganti gambar file picker (uploads the picture as an
+  `add_asset` op, then a `set_image` op). Tambah gambar uploads a
+  picture and adds an image node showing it. Files over the 256 KiB
+  asset cap are refused in the editor with a plain message before
+  any upload.
+- The canvas renders nested children inside their parent at their
+  relative position, so a catalogue card shows its product name
+  and price; an image node shows the real picture from the doc
+  assets. Children can be selected and text/colour-edited, but
+  only top-level elements are draggable.
 - Word changes: `POST /api/mockups/{id}/patch` with
   `{"instruction": "besarkan harga, ganti warna jadi hijau"}`.
   The rule parser understands size words (besarkan/perbesar,
