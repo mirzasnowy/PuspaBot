@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   ApiError,
+  confirmVoice,
   createTask,
   decideApproval,
   deleteAgent,
   changeGraphEdge,
   deleteGraphEdge,
+  discardVoice,
   fetchGraphNode,
   fetchGraphPage,
   fetchRoomBoard,
@@ -23,6 +25,8 @@ import {
   setDialCeiling,
   stopAll,
   stopTask,
+  uploadVoice,
+  voiceStatus,
 } from "./client";
 
 function mockFetch(body: unknown, status = 200) {
@@ -350,6 +354,71 @@ describe("graph client (B18)", () => {
     await expect(
       fetchGraphNode("nope", fetchMock as unknown as typeof fetch),
     ).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("voice messages", () => {
+  it("uploadVoice posts the audio as multipart form data", async () => {
+    const fetchMock = mockFetch({
+      ok: true,
+      pending_id: "pend-1",
+      transcript: "tolong cek harga beras",
+      engine: "stub",
+      audio_deleted: true,
+      size_bytes: 5,
+      mime_type: "audio/webm",
+    });
+    const audio = new Blob(["audio"], { type: "audio/webm" });
+    const result = await uploadVoice(audio, false, fetchMock as unknown as typeof fetch);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/voice/upload");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBeInstanceOf(FormData);
+    expect((init.body as FormData).get("audio")).toBeInstanceOf(Blob);
+    expect(result.pending_id).toBe("pend-1");
+    expect(result.transcript).toBe("tolong cek harga beras");
+  });
+
+  it("confirmVoice posts the pending id and the edited text", async () => {
+    const fetchMock = mockFetch({
+      ok: true,
+      message: { sender: "users", text: "cek harga gula", created_at: 1 },
+    });
+    const result = await confirmVoice(
+      "pend-1",
+      "cek harga gula",
+      fetchMock as unknown as typeof fetch,
+    );
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/voice/confirm");
+    expect(JSON.parse(String(init.body))).toEqual({
+      pending_id: "pend-1",
+      text: "cek harga gula",
+    });
+    expect(result.message.text).toBe("cek harga gula");
+  });
+
+  it("discardVoice posts the pending id", async () => {
+    const fetchMock = mockFetch({ ok: true });
+    await discardVoice("pend-1", fetchMock as unknown as typeof fetch);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/voice/discard");
+    expect(JSON.parse(String(init.body))).toEqual({ pending_id: "pend-1" });
+  });
+
+  it("voiceStatus reads the transcription status", async () => {
+    const fetchMock = mockFetch({
+      engine: "stub",
+      engine_selected: false,
+      selection: "pending",
+      required_recordings: 50,
+    });
+    const result = await voiceStatus(fetchMock as unknown as typeof fetch);
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/voice/status");
+    expect(result.engine_selected).toBe(false);
+    expect(result.required_recordings).toBe(50);
   });
 });
 

@@ -7,11 +7,15 @@ import {
   localEcho,
   reconcileEcho,
 } from "../state/chat";
+import { VoiceRecorder } from "../components/VoiceRecorder";
 import { WorkStrip } from "../components/WorkStrip";
 
 export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
   const [state, setState] = useState(() => initialChatState(bootstrap.messages ?? []));
-  const [draft, setDraft] = useState("");
+  // P-03: text shared into the PWA from another app arrives via the
+  // bootstrap as shared_text; it prefills the draft so the user can
+  // review it and tap Send. Nothing is sent automatically.
+  const [draft, setDraft] = useState(bootstrap.shared_text ?? "");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -83,6 +87,7 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
           {state.sending ? "Mengirim…" : "Kirim"}
         </button>
       </form>
+      <VoiceRecorder onSent={(message) => setState((prev) => appendMessage(prev, message))} />
       <p className="muted">
         Kirim foto untuk cek harga (fase 3). Angka bermakna punya tombol Bukti di panelnya.
       </p>
