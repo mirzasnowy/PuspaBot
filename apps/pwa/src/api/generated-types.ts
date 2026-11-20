@@ -8868,6 +8868,8 @@ export interface components {
             agent?: {
                 [key: string]: components["schemas"]["OfficeAgent"];
             };
+            /** @description Live agent status as a list, the shape the server actually sends from puspa.evidence.projections.office; the same data as the keyed agent map. Clients must accept both shapes. */
+            agents?: components["schemas"]["OfficeAgent"][];
         };
         OfficeAgent: {
             agent_id?: string;
