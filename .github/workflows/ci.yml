@@ -101,7 +101,7 @@ jobs:
       python: ${{ steps.detect.outputs.python }}
       docs: ${{ steps.detect.outputs.docs }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
@@ -162,7 +162,7 @@ jobs:
       # database is created fresh per run and destroyed with the runner.
       PUSPA_TEST_DSN: dbname=puspa_test user=root password=puspa-ci-test host=localhost port=5432
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -219,7 +219,7 @@ jobs:
     env:
       PUSPA_TEST_DSN: dbname=puspa_test user=root password=puspa-ci-test host=localhost port=5432
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
@@ -275,7 +275,7 @@ jobs:
     env:
       PUSPA_TEST_DSN: dbname=puspa_test user=root password=puspa-ci-test host=localhost port=5432
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -399,7 +399,7 @@ jobs:
     if: needs.changes.outputs.python == 'true' || needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -432,7 +432,7 @@ jobs:
     if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Gitleaks scans the whole history, not just the checkout.
           fetch-depth: 0
@@ -501,7 +501,7 @@ jobs:
     if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -521,7 +521,7 @@ jobs:
     if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -541,7 +541,7 @@ jobs:
     if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
