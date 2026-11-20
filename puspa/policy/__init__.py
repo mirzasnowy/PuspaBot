@@ -86,6 +86,11 @@ from .gateway import (
     template_cost,
 )
 
+# Two revocation concepts share a word but not a meaning, so they
+# keep distinct names at package level: the DB-backed token list
+# (E-11, .revocations) stays RevocationList, and the signed skill
+# list (E-12, .revocation) is SkillRevocationList.
+from .revocations import RevocationError, RevocationList
 from .rules import (
     CompiledRule,
     PolicyError,
@@ -95,13 +100,18 @@ from .rules import (
 )
 from .skill_signing import SkillRejected, check_tool, load_skill, sign_skill, verify_skill
 from .spending import SpendingLimit
+from .stop import STOP_TARGET_SECONDS, StopError, StopReport, stop_agent
 from .tokens import (
+    DEFAULT_TOKEN_TTL_SECONDS,
+    MAX_TOKEN_TTL_SECONDS,
     TOOL_PERMISSION_LEVELS,
     TokenError,
     is_revoked,
     is_subset,
     issue_child,
+    issue_short_lived_token,
     issue_token,
+    jti_of,
     revoke,
     revoke_all_for_task,
     token_id,
@@ -120,17 +130,20 @@ __all__ = [
     "BUILTIN_TEMPLATES",
     "CONFLICT_KINDS",
     "CONFLICT_STATUSES",
+    "DEFAULT_TOKEN_TTL_SECONDS",
     "DESTRUCTIVE_MARKER",
     "ENGAGEMENT_GAIN_THRESHOLD",
     "ENGAGEMENT_USER_BENEFIT_MAX",
     "HIGH_SEVERITY_GAP",
     "KIND_FOR_BENEFICIARY",
+    "MAX_TOKEN_TTL_SECONDS",
     "RETENTION_ENGAGEMENT_MIN",
     "SEVERITIES",
     "STATUS_RESOLVED_ALTERNATIVE",
     "STATUS_RESOLVED_DECLINED",
     "STATUS_RESOLVED_PROCEED",
     "STATUS_SURFACED",
+    "STOP_TARGET_SECONDS",
     "TOOL_PERMISSION_LEVELS",
     "UNREAD_THRESHOLD_SECONDS",
     "USER_CHOICES",
@@ -163,10 +176,14 @@ __all__ = [
     "PolicySnapshot",
     "PostgresPolicyWatcher",
     "ProposedAction",
+    "RevocationError",
+    "RevocationList",
     "RuleEvaluationError",
     "RuleTemplate",
     "SkillRejected",
     "SpendingLimit",
+    "StopError",
+    "StopReport",
     "TokenError",
     "UnresolvedConflictError",
     "auto_review",
@@ -185,7 +202,9 @@ __all__ = [
     "is_revoked",
     "is_subset",
     "issue_child",
+    "issue_short_lived_token",
     "issue_token",
+    "jti_of",
     "load_conflicts",
     "load_policy",
     "load_policy_from_file",
@@ -198,6 +217,7 @@ __all__ = [
     "revoke",
     "revoke_all_for_task",
     "sign_skill",
+    "stop_agent",
     "surface_text",
     "template_cost",
     "token_id",

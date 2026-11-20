@@ -19,10 +19,11 @@
 -- truth; this file is only the comparison target.
 --
 --
+--
 -- PostgreSQL database dump
 --
 
-\restrict pLmM6WfnJwyKAvjBdg5YbH5umrPXWqTx169bFRZejUNpyYjppOOgxryb5pE9dur
+\restrict ZGqs7ynbvOZJF9sT56Up8z5dJGrQW5zBKZedSmfOe1VLWlMTHhAvc3f5U8FcvVg
 
 -- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -198,6 +199,20 @@ CREATE TABLE public.agent_meta (
 
 
 ALTER TABLE public.agent_meta OWNER TO root;
+
+--
+-- Name: agent_revocations; Type: TABLE; Schema: public; Owner: root
+--
+
+CREATE TABLE public.agent_revocations (
+    agent_id text NOT NULL,
+    revoked_at timestamp with time zone DEFAULT now() NOT NULL,
+    reason text DEFAULT ''::text NOT NULL,
+    actor text DEFAULT ''::text NOT NULL
+);
+
+
+ALTER TABLE public.agent_revocations OWNER TO root;
 
 --
 -- Name: agents; Type: TABLE; Schema: public; Owner: root
@@ -1693,6 +1708,20 @@ CREATE TABLE public.token_metrics (
 ALTER TABLE public.token_metrics OWNER TO root;
 
 --
+-- Name: token_revocations; Type: TABLE; Schema: public; Owner: root
+--
+
+CREATE TABLE public.token_revocations (
+    jti text NOT NULL,
+    agent_id text NOT NULL,
+    revoked_at timestamp with time zone DEFAULT now() NOT NULL,
+    reason text DEFAULT ''::text NOT NULL
+);
+
+
+ALTER TABLE public.token_revocations OWNER TO root;
+
+--
 -- Name: tos_checks; Type: TABLE; Schema: public; Owner: root
 --
 
@@ -1994,6 +2023,14 @@ ALTER TABLE ONLY public.agent_goal_models
 
 ALTER TABLE ONLY public.agent_meta
     ADD CONSTRAINT agent_meta_pkey PRIMARY KEY (agent_id);
+
+
+--
+-- Name: agent_revocations agent_revocations_pkey; Type: CONSTRAINT; Schema: public; Owner: root
+--
+
+ALTER TABLE ONLY public.agent_revocations
+    ADD CONSTRAINT agent_revocations_pkey PRIMARY KEY (agent_id);
 
 
 --
@@ -2733,6 +2770,14 @@ ALTER TABLE ONLY public.token_metrics
 
 
 --
+-- Name: token_revocations token_revocations_pkey; Type: CONSTRAINT; Schema: public; Owner: root
+--
+
+ALTER TABLE ONLY public.token_revocations
+    ADD CONSTRAINT token_revocations_pkey PRIMARY KEY (jti);
+
+
+--
 -- Name: tos_checks tos_checks_pkey; Type: CONSTRAINT; Schema: public; Owner: root
 --
 
@@ -3420,6 +3465,13 @@ CREATE INDEX idx_tautan_product ON public.listing_links USING btree (product_id)
 --
 
 CREATE INDEX idx_team_members_user_id ON public.team_members USING btree (user_id);
+
+
+--
+-- Name: idx_token_revocations_agent; Type: INDEX; Schema: public; Owner: root
+--
+
+CREATE INDEX idx_token_revocations_agent ON public.token_revocations USING btree (agent_id, revoked_at);
 
 
 --
@@ -5849,6 +5901,13 @@ CREATE POLICY workspace_moves_member ON public.workspace_moves USING (public.is_
 ALTER TABLE public.world_beliefs ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: TABLE agent_revocations; Type: ACL; Schema: public; Owner: root
+--
+
+GRANT SELECT ON TABLE public.agent_revocations TO puspa_app;
+
+
+--
 -- Name: TABLE bot_access_grants; Type: ACL; Schema: public; Owner: root
 --
 
@@ -6094,6 +6153,13 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.teams TO puspa_app;
 
 
 --
+-- Name: TABLE token_revocations; Type: ACL; Schema: public; Owner: root
+--
+
+GRANT SELECT ON TABLE public.token_revocations TO puspa_app;
+
+
+--
 -- Name: TABLE used_email_links; Type: ACL; Schema: public; Owner: root
 --
 
@@ -6125,5 +6191,5 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.workspace_moves TO puspa_app;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict pLmM6WfnJwyKAvjBdg5YbH5umrPXWqTx169bFRZejUNpyYjppOOgxryb5pE9dur
+\unrestrict ZGqs7ynbvOZJF9sT56Up8z5dJGrQW5zBKZedSmfOe1VLWlMTHhAvc3f5U8FcvVg
 
