@@ -1,0 +1,115 @@
+# Chassis contract lane (E-19, plan section 9.4).
+#
+# Runs ONLY the wrapper-interface tests (PuspaTool wrapping, backstop
+# registry, ledger hook, skill loader) against a nanobot pin, before
+# the full suite. The test list lives in one place —
+# puspa/chassis/contract.py — and scripts/run_chassis_contract.py
+# runs it; this workflow never keeps its own copy of the list.
+#
+# Triggers:
+#   - pull requests / pushes that touch the chassis, the pin, or the
+#     lane itself (the candidate pin is whatever requirements.txt
+#     pins on that branch);
+#   - manual dispatch with a candidate pin: installs
+#     `nanobot-ai @ git+https://github.com/HKUDS/nanobot@<pin>` over
+#     the pinned install, then runs the lane against it. The monthly
+#     bump workflow dispatches this lane for the bump PR's pin.
+#
+# Honest limit: like the rest of CI, this workflow has never run on
+# GitHub yet (it is correct by construction — YAML validated, every
+# referenced command checked against the CI workflow's test lane).
+# Its first real run happens on GitHub.
+
+name: Chassis contract
+
+on:
+  pull_request:
+    paths:
+      - "puspa/chassis/**"
+      - "tests/test_tool_result_compression.py"
+      - "tests/test_plugin_wiring.py"
+      - "tests/test_guardrails.py"
+      - "tests/test_skill_revocation.py"
+      - "tests/test_skills_hooks.py"
+      - "tests/test_factory_rails.py"
+      - "tests/test_integration.py"
+      - "scripts/run_chassis_contract.py"
+      - "scripts/nanobot_bump.py"
+      - "requirements.txt"
+      - ".github/workflows/chassis-contract.yml"
+  push:
+    branches: [main]
+    paths:
+      - "puspa/chassis/**"
+      - "scripts/run_chassis_contract.py"
+      - "scripts/nanobot_bump.py"
+      - "requirements.txt"
+      - ".github/workflows/chassis-contract.yml"
+  workflow_dispatch:
+    inputs:
+      nanobot_pin:
+        description: "Candidate nanobot commit to test the contract against"
+        required: false
+        default: "e767174"
+        type: string
+
+# Cancel a superseded run on a PR branch, but never cancel a run on main.
+concurrency:
+  group: chassis-contract-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  contract:
+    name: Chassis contract (wrapper tests only)
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: pgvector/pgvector:0.6.0-pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: <redacted>
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready -U postgres
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Throwaway password for the ephemeral CI test database only; the
+      # database is created fresh per run and destroyed with the runner.
+      PUSPA_TEST_DSN: dbname=puspa_test user=root password=<redacted> host=localhost port=5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Install candidate nanobot pin
+        # On pull_request / push this reinstalls the same pin the branch
+        # already has (a no-op that proves the pin resolves); on manual
+        # dispatch it swaps in the candidate pin for the lane.
+        run: >
+          python -m pip install
+          "nanobot-ai @ git+https://github.com/HKUDS/nanobot@${{ inputs.nanobot_pin || 'e767174' }}"
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client-16
+
+      - name: Set up test database
+        env:
+          PGPASSWORD: <redacted>
+        run: |
+          psql "host=localhost user=postgres dbname=postgres" -c "CREATE ROLE root LOGIN SUPERUSER;"
+          psql "host=localhost user=postgres dbname=postgres" -c "ALTER ROLE root WITH PASSWORD 'puspa-ci-test';"
+          python scripts/setup_test_db.py
+
+      - name: Run the chassis contract lane
+        run: python scripts/run_chassis_contract.py -v

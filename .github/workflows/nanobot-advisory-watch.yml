@@ -1,0 +1,74 @@
+# Weekly nanobot security-advisory watch (E-19, plan section 9.4).
+#
+# Every Monday this workflow runs the advisory half of the bump bot
+# (scripts/nanobot_bump.py --advisories-only) against the public
+# GitHub Advisory Database for the nanobot-ai package. It watches;
+# it does not bump — the monthly bump workflow owns the pin.
+#
+# Outcomes:
+#   - no open advisories: the run passes quietly.
+#   - open advisories, none lagging: the run passes and the report
+#     (printed in the log) tells the next monthly bump what to pick up.
+#   - the fork rule fires (two or more patches lag more than 30 days):
+#     the run opens an issue, because the pin policy has stopped and
+#     a human has to decide on the vendor subtree.
+#
+# Honest limit: this workflow has never run on GitHub yet. Until its
+# first real run, the advisory state in puspa/chassis/pin.json is the
+# state recorded when E-19 was built (checked live 2026-11-20: one
+# open advisory, GHSA-434r-7c99-hwf3, medium, published 2026-06-01),
+# not the result of a live watch.
+
+name: Nanobot advisory watch
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    name: Weekly advisory watch
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        # The bump script imports puspa.chassis.pin, and importing the
+        # chassis package needs the nanobot package installed.
+        run: python -m pip install -r requirements.txt
+
+      - name: Check advisories
+        id: check
+        # Exit codes from the bump script: 0 = quiet, 10 = bump
+        # available (ignored here: the monthly workflow owns the pin),
+        # 20 = fork rule fired, 1 = check failed.
+        run: |
+          set +e
+          python scripts/nanobot_bump.py --advisories-only > advisory-report.json
+          CODE=$?
+          set -e
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          cat advisory-report.json
+          if [ "$CODE" -eq 1 ]; then
+            echo "::error::advisory check failed (see log)"
+            exit 1
+          fi
+
+      - name: Open a fork-rule issue
+        if: steps.check.outputs.code == '20'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "Nanobot fork rule triggered (advisory watch)" \
+            --body "The weekly advisory watch fired the fork rule (see the workflow run log, advisory-report.json). Do not bump the pin again until a human decides on the vendor subtree in docs/nanobot-pin-process.md."
