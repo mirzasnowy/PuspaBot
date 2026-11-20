@@ -150,7 +150,11 @@ BASELINE_LINES = {
     # P-12 (rich cards in Chat, 21 Nov 2026): +5 lines — the
     # chat_cards_api import and route registration only (no new
     # screen, no new table). Resumes from 1138.
-    "puspa/pwa/app.py": 1138,
+    # P-14 (interactive widgets in Chat, 21 Nov 2026): +6 lines —
+    # the chat_widgets_api import and route registration plus
+    # the comment (same seam as the cards: no new screen, no
+    # new table). Resumes from 1144.
+    "puspa/pwa/app.py": 1144,
     # PWA typed API client: every screen's fetch wrapper plus
     # the generated-types aliases in one file. Crossed 1000
     # lines in P-10 (21 Nov 2026): the replay fetchers (tasks,
@@ -165,7 +169,14 @@ BASELINE_LINES = {
     # P-12 (rich cards in Chat, 21 Nov 2026): +40 lines — the
     # card fetchers (post card, draft card, insights chart) and
     # their nine type aliases. Resumes from 1124.
-    "apps/pwa/src/api/client.ts": 1124,
+    # P-14 (interactive widgets in Chat, 21 Nov 2026): +62 lines
+    # — the widget fetchers (post widget, compute, submit,
+    # simulate, price-compare, simulation) and their thirteen
+    # type aliases (five widget kinds plus request/result
+    # types). Split candidate when it grows again: one fetch
+    # module per feature area, keeping the type aliases in
+    # client.ts. The ratchet resumes from 1186.
+    "apps/pwa/src/api/client.ts": 1186,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Shared-room delegation (B6): the delegation board, task
@@ -320,7 +331,14 @@ BASELINE_LINES = {
     # docs/openapi-chat-cards.yaml). Main spec 1907, still under
     # the 2000-line hard cap (93 lines of headroom left).
     # Resumes from 1907.
-    "docs/openapi-pwa.yaml": 1907,
+    # P-14 (interactive widgets in Chat, 21 Nov 2026): +19 lines
+    # — the `chat-widgets` tag (2), $ref stubs for 6 widget
+    # paths + the ChatWidget schema, and the optional `widget`
+    # property on ChatMessage (contract split out to
+    # docs/openapi-chat-widgets.yaml). Main spec 1926, still
+    # under the 2000-line hard cap (74 lines of headroom left).
+    # Resumes from 1926.
+    "docs/openapi-pwa.yaml": 1926,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:

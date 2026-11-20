@@ -46,6 +46,8 @@ tags:
     description: Replay timeline of a bot's steps + GIF export (P-10, plan 12.10)
   - name: chat-cards
     description: Rich cards in Chat (P-12, plan 12.10)
+  - name: chat-widgets
+    description: Interactive widgets in Chat (P-14, plan 12.10)
   - name: office
     description: Office screen and operator panels (G31 serve modes)
   - name: settings
@@ -130,6 +132,18 @@ paths:
     $ref: './openapi-chat-cards.yaml#/paths/~1api~1chat~1cards~1draft~1{draft_id}'
   /api/chat/cards/insights:
     $ref: './openapi-chat-cards.yaml#/paths/~1api~1chat~1cards~1insights'
+  /api/chat/widgets:
+    $ref: './openapi-chat-widgets.yaml#/paths/~1api~1chat~1widgets'
+  /api/chat/widgets/compute:
+    $ref: './openapi-chat-widgets.yaml#/paths/~1api~1chat~1widgets~1compute'
+  /api/chat/widgets/submit:
+    $ref: './openapi-chat-widgets.yaml#/paths/~1api~1chat~1widgets~1submit'
+  /api/chat/widgets/simulate:
+    $ref: './openapi-chat-widgets.yaml#/paths/~1api~1chat~1widgets~1simulate'
+  /api/chat/widgets/price-compare:
+    $ref: './openapi-chat-widgets.yaml#/paths/~1api~1chat~1widgets~1price-compare'
+  /api/chat/widgets/simulation:
+    $ref: './openapi-chat-widgets.yaml#/paths/~1api~1chat~1widgets~1simulation'
   /api/voice/upload:
     $ref: './openapi-voice.yaml#/paths/~1api~1voice~1upload'
   /api/voice/confirm:
@@ -1438,6 +1452,9 @@ components:
         card:
           $ref: './openapi-chat-cards.yaml#/components/schemas/ChatCard'
           description: Optional rich card (P-12) shown inside the chat message
+        widget:
+          $ref: './openapi-chat-widgets.yaml#/components/schemas/ChatWidget'
+          description: Optional interactive widget (P-14) shown inside the chat message
     Agent:
       type: object
       required: [agent_id, name]
@@ -1522,6 +1539,8 @@ components:
       $ref: './openapi-approval-overlay.yaml#/components/schemas/ApprovalOverlayList'
     ChatCard:
       $ref: './openapi-chat-cards.yaml#/components/schemas/ChatCard'
+    ChatWidget:
+      $ref: './openapi-chat-widgets.yaml#/components/schemas/ChatWidget'
     ProposeOverlayRequest:
       $ref: './openapi-approval-overlay.yaml#/components/schemas/ProposeOverlayRequest'
     OverlayDecisionRequest:

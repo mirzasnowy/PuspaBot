@@ -1,0 +1,568 @@
+# Interactive widgets in Chat API contract (P-14, plan section 12.10).
+#
+# Split out of docs/openapi-pwa.yaml on 21 Nov 2026 (P-14): the
+# widget contract (6 endpoints + 18 schemas) would have pushed the
+# main spec past the 2000-line hard cap (Wave 30 precedent:
+# rooms, graph, mockup, payments, controls, voice, receipts,
+# live-view, replay, approval-overlay, and chat-cards split the
+# same way). The main spec references this file with $ref stubs
+# and adds the optional `widget` property to ChatMessage; the
+# generated client is produced from the main spec with
+# openapi-typescript, which resolves external $refs. The Error
+# schema stays in the main spec and is referenced back from here.
+#
+# Honest scope, in the contract: a widget is declarative JSON on
+# a chat message — data describes the widget, the renderer decides
+# how to show it (the same split as the B7 mockup doc and the P-12
+# rich cards). A widget has state: it responds to the user's
+# input instead of only being looked at. The calculator formula is
+# a small safe expression evaluated by an AST whitelist, never
+# eval. The simulation widget shows only what the deterministic
+# world simulator computes (fixed daily price drifts, one PLN
+# bill); it is not live market data, and its prices are re-derived
+# server-side on every step, so a forged widget is refused.
+# No live browser exists in this VM to prove a tap or a slider
+# drag on a real screen; the contract promises the payload shapes
+# and the server-side computation, verified by the Python tests
+# plus vitest/jsdom interaction tests.
+openapi: 3.0.3
+info:
+  title: Puspa interactive widgets in Chat API
+  version: 1.0.0
+paths:
+  /api/chat/widgets:
+    post:
+      tags: [chat-widgets]
+      summary: Post an interactive widget into the chat
+      description: |
+        P-14: validate one widget payload (calculator / form /
+        comparison / diagram / simulation) and append it as a
+        `puspa` message carrying the widget, so the Chat screen
+        shows it in the thread. A bad widget is a 400: unknown
+        kind, a formula over an unknown input, a cycle in a
+        diagram, simulation prices that do not match the
+        simulator.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatWidgetRequest"
+      responses:
+        "200":
+          description: The appended chat message, with its widget
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/ChatMessage"
+        "400":
+          description: Bad widget payload
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/chat/widgets/compute:
+    post:
+      tags: [chat-widgets]
+      summary: Compute a calculator widget's result
+      description: |
+        P-14: evaluate a calculator widget's formula for the
+        given input values and return the result. The client
+        evaluates the same formula locally for the live result
+        as the user types; this endpoint is the authoritative
+        check the bot uses when it generates the widget. A
+        missing or out-of-range value is a 400.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ComputeWidgetRequest"
+      responses:
+        "200":
+          description: The computed result, raw and formatted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputeWidgetResult"
+        "400":
+          description: Bad widget, or a missing / out-of-range value
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/chat/widgets/submit:
+    post:
+      tags: [chat-widgets]
+      summary: Submit a form widget's answers
+      description: |
+        P-14: validate a form widget's answers server-side
+        (required fields, number answers, select answers within
+        the field's options) and append a chat message listing
+        them, so the thread keeps a readable record of what the
+        user sent. A missing required field is a 400.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitWidgetRequest"
+      responses:
+        "200":
+          description: The appended chat message, with its form widget
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/ChatMessage"
+        "400":
+          description: Bad widget, or invalid answers
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/chat/widgets/simulate:
+    post:
+      tags: [chat-widgets]
+      summary: Step a simulation widget forward
+      description: |
+        P-14: apply one action (`advance_day`, `pay_bill`,
+        `buy_from_store`) to a simulation widget. The server
+        re-derives the world from the widget's day and bill
+        state, applies the action through the deterministic
+        simulator, and appends a message carrying the rebuilt
+        widget. Paying an already paid bill, advancing past day
+        30, or an unknown store is a 400.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulateWidgetRequest"
+      responses:
+        "200":
+          description: The appended chat message, with the stepped widget
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/ChatMessage"
+        "400":
+          description: Bad widget, or an action the simulator refuses
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/chat/widgets/price-compare:
+    get:
+      tags: [chat-widgets]
+      summary: Show the simulated phone prices as a comparison widget
+      description: |
+        P-14: build a comparison widget from the world
+        simulator's day-15 prices (one row per store) and
+        append it as a `puspa` chat message. The prices are
+        simulated, not live market data; the widget title says
+        so.
+      responses:
+        "200":
+          description: The appended chat message, with its comparison widget
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/ChatMessage"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/chat/widgets/simulation:
+    get:
+      tags: [chat-widgets]
+      summary: Show a fresh simulation widget in chat
+      description: |
+        P-14: build a day-15 simulation widget from the world
+        simulator (prices per store, the PLN bill, price
+        history from the episode start) and append it as a
+        `puspa` chat message.
+      responses:
+        "200":
+          description: The appended chat message, with its simulation widget
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/ChatMessage"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    ChatWidget:
+      type: object
+      description: |
+        One interactive widget, as carried on a chat message.
+        The `kind` field discriminates: `calculator` (inputs
+        plus a formula, result updates live), `form` (fields
+        the user fills in and submits), `comparison` (rows
+        against named columns, numeric columns sortable),
+        `diagram` (nodes and edges, an acyclic flow the user
+        taps through), `simulation` (the deterministic world
+        simulator as a widget: prices, bill, day stepper).
+      oneOf:
+        - $ref: "#/components/schemas/CalculatorWidget"
+        - $ref: "#/components/schemas/FormWidget"
+        - $ref: "#/components/schemas/ComparisonWidget"
+        - $ref: "#/components/schemas/DiagramWidget"
+        - $ref: "#/components/schemas/SimulationWidget"
+      discriminator:
+        propertyName: kind
+        mapping:
+          calculator: "#/components/schemas/CalculatorWidget"
+          form: "#/components/schemas/FormWidget"
+          comparison: "#/components/schemas/ComparisonWidget"
+          diagram: "#/components/schemas/DiagramWidget"
+          simulation: "#/components/schemas/SimulationWidget"
+    CalculatorInput:
+      type: object
+      description: |
+        One calculator input: a typed number field or a slider.
+        `value` must sit within `min` and `max`.
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        input_kind:
+          type: string
+          enum: [number, slider]
+        value:
+          type: number
+        min:
+          type: number
+        max:
+          type: number
+        step:
+          type: number
+      required: [id, label, input_kind, value, min, max, step]
+    CalculatorWidget:
+      type: object
+      description: |
+        A calculator: inputs plus a formula over the input ids
+        (`+ - * / % **`, parentheses, `min`/`max`/`abs`/`round`).
+        The formula is evaluated by an AST whitelist, never
+        eval, and may only name the input ids.
+      properties:
+        kind:
+          type: string
+          enum: [calculator]
+        title:
+          type: string
+        inputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/CalculatorInput"
+          minItems: 1
+          maxItems: 10
+        formula:
+          type: string
+          maxLength: 500
+        result_label:
+          type: string
+        value_format:
+          type: string
+          enum: [number, rupiah, percent]
+      required: [kind, title, inputs, formula, result_label, value_format]
+    FormField:
+      type: object
+      description: |
+        One form field. A `select` field needs 2..20 options;
+        other kinds ignore `options`.
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        field_kind:
+          type: string
+          enum: [text, number, select, checkbox]
+        required:
+          type: boolean
+        options:
+          type: array
+          items:
+            type: string
+        placeholder:
+          type: string
+      required: [id, label, field_kind, required]
+    FormWidget:
+      type: object
+      description: |
+        A form: labelled fields the user fills in and submits.
+        Submitting validates the answers server-side and posts
+        them as a chat message.
+      properties:
+        kind:
+          type: string
+          enum: [form]
+        title:
+          type: string
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/FormField"
+          minItems: 1
+          maxItems: 20
+        submit_label:
+          type: string
+      required: [kind, title, fields, submit_label]
+    ComparisonColumn:
+      type: object
+      description: |
+        One comparison column. Numeric columns hold numbers,
+        are sortable, and get a cheapest-row highlight.
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        numeric:
+          type: boolean
+      required: [id, label, numeric]
+    ComparisonRow:
+      type: object
+      description: One compared row, with one value per column.
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        values:
+          type: object
+          additionalProperties: true
+      required: [id, label, values]
+    ComparisonWidget:
+      type: object
+      description: |
+        A comparison: rows compared across named columns (2..6
+        columns, 1..20 rows). Every row carries a value for
+        every column.
+      properties:
+        kind:
+          type: string
+          enum: [comparison]
+        title:
+          type: string
+        columns:
+          type: array
+          items:
+            $ref: "#/components/schemas/ComparisonColumn"
+          minItems: 2
+          maxItems: 6
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/ComparisonRow"
+          minItems: 1
+          maxItems: 20
+      required: [kind, title, columns, rows]
+    DiagramNode:
+      type: object
+      description: One diagram node; `detail` shows when tapped.
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        detail:
+          type: string
+      required: [id, label]
+    DiagramEdge:
+      type: object
+      description: One directed edge between two diagram nodes.
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+      required: [from, to]
+    DiagramWidget:
+      type: object
+      description: |
+        A diagram: nodes and edges forming an acyclic flow the
+        user taps through. Cycles are refused: a flow must have
+        a direction.
+      properties:
+        kind:
+          type: string
+          enum: [diagram]
+        title:
+          type: string
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiagramNode"
+          minItems: 1
+          maxItems: 40
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiagramEdge"
+          maxItems: 80
+      required: [kind, title, nodes, edges]
+    SimulationBill:
+      type: object
+      description: The simulated PLN bill observation.
+      properties:
+        status:
+          type: string
+          enum: [not_due, due_soon, due, paid]
+        amount_due:
+          type: integer
+        amount:
+          type: integer
+        due_day:
+          type: integer
+        bill_id:
+          type: string
+        day:
+          type: integer
+      required: [status, amount_due, amount, due_day, bill_id, day]
+    SimulationHistoryDay:
+      type: object
+      description: Simulated prices per store on one day.
+      properties:
+        day:
+          type: integer
+        prices:
+          type: object
+          additionalProperties:
+            type: integer
+      required: [day, prices]
+    SimulationWidget:
+      type: object
+      description: |
+        The deterministic world simulator as a widget: the
+        watched phone's price per store, the PLN bill, and the
+        price history from the episode start to the current
+        day. `day` and `bill_paid` are the widget's own state;
+        prices, bill, and history are re-derived from the
+        simulator on every step, so a forged widget is refused.
+        Simulated prices, not live market data.
+      properties:
+        kind:
+          type: string
+          enum: [simulation]
+        title:
+          type: string
+        product_id:
+          type: string
+        stores:
+          type: array
+          items:
+            type: string
+        start_day:
+          type: integer
+        day:
+          type: integer
+          minimum: 15
+          maximum: 30
+        bill_id:
+          type: string
+        bill_paid:
+          type: boolean
+        prices:
+          type: object
+          additionalProperties:
+            type: integer
+        bill:
+          $ref: "#/components/schemas/SimulationBill"
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/SimulationHistoryDay"
+          maxItems: 16
+      required: [kind, title, product_id, stores, start_day, day, bill_id, bill_paid, prices, bill, history]
+    ChatWidgetRequest:
+      type: object
+      description: Post one widget into the chat (message text + widget payload).
+      properties:
+        text:
+          type: string
+        widget:
+          $ref: "#/components/schemas/ChatWidget"
+      required: [text, widget]
+    ComputeWidgetRequest:
+      type: object
+      description: Compute a calculator widget's result for the given input values.
+      properties:
+        widget:
+          $ref: "#/components/schemas/CalculatorWidget"
+        values:
+          type: object
+          additionalProperties:
+            type: number
+      required: [widget, values]
+    ComputeWidgetResult:
+      type: object
+      description: The computed result, raw and formatted for display.
+      properties:
+        result:
+          type: number
+        formatted:
+          type: string
+      required: [result, formatted]
+    SubmitWidgetRequest:
+      type: object
+      description: Submit a form widget's answers, keyed by field id.
+      properties:
+        widget:
+          $ref: "#/components/schemas/FormWidget"
+        answers:
+          type: object
+          additionalProperties: true
+      required: [widget, answers]
+    SimulateWidgetRequest:
+      type: object
+      description: |
+        Step a simulation widget: `advance_day` moves one day
+        forward, `pay_bill` pays the PLN bill, `buy_from_store`
+        buys the watched phone at the current simulated price
+        (`store` required for a buy).
+      properties:
+        widget:
+          $ref: "#/components/schemas/SimulationWidget"
+        action:
+          type: object
+          properties:
+            type:
+              type: string
+              enum: [advance_day, pay_bill, buy_from_store]
+            store:
+              type: string
+          required: [type]
+      required: [widget, action]

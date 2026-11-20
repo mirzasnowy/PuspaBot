@@ -88,6 +88,26 @@ export type ChartPoint = components["schemas"]["ChartPoint"];
 export type MapCard = components["schemas"]["MapCard"];
 export type MapPoint = components["schemas"]["MapPoint"];
 export type ChatCardRequest = components["schemas"]["ChatCardRequest"];
+export type ChatWidget = components["schemas"]["ChatWidget"];
+export type CalculatorWidget = components["schemas"]["CalculatorWidget"];
+export type CalculatorInput = components["schemas"]["CalculatorInput"];
+export type FormWidget = components["schemas"]["FormWidget"];
+export type FormField = components["schemas"]["FormField"];
+export type ComparisonWidget = components["schemas"]["ComparisonWidget"];
+export type ComparisonColumn = components["schemas"]["ComparisonColumn"];
+export type ComparisonRow = components["schemas"]["ComparisonRow"];
+export type DiagramWidget = components["schemas"]["DiagramWidget"];
+export type DiagramNode = components["schemas"]["DiagramNode"];
+export type DiagramEdge = components["schemas"]["DiagramEdge"];
+export type SimulationWidget = components["schemas"]["SimulationWidget"];
+export type SimulationBill = components["schemas"]["SimulationBill"];
+export type SimulationHistoryDay = components["schemas"]["SimulationHistoryDay"];
+export type ChatWidgetRequest = components["schemas"]["ChatWidgetRequest"];
+export type ComputeWidgetRequest = components["schemas"]["ComputeWidgetRequest"];
+export type ComputeWidgetResult = components["schemas"]["ComputeWidgetResult"];
+export type SubmitWidgetRequest = components["schemas"]["SubmitWidgetRequest"];
+export type SimulateWidgetRequest = components["schemas"]["SimulateWidgetRequest"];
+export type SimulateWidgetAction = SimulateWidgetRequest["action"];
 
 export type FetchFn = typeof fetch;
 
@@ -1121,4 +1141,46 @@ export function fetchInsightsCard(
     `/api/chat/cards/insights?days=${days}&metric=${metric}`,
     fetchFn,
   );
+}
+
+export function postChatWidget(
+  body: ChatWidgetRequest,
+  fetchFn: FetchFn = fetch,
+): Promise<ChatMessage> {
+  return postJson<ChatMessage>("/api/chat/widgets", body, fetchFn);
+}
+
+export function computeWidget(
+  body: ComputeWidgetRequest,
+  fetchFn: FetchFn = fetch,
+): Promise<ComputeWidgetResult> {
+  return postJson<ComputeWidgetResult>("/api/chat/widgets/compute", body, fetchFn);
+}
+
+export function submitWidgetForm(
+  widget: FormWidget,
+  answers: { [key: string]: unknown },
+  fetchFn: FetchFn = fetch,
+): Promise<ChatMessage> {
+  return postJson<ChatMessage>("/api/chat/widgets/submit", { widget, answers }, fetchFn);
+}
+
+export function simulateWidget(
+  widget: SimulationWidget,
+  action: SimulateWidgetAction,
+  fetchFn: FetchFn = fetch,
+): Promise<ChatMessage> {
+  return postJson<ChatMessage>("/api/chat/widgets/simulate", { widget, action }, fetchFn);
+}
+
+export function fetchPriceCompareWidget(
+  fetchFn: FetchFn = fetch,
+): Promise<ChatMessage> {
+  return getJson<ChatMessage>("/api/chat/widgets/price-compare", fetchFn);
+}
+
+export function fetchSimulationWidget(
+  fetchFn: FetchFn = fetch,
+): Promise<ChatMessage> {
+  return getJson<ChatMessage>("/api/chat/widgets/simulation", fetchFn);
 }
