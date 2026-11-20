@@ -17,6 +17,7 @@
 """
 
 import base64
+import contextlib
 import os
 import secrets
 import sys
@@ -24,6 +25,13 @@ from pathlib import Path
 
 import psycopg
 import pytest
+from worker_db import (
+    create_worker_db,
+    drop_run_worker_dbs,
+    drop_worker_db,
+    ensure_template_dsn,
+    new_run_id,
+)
 
 from puspa.accounts import create_schema as create_account_schema
 from puspa.accounts.access import create_agent_schema
@@ -46,6 +54,159 @@ if _NANOBOT_LOCAL.exists():
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
+# Per-worker databases (E-17, plan section 9.1): one database per
+# pytest-xdist worker, cloned from a migrated template (see
+# tests/worker_db.py). The controller generates one run id per
+# invocation and hands it to every worker; each worker clones the
+# template into its own database before any fixture runs, and drops
+# it at session end. A SOLO run (no -n) never touches this: it
+# keeps using the base database directly, exactly as before.
+_RUN_ID_KEY = pytest.StashKey[str]()
+_WORKER_DB_KEY = pytest.StashKey[tuple[str, str, str]]()
+_CONTROLLER_RUN_KEY = pytest.StashKey[tuple[str, str]]()
+_NEEDS_DB_KEY = pytest.StashKey[bool]()
+
+
+def pytest_configure(config):
+    """Set up per-worker databases for an xdist run (E-17)."""
+    if hasattr(config, "workerinput"):
+        # xdist worker: clone the template into a private database
+        # and point this process at it before any fixture runs.
+        run_id = str(config.workerinput.get("puspa_run_id", ""))
+        worker_id = str(config.workerinput["workerid"])
+        base_dsn = os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
+        worker_dsn = create_worker_db(base_dsn, worker_id, run_id)
+        os.environ["PUSPA_TEST_DSN"] = worker_dsn
+        config.stash[_WORKER_DB_KEY] = (base_dsn, worker_id, run_id)
+    elif getattr(config.option, "numprocesses", None):
+        # xdist controller: one run id for every worker, and the
+        # template ready before the first worker spawns.
+        run_id = new_run_id()
+        base_dsn = os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
+        config.stash[_RUN_ID_KEY] = run_id
+        config.stash[_CONTROLLER_RUN_KEY] = (base_dsn, run_id)
+        ensure_template_dsn(base_dsn)
+
+
+def pytest_configure_node(node):
+    """Hand the controller's run id to each worker (E-17)."""
+    node.workerinput["puspa_run_id"] = node.config.stash.get(_RUN_ID_KEY, "")
+
+
+def pytest_unconfigure(config):
+    """Drop worker databases at session end (best effort, E-17).
+
+    Workers drop their own database; the controller then drops
+    every database of the run, because a worker's own drop
+    sometimes never runs (xdist may SIGTERM a slow worker before
+    its session ends). The controller runs after xdist tore the
+    workers down, so no worker is alive to reconnect.
+    """
+    worker = config.stash.get(_WORKER_DB_KEY, None)
+    if worker is not None:
+        base_dsn, worker_id, run_id = worker
+        # Teardown must never fail the run.
+        with contextlib.suppress(Exception):
+            drop_worker_db(base_dsn, worker_id, run_id)
+    run = config.stash.get(_CONTROLLER_RUN_KEY, None)
+    if run is not None:
+        base_dsn, run_id = run
+        with contextlib.suppress(Exception):
+            drop_run_worker_dbs(base_dsn, run_id)
+
+
+def _uses_test_dsn(item) -> bool:
+    """True when the test's own fixture closure needs the database.
+
+    The walk starts from the fixtures the test function itself
+    requests (its parameters, plus ``usefixtures`` markers, plus
+    the module-level autouse fixtures that apply to it) and
+    follows their dependencies. The two GLOBAL autouse fixtures
+    (the per-test table reset and the role setup, both in this
+    conftest) are deliberately NOT followed: they run for every
+    test, so following them would classify everything as
+    database-backed. A module-level autouse fixture that needs
+    the database (for example the team/room schema fixtures in
+    tests/teams_helpers.py and tests/rooms_helpers.py) IS
+    followed, so the tests that run under it classify correctly.
+    A test that touches Postgres without any fixture at all — a
+    library call that reads ``PUSPA_TEST_DSN`` from the
+    environment, like the session single-writer lock — is still
+    misclassified as unit and fails loudly instead of silently
+    sharing a database; those tests carry an explicit
+    ``integration`` marker in their file instead.
+    """
+    import inspect
+
+    info = getattr(item, "_fixtureinfo", None)
+    if info is None:
+        return True  # unknown: assume the database is needed
+    func = getattr(item, "function", None)
+    if func is None:
+        return True
+    wanted = set(inspect.signature(func).parameters)
+    for marker in item.iter_markers("usefixtures"):
+        wanted.update(marker.args)
+    autouse = getattr(item.session._fixturemanager, "_getautousenames", None)
+    if callable(autouse):
+        wanted.update(
+            name for name in autouse(item) if name not in {"_reset_tables", "_ensure_app_role"}
+        )
+    seen: set[str] = set()
+    while wanted - seen:
+        name = (wanted - seen).pop()
+        seen.add(name)
+        for fixturedef in info.name2fixturedefs.get(name, []):
+            wanted.update(fixturedef.argnames)
+    return "test_dsn" in seen or "scratch_dsn" in seen
+
+
+def _test_needs_db(item) -> bool:
+    """True when this test needs a live Postgres database."""
+    if item.get_closest_marker("integration") is not None:
+        return True
+    if item.get_closest_marker("unit") is not None:
+        return False
+    return _uses_test_dsn(item)
+
+
+def pytest_collection_modifyitems(session, config, items):
+    """Split the markers (E-17, plan section 9.1).
+
+    - ``live``: tests that need a real external service (a Docker
+      daemon, a Chromium binary, a live model key). Marked
+      explicitly in their files; they run in the nightly lane,
+      never in a PR lane.
+    - ``integration``: tests whose fixture closure needs Postgres.
+    - ``unit``: everything else — no database, no network.
+
+    Tests with no explicit marker are classified from their
+    fixture closure. The split is recorded on the config in
+    ``pytest_collection_finish`` (below) so the session fixtures
+    can skip the database entirely when no collected test needs
+    it (``pytest -m unit`` runs with no Postgres at all).
+    """
+    for item in items:
+        markers = {marker.name for marker in item.iter_markers()}
+        if not markers & {"unit", "integration", "live"}:
+            if _uses_test_dsn(item):
+                item.add_marker(pytest.mark.integration)
+            else:
+                item.add_marker(pytest.mark.unit)
+
+
+def pytest_collection_finish(session):
+    """Record whether any selected test needs the database (E-17).
+
+    This runs after ``-m`` deselection, so the flag reflects the
+    tests that will actually run — not the whole suite. (Computing
+    it in ``pytest_collection_modifyitems`` reads the unfiltered
+    list: a ``pytest -m unit`` run would still try to create the
+    ``puspa_app`` role and fail when no database exists.)
+    """
+    session.config.stash[_NEEDS_DB_KEY] = any(_test_needs_db(item) for item in session.items)
+
+
 MEMORY_TABLES = (
     "profile_facts",
     "episodic",
@@ -65,33 +226,48 @@ def test_dsn():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _ensure_app_role(test_dsn):
-    """Pastikan peran puspa_app ada SEBELUM tes apa pun berjalan.
+def _ensure_app_role(test_dsn, pytestconfig):
+    """Ensure the puspa_app role exists BEFORE any test runs.
 
-    (create_schema di bawah memberi GRANT ke puspa_app hanya kalau
-    peran sudah ada, jadi peran harus ada dulu. Sama seperti yang
-    dilakukan migrasi 0001_core.)
+    (create_schema below grants to puspa_app only when the role
+    already exists, so the role has to exist first. Same as
+    migration 0001_core.)
 
-    Dulu fixture ini tinggal di tests/test_rls.py, jadi peran baru
-    dibuat saat file itu berjalan. pytest menjalankan file menurut
-    abjad, dan tests/test_ledger.py (yang juga memakai SET ROLE
-    puspa_app) berjalan SEBELUM test_rls.py: di DB baru (mis. setelah
-    VM diganti) test ledger itu gagal dengan "role puspa_app does not
-    exist", lalu lolos di run berikutnya karena peran sudah dibuat.
-    Di conftest, peran dijamin ada sebelum file tes mana pun.
+    The role used to be created in tests/test_rls.py, so a fresh
+    database failed tests that ran alphabetically before it (the
+    ledger tests use SET ROLE puspa_app). In conftest, the role is
+    guaranteed before any test file runs.
+
+    The CREATE is wrapped in an exception guard instead of a
+    pre-check: under xdist, several workers create the role at the
+    same time, and a check-then-create race would raise
+    duplicate_object for the loser. Skipped entirely when no
+    collected test needs the database (``pytest -m unit``).
     """
+    if not pytestconfig.stash.get(_NEEDS_DB_KEY, True):
+        return
     with psycopg.connect(test_dsn) as conn:
         conn.execute(
             "DO $$ BEGIN "
-            "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'puspa_app') THEN "
             "CREATE ROLE puspa_app NOLOGIN; "
-            "END IF; END $$"
+            "EXCEPTION WHEN duplicate_object THEN NULL; "
+            "END $$"
         )
         conn.commit()
 
 
 @pytest.fixture(autouse=True)
-def _reset_tables(test_dsn):
+def _reset_tables(request, test_dsn):
+    """Create schemas and empty every table before/after each test.
+
+    Unit tests (marker ``unit``) never touch the database, so the
+    whole setup is skipped for them: a ``pytest -m unit`` run
+    needs no Postgres at all. Every other test gets the schemas
+    plus a clean slate, exactly as before.
+    """
+    if not _test_needs_db(request.node):
+        yield
+        return
     create_account_schema(test_dsn)
     Ledger(test_dsn).create_schema()
     create_agent_schema(test_dsn)

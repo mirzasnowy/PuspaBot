@@ -102,6 +102,7 @@ def _chromium_executable():
     return None
 
 
+@pytest.mark.live
 def test_playwright_reader_reads_test_site_when_browser_exists(monkeypatch):
     """Browser read-only sungguhan, ujung-ke-ujung lewat reader: bila
     env PUSPA_CHROMIUM_EXECUTABLE menunjuk ke binary Chrome for

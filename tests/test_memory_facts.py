@@ -139,7 +139,13 @@ def test_unknown_fact_raises():
 
 
 class TestPostgresFactStore:
-    """Postgres store + G7 schema migration round-trip."""
+    """Postgres store + G7 schema migration round-trip.
+
+    Integration: the autouse ``_schema`` fixture calls
+    ``create_schema()``, which reads ``PUSPA_TEST_DSN`` from the
+    environment — no fixture carries the DSN, so the marker split
+    cannot see the database need (E-17).
+    """
 
     @pytest.fixture(autouse=True)
     def _schema(self):
@@ -148,6 +154,7 @@ class TestPostgresFactStore:
         create_schema()
         yield
 
+    @pytest.mark.integration
     def test_round_trip(self):
         store = facts.PostgresFactStore()
         user = str(uuid.uuid4())
