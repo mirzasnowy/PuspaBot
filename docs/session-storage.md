@@ -71,6 +71,28 @@ The rule is enforced in code, not just in this document:
   database path. A second live gateway for the same profile raises
   `SingleWriterError`. Closing the gateway releases the claim, and
   a new gateway may then open.
+- The registry is process-wide only, so opening a gateway also
+  takes two cross-process layers (`puspa.sessions.single_writer`,
+  E-07, plan 5.2), both held for the gateway's lifetime:
+  1. An exclusive non-blocking `flock` on `state.db` itself. A
+     second process on the same volume is refused at open time.
+  2. A Postgres session-level advisory lock per agent id
+     (`pg_try_advisory_lock` on a dedicated connection, keyed by a
+     deterministic 64-bit hash of the agent id). A second process
+     or container on the same database is refused even when it uses
+     a different volume, so the lock also fires as a
+     misconfiguration alarm in beta (one container per user).
+  Both layers are released on close — or automatically when the
+  holder dies: the OS releases the `flock`, Postgres releases the
+  session lock when the connection drops, so a `kill -9` never
+  leaves a sticky claim. A failed open releases whatever it had
+  already taken, so a refusal leaves nothing held.
+- `open_persistence()` accepts `agent_id` (default
+  `profile:<name>`) and `dsn` (default `PUSPA_DSN` /
+  `PUSPA_TEST_DSN` / local peer-auth). When Postgres cannot be
+  reached the open fails closed with `SingleWriterError`;
+  `advisory_lock=False` opts out of the Postgres layer only (for
+  Postgres-less local use) and leaves the `flock` in place.
 - Readers are opened with SQLite `mode=ro`: they physically cannot
   write, however many of them exist.
 
@@ -186,12 +208,19 @@ file read-only and names the applicable recovery steps.
 
 ## Honest limits
 
-- The single-writer registry is process-wide, not machine-wide.
-  Two separate processes opening the same profile both get a
-  gateway; SQLite locking (`BEGIN IMMEDIATE` + `busy_timeout`)
-  keeps them from corrupting the file, but the second process is
-  not rejected at open time. Cross-process single-writer
-  enforcement (file lock on open) is a follow-up.
+- The cross-process lock has two layers because each covers a
+  different failure: the `flock` only works where the shared volume
+  honours `flock` (a local or shared-host volume); it does not span
+  hosts whose filesystem ignores advisory file locks. The Postgres
+  advisory lock is the layer that spans hosts, as long as both
+  share one database. A second container on the same volume is
+  refused by the file layer; a second container on a different
+  volume is refused by the advisory layer.
+- The literal two-container test (two containers on one volume,
+  the second refused) cannot run live on a host without Docker.
+  `tests/test_single_writer_lock.py` proves the same semantics
+  with two processes on one volume and one database, and the
+  container form is CI / E-02 work.
 - The gateway holds one SQLite connection; very large histories
   (tens of thousands of messages in one session) have no paging in
   `get_session()` — callers that need a window should query with a
