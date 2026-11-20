@@ -331,10 +331,10 @@ def _pg_dump(dsn: str) -> str:
 
 
 def test_migration_files_are_numbered_and_reversible():
-    """22 migrations, versions 0001-0022, each with up + down."""
+    """23 migrations, versions 0001-0023, each with up + down."""
     migrations = list_migrations()
-    assert [m.version for m in migrations] == [f"{n:04d}" for n in range(1, 23)]
-    assert len({m.name for m in migrations}) == 22
+    assert [m.version for m in migrations] == [f"{n:04d}" for n in range(1, 24)]
+    assert len({m.name for m in migrations}) == 23
     for migration in migrations:
         assert migration.up_sql, f"{migration.name}: empty up"
         assert migration.down_sql, f"{migration.name}: empty down"
@@ -343,15 +343,15 @@ def test_migration_files_are_numbered_and_reversible():
 
 def test_apply_all_to_empty_db_creates_every_table(scratch_dsn):
     applied = apply_migrations(scratch_dsn)
-    assert applied == [f"{n:04d}" for n in range(1, 23)]
+    assert applied == [f"{n:04d}" for n in range(1, 24)]
     assert _tables(scratch_dsn) == EXPECTED_TABLES
     with psycopg.connect(scratch_dsn) as conn:
         (count,) = conn.execute("SELECT count(*) FROM schema_migrations").fetchone()
-    assert count == 22
+    assert count == 23
 
 
 def test_apply_is_idempotent(scratch_dsn):
-    assert len(apply_migrations(scratch_dsn)) == 22
+    assert len(apply_migrations(scratch_dsn)) == 23
     assert apply_migrations(scratch_dsn) == []
     assert apply_migrations(scratch_dsn, target="0006") == []
 
@@ -374,7 +374,7 @@ def test_unknown_target_is_refused(scratch_dsn):
 
 def test_status_reports_pending_then_applied(scratch_dsn):
     before = migration_status(scratch_dsn)
-    assert len(before) == 22
+    assert len(before) == 23
     assert all(not row["applied"] for row in before)
     apply_migrations(scratch_dsn, target="0003")
     after = migration_status(scratch_dsn)
@@ -405,7 +405,7 @@ def test_rollback_round_trip_with_seeded_rows(scratch_dsn):
         conn.execute("INSERT INTO work_items (id) VALUES ('work-seed')")
         conn.commit()
     rolled_back = rollback_migrations(scratch_dsn, target="0019")
-    assert rolled_back == ["0022", "0021", "0020"]
+    assert rolled_back == ["0023", "0022", "0021", "0020"]
     tables = _tables(scratch_dsn)
     assert "token_revocations" not in tables
     assert "embedding_state" not in tables
@@ -416,7 +416,7 @@ def test_rollback_round_trip_with_seeded_rows(scratch_dsn):
     with psycopg.connect(scratch_dsn) as conn:
         (kept,) = conn.execute("SELECT count(*) FROM work_items").fetchone()
     assert kept == 1
-    assert apply_migrations(scratch_dsn) == ["0020", "0021", "0022"]
+    assert apply_migrations(scratch_dsn) == ["0020", "0021", "0022", "0023"]
     with psycopg.connect(scratch_dsn) as conn:
         (revocations,) = conn.execute("SELECT count(*) FROM token_revocations").fetchone()
         (users,) = conn.execute("SELECT count(*) FROM users").fetchone()
@@ -451,7 +451,7 @@ def test_full_rollback_to_0001_and_back(scratch_dsn):
         )
         conn.commit()
     rolled_back = rollback_migrations(scratch_dsn, target="0001")
-    assert rolled_back == [f"{n:04d}" for n in range(22, 1, -1)]
+    assert rolled_back == [f"{n:04d}" for n in range(23, 1, -1)]
     tables = _tables(scratch_dsn)
     assert tables == {
         "agents",
@@ -470,7 +470,7 @@ def test_full_rollback_to_0001_and_back(scratch_dsn):
         (users,) = conn.execute("SELECT count(*) FROM users").fetchone()
     assert valid_at_columns == 0
     assert users == 1
-    assert apply_migrations(scratch_dsn) == [f"{n:04d}" for n in range(2, 23)]
+    assert apply_migrations(scratch_dsn) == [f"{n:04d}" for n in range(2, 24)]
     assert _tables(scratch_dsn) == EXPECTED_TABLES
     with psycopg.connect(scratch_dsn) as conn:
         (conflicts,) = conn.execute("SELECT count(*) FROM conflict_records").fetchone()
@@ -551,9 +551,9 @@ def test_loader_targets(scratch_dsn):
         (lambda: ensure_receipts_schema(scratch_dsn), "0018"),
         (lambda: create_conflicts_schema(scratch_dsn), "0019"),
         (lambda: RevocationList(scratch_dsn).create_schema(), "0020"),
-        # Memory owns the newest migration (0022_embedding_health),
-        # so its loader runs last: it lands on 0022, not 0002.
-        (lambda: create_memory_schema(scratch_dsn), "0022"),
+        # Memory owns the newest migration (0023_memory_rights),
+        # so its loader runs last: it lands on 0023, not 0002.
+        (lambda: create_memory_schema(scratch_dsn), "0023"),
     ]
     for step, expected_max in steps:
         step()

@@ -275,11 +275,35 @@ def test_connectors_page_lists_agents_with_real_form_fields(client, monkeypatch)
 
 
 def test_memory_page_shows_fact_key_and_value(client, monkeypatch):
+    # P-01 moved the memory screen's reads behind MemoryReadService:
+    # patch the service seam (it returns a page dict with a "facts"
+    # key), not the profile module the app no longer calls here.
+    # consent_status is patched too: it opens a real DB connection,
+    # so an unpatched call reads live state instead of the test's
+    # fixture. is_guest is in-memory and needs no patch.
     monkeypatch.setattr(
-        "puspa.memory.profile.list_facts",
-        lambda user_id, dsn=None: [
-            {"key": "likes", "value": "coffee", "status": "active"},
-        ],
+        "puspa.pwa.memory_api.MemoryReadService.list_facts",
+        lambda self, user_id, **kw: {
+            "facts": [
+                {
+                    "id": "fact-1",
+                    "key": "likes",
+                    "content": "coffee",
+                    "source_label": "chat",
+                    "confidence": 0.9,
+                    "confidence_stored": True,
+                    "status": "active",
+                },
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        "puspa.pwa.memory_api.MemoryReadService.consent_status",
+        lambda self, user_id: {
+            "status": "none",
+            "text_version": None,
+            "approved_at": None,
+        },
     )
     page = client.get("/memory")
     assert page.status_code == 200

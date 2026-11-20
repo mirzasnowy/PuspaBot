@@ -72,6 +72,8 @@ def _public(row):
         "valid_until": row["valid_until"],
         "superseded_by": (str(row["superseded_by"]) if row.get("superseded_by") else None),
         "source": row["source"],
+        "confidence": row.get("confidence"),
+        "source_detail": row.get("source_detail"),
         "created_at": row["created_at"],
         "updated_at": row.get("updated_at") or row["created_at"],
     }
@@ -127,11 +129,30 @@ class MemoryFactStore:
         row = self._facts.get(str(snapshot["id"]))
         if row is None:
             return None
-        for field in ("content", "status", "valid_from", "valid_until", "superseded_by", "source"):
+        for field in (
+            "content",
+            "status",
+            "valid_from",
+            "valid_until",
+            "superseded_by",
+            "source",
+            "confidence",
+            "source_detail",
+        ):
             if field in snapshot:
                 row[field] = snapshot[field]
         row["updated_at"] = _now()
         return dict(row)
+
+    def delete_rows(self, fact_ids, user_id):
+        """Hard-delete rows by id (forget path). Returns ids deleted."""
+        deleted = []
+        for fact_id in fact_ids:
+            row = self._facts.get(str(fact_id))
+            if row is not None and str(row["user_id"]) == str(user_id):
+                del self._facts[str(fact_id)]
+                deleted.append(str(fact_id))
+        return deleted
 
     def expire_snapshot(self, record):
         return self.update(
@@ -154,8 +175,8 @@ class PostgresFactStore:
                 cur.execute(
                     "INSERT INTO profile_facts (id, user_id, agent_id, key, "
                     "value, source, status, valid_from, valid_until, "
-                    "superseded_by, created_at, updated_at) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "superseded_by, confidence, source_detail, created_at, updated_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                     "RETURNING *",
                     (
                         record["id"],
@@ -168,6 +189,8 @@ class PostgresFactStore:
                         record["valid_from"],
                         record["valid_until"],
                         record["superseded_by"],
+                        record.get("confidence"),
+                        record.get("source_detail"),
                         record["created_at"],
                         record["updated_at"],
                     ),
@@ -247,8 +270,26 @@ class PostgresFactStore:
             valid_until=snapshot["valid_until"],
             superseded_by=snapshot["superseded_by"],
             source=snapshot["source"],
+            confidence=snapshot.get("confidence"),
+            source_detail=snapshot.get("source_detail"),
             updated_at=_now(),
         )
+
+    def delete_rows(self, fact_ids, user_id):
+        """Hard-delete rows by id (forget path). Returns ids deleted."""
+        ids = [str(fact_id) for fact_id in fact_ids]
+        if not ids:
+            return []
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM profile_facts WHERE user_id = %s AND id = ANY(%s::uuid[]) "
+                    "RETURNING id",
+                    (user_id, ids),
+                )
+                deleted = [str(row["id"]) for row in cur.fetchall()]
+            conn.commit()
+        return deleted
 
     def expire_snapshot(self, record):
         return self.update(
@@ -259,6 +300,15 @@ class PostgresFactStore:
 def default_store(dsn=None):
     """Production store (Postgres)."""
     return PostgresFactStore(dsn=dsn)
+
+
+def _validate_confidence(confidence):
+    if confidence is None:
+        return None
+    value = float(confidence)
+    if not 0.0 <= value <= 1.0:
+        raise ValueError(f"confidence must be between 0 and 1, got {confidence!r}")
+    return value
 
 
 def record_fact(
@@ -272,6 +322,8 @@ def record_fact(
     trust_check=True,
     journal=None,
     now=None,
+    confidence=None,
+    source_detail=None,
 ):
     """Record a fact, superseding the active version of the same key.
 
@@ -283,6 +335,11 @@ def record_fact(
     active fact with the same key (+ agent) is superseded, linked
     through ``superseded_by``. Source ``"inferred"`` stores the
     fact as ``"proposed"``, never active.
+
+    ``confidence`` (0.0-1.0, optional) is persisted with the fact
+    so the memory screen can show it; ``source_detail`` is a short
+    human-readable provenance note (for example "from the chat on
+    3 November 2026") shown next to the fact.
     """
     now = now or _now()
     if not key or not isinstance(key, str):
@@ -291,6 +348,9 @@ def record_fact(
         raise ValueError("content must be a non-empty string")
     if source not in ("user_stated", "user_confirmed", "inferred"):
         raise ValueError(f"unknown source: {source!r}")
+    confidence = _validate_confidence(confidence)
+    if source_detail is not None and not isinstance(source_detail, str):
+        raise ValueError("source_detail must be a string")
     store = store or default_store()
     if trust_check:
         from . import trust as trust_module
@@ -330,6 +390,8 @@ def record_fact(
         "valid_until": None,
         "superseded_by": None,
         "source": source,
+        "confidence": confidence,
+        "source_detail": source_detail,
         "created_at": now,
         "updated_at": now,
     }
@@ -473,3 +535,38 @@ def list_active_facts(user_id, store=None, agent_id=None):
     """Active facts of the user (the current profile layer)."""
     store = store or default_store()
     return store.list_user(user_id, statuses=("active",), agent_id=agent_id)
+
+
+def forget_fact(user_id, fact_id, store=None, journal=None):
+    """Forget one fact: hard-delete it and all its past versions.
+
+    This is the data-subject deletion right ("forget this"), not
+    the soft delete: the fact row and every superseded / expired /
+    rejected version of the same key are removed from the store,
+    so no copy of the fact remains in the profile layer. Raises
+    KeyError for an unknown fact.
+
+    Honest limit: forgetting removes the fact, not the chat
+    episodes it was learned from — episodes are the raw history
+    and stay until account deletion. A forgotten fact is never
+    recalled as a profile fact again, and no fact content is
+    written to the journal entry for the forget (only the fact id
+    and key), so the forget itself keeps no copy of the content.
+    """
+    store = store or default_store()
+    fact = store.get(fact_id, user_id)
+    if fact is None:
+        raise KeyError(f"fact not found: {fact_id}")
+    versions = store.list_for_key(user_id, fact["key"], agent_id=fact.get("agent_id"))
+    forgotten = store.delete_rows([version["id"] for version in versions], user_id)
+    if journal is not None:
+        journal.log(
+            "forget",
+            fact_id=str(fact_id),
+            before=None,
+            after=None,
+            kind="change",
+            note=f"forgot fact {fact['key']}",
+            origin="user",
+        )
+    return {"forgotten_ids": forgotten, "key": fact["key"], "user_id": str(user_id)}
