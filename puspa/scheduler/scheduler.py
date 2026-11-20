@@ -39,6 +39,7 @@ TRIGGER_TYPES = (
     "backup_daily",
     "consolidation",
     "trust_root_refresh",
+    "revocation_list_refresh",
     "dream",
     "sentinel_scan",
 )
@@ -371,6 +372,25 @@ def schedule_trust_root_refresh(user_id: str, *, hour: int = 3, dsn=None) -> Tri
     )
 
 
+def schedule_revocation_list_refresh(user_id: str, *, hour: int = 3, dsn=None) -> Trigger:
+    """Register the daily skill revocation-list refresh job as a trigger (E-12, plan 6.7).
+
+    Running this trigger calls
+    ``puspa.policy.revocation.run_revocation_refresh_job`` through
+    ``run_scheduled_job`` below. The URL comes from
+    ``PUSPA_REVOCATION_LIST_URL`` and the issuer public key from
+    ``PUSPA_REVOCATION_ISSUER_KEY``; with either unset the job
+    reports ``unconfigured`` / ``unavailable`` and fetches nothing.
+    The refresh runs outside the verify path: skill loading stays
+    offline, using the cached list (or no list when no cache
+    exists yet).
+    """
+    tomorrow = (_now() + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
+    return create_trigger(
+        user_id, "revocation_list_refresh", tomorrow, schedule=f"daily {hour:02d}:00", dsn=dsn
+    )
+
+
 def schedule_dream(user_id: str, *, hour: int = 3, dsn=None) -> Trigger:
     """Register the nightly DREAM memory pass (G7) as a trigger.
 
@@ -431,6 +451,11 @@ def run_scheduled_job(run: dict, *, dsn=None) -> dict:
 
         result = run_trust_root_refresh_job()
         return {"job": "trust_root_refresh", "result": result}
+    if event_type == "revocation_list_refresh":
+        from puspa.policy.revocation import run_revocation_refresh_job
+
+        result = run_revocation_refresh_job()
+        return {"job": "revocation_list_refresh", "result": result}
     if event_type == "dream":
         from puspa.memory.dream import run_dream_job
 

@@ -90,6 +90,15 @@ from .gateway import (
 # keep distinct names at package level: the DB-backed token list
 # (E-11, .revocations) stays RevocationList, and the signed skill
 # list (E-12, .revocation) is SkillRevocationList.
+from .revocation import (
+    SkillRevocationError,
+    SkillRevocationList,
+    fetch_revocation_list,
+    keyid_for_public_key,
+    load_cached_revocation_list,
+    run_revocation_refresh_job,
+    verify_revocation_list,
+)
 from .revocations import RevocationError, RevocationList
 from .rules import (
     CompiledRule,
@@ -181,6 +190,8 @@ __all__ = [
     "RuleEvaluationError",
     "RuleTemplate",
     "SkillRejected",
+    "SkillRevocationError",
+    "SkillRevocationList",
     "SpendingLimit",
     "StopError",
     "StopReport",
@@ -196,6 +207,7 @@ __all__ = [
     "describe_template",
     "detect_conflict",
     "evaluate_rule",
+    "fetch_revocation_list",
     "is_asking_guidance",
     "is_credential_change",
     "is_destructive",
@@ -205,6 +217,8 @@ __all__ = [
     "issue_short_lived_token",
     "issue_token",
     "jti_of",
+    "keyid_for_public_key",
+    "load_cached_revocation_list",
     "load_conflicts",
     "load_policy",
     "load_policy_from_file",
@@ -216,6 +230,7 @@ __all__ = [
     "render_approval_card",
     "revoke",
     "revoke_all_for_task",
+    "run_revocation_refresh_job",
     "sign_skill",
     "stop_agent",
     "surface_text",
@@ -223,6 +238,7 @@ __all__ = [
     "token_id",
     "tool_permission",
     "verify_card",
+    "verify_revocation_list",
     "verify_skill",
     "verify_token",
 ]
