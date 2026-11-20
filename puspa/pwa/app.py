@@ -73,6 +73,8 @@ def create_app(
     draft_sender=None,
     embedder=None,
     embedding_environment=None,
+    transcriber=None,
+    share_inbox_dir=None,
 ) -> FastAPI:
     """Bangun aplikasi FastAPI PWA."""
     app = FastAPI(title="Puspa")
@@ -100,6 +102,16 @@ def create_app(
     # wired in, approved sends are refused with 501 and nothing
     # is claimed as sent (see puspa/pwa/drafts_api.py).
     app.state.draft_sender = draft_sender
+    # P-03: voice messages. The transcriber seam (puspa.voice) is
+    # injected here so tests can pass a test double; the default is
+    # the stub transcriber — no real speech engine is chosen until
+    # the 50-recording WER measurement exists (plan 12.4).
+    from puspa.voice.transcriber import resolve_transcriber
+
+    app.state.transcriber = transcriber or resolve_transcriber("stub")
+    # Pending voice transcripts awaiting user confirmation (keyed by
+    # pending id; unconfirmed transcripts are not messages).
+    app.state.voice_pending = {}
 
     # -- G31: serve modes (local operator vs hosted) ---------------------
     # One web codebase, two serve modes (decision locked by Nero, see
@@ -240,6 +252,10 @@ def create_app(
                 "profile": ctx.get("profile", []),
                 "office": ctx.get("office"),
                 "handoffs": ctx.get("handoffs", []),
+                # P-03: text shared into the PWA from another app
+                # (GET /share); the Chat screen prefills its draft
+                # with it. Absent on every other screen.
+                "shared_text": ctx.get("shared_text"),
             }
             payload = (
                 # default=str: bootstrap values carry datetimes (the
@@ -911,6 +927,21 @@ def create_app(
     drafts_api.register_routes(app, need_user)
     proof_api.register_routes(app, need_user)
     payments_api.register_routes(app, need_user)
+    # P-03: Web Share Target (GET/POST /share) and voice messages
+    # (POST /api/voice/*). The share handler renders the Chat screen
+    # with the shared text prefilled as a draft; nothing is sent
+    # until the user taps Send.
+    from puspa.pwa import share_api, voice_api
+
+    def _render_shared_chat(request, user_id, shared_text):
+        return spa_or_template(
+            "chat",
+            request,
+            {**_context_screen("chat", user_id), "shared_text": shared_text},
+        )
+
+    share_api.register_routes(app, need_user, _render_shared_chat, share_inbox_dir=share_inbox_dir)
+    voice_api.register_routes(app, need_user)
     # -- end G28 ---------------------------------------------------------
 
     @app.post("/api/onboarding/waktu")
@@ -936,6 +967,27 @@ def create_app(
             "background_color": "#ffffff",
             "theme_color": "#0f766e",
             "icons": [{"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"}],
+            # P-03: Web Share Target. The installed PWA appears in
+            # Android's share menu; shared text/URL/files land on
+            # POST /share (multipart, so files arrive too). iOS
+            # Safari does not support share targets — see
+            # docs/pwa-share-and-voice.md for per-platform support.
+            "share_target": {
+                "action": "/share",
+                "method": "POST",
+                "enctype": "multipart/form-data",
+                "params": {
+                    "title": "title",
+                    "text": "text",
+                    "url": "url",
+                    "files": [
+                        {
+                            "name": "files",
+                            "accept": ["image/*", "application/pdf", "text/plain"],
+                        }
+                    ],
+                },
+            },
         }
 
     @app.get("/sw.js")

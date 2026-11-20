@@ -1,0 +1,291 @@
+# PWA share target and voice messages API contract (P-03, plan 12.4).
+#
+# Split out of docs/openapi-pwa.yaml on 20 Nov 2026 (P-03 ratchet
+# fix): the share-target + voice contract (6 endpoints + 2 schemas)
+# would have pushed the main spec past the 2000-line hard cap, so it
+# earned its own file, following the rooms split of Wave 30. The main
+# spec references this file with $ref stubs; the generated client is
+# produced from the main spec with openapi-typescript, which resolves
+# external $refs. The Error and ChatMessage schemas stay in the main
+# spec and are referenced back from here.
+openapi: 3.0.3
+info:
+  title: Puspa share target and voice messages API
+  version: 1.0.0
+paths:
+  /share:
+    get:
+      tags: [chat]
+      summary: Share-target landing page (text/URL shares)
+      description: |
+        P-03: the Web Share Target landing page. Renders the Chat
+        screen with the shared title/text/URL prefilled as a draft;
+        nothing is sent until the user taps Send. A share with no
+        content redirects to /chat.
+      parameters:
+        - name: title
+          in: query
+          schema:
+            type: string
+        - name: text
+          in: query
+          schema:
+            type: string
+        - name: url
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Chat screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in, or to /chat for an empty share
+    post:
+      tags: [chat]
+      summary: Share-target receiver (text/URL/files)
+      description: |
+        P-03: receives a share from Android (multipart form, per the
+        manifest share_target). Text/URL shares render the Chat
+        screen with a prefilled draft; file shares are stored in the
+        per-user share inbox, announced in chat, and the response
+        redirects to /chat (303).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                text:
+                  type: string
+                url:
+                  type: string
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: At most 5 files, 10 MiB each; images, PDF, plain text
+      responses:
+        "200":
+          description: Chat screen with the shared text prefilled (text-only share)
+          content:
+            text/html:
+              schema:
+                type: string
+        "303":
+          description: Redirect to /chat (file share stored, or empty share)
+        "400":
+          description: Too many files, unsupported type, or file over the size limit
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "302":
+          description: Redirect to /masuk when not logged in
+  /api/voice/upload:
+    post:
+      tags: [chat]
+      summary: Upload a voice message for transcription
+      description: |
+        P-03: transcribes one recording through the app's transcriber
+        seam and deletes the audio right away (unless keep_audio is
+        true). Returns the transcript as a pending message: nothing
+        is sent until POST /api/voice/confirm. 400 on a bad recording
+        (wrong type, empty, over 10 MiB).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                  description: Recorded audio (webm, mp4, mp3, wav, ogg, aac, 3gp)
+                keep_audio:
+                  type: boolean
+                  description: Keep the audio file instead of deleting it (default false)
+      responses:
+        "200":
+          description: Transcript ready for confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceUpload"
+        "400":
+          description: Invalid recording
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/voice/confirm:
+    post:
+      tags: [chat]
+      summary: Confirm a voice transcript and send it as a chat message
+      description: |
+        P-03: sends the pending transcript (or the user's edited text)
+        as a chat message, exactly as POST /api/chat would, and drops
+        the pending record.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pending_id]
+              properties:
+                pending_id:
+                  type: string
+                text:
+                  type: string
+                  description: Edited transcript; defaults to the transcribed text
+      responses:
+        "200":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, message]
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    $ref: "./openapi-pwa.yaml#/components/schemas/ChatMessage"
+        "400":
+          description: Empty transcript
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown voice message
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/voice/discard:
+    post:
+      tags: [chat]
+      summary: Discard a pending voice transcript without sending it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pending_id]
+              properties:
+                pending_id:
+                  type: string
+      responses:
+        "200":
+          description: Pending transcript discarded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown voice message
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/voice/status:
+    get:
+      tags: [chat]
+      summary: Voice transcription status (which engine, whether one is chosen)
+      description: |
+        P-03: honest status. No speech-to-text engine is chosen until
+        the 50-recording WER measurement (plan 12.4) exists; until
+        then engine_selected is false and uploads are answered by the
+        test-double transcriber.
+      responses:
+        "200":
+          description: Voice status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceStatus"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    VoiceUpload:
+      type: object
+      description: P-03 — one transcribed voice upload, awaiting confirmation.
+      required: [ok, pending_id, transcript, engine, audio_deleted]
+      properties:
+        ok:
+          type: boolean
+        pending_id:
+          type: string
+          description: Confirm or discard this id via /api/voice/confirm or /api/voice/discard
+        transcript:
+          type: string
+        language:
+          type: string
+        engine:
+          type: string
+          description: Transcriber that produced the transcript ("stub" until an engine is chosen)
+        audio_deleted:
+          type: boolean
+          description: True unless keep_audio was requested on upload
+        audio_path:
+          type: string
+          description: Set only when the audio was kept
+        size_bytes:
+          type: integer
+        mime_type:
+          type: string
+    VoiceStatus:
+      type: object
+      description: P-03 — voice transcription status; engine_selected stays false until the 50-recording WER measurement picks an engine.
+      required: [engine, engine_selected, selection, required_recordings]
+      properties:
+        engine:
+          type: string
+        engine_selected:
+          type: boolean
+        selection:
+          type: string
+          enum: [pending, done]
+        required_recordings:
+          type: integer
+        note:
+          type: string
