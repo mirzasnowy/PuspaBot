@@ -65,7 +65,6 @@ answer would still look valid.
 from __future__ import annotations
 
 import json
-import os
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -73,6 +72,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
+
+from puspa.feature_flags import (
+    FLAG_DISCOVERY,
+    FLAG_MARKETPLACE,
+    FLAG_SKILL_INSTALL,
+    is_enabled,
+    require_enabled,
+)
 
 from .errors import (
     ApprovalRequiredError,
@@ -151,19 +158,22 @@ DEFAULT_CACHE_TTL_SECONDS = 24 * 3600
 #: operator turns the flag on explicitly
 #: (``PUSPA_SKILL_INSTALL_ENABLED=1``) when they accept third-party
 #: skills; searching the registry is unaffected — the flag gates
-#: installation only, never discovery.
+#: installation only, never discovery. The value itself lives in
+#: the central flags file (``puspa.feature_flags``); this name is
+#: kept so existing operators and tests keep working.
 SKILL_INSTALL_ENV_VAR = "PUSPA_SKILL_INSTALL_ENABLED"
 
 
 def skill_install_enabled() -> bool:
     """True when skills.sh installs are enabled by the feature flag.
 
-    Reads ``PUSPA_SKILL_INSTALL_ENABLED`` on every call (no cached
-    value), so a test or an operator can flip it without a restart.
-    Anything but ``1`` / ``true`` / ``yes`` (case-insensitive)
-    counts as off, including an unset variable.
+    Delegates to the central flags file (E-21, plan 9.6) — one
+    source of truth, not two. Reads the variable on every call
+    (no cached value), so a test or an operator can flip it
+    without a restart. Anything but ``1`` / ``true`` / ``yes``
+    (case-insensitive) counts as off, including an unset variable.
     """
-    return os.environ.get(SKILL_INSTALL_ENV_VAR, "").strip().lower() in {"1", "true", "yes"}
+    return is_enabled(FLAG_SKILL_INSTALL)
 
 
 #: Raw GitHub paths tried for a skill's SKILL.md, in order.
@@ -458,6 +468,13 @@ class SkillsShClient:
 def search_skills(client: SkillsShClient, query: str, *, owner: str | None = None) -> SearchOutcome:
     """Search with the word-drop fallback.
 
+    Gated on the ``discovery`` flag (E-21, plan 9.6): when the
+    flag is off the search is refused before any registry call,
+    so a beta build cannot even list third-party skills. The
+    cache path (``search_with_cache``) calls this function, so
+    it inherits the gate — a disabled discovery surface serves
+    no cached result either.
+
     The registry requires every query term to match, so when an
     exact search returns fewer than 10 results and the query
     has 2-6 terms, each term is dropped once and the partial
@@ -466,6 +483,7 @@ def search_skills(client: SkillsShClient, query: str, *, owner: str | None = Non
     best rank in a subquery, then installs. Exact results are
     never displaced by partials.
     """
+    require_enabled(FLAG_DISCOVERY)
     exact = client.search(query, owner=owner)
     terms = list(dict.fromkeys(query.split()))
     if len(exact) >= MIN_EXACT_RESULTS or len(terms) < 2 or len(terms) > MAX_FALLBACK_TERMS:
@@ -797,7 +815,9 @@ def install_discovered(
     Order of gates (fail-closed, each refusal leaves nothing
     installed):
 
-    0. The skills.sh install feature flag must be on
+    0. The ``marketplace`` feature flag must be on (E-21,
+       plan 9.6); a beta build refuses every install here.
+    1. The skills.sh install feature flag must be on
        (``PUSPA_SKILL_INSTALL_ENABLED=1``); off by default for
        beta (plan 6.7).
     1. The slug must be a valid marketplace skill id.
@@ -829,12 +849,16 @@ def install_discovered(
     raw.githubusercontent.com, with ``http_client`` injected
     for tests that exercise the default fetchers).
 
-    Plan 6.7: gate 0 comes before all of the above — installing a
+    Plan 6.7: gate 1 comes before all of the above — installing a
     skill discovered via skills.sh is disabled by default
     (``PUSPA_SKILL_INSTALL_ENABLED`` unset). For beta only
     built-in skills and the self-signed allowlist may install.
+    Gate 0 (the ``marketplace`` flag) comes before gate 1: a beta
+    build refuses the install even when skills.sh installs were
+    turned on, because the whole marketplace surface is frozen.
     """
-    if not skill_install_enabled():
+    require_enabled(FLAG_MARKETPLACE)
+    if not is_enabled(FLAG_SKILL_INSTALL):
         raise DiscoveryError(
             "installing skills discovered via skills.sh is disabled "
             f"by the feature flag ({SKILL_INSTALL_ENV_VAR} is not set); "

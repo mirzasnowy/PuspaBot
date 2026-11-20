@@ -109,6 +109,20 @@ Rules the runner enforces:
   `tests/test_bitemporal.py::test_migration_is_idempotent_and_backfills_honestly`
   and `tests/test_pwa_payments_api.py::test_api_creates_schema_when_table_missing`).
 
+## Expand, then contract (E-21, plan 9.6)
+
+Old and new versions must be able to run together during a
+rollback, so a migration's `up` section never drops a column or
+a table: expand first (add nullable columns, new tables, new
+indexes), deploy both versions, and only contract (drop the old
+column or table) in a second, later migration, after the old
+version is gone everywhere. The full procedure — the three
+phases, the canary that rides on them, and the one-command
+rollback they make possible — is in
+`docs/feature-flags-canary.md` section 5. The shape is enforced
+by `tests/test_feature_flags.py`, which fails the suite when any
+`up` section drops a column or a table.
+
 ## How the loaders use it
 
 Every `create_schema` / `ensure_*` / `apply_*_migration` entry
