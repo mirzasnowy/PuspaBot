@@ -59,7 +59,7 @@ def _dbname(dsn: str) -> str:
     """
     for token in dsn.split():
         if token.startswith("dbname="):
-            return token[len("dbname="):]
+            return token[len("dbname=") :]
     raise ValueError(f"no dbname in DSN: {dsn!r}")
 
 
@@ -109,6 +109,7 @@ def test_check_http_refused_fails():
 
 
 @pytest.mark.skipif(not W2_DSN, reason="PUSPA_TEST_DSN not set")
+@pytest.mark.integration
 def test_check_postgres_w2():
     results = check_postgres(W2_DSN)
     by_name = {result.name: result for result in results}
@@ -190,6 +191,7 @@ def test_format_report_and_all_passed(local_server):
 
 
 @pytest.mark.skipif(not W2_DSN, reason="PUSPA_TEST_DSN not set")
+@pytest.mark.integration
 def test_run_health_checks_smoke(local_server):
     results = run_health_checks(W2_DSN, f"{local_server}/manifest.json", BUILD_ROOT)
     by_name = {result.name: result for result in results}
@@ -268,6 +270,7 @@ def test_rebuild_script_stores_no_credentials():
 
 
 @pytest.mark.skipif(not W2_DSN, reason="PUSPA_TEST_DSN not set")
+@pytest.mark.integration
 def test_backup_restore_round_trip_on_w2(tmp_path, monkeypatch):
     import psycopg
 

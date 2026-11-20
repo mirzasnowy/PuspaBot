@@ -10,6 +10,8 @@ written for the coordinator to run.
 
 from __future__ import annotations
 
+import pytest
+
 from puspa.memory.facts import MemoryFactStore
 from puspa.runtime.subagents import SubagentPool
 from puspa.sessions import open_persistence
@@ -109,6 +111,7 @@ def test_memory_record_supersedes_same_key():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
 def test_session_search_real_store(tmp_path):
     with open_persistence(home=tmp_path) as gateway:
         session = gateway.create_session(title="groceries")

@@ -23,6 +23,7 @@ from puspa.sessions import (
 from puspa.sessions.spawner import child_env, home_from_env, require_home_in_env
 
 
+@pytest.mark.integration
 def test_garbage_file_fails_closed(tmp_path):
     db_path = tmp_path / "state.db"
     db_path.write_bytes(b"this is not a sqlite database at all")
@@ -41,6 +42,7 @@ def test_header_only_garbage_is_corrupt(tmp_path):
     assert any("do NOT delete" in step for step in report["steps"])
 
 
+@pytest.mark.integration
 def test_recover_report_states(tmp_path):
     missing = recover_report(tmp_path / "state.db")
     assert missing["status"] == "missing"
@@ -66,6 +68,7 @@ def test_recover_report_never_modifies_the_file(tmp_path):
     assert db_path.read_bytes() == before
 
 
+@pytest.mark.integration
 def test_maintenance_report_on_healthy_db(tmp_path):
     with open_persistence(home=tmp_path) as gateway:
         session = gateway.create_session("healthy")
@@ -83,6 +86,7 @@ def test_maintenance_report_on_healthy_db(tmp_path):
         assert gateway.store.get_state_meta("last_maintenance") is not None
 
 
+@pytest.mark.integration
 def test_maintenance_rebuilds_drifted_fts(tmp_path):
     with open_persistence(home=tmp_path) as gateway:
         session = gateway.create_session("drift")
@@ -94,6 +98,7 @@ def test_maintenance_rebuilds_drifted_fts(tmp_path):
         assert report["fts_rebuilt"]
 
 
+@pytest.mark.integration
 def test_maintenance_with_vacuum(tmp_path):
     with open_persistence(home=tmp_path) as gateway:
         session = gateway.create_session("vacuum")

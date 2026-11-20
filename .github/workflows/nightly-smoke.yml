@@ -127,6 +127,23 @@ jobs:
       - name: Run the nightly smoke probes
         run: python -m puspa.nightly.run
 
+      - name: Run the live pytest tests
+        env:
+          # Opts the live-model judge eval into its real calls
+          # (E-17); without it those tests skip. The key comes
+          # from the workflow env above (OPENROUTER_API_KEY).
+          PUSPA_LIVE_JUDGE_EVAL: "1"
+        run: |
+          # The live-marked tests (E-17, plan section 9.1): the
+          # Docker container runs, the Chromium read, and the
+          # live-model judge eval. They skip honestly when their
+          # service is missing (no sandbox image here, no
+          # Playwright Chromium installed), and fail loudly when
+          # one errors. No Postgres service in this workflow: none
+          # of these tests touches the database, and the shared
+          # conftest skips all database setup for them.
+          python -m pytest -m live -q
+
       - name: Upload this night's records + summary
         if: always()
         uses: actions/upload-artifact@v4

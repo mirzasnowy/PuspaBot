@@ -207,6 +207,7 @@ def test_app_route_serves_real_built_dist():
 # --- live image smoke (Docker only) ----------------------------------------
 
 
+@pytest.mark.live
 def test_image_smoke_live():
     if not docker_available():
         pytest.skip("no Docker daemon answers on this host; live image smoke runs in CI")

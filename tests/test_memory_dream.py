@@ -112,7 +112,13 @@ def test_dream_bad_reply_parses_to_empty():
 
 
 class TestDreamJob:
-    """Scheduler entry point over real episodic rows (Postgres)."""
+    """Scheduler entry point over real episodic rows (Postgres).
+
+    Integration: the autouse ``_schema`` fixture calls
+    ``create_schema()``, which reads ``PUSPA_TEST_DSN`` from the
+    environment — no fixture carries the DSN, so the marker split
+    cannot see the database need (E-17).
+    """
 
     @pytest.fixture(autouse=True)
     def _schema(self):
@@ -121,6 +127,7 @@ class TestDreamJob:
         create_schema()
         yield
 
+    @pytest.mark.integration
     def test_job_applies_learned_as_proposals_and_expires(self):
         from puspa.memory import episodic, facts
 

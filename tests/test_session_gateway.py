@@ -22,6 +22,14 @@ from puspa.sessions import (
 )
 from puspa.sessions.store import SessionStore
 
+# The session gateway's single-writer lock lives in Postgres:
+# puspa.sessions reads PUSPA_TEST_DSN when no DSN is passed,
+# so every test that opens a gateway needs the database.
+# The integration marker is the declaration of that
+# dependency (E-17); without it these tests classify as unit
+# and fail when no database exists.
+pytestmark = pytest.mark.integration
+
 
 def test_direct_writable_store_is_refused(tmp_path):
     with pytest.raises(SingleWriterError):

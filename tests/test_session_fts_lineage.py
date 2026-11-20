@@ -7,6 +7,8 @@ recorded when a compression births a child session.
 
 from __future__ import annotations
 
+import pytest
+
 from puspa.runtime.context_compression import SUMMARY_MARKER
 from puspa.sessions import open_persistence
 from puspa.sessions.lineage import (
@@ -14,6 +16,11 @@ from puspa.sessions.lineage import (
     find_summary_message,
     record_compression,
 )
+
+# The FTS/lineage tests open the session gateway, whose
+# single-writer lock lives in Postgres (see
+# test_session_gateway.py). Same declaration as there (E-17).
+pytestmark = pytest.mark.integration
 
 
 def _seed(gateway, session_id):
