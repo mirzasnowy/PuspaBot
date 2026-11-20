@@ -59,6 +59,8 @@ SCREENS = (
     "insights",
     "onboarding",
     "mockup",
+    # P-07: morning summary + notes-to-actions (plan section 12.8).
+    "morning",
 )
 
 
@@ -77,6 +79,11 @@ def create_app(
     transcriber=None,
     ocr_engine=None,
     share_inbox_dir=None,
+    # P-07: morning summary test seams (same pattern as the
+    # transcriber above): a ``user_id -> GoogleConnector`` factory
+    # and an httpx client for the public prayer/holiday sources.
+    morning_connector_factory=None,
+    morning_http_client=None,
 ) -> FastAPI:
     """Bangun aplikasi FastAPI PWA."""
     app = FastAPI(title="Puspa")
@@ -121,6 +128,12 @@ def create_app(
     from puspa.receipts.ocr import resolve_ocr_engine
 
     app.state.ocr_engine = ocr_engine or resolve_ocr_engine("stub")
+    # P-07: morning summary test seams (see the create_app
+    # signature): injected Google connector factory + HTTP client
+    # for the public prayer/holiday sources; None means "build the
+    # real ones per request".
+    app.state.morning_connector_factory = morning_connector_factory
+    app.state.morning_http_client = morning_http_client
     # Pending receipt drafts awaiting user confirmation (keyed by
     # pending id; unconfirmed drafts are not expenses).
     app.state.receipt_pending = {}
@@ -1002,6 +1015,12 @@ def create_app(
     from puspa.pwa import receipt_api
 
     receipt_api.register_routes(app, need_user)
+    # P-07: morning summary + notes-to-actions (plan section 12.8).
+    # The screen itself needs no bootstrap data: it fetches
+    # everything through the morning APIs.
+    from puspa.pwa import morning_api
+
+    morning_api.register_routes(app, need_user)
     # -- end G28 ---------------------------------------------------------
 
     @app.post("/api/onboarding/waktu")
