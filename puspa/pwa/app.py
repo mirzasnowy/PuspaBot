@@ -994,6 +994,7 @@ def create_app(
     # needs no new bootstrap data for them.
     from puspa.pwa import (
         approval_overlay_api,
+        chat_cards_api,
         controls_api,
         drafts_api,
         graph_api,
@@ -1030,6 +1031,10 @@ def create_app(
 
     app.state.overlay_store = OverlayStore(dsn=app.state.dsn)
     approval_overlay_api.register_routes(app, need_user)
+    # P-12: rich cards in Chat (draft / options / chart / map).
+    # The cards ride on the in-memory chat store, so no new
+    # table and no new screen: the Chat screen renders them.
+    chat_cards_api.register_routes(app, need_user)
     # P-10: replay timeline + GIF export, same login resolver.
     replay_api.register_routes(app, need_user)
     mockup_api.register_routes(app, need_user)
