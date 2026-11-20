@@ -75,7 +75,7 @@ def token_payload_from_request_context() -> dict | None:
     """
     try:
         from nanobot.agent.tools.context import current_request_context
-    except Exception:
+    except ImportError:
         return None
     ctx = current_request_context()
     if ctx is None:

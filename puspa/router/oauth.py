@@ -571,7 +571,7 @@ class TokenRefresher:
         """
         try:
             payload = response.json()
-        except Exception:
+        except ValueError:
             return None
         if not isinstance(payload, dict):
             return None

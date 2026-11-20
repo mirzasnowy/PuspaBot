@@ -44,8 +44,9 @@
 #              shared tests/conftest.py fixture creates schemas for
 #              every test file in this directory.
 #   checks   — dependency-light checks that need no database: the
-#              file-size ratchet and the docs-drift test, plus a parse
-#              check of this workflow file itself.
+#              file-size ratchet, the blind-except ratchet (E-20) and
+#              the bandit baseline ratchet (E-20), plus the docs-drift
+#              test and a parse check of this workflow file itself.
 #   supply-chain — dependency + secret hygiene (E-12, plan 6.7/6.8):
 #              the hashed requirements file is in sync with
 #              requirements.txt (uv pip compile --generate-hashes),
@@ -393,7 +394,7 @@ jobs:
           EOF
 
   checks:
-    name: Ratchet + docs drift (no database)
+    name: Ratchets + docs drift (no database)
     needs: changes
     if: needs.changes.outputs.python == 'true' || needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-24.04
@@ -407,15 +408,20 @@ jobs:
 
       - name: Install what this lane actually runs
         # test_docs_drift.py imports puspa.ledger, which needs psycopg
-        # installed but opens no connection. The ratchet test needs only
-        # the standard library. pytest runs both, and PyYAML parses this
-        # workflow file below. (Before 18 Nov 2026 this step installed
-        # only psycopg, so the lane would have failed on GitHub with
-        # "No module named pytest" / "No module named yaml".)
-        run: python -m pip install "pytest==9.2.0" "psycopg[binary]==3.3.9" "pyyaml==6.0.3"
+        # installed but opens no connection. The ratchet tests need only
+        # the standard library plus the tools they shell out to: the
+        # blind-except ratchet runs the ruff binary and the bandit
+        # baseline ratchet runs bandit (E-20, plan section 9.5; both
+        # pinned to the versions in requirements-dev.txt, against
+        # which their baselines were measured). pytest runs the tests,
+        # and PyYAML parses this workflow file below. (Before 18 Nov
+        # 2026 this step installed only psycopg, so the lane would
+        # have failed on GitHub with "No module named pytest" /
+        # "No module named yaml".)
+        run: python -m pip install "pytest==9.2.0" "psycopg[binary]==3.3.9" "pyyaml==6.0.3" "ruff==0.17.5" "bandit==1.8.6"
 
       - name: Run the ratchet and drift tests
-        run: python -m pytest tests/test_file_size_ratchet.py tests/test_docs_drift.py --noconftest -q
+        run: python -m pytest tests/test_file_size_ratchet.py tests/test_blind_except_ratchet.py tests/test_bandit_baseline.py tests/test_docs_drift.py --noconftest -q
 
       - name: Check this workflow file parses
         run: python -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml')); print('ci.yml parses')"

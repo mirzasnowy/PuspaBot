@@ -132,7 +132,7 @@ def _normalize_id(token_or_id: str) -> str:
                 _b64url_decode(parts[0])
                 _b64url_decode(parts[1])
                 return token_id(token_or_id)
-        except Exception:
+        except (ValueError, TypeError):
             pass
     return token_or_id
 

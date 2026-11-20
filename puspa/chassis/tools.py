@@ -282,7 +282,7 @@ try:
     from mcp.types import Tool as _McpTool
 
     _MCP_SDK_AVAILABLE = True
-except Exception:  # pragma: no cover - SDK missing in a minimal env
+except ImportError:  # pragma: no cover - SDK missing in a minimal env
     _McpClientSession = None
     _stdio_client = None
     _McpTool = None
@@ -291,7 +291,7 @@ except Exception:  # pragma: no cover - SDK missing in a minimal env
 try:
     from pydantic import BaseModel as _PydanticBaseModel
     from pydantic import Field as _pydantic_field
-except Exception:  # pragma: no cover - pydantic is a pinned dependency
+except ImportError:  # pragma: no cover - pydantic is a pinned dependency
     _PydanticBaseModel = None  # type: ignore
     _pydantic_field = None  # type: ignore
 

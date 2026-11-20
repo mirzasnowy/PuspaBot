@@ -13,6 +13,13 @@ types-PyYAML==6.0.12.20261113
 # mutmut mutation testing. Dev-only: only the eval tests use them.
 hypothesis==6.170.16
 mutmut==3.8.1
+# E-20 ratchets (plan section 9.5): bandit baseline test over puspa/
+# (sandbox excluded) and the blind-except ratchet, which shells out to
+# the ruff binary. Dev-only: only the checks lane and the two ratchet
+# tests use them. Pinned 20 Nov 2026; the baselines in
+# tests/test_bandit_baseline.py and tests/test_blind_except_ratchet.py
+# were measured against exactly these versions.
+bandit==1.8.6
 # E-17 per-worker databases + PR lane (plan section 9.1): pytest-xdist
 # runs the suite on 4 workers, each with its own database cloned
 # from a migrated template (tests/worker_db.py). Dev-only: only the

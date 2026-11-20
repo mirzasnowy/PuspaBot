@@ -144,7 +144,7 @@ def _check_dsse_binding(payload_type, payload, artifact_bytes) -> tuple[bool, st
         return False, "dsse payload type is not an in-toto statement"
     try:
         statement = json.loads(payload)
-    except Exception:
+    except ValueError:
         return False, "dsse payload is not valid json"
     if not isinstance(statement, dict):
         return False, "dsse payload is not an in-toto statement"

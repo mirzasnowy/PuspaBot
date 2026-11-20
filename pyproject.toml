@@ -58,17 +58,34 @@ ignore = [
              # refactor.
 ]
 # Deliberately NOT selected (each is a design decision, not a lint fix):
-# - BLE (blind-except): this codebase catches broad exceptions on purpose
-#   in its fallback/resilience paths (router fallback, skill loader,
-#   sandbox, credential pool). Narrowing the ~98 handlers is a
-#   behaviour-affecting refactor. Follow-up: audit the handlers, then
-#   enable BLE001 per module.
+# - BLE (blind-except): enabled by the ratchet test instead of by this
+#   select list (E-20, plan section 9.5). Ruff has no count-baseline
+#   mechanism, so adding BLE here would fail the lint lane on all 192
+#   pre-existing swallowing handlers at once. The ratchet test
+#   (tests/test_blind_except_ratchet.py) runs
+#   `ruff check --select BLE001 puspa tests demo` and fails on any
+#   handler above the per-file baseline in that file, so the count may
+#   only shrink. Baseline 20 Nov 2026: 192 handlers (189 `Exception`,
+#   3 `BaseException`), down from 203 before E-20 narrowed 11 of them;
+#   the old "~98 handlers" figure in this comment was never measured
+#   and was wrong. Handlers that re-raise (error translation to a
+#   domain error) are not flagged by ruff and are not counted: an AST
+#   count found 248 blind handlers in scope, 56 of them re-raising.
+#   Audit notes (which handlers must stay blind and why) are in
+#   docs/e20-blind-except-audit.md.
 # - TRY (tryceratops): TRY004 fires on raises inside try blocks, which
 #   this codebase uses as its error-translation pattern. Follow-up: move
 #   the raises out of the try blocks where it is safe, then enable TRY.
-# - S (bandit): S110/S112 (silent except-pass/continue) are deliberate
-#   ignore-and-continue guards in fallback paths, and S102 (exec) is the
-#   point of the sandbox executor. Follow-up: audit per call site.
+# - S (bandit): enabled by the baseline test instead of by this select
+#   list (E-20, plan section 9.5), for the same count-baseline reason
+#   as BLE above. The test (tests/test_bandit_baseline.py) runs the
+#   bandit binary over puspa/ excluding puspa/sandbox/ (the sandbox
+#   executor intentionally runs untrusted code) and fails on any
+#   finding above the per-test-id baseline in that file. Baseline
+#   20 Nov 2026 (bandit 1.8.6): 119 findings, 100 LOW + 19 MEDIUM.
+#   S110/S112 (silent except-pass/continue) are deliberate
+#   ignore-and-continue guards in fallback paths, and S102 (exec) is
+#   the point of the sandbox executor. Follow-up: audit per call site.
 # - E501: line width is enforced by `ruff format`, not by the linter.
 
 [tool.mypy]

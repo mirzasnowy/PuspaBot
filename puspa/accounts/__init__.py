@@ -56,7 +56,7 @@ __all__ = [
 ]
 
 
-def create_schema(dsn=None):
+def create_schema(dsn: str | None = None) -> None:
     """Apply the account tables (migration 0001_core).
 
     The tables (users, sessions, vault, agents) come from the
