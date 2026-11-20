@@ -229,6 +229,11 @@ BASELINE_LINES = {
     # docs/status-maturity-archive-2026-11-20-waves-35-36.md
     # (105 lines); the live log is now 925 lines, still under
     # the cap, so no entry is added.
+    # 20 Nov 2026 (Wave 45): the live log neared the cap again
+    # (964 lines), so Wave 28 was archived verbatim to
+    # docs/status-maturity-archive-2026-11-20-waves-28.md
+    # (280 lines); the live log is now 692 lines, still under
+    # the cap, so no entry is added.
 }
 
 #: Puspa-owned top-level directories covered by the ratchet.
