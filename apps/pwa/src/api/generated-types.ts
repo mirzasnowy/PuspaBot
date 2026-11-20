@@ -716,6 +716,119 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Share-target landing page (text/URL shares)
+         * @description P-03: the Web Share Target landing page. Renders the Chat
+         *     screen with the shared title/text/URL prefilled as a draft;
+         *     nothing is sent until the user taps Send. A share with no
+         *     content redirects to /chat.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    title?: string;
+                    text?: string;
+                    url?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Chat screen (HTML, SPA shell with server bootstrap) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Redirect to /masuk when not logged in, or to /chat for an empty share */
+                302: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Share-target receiver (text/URL/files)
+         * @description P-03: receives a share from Android (multipart form, per the
+         *     manifest share_target). Text/URL shares render the Chat
+         *     screen with a prefilled draft; file shares are stored in the
+         *     per-user share inbox, announced in chat, and the response
+         *     redirects to /chat (303).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        title?: string;
+                        text?: string;
+                        url?: string;
+                        /** @description At most 5 files, 10 MiB each; images, PDF, plain text */
+                        files?: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Chat screen with the shared text prefilled (text-only share) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Redirect to /masuk when not logged in */
+                302: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Redirect to /chat (file share stored, or empty share) */
+                303: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Too many files, unsupported type, or file over the size limit */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -812,6 +925,271 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a voice message for transcription
+         * @description P-03: transcribes one recording through the app's transcriber
+         *     seam and deletes the audio right away (unless keep_audio is
+         *     true). Returns the transcript as a pending message: nothing
+         *     is sent until POST /api/voice/confirm. 400 on a bad recording
+         *     (wrong type, empty, over 10 MiB).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /**
+                         * Format: binary
+                         * @description Recorded audio (webm, mp4, mp3, wav, ogg, aac, 3gp)
+                         */
+                        audio: string;
+                        /** @description Keep the audio file instead of deleting it (default false) */
+                        keep_audio?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Transcript ready for confirmation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VoiceUpload"];
+                    };
+                };
+                /** @description Invalid recording */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm a voice transcript and send it as a chat message
+         * @description P-03: sends the pending transcript (or the user's edited text)
+         *     as a chat message, exactly as POST /api/chat would, and drops
+         *     the pending record.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        pending_id: string;
+                        /** @description Edited transcript; defaults to the transcribed text */
+                        text?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Message sent */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok: boolean;
+                            message: components["schemas"]["ChatMessage"];
+                        };
+                    };
+                };
+                /** @description Empty transcript */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown voice message */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Discard a pending voice transcript without sending it */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        pending_id: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Pending transcript discarded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok: boolean;
+                        };
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown voice message */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Voice transcription status (which engine, whether one is chosen)
+         * @description P-03: honest status. No speech-to-text engine is chosen until
+         *     the 50-recording WER measurement (plan 12.4) exists; until
+         *     then engine_selected is false and uploads are answered by the
+         *     test-double transcriber.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Voice status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VoiceStatus"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5563,6 +5941,31 @@ export interface components {
             preferences: string[];
             decisions: string[];
         };
+        /** @description P-03 — one transcribed voice upload, awaiting confirmation. */
+        VoiceUpload: {
+            ok: boolean;
+            /** @description Confirm or discard this id via /api/voice/confirm or /api/voice/discard */
+            pending_id: string;
+            transcript: string;
+            language?: string;
+            /** @description Transcriber that produced the transcript ("stub" until an engine is chosen) */
+            engine: string;
+            /** @description True unless keep_audio was requested on upload */
+            audio_deleted: boolean;
+            /** @description Set only when the audio was kept */
+            audio_path?: string;
+            size_bytes?: number;
+            mime_type?: string;
+        };
+        /** @description P-03 — voice transcription status; engine_selected stays false until the 50-recording WER measurement picks an engine. */
+        VoiceStatus: {
+            engine: string;
+            engine_selected: boolean;
+            /** @enum {string} */
+            selection: "pending" | "done";
+            required_recordings: number;
+            note?: string;
+        };
         /**
          * @description B18: one knowledge-graph node. `sources` are the passage
          *     ids (or `user_correction`) the node came from; `seen_at`
@@ -6110,6 +6513,16 @@ export interface components {
                 sizes?: string;
                 type?: string;
             }[];
+            /**
+             * @description P-03: Web Share Target — the installed PWA appears in
+             *     Android's share menu; shares land on POST /share.
+             */
+            share_target?: {
+                action?: string;
+                method?: string;
+                enctype?: string;
+                params?: Record<string, never>;
+            };
         };
         /**
          * @description Server-rendered seed embedded in every screen's HTML as
@@ -6127,6 +6540,12 @@ export interface components {
             profile?: components["schemas"]["ProfileFact"][];
             office?: components["schemas"]["OfficeProjection"];
             handoffs?: Record<string, never>[];
+            /**
+             * @description P-03: text shared into the PWA from another app (GET/POST
+             *     /share). The Chat screen prefills its draft with it;
+             *     absent on every other screen.
+             */
+            shared_text?: string;
         };
         /**
          * @description G31: the `GET /api/operator/status` payload. In `local` serve

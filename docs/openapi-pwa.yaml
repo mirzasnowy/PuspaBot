@@ -280,6 +280,8 @@ paths:
             application/javascript:
               schema:
                 type: string
+  /share:
+    $ref: './openapi-voice.yaml#/paths/~1share'
   /health:
     get:
       tags: [pages]
@@ -333,6 +335,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/voice/upload:
+    $ref: './openapi-voice.yaml#/paths/~1api~1voice~1upload'
+  /api/voice/confirm:
+    $ref: './openapi-voice.yaml#/paths/~1api~1voice~1confirm'
+  /api/voice/discard:
+    $ref: './openapi-voice.yaml#/paths/~1api~1voice~1discard'
+  /api/voice/status:
+    $ref: './openapi-voice.yaml#/paths/~1api~1voice~1status'
   /api/agen:
     post:
       tags: [agents]
@@ -1201,6 +1211,10 @@ components:
       $ref: './openapi-rooms.yaml#/components/schemas/DraftApproval'
     VoiceProfile:
       $ref: './openapi-rooms.yaml#/components/schemas/VoiceProfile'
+    VoiceUpload:
+      $ref: './openapi-voice.yaml#/components/schemas/VoiceUpload'
+    VoiceStatus:
+      $ref: './openapi-voice.yaml#/components/schemas/VoiceStatus'
     GraphNode:
       $ref: './openapi-graph.yaml#/components/schemas/GraphNode'
     GraphEdge:
@@ -1721,6 +1735,20 @@ components:
                 type: string
               type:
                 type: string
+        share_target:
+          type: object
+          description: |
+            P-03: Web Share Target — the installed PWA appears in
+            Android's share menu; shares land on POST /share.
+          properties:
+            action:
+              type: string
+            method:
+              type: string
+            enctype:
+              type: string
+            params:
+              type: object
     Bootstrap:
       type: object
       description: |
@@ -1756,6 +1784,12 @@ components:
           type: array
           items:
             type: object
+        shared_text:
+          type: string
+          description: |
+            P-03: text shared into the PWA from another app (GET/POST
+            /share). The Chat screen prefills its draft with it;
+            absent on every other screen.
     OperatorStatus:
       type: object
       description: |

@@ -30,6 +30,8 @@ export type GatewayPolicy = components["schemas"]["GatewayPolicy"];
 export type GatewayDecision = components["schemas"]["GatewayDecision"];
 export type OperatorLogLine = components["schemas"]["OperatorLogLine"];
 export type ModelSettings = components["schemas"]["ModelSettings"];
+export type VoiceUpload = components["schemas"]["VoiceUpload"];
+export type VoiceStatus = components["schemas"]["VoiceStatus"];
 export type StopAllReport = components["schemas"]["StopAllReport"];
 export type DialState = components["schemas"]["DialState"];
 export type DialAreaState = components["schemas"]["DialAreaState"];
@@ -162,12 +164,70 @@ export function fetchOperatorStatus(fetchFn: FetchFn = fetch): Promise<OperatorS
   return getJson<OperatorStatus>("/api/operator/status", fetchFn);
 }
 
+/** The single shared multipart POST helper (voice uploads carry a
+ * recorded audio blob, so they cannot use the form or JSON helpers). */
+export async function postMultipart<T>(
+  path: string,
+  form: FormData,
+  fetchFn: FetchFn = fetch,
+): Promise<T> {
+  const response = await fetchFn(path, {
+    method: "POST",
+    body: form,
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw new ApiError(response.status, await readError(response));
+  return (await response.json()) as T;
+}
+
 /** Send a chat message. Returns the stored message. */
 export function sendChat(
   text: string,
   fetchFn: FetchFn = fetch,
 ): Promise<{ ok: boolean; message: ChatMessage }> {
   return postForm("/api/chat", { text }, fetchFn);
+}
+
+/**
+ * Upload a voice recording for transcription (P-03). Returns the
+ * transcript as a pending message: the caller shows it for
+ * confirmation and only then calls `confirmVoice`. The server
+ * deletes the audio right away unless `keepAudio` is true.
+ */
+export function uploadVoice(
+  audio: Blob,
+  keepAudio = false,
+  fetchFn: FetchFn = fetch,
+): Promise<VoiceUpload> {
+  const form = new FormData();
+  form.append("audio", audio, "recording.webm");
+  if (keepAudio) form.append("keep_audio", "true");
+  return postMultipart<VoiceUpload>("/api/voice/upload", form, fetchFn);
+}
+
+/**
+ * Confirm a pending voice transcript and send it as a chat message.
+ * `text` overrides the transcript when the user edited it.
+ */
+export function confirmVoice(
+  pendingId: string,
+  text?: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ ok: boolean; message: ChatMessage }> {
+  return postJson("/api/voice/confirm", { pending_id: pendingId, text }, fetchFn);
+}
+
+/** Discard a pending voice transcript without sending it. */
+export function discardVoice(
+  pendingId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ ok: boolean }> {
+  return postJson("/api/voice/discard", { pending_id: pendingId }, fetchFn);
+}
+
+/** Voice transcription status: which engine, whether one is chosen. */
+export function voiceStatus(fetchFn: FetchFn = fetch): Promise<VoiceStatus> {
+  return getJson<VoiceStatus>("/api/voice/status", fetchFn);
 }
 
 /** Create and run a task synchronously. Returns the outcome. */

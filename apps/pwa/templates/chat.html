@@ -11,7 +11,7 @@
 {% endfor %}
 </div>
 <form hx-post="/api/chat" hx-swap="none" method="post">
-<input name="text" placeholder="Tulis pesan ke Puspa..." required style="width:70%">
+<input name="text" placeholder="Tulis pesan ke Puspa..." required style="width:70%" value="{{ shared_text or '' }}">
 <button type="submit">Kirim</button>
 </form>
 <p class="pesan-sub">Kirim foto untuk cek harga (fase 3). Angka bermakna punya tombol Bukti di panelnya.</p>

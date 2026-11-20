@@ -107,6 +107,17 @@ BASELINE_LINES = {
     # Split candidate when it grows again: the model-call step
     # into its own module, or the tool-call loop into one.
     "puspa/turns/loop.py": 1080,
+    # PWA app factory (G28 wiring + P-01/P-02/P-03): the FastAPI
+    # app, the screen context + bootstrap, and every API module's
+    # route registration in one place. Crossed 1000 lines in
+    # Wave 46: P-01's memory service wiring, P-02's autonomy dial
+    # + controls wiring, and P-03's voice/share wiring (the
+    # transcriber seam, the share inbox, the manifest share_target)
+    # together added ~66 lines to the 943-line pre-P-01 factory.
+    # Split candidate when it grows again: the route registrations
+    # into a routes module, or the screen context into its own
+    # module.
+    "puspa/pwa/app.py": 1009,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Shared-room delegation (B6): the delegation board, task
@@ -202,14 +213,22 @@ BASELINE_LINES = {
     # plus the EmbeddingHealth, EmbeddingBanner and HealthStatus
     # schemas and the embedding fields on OperatorStatus. The
     # ratchet resumes from 1920.
+    # Split 20 Nov 2026 (P-03 ratchet fix): the share-target +
+    # voice contract (6 endpoints + 2 schemas) grew the file to
+    # 2,214, past the 2000-line hard cap, so the paths + schemas
+    # moved to docs/openapi-voice.yaml (291 lines, its own
+    # contract) and the main spec keeps $ref stubs to it; the
+    # generated client (openapi-typescript 7.13.0) resolves the
+    # external refs, verified by regenerating. What stays inline
+    # in the main spec: the Bootstrap.shared_text field and the
+    # Manifest.share_target property. The ratchet resumes from 1954.
     # P-02 (stop-all, autonomy dial, weekly report): +26 lines —
     # the `controls` tag (2) plus $ref stubs in the main spec —
     # 4 control paths + 8 control schemas (contract split out
-    # to docs/openapi-controls.yaml, 359 lines, Wave 30
-    # precedent: the inline contract would have pushed the main
-    # spec past the 2000-line hard cap).
-    # The ratchet resumes from 1946.
-    "docs/openapi-pwa.yaml": 1946,
+    # to docs/openapi-controls.yaml, 359 lines, same split
+    # precedent as P-03's voice contract). The ratchet resumes
+    # from 1980.
+    "docs/openapi-pwa.yaml": 1980,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:
