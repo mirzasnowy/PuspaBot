@@ -97,6 +97,14 @@ BASELINE_LINES = {
     # Split candidate when it grows again: the quarantine store
     # into its own module, or the holdout evaluation into one.
     "puspa/memory/learning_loop.py": 1215,
+    # Turn loop (E-18): the turn runner, model calls, tool calls,
+    # and the per-turn state machine in one module. Crossed 1000
+    # lines in Wave 44 (E-18): +~80 lines for the observability
+    # wiring (trace setup in run_turn, spans around the turn and
+    # the model call, TTFT/cost/abandoned-cost metrics).
+    # Split candidate when it grows again: the model-call step
+    # into its own module, or the tool-call loop into one.
+    "puspa/turns/loop.py": 1080,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Shared-room delegation (B6): the delegation board, task

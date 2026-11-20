@@ -22,15 +22,34 @@ from puspa.retrieval.embedding_health import STATUS_DEGRADED, EmbeddingHealth
 
 
 def build_health_payload(
-    embedding: dict[str, Any] | None, *, serve_mode: str = "local"
+    embedding: dict[str, Any] | None,
+    *,
+    serve_mode: str = "local",
+    observability: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The ``GET /health`` payload for one embedding snapshot."""
+    """The ``GET /health`` payload for one embedding snapshot.
+
+    E-18: ``observability`` is the metrics + alarms + tracing
+    block from :mod:`puspa.observability.health` (None when it
+    could not be built); the same block the operator surface
+    serves, so both surfaces agree about the alarms.
+    """
     status = "degraded" if (embedding or {}).get("status") == STATUS_DEGRADED else "ok"
-    return {
+    payload: dict[str, Any] = {
         "status": status,
         "serve_mode": serve_mode,
         "embedding": embedding,
     }
+    if observability is not None:
+        payload["observability"] = observability
+        critical = [
+            alarm
+            for alarm in observability.get("alarms") or []
+            if alarm.get("severity") == "critical"
+        ]
+        if critical:
+            payload["status"] = "degraded"
+    return payload
 
 
 def embedding_banner(embedding: dict[str, Any] | None) -> dict[str, str] | None:

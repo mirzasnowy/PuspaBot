@@ -30,6 +30,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass, field
 
+from puspa.observability import tracing as observability_tracing
 from puspa.router.chains import chain_entries_for
 from puspa.router.complete import CompletionError, complete_messages
 from puspa.router.fallback import (
@@ -216,8 +217,21 @@ def call_model(
         tier_call, refresher, provider_of=lambda entry: entry.provider
     )
 
+    # E-18: the chain runs on the ``turn-model-call`` thread, and
+    # contextvars do not cross threads — so the trace id is
+    # captured on THIS thread and re-set on the worker thread, or
+    # the router spans would land under trace id "unknown".
+    trace_id = observability_tracing.current_trace_id()
+
     def run_chain():
-        return call_with_fallback(chain, wrapped_call, quota_store=quota_store, budget=budget)
+        token = None
+        if trace_id is not None:
+            token = observability_tracing.start_trace(trace_id)
+        try:
+            return call_with_fallback(chain, wrapped_call, quota_store=quota_store, budget=budget)
+        finally:
+            if token is not None:
+                observability_tracing.end_trace(token)
 
     result = run_interruptible(
         run_chain,
