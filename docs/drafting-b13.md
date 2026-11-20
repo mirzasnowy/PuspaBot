@@ -23,7 +23,7 @@ voice and remembers past decisions and preferences.
   `send_draft`, `revise_draft`, `get_draft`, `list_drafts`.
   Two stores with the same interface: `MemoryDraftStore`
   (tests) and `PostgresDraftStore` (`drafts` +
-  `draft_approvals`, `infra/schema_drafting.sql`, RLS
+  `draft_approvals`, migration `0012_drafting.sql`, RLS
   owner-only like the rooms tables).
 - `puspa/pwa/drafts_api.py` — `POST /api/drafts`,
   `GET /api/drafts`, `GET /api/drafts/{id}`,
@@ -118,11 +118,10 @@ Extra guarantees (beyond the ticket text):
 
 ## Schema
 
-Run after `infra/schema_core.sql`, as superuser:
+Run after migration `0001_core.sql`:
 
 ```sh
-psql "dbname=puspa_test user=root host=/var/run/postgresql" \
-     -f infra/schema_drafting.sql
+python -m puspa.migrations up --target 0012
 ```
 
 `puspa.drafting.create_schema()` is the programmatic entry

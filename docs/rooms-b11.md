@@ -29,16 +29,16 @@ instead of being silently dropped.
 ## Modules
 
 All new code lives in `puspa/rooms/splitting.py` and
-`puspa/pwa/rooms_api.py`; the schema additions are in
-`infra/schema_rooms.sql` (applied by `puspa.rooms.create_schema`,
-like the rest of the room schema).
+`puspa/pwa/rooms_api.py`; the schema additions are in migration `0010_rooms.sql`
+(applied by `puspa.rooms.create_schema`, like the rest of
+the room schema).
 
 | File | What it owns |
 | --- | --- |
 | `puspa/rooms/splitting.py` | `SplitService`: create splits (equal / custom / weighted shares), record partial payments, debtor lists, reminder queries + G8 scheduler hook, prepare-only settlement through the B6 money gate, split rendering. |
 | `puspa/rooms/errors.py` | `SplitError`: bad shares, bad amounts, payments that do not fit what a debtor still owes. |
 | `puspa/pwa/rooms_api.py` | PWA HTTP layer for splits (`GET /api/rooms/{id}/splits`, `POST .../splits`, `POST .../splits/{id}/payments`, `POST .../splits/{id}/settlements/{debtor}/prepare`), mounted in `puspa/pwa/app.py` by the existing `register_routes`. |
-| `infra/schema_rooms.sql` | `room_splits`, `split_shares`, `split_payments`, `split_settlements`, with RLS policies in the same shape as the other room tables. |
+| migration `0010_rooms.sql` | `room_splits`, `split_shares`, `split_payments`, `split_settlements`, with RLS policies in the same shape as the other room tables. |
 | `docs/openapi-rooms.yaml` | `Split`, `SplitShare`, `PreparedSettlement` schemas and the four split routes. |
 
 ## Splits and shares

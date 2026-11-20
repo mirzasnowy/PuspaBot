@@ -42,6 +42,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
+from puspa.accounts.users import resolve_dsn
+from puspa.migrations import apply_migrations
+
 __all__ = [
     "BYOK_KEY_PREFIX",
     "DEFAULT_LOCAL_BASE_URL",
@@ -156,26 +159,11 @@ def validate_base_url(base_url: str) -> str:
 
 
 def create_schema(dsn=None) -> None:
-    """Create the ``model_settings`` table if it does not exist.
+    """Apply the ``model_settings`` table (migration 0016_model_settings).
 
     One row per user; the row holds the choice only, never a key.
-    Idempotent (``CREATE TABLE IF NOT EXISTS``).
     """
-    from puspa.accounts.users import _connect
-
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "CREATE TABLE IF NOT EXISTS model_settings ("
-                " user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,"
-                " source TEXT NOT NULL,"
-                " base_url TEXT,"
-                " model TEXT,"
-                " provider TEXT,"
-                " updated_at TIMESTAMPTZ NOT NULL DEFAULT now()"
-                ")"
-            )
-        conn.commit()
+    apply_migrations(resolve_dsn(dsn), target="0016")
 
 
 def _byok_vault_name(provider: str) -> str:

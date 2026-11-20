@@ -1,7 +1,20 @@
--- Skema Fase 4: alur kustom (§2.12) + modul kustom (§2.13) revisi 7.
--- Tabel fase 0/1/2/3 tidak disentuh. RLS mengikuti pola fase 0/1/2/3:
--- kebijakan `isolasi_<tabel>` memakai current_setting('app.current_user_id').
+-- Workflows and custom modules (E-08 migration 0005_workflow.sql).
+--
+-- Creates the custom-workflow tables (workflows, workflow_versions, workflow_runs, workflow_approvals) and the custom-module tables (modules, module_versions, module_tables, module_rows) with RLS. The version tables carry no RLS: their isolation is checked in application code against the owning workflow/module.
+--
+-- Source: infra/schema_workflow.sql.
+--
+-- Reversible: yes. The down section drops the tables this migration
+-- creates (and their data — roll back on a data copy first, never on
+-- a live database without a backup). The puspa_app role, once created
+-- by 0001, is never dropped by any down migration.
+--
+-- Apply with: python -m puspa.migrations up
+-- Never edit an applied migration: add a new numbered migration instead.
+-- Never run this file with psql -f: only the migration runner applies
+-- it, in order, inside one transaction per migration.
 
+-- migrate:up
 CREATE TABLE IF NOT EXISTS workflows (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -107,10 +120,6 @@ ALTER TABLE workflow_approvals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE modules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE module_tables ENABLE ROW LEVEL SECURITY;
 ALTER TABLE module_rows ENABLE ROW LEVEL SECURITY;
--- alur_versi / modul_versi TIDAK memakai RLS (tidak punya user_id
--- sendiri): isolasinya lewat pemilik alur/modul, dicek kode aplikasi
--- di setiap baca/tulis versi (lihat puspa/workflow/runner.py dan
--- puspa/modules/manifest.py).
 
 DO $$
 DECLARE
@@ -124,3 +133,6 @@ BEGIN
             'isolasi_' || t, t, 'app.current_user_id', 'app.current_user_id');
     END LOOP;
 END $$;
+
+-- migrate:down
+DROP TABLE IF EXISTS module_rows, module_tables, module_versions, modules, workflow_approvals, workflow_runs, workflow_versions, workflows CASCADE;

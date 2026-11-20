@@ -6,9 +6,9 @@ that list it, because each place enforces a different thing and a drift
 between them silently changes what the system accepts:
 
 - ``puspa/ledger/ledger.py`` — ``EVENT_TYPES`` (Python validation).
-- ``puspa/ledger/schema.sql`` — the ``CHECK (type IN (...))`` lists, in
-  both the ``CREATE TABLE`` constraint and the revision 7 migration block
-  (database validation).
+- ``puspa/migrations/versions/0001_core.sql`` — the ``CHECK (type IN
+  (...))`` lists, in both the ``CREATE TABLE`` constraint and the
+  revision 7 migration block (database validation).
 - ``docs/contracts.md`` — the "Closed type set (31, revision 7: ...)"
   line (the written contract).
 
@@ -31,7 +31,7 @@ from puspa.ledger import EVENT_TYPES
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONTRACTS_MD = REPO_ROOT / "docs" / "contracts.md"
-LEDGER_SCHEMA_SQL = REPO_ROOT / "puspa" / "ledger" / "schema.sql"
+LEDGER_SCHEMA_SQL = REPO_ROOT / "puspa" / "migrations" / "versions" / "0001_core.sql"
 
 
 def _event_types_from_contracts() -> tuple[set[str], int]:
@@ -84,18 +84,18 @@ def test_event_types_match_contracts() -> None:
 
 
 def test_event_types_match_schema_check() -> None:
-    """Every CHECK list in the ledger schema equals EVENT_TYPES."""
+    """Every CHECK list in the ledger migration equals EVENT_TYPES."""
     for index, sql_types in enumerate(_event_types_from_schema()):
         assert sql_types == set(EVENT_TYPES), (
-            f"CHECK list #{index + 1} in puspa/ledger/schema.sql drifted from "
-            "puspa.ledger.EVENT_TYPES:\n"
+            f"CHECK list #{index + 1} in puspa/migrations/versions/0001_core.sql "
+            "drifted from puspa.ledger.EVENT_TYPES:\n"
             f"  only in schema: {sorted(sql_types - set(EVENT_TYPES))}\n"
             f"  only in code: {sorted(set(EVENT_TYPES) - sql_types)}"
         )
 
 
 def test_schema_check_lists_agree_with_each_other() -> None:
-    """The CREATE TABLE list and the migration list in schema.sql agree.
+    """The CREATE TABLE list and the migration list in 0001_core agree.
 
     The migration block exists because CREATE TABLE IF NOT EXISTS does not
     change the constraint of a table created when the set was smaller; if

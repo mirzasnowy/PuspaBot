@@ -144,7 +144,7 @@ user's records (`user_id` in the content); the per-group query
 returns only that room's records (`room_id` in the content).
 Single-user records (`room_id` null) never appear in a group
 query. The queries are served by expression indexes on the
-`events` table (`puspa/ledger/schema.sql`).
+`events` table (migration `0001_core.sql`).
 
 `is_outcome_event(event)` reports whether a ledger event dict
 is an outcome record.

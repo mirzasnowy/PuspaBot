@@ -17,9 +17,9 @@ steps for the irreversible parts of the work.
 ## Modules
 
 All new code lives in `puspa/rooms/delegation.py` and
-`puspa/pwa/rooms_api.py`; the schema additions are in
-`infra/schema_rooms.sql` (applied by `puspa.rooms.create_schema`,
-like the rest of the room schema).
+`puspa/pwa/rooms_api.py`; the schema additions are in migration `0010_rooms.sql`
+(applied by `puspa.rooms.create_schema`, like the rest of
+the room schema).
 
 | File | What it owns |
 | --- | --- |
@@ -27,7 +27,7 @@ like the rest of the room schema).
 | `puspa/pwa/rooms_api.py` | PWA HTTP layer for the board (`GET /api/rooms`, `GET /api/rooms/{id}/tasks`, `POST .../tasks`, `POST .../steps`, `POST .../steps/{id}/approve\|reject`), mounted in `puspa/pwa/app.py`. |
 | `puspa/rooms/routing.py` | Board command in the group chat: `@puspa board` / `@puspa tasks` / `@puspa tugas` is answered with the rendered board; the agent is never called for it. |
 | `apps/pwa/src/screens/TasksScreen.tsx` | "Shared task boards" section: the user's rooms and each room's board, fetched through `fetchRooms` / `fetchRoomBoard` in `apps/pwa/src/api/client.ts`. |
-| `infra/schema_rooms.sql` | `delegated_tasks` (one row per delegated task) and `delegated_task_steps` (one row per proposed step), with RLS policies in the same shape as the other room tables. |
+| migration `0010_rooms.sql` | `delegated_tasks` (one row per delegated task) and `delegated_task_steps` (one row per proposed step), with RLS policies in the same shape as the other room tables. |
 
 ## Delegation
 

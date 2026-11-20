@@ -5,7 +5,7 @@ agent-side write goes through :class:`AuditWriter`, a :class:`Ledger
 <puspa.ledger.ledger.Ledger>` bound to the ``puspa_app`` role (``SET
 ROLE`` right after connecting). Postgres itself enforces what that
 role may do — INSERT and SELECT on ``events``, nothing else (see
-``puspa/ledger/schema.sql``) — so an agent that tries to UPDATE or
+migration 0001_core) — so an agent that tries to UPDATE or
 DELETE a log row is refused by the database with
 ``InsufficientPrivilege``, whatever the application code does.
 

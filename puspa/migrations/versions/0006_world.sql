@@ -1,6 +1,20 @@
--- World model persistence (idempotent; apply with puspa.world.store.create_schema).
--- Prerequisite: Phase 0 schema (users, agents) already exists.
+-- World model: beliefs, bitemporal versions, causal ledger (E-08 migration 0006_world.sql).
+--
+-- Creates the world-model tables (world_beliefs, belief_versions, causal_hypotheses, agent_goal_models) with RLS. This is the fresh-install path for the objects the old upgrade scripts (migrate_bitemporal, migrate_causal_ledger, migrate_agent_goal_models) used to add to existing databases.
+--
+-- Source: infra/schema_world.sql.
+--
+-- Reversible: yes. The down section drops the tables this migration
+-- creates (and their data — roll back on a data copy first, never on
+-- a live database without a backup). The puspa_app role, once created
+-- by 0001, is never dropped by any down migration.
+--
+-- Apply with: python -m puspa.migrations up
+-- Never edit an applied migration: add a new numbered migration instead.
+-- Never run this file with psql -f: only the migration runner applies
+-- it, in order, inside one transaction per migration.
 
+-- migrate:up
 CREATE TABLE IF NOT EXISTS world_beliefs (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     agent_id TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
@@ -9,8 +23,6 @@ CREATE TABLE IF NOT EXISTS world_beliefs (
     PRIMARY KEY (user_id, agent_id)
 );
 
--- RLS (same pattern as Phase 0/1/2: app.current_user_id).
--- Real enforcement only for connections as puspa_app.
 ALTER TABLE world_beliefs ENABLE ROW LEVEL SECURITY;
 
 DO $$
@@ -21,13 +33,6 @@ BEGIN
         WITH CHECK (current_setting('app.current_user_id', true) = user_id::text);
 END $$;
 
--- Bitemporal belief versions (Kosmos K3, docs/bitemporal-state.md).
--- One row per belief version, never updated in place: a correction
--- appends a new row and closes the old row's known_to (and valid_to
--- when the fact itself stopped being true). Both intervals are
--- half-open [from, to); a NULL end means "still open".
--- The same DDL lives in infra/migrate_bitemporal.sql (the upgrade
--- path for existing databases); the two copies must stay identical.
 CREATE TABLE IF NOT EXISTS belief_versions (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     agent_id TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
@@ -60,14 +65,30 @@ BEGIN
         WITH CHECK (current_setting('app.current_user_id', true) = user_id::text);
 END $$;
 
--- Causal hypotheses (Kosmos K4, docs/causal-ledger.md).
--- One row per hypothesis: cause X leads to effect Y under
--- condition C, with strength, evidence links, TTL, and the
--- bitemporal valid interval of the claim. Status is active,
--- expired, or contradicted; the last two stay as history, so
--- the triple is NOT unique. The same DDL lives in
--- infra/migrate_causal_ledger.sql (the upgrade path for
--- existing databases); the two copies must stay identical.
+-- Ledger entries: one valid instant per entry (from the old
+-- migrate_bitemporal.sql upgrade script). The recorded time stays
+-- created_at (chain order); valid_at is metadata recorded
+-- alongside, OUTSIDE the hashed payload, so the hash chain is
+-- untouched. Backfill is honest: the past has no separately
+-- recorded valid time, so existing entries get
+-- valid_at = created_at. Fresh databases already have the column
+-- from migration 0001; this block is the upgrade path for an
+-- events table created before K3, and it is what makes
+-- re-applying this migration restore the column after it was
+-- dropped. The DO block guards the case where the ledger table
+-- does not exist yet in this database.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'events'
+    ) THEN
+        EXECUTE 'ALTER TABLE events ADD COLUMN IF NOT EXISTS valid_at TIMESTAMPTZ';
+        EXECUTE 'UPDATE events SET valid_at = created_at WHERE valid_at IS NULL';
+        EXECUTE 'CREATE INDEX IF NOT EXISTS idx_event_valid_at ON events (valid_at)';
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS causal_hypotheses (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -110,12 +131,6 @@ BEGIN
         WITH CHECK (current_setting('app.current_user_id', true) = user_id::text);
 END $$;
 
--- Other-agent goal models (Kosmos K5, docs/other-agent-models.md).
--- One row per (user, agent, contact): the goals that contact is
--- pursuing plus the interaction counts, scored predictions, and
--- accuracy counters. The same DDL lives in
--- infra/migrate_agent_goal_models.sql (the upgrade path for
--- existing databases); the two copies must stay identical.
 CREATE TABLE IF NOT EXISTS agent_goal_models (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -148,3 +163,7 @@ BEGIN
         USING (current_setting('app.current_user_id', true) = user_id::text)
         WITH CHECK (current_setting('app.current_user_id', true) = user_id::text);
 END $$;
+
+-- migrate:down
+DROP TABLE IF EXISTS agent_goal_models, causal_hypotheses, belief_versions, world_beliefs CASCADE;
+ALTER TABLE events DROP COLUMN IF EXISTS valid_at;

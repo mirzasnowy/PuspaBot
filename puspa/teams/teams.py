@@ -17,7 +17,7 @@ Rules, all enforced here (never left to the caller):
   ownerless.
 - ``delete_team`` is owner-only and deletes the team row; members,
   invitations, grants, requests, entitlements, and moves cascade
-  in the database (``ON DELETE CASCADE`` in ``infra/schema_teams.sql``).
+  in the database (``ON DELETE CASCADE`` in migration 0009_teams).
 - Role changes are owner-only. A member calling ``set_role`` gets
   ``NotTeamOwnerError`` even when the target is themselves.
 - Membership is a (team_id, user_id) pair; adding an existing member
@@ -28,11 +28,11 @@ Rules, all enforced here (never left to the caller):
 Privilege note: ``create_team`` inserts the team row and the first
 owner membership row in one transaction as the table owner (the
 connection this module opens). The RLS policies in
-``infra/schema_teams.sql`` have no INSERT policy for ``teams`` and
+migration 0009_teams have no INSERT policy for ``teams`` and
 an owner-only INSERT policy for ``team_members`` on the ``puspa_app``
 role, so team creation cannot run as the application role — the
 same "privileged operation runs as the owner" decision as user
-registration in ``puspa/accounts/schema.sql``. All other operations
+registration in migration 0001_core. All other operations
 here run the same SQL the application role would run; the RLS
 policies are what stop a non-owner at the database layer too (see
 ``tests/test_teams.py``).

@@ -236,8 +236,7 @@ def test_rebuild_script_dry_run(tmp_path):
         "Fetch Puspa tree",
         "Create Python virtualenv",
         "Create databases",
-        "Apply core schema",
-        "Apply ledger + accounts schemas",
+        "Apply migrations",
         "Verify RLS",
         "Verify Docker and Compose",
         "Offline deploy validation",
@@ -250,9 +249,9 @@ def test_rebuild_script_dry_run(tmp_path):
 def test_rebuild_script_role_before_schema():
     text = SCRIPT.read_text(encoding="utf-8")
     # Order of the step CALLS in main(): the role step must run before
-    # the schema step (the schema connects as root).
+    # the migrations step (the runner connects as root).
     role_pos = text.index('step "Create role root')
-    schema_pos = text.index('step "Apply core schema')
+    schema_pos = text.index('step "Apply migrations')
     assert role_pos < schema_pos
     # The role step must be the guarded create (re-runnable), and the
     # schema must run from the real tree path, never via a /tmp copy.

@@ -1,0 +1,56 @@
+# Postgres for local development (E-08, plan section 5.3).
+#
+# After a VM replacement, the role + database come back with two commands:
+#
+#     docker compose -f docker-compose.dev.yml up -d
+#     python -m puspa.migrations up
+#
+# The compose file owns the server, the role, and the database; the
+# migration runner owns everything inside the database (tables, RLS,
+# grants). Never create tables by hand in this database: add a numbered
+# migration instead (see docs/migrations.md).
+#
+# Image: pgvector/pgvector:0.6.0-pg16 — pinned to the exact pgvector
+# release verified against the local cluster (extension 0.6.0, Postgres
+# 16). The tag was checked on Docker Hub on 20 Nov 2026 (amd64 digest
+# sha256:d88687938e7336e1ecd1d8c2f29a750e6ab033e511b04a57a1f2d6d2219a0435).
+# Do not float it to `pg16` or `latest`: a new pgvector release changes
+# the `vector` extension, and the committed schema snapshot is compared
+# against exactly this version in CI.
+#
+# Auth: trust on loopback only. The port binds 127.0.0.1, so nothing
+# outside this machine can reach the database; a password here would
+# only be theatre (the dev database holds test data, and the real
+# secrets live in the vault, not in Postgres). Hosted deployments use
+# a password + TLS instead — see docs/teams.md.
+#
+# Honest limit: Docker containers cannot run on the dev VM (its kernel
+# rejects container namespaces), so this file has NOT been verified
+# live here. It is checked by tests/test_migrations.py (YAML parse +
+# rules: pinned image, loopback port, healthcheck, database name) and
+# its first live check is CI / a VPS: `docker compose -f
+# docker-compose.dev.yml up -d`, then `pg_isready`, then
+# `python -m puspa.migrations up`.
+
+services:
+  db:
+    image: pgvector/pgvector:0.6.0-pg16
+    container_name: puspa-db-dev
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_DB: puspa_test
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      # Host loopback only. Never change this to 0.0.0.0 or a bare port.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - puspa-db-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d puspa_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  puspa-db-dev:

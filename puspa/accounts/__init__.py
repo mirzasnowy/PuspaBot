@@ -1,13 +1,11 @@
-"""Akun dasar Puspa (definisi 2.13, CONTRACTS.md).
+"""Base Puspa accounts (definition 2.13, CONTRACTS.md).
 
-Pengguna (email + kata sandi Argon2id), sesi per perangkat (hanya hash
-token yang disimpan), dan vault per pengguna (Fernet, kunci turunan
-HKDF dari master key env PUSPA_VAULT_MASTER_KEY).
+Users (email + Argon2id password), one session per device (only the
+token hash is stored), and a per-user vault (Fernet, key derived with
+HKDF from the master key env PUSPA_VAULT_MASTER_KEY).
 """
 
-from pathlib import Path
-
-import psycopg
+from puspa.migrations import apply_migrations
 
 from .user_sessions import (
     SessionError,
@@ -55,8 +53,10 @@ __all__ = [
 
 
 def create_schema(dsn=None):
-    """Jalankan schema.sql (CREATE TABLE IF NOT EXISTS)."""
-    sql = (Path(__file__).parent / "schema.sql").read_text()
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
-        conn.execute(sql)
-        conn.commit()
+    """Apply the account tables (migration 0001_core).
+
+    The tables (users, sessions, vault, agents) come from the
+    migration, not from a schema file: see puspa/migrations.
+    Idempotent; safe to call before every test.
+    """
+    apply_migrations(resolve_dsn(dsn), target="0001")

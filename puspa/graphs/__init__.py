@@ -14,9 +14,10 @@ as a pattern reference (node + edge as relational rows), see REUSE.md.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import psycopg
+
+from puspa.migrations import apply_migrations
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
@@ -44,13 +45,9 @@ TABLES = (
 
 
 def create_schema(dsn: str | None = None) -> None:
-    """Run `infra/schema_graphs.sql` (idempotent)."""
+    """Apply the graph tables (migration 0004_graphs)."""
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    sql = (Path(__file__).resolve().parent.parent.parent / "infra" / "schema_graphs.sql").read_text(
-        encoding="utf-8"
-    )
-    with psycopg.connect(dsn, autocommit=True) as conn:
-        conn.execute(sql)
+    apply_migrations(dsn, target="0004")
 
 
 def reset_tables(dsn: str | None = None) -> None:

@@ -34,12 +34,13 @@ import json
 import os
 import re
 from datetime import UTC, datetime
-from pathlib import Path
 from uuid import UUID
 
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+
+from puspa.migrations import apply_migrations
 
 from .errors import InvalidEventTypeError, LedgerError
 
@@ -162,7 +163,7 @@ class Ledger:
         Postgres role (``SET ROLE`` right after connecting), so the
         ledger is written through the role's privileges — the agent
         role ``puspa_app`` can INSERT and SELECT but never UPDATE or
-        DELETE (see ``schema.sql``). ``None`` (the default) keeps
+        DELETE (see migration 0001_core). ``None`` (the default) keeps
         the old behaviour: the connection runs as the DSN user.
         ``create_schema`` always runs as the DSN user, never as the
         role: schema setup is an operator step."""
@@ -179,14 +180,12 @@ class Ledger:
         return conn
 
     def create_schema(self) -> None:
-        """Menjalankan `schema.sql` (CREATE TABLE IF NOT EXISTS + REVOKE).
+        """Apply the ledger tables (migration 0001_core).
 
         Always as the DSN user (the table owner), never as ``role``:
         schema setup is an operator step, not an agent step.
         """
-        sql = (Path(__file__).parent / "schema.sql").read_text(encoding="utf-8")
-        with psycopg.connect(self.dsn, autocommit=True) as conn:
-            conn.execute(sql)
+        apply_migrations(self.dsn, target="0001")
 
     def append_event(
         self,
@@ -223,7 +222,7 @@ class Ledger:
         chain. On a database that predates the K3 migration (no
         `valid_at` column yet) the append still succeeds and the
         event reads back with `valid_at` None — run
-        `create_schema()` or `infra/migrate_bitemporal.sql` to
+        `create_schema()` (migration 0001_core) to
         get the column.
         """
         if not isinstance(task_id, str) or not task_id:

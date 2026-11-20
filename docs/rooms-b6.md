@@ -13,9 +13,9 @@ member shares only what the group allows.
 
 ## Modules
 
-All new code lives in `puspa/rooms/`; the schema is
-`infra/schema_rooms.sql` (applied by `puspa.rooms.create_schema`,
-like `puspa/teams` and `puspa/channels`).
+All new code lives in `puspa/rooms/`; the schema is migration `0010_rooms.sql` (applied by
+`puspa.rooms.create_schema`, like `puspa/teams` and
+`puspa/channels`).
 
 | File | What it owns |
 | --- | --- |

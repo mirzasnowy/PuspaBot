@@ -1,34 +1,20 @@
--- Conflict records migration (Kosmos K13, docs/anti-manipulation.md).
+-- Conflicts: surfaced conflicts of interest (E-08 migration 0019_conflicts.sql).
 --
--- Idempotent and additive: run it as many times as you like
--- against an existing puspa_test database. It creates nothing
--- twice and drops nothing. Run it once per existing database:
+-- Creates the conflict_records table with RLS. This is the fresh-install path for the object the old upgrade script (migrate_conflict_records) used to add to existing databases.
 --
---   psql "dbname=puspa_test" -f infra/migrate_conflict_records.sql
+-- Source: infra/migrate_conflict_records.sql.
 --
--- or from Python: puspa.policy.conflicts.create_schema().
--- Fresh databases need the same call before any record is
--- persisted; the in-memory ConflictStore works without it.
+-- Reversible: yes. The down section drops the tables this migration
+-- creates (and their data — roll back on a data copy first, never on
+-- a live database without a backup). The puspa_app role, once created
+-- by 0001, is never dropped by any down migration.
 --
--- One row per surfaced conflict of interest: what conflicts
--- (kind), which tool, whose interest is on each side
--- (user_interest / other_interest, in plain words), what it
--- costs the user, what was surfaced to the user
--- (surfaced_text), and what the user chose (status /
--- user_choice / resolved_at). A record is never edited in
--- place by the agent: resolving one only moves its status
--- forward (surfaced -> resolved_proceed / resolved_alternative
--- / resolved_declined) and stamps the choice and time. The
--- primary key is the conflict id alone, so a re-surfaced
--- conflict for the same tool + kind is a second row with a new
--- id; the old one stays as history.
---
--- No new ledger event type is added: the closed set of 31
--- revision-7 event types stays closed. Surfacing writes
--- "approval_requested" and the user's choice writes
--- "approval_granted" / "approval_rejected" through the
--- gate's log callable (see puspa.policy.conflicts).
+-- Apply with: python -m puspa.migrations up
+-- Never edit an applied migration: add a new numbered migration instead.
+-- Never run this file with psql -f: only the migration runner applies
+-- it, in order, inside one transaction per migration.
 
+-- migrate:up
 CREATE TABLE IF NOT EXISTS conflict_records (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -79,3 +65,6 @@ BEGIN
         USING (current_setting('app.current_user_id', true) = user_id::text)
         WITH CHECK (current_setting('app.current_user_id', true) = user_id::text);
 END $$;
+
+-- migrate:down
+DROP TABLE IF EXISTS conflict_records CASCADE;

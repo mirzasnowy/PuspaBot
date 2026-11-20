@@ -9,7 +9,7 @@ silently.
 Implementation: `puspa/policy/conflicts.py` (`ConflictGate`,
 `ConflictSpec`, `ConflictStore`, `detect_conflict`,
 `conflict_surface_payload`, Postgres table
-`conflict_records` in `infra/migrate_conflict_records.sql`).
+`conflict_records` in migration `0019_conflicts.sql`).
 Turn-loop wiring: `puspa/turns/loop.py` (`TurnLoop`,
 parameter `conflict_gate`) via the seam module
 `puspa/turns/conflict_wiring.py` (`apply_conflict_gate`,

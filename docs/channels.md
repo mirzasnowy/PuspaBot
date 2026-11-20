@@ -59,7 +59,7 @@ Module map (`puspa/channels/`):
 | `heartbeat.py` | `HeartbeatStore`: last beat + last polling offset in one JSON file per profile; restored at start. |
 | `run.py` | `GatewayRunner`: the facade. One live runner per profile (G26 single writer, process-wide registry). |
 | `config.py` | `ChannelConfig` from env. Tokens only from env, never hardcoded. |
-| `schema.py` | Applies `infra/schema_channels.sql`. |
+| `schema.py` | Applies migration `0008_channels.sql`. |
 
 ## Message flow
 
@@ -111,7 +111,7 @@ allowlist and no pairing, the gateway answers nobody.
 ## Delivery ledger: own table, not the core ledger
 
 **Decision:** delivery records live in their own Postgres table,
-`channel_deliveries` (`infra/schema_channels.sql`), NOT in the
+`channel_deliveries` (migration `0008_channels.sql`), NOT in the
 core ledger (`puspa.ledger`).
 
 - The core ledger is a closed set of 31 task event types in a
@@ -129,11 +129,10 @@ core ledger (`puspa.ledger`).
   direction, status, attempts, and error text. Same rule as the
   content-free notifications.
 
-Apply it (after `infra/schema_core.sql`):
+Apply it (after migration `0001_core.sql`):
 
 ```
-psql "dbname=puspa_test user=root host=/var/run/postgresql" \
-     -f infra/schema_channels.sql
+python -m puspa.migrations up --target 0008
 ```
 
 Or from Python: `puspa.channels.schema.create_schema()` (the test

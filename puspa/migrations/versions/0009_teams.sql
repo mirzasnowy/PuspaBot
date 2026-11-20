@@ -1,58 +1,20 @@
--- Team schema for multi-tenant hosting (G13).
+-- Teams: membership, invitations, entitlements (E-08 migration 0009_teams.sql).
 --
--- Tables: teams, team_members, invitations, bot_access_grants,
--- bot_access_requests, entitlements, workspace_moves.
+-- Creates the team tables (teams, team_members, invitations, bot_access_grants, bot_access_requests, entitlements, workspace_moves), the SECURITY DEFINER membership helpers, and the RLS policies.
 --
--- Run AFTER infra/schema_core.sql (the users table must exist first),
--- as a Postgres superuser, from the build/ directory:
+-- Source: infra/schema_teams.sql.
 --
---     psql "dbname=puspa_test user=root host=/var/run/postgresql" \
---          -f infra/schema_teams.sql
+-- Reversible: yes. The down section drops the tables this migration
+-- creates (and their data — roll back on a data copy first, never on
+-- a live database without a backup). The puspa_app role, once created
+-- by 0001, is never dropped by any down migration.
 --
--- Idempotent: CREATE TABLE IF NOT EXISTS + DROP POLICY IF EXISTS, so
--- re-running it is safe. The Python entry point is
--- puspa.teams.create_schema(), which executes this file (the test
--- suite calls it; conftest does NOT apply it).
---
--- ROW LEVEL SECURITY (RLS) — same rules as puspa/accounts/schema.sql:
--- RLS is enabled WITHOUT "FORCE ROW LEVEL SECURITY". The table owner
--- (the role that runs this file, root in dev/tests) bypasses RLS and
--- performs the privileged operations that cannot run through it:
--- team creation (the first owner membership row cannot pass the
--- owner-only INSERT policy yet, because no membership exists),
--- invitation acceptance (the invitee has no membership row yet, so
--- the membership INSERT cannot pass the policy), and entitlement
--- issuance (the server holds the signing key). Everything else runs
--- as the application role `puspa_app` under the policies below.
--- The application sets the current user per transaction with
--- SET LOCAL app.current_user_id (see puspa/accounts/rls.py).
---
--- Policies, in short:
---   - teams: visible / updated / deleted only by a member of the
---     team; only an owner may update or delete. INSERT has no
---     policy for puspa_app: teams are created as the table owner.
---   - team_members: a member sees their own row; an owner sees all
---     rows of their team. INSERT/UPDATE only by an owner; DELETE
---     by an owner, or by the member themselves (leaving a team).
---     The owner/member checks are the SECURITY DEFINER helpers
---     is_team_owner / is_team_member below — a policy must never
---     subquery the table it guards (Postgres reports infinite
---     recursion in the policy).
---   - invitations: only a team owner may see, create, change, or
---     delete them. Acceptance runs as the table owner.
---   - bot_access_grants: visible to the grantee and to team owners;
---     created/deleted only by a team owner.
---   - bot_access_requests: visible to the requester and to team
---     owners; created only by a team member for themselves;
---     decided (approved/denied) only by a team owner.
---   - entitlements: visible and revocable only by a team owner.
---     Issuance runs as the table owner (it holds the signing key).
---   - workspace_moves: visible / created / updated only by a member
---     of the team the move is scoped under.
---
--- No password anywhere in this file: auth is peer auth (local
--- socket, OS user = Postgres role). Do not add a password here.
+-- Apply with: python -m puspa.migrations up
+-- Never edit an applied migration: add a new numbered migration instead.
+-- Never run this file with psql -f: only the migration runner applies
+-- it, in order, inside one transaction per migration.
 
+-- migrate:up
 CREATE TABLE IF NOT EXISTS teams (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name       TEXT NOT NULL,
@@ -136,11 +98,6 @@ CREATE TABLE IF NOT EXISTS workspace_moves (
 CREATE INDEX IF NOT EXISTS idx_workspace_moves_bot_id ON workspace_moves(bot_id);
 CREATE INDEX IF NOT EXISTS idx_workspace_moves_status ON workspace_moves(status);
 
--- Application-role grants (same shape as puspa/accounts/schema.sql):
--- puspa_app may read/write all seven tables; isolation between
--- users is enforced by the RLS policies below, not by revoking
--- grants. Teams/invitations/entitlements INSERTs are still denied
--- to puspa_app by the absence of an INSERT policy (see above).
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'puspa_app') THEN
@@ -154,19 +111,6 @@ BEGIN
     END IF;
 END $$;
 
--- Membership helpers (SECURITY DEFINER): a policy may NOT subquery
--- the table it guards — Postgres applies the policy to the
--- subquery too and reports "infinite recursion detected in policy
--- for relation team_members" (that is what the first version of
--- this file did: the team_members SELECT policy subqueried
--- team_members for the owner check). These functions run as the
--- table owner (which bypasses RLS), so they read membership
--- directly. search_path is locked to pg_catalog and every table is
--- schema-qualified, so the functions cannot be hijacked through
--- search_path. The current user is passed in as a UUID; callers
--- pass NULLIF(current_setting('app.current_user_id', true), '')::uuid
--- so an unset variable becomes NULL (no membership) instead of an
--- error — fail-closed.
 CREATE OR REPLACE FUNCTION public.is_team_member(p_team_id UUID, p_user_id UUID)
 RETURNS BOOLEAN
 LANGUAGE sql
@@ -191,8 +135,6 @@ SET search_path = pg_catalog AS $$
     );
 $$;
 
--- Row Level Security -------------------------------------------------------
--- Idempotent: re-running this file is safe (DROP POLICY IF EXISTS).
 
 ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
@@ -202,8 +144,6 @@ ALTER TABLE bot_access_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE entitlements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workspace_moves ENABLE ROW LEVEL SECURITY;
 
--- teams: members see the team; only owners update or delete it.
--- No INSERT policy: team creation runs as the table owner.
 DROP POLICY IF EXISTS teams_view_member ON teams;
 CREATE POLICY teams_view_member ON teams
     FOR SELECT
@@ -236,7 +176,6 @@ CREATE POLICY teams_delete_owner ON teams
         )
     );
 
--- team_members: own row, or any row of a team you own.
 DROP POLICY IF EXISTS team_members_view_own_or_owner ON team_members;
 CREATE POLICY team_members_view_own_or_owner ON team_members
     FOR SELECT
@@ -285,7 +224,6 @@ CREATE POLICY team_members_delete_owner_or_self ON team_members
         )
     );
 
--- invitations: team owners only.
 DROP POLICY IF EXISTS invitations_owner ON invitations;
 CREATE POLICY invitations_owner ON invitations
     FOR ALL
@@ -302,7 +240,6 @@ CREATE POLICY invitations_owner ON invitations
         )
     );
 
--- bot_access_grants: the grantee, or a team owner.
 DROP POLICY IF EXISTS bot_access_grants_view ON bot_access_grants;
 CREATE POLICY bot_access_grants_view ON bot_access_grants
     FOR SELECT
@@ -336,8 +273,6 @@ CREATE POLICY bot_access_grants_delete_owner ON bot_access_grants
         )
     );
 
--- bot_access_requests: the requester, or a team owner. A member may
--- only open a request for themselves.
 DROP POLICY IF EXISTS bot_access_requests_view ON bot_access_requests;
 CREATE POLICY bot_access_requests_view ON bot_access_requests
     FOR SELECT
@@ -376,8 +311,6 @@ CREATE POLICY bot_access_requests_update_owner ON bot_access_requests
         )
     );
 
--- entitlements: team owners only (read + revoke). Issuance runs as
--- the table owner, so there is no INSERT policy for puspa_app.
 DROP POLICY IF EXISTS entitlements_owner ON entitlements;
 CREATE POLICY entitlements_owner ON entitlements
     FOR SELECT
@@ -414,7 +347,6 @@ CREATE POLICY entitlements_delete_owner ON entitlements
         )
     );
 
--- workspace_moves: members of the team the move is scoped under.
 DROP POLICY IF EXISTS workspace_moves_member ON workspace_moves;
 CREATE POLICY workspace_moves_member ON workspace_moves
     FOR ALL
@@ -431,11 +363,7 @@ CREATE POLICY workspace_moves_member ON workspace_moves
         )
     );
 
--- Quick verification (fails if a table did not form).
-SELECT 'teams RLS: ' || (relrowsecurity::text) FROM pg_class WHERE relname = 'teams';
-SELECT 'team_members RLS: ' || (relrowsecurity::text) FROM pg_class WHERE relname = 'team_members';
-SELECT 'invitations RLS: ' || (relrowsecurity::text) FROM pg_class WHERE relname = 'invitations';
-SELECT 'bot_access_grants RLS: ' || (relrowsecurity::text) FROM pg_class WHERE relname = 'bot_access_grants';
-SELECT 'bot_access_requests RLS: ' || (relrowsecurity::text) FROM pg_class WHERE relname = 'bot_access_requests';
-SELECT 'entitlements RLS: ' || (relrowsecurity::text) FROM pg_class WHERE relname = 'entitlements';
-SELECT 'workspace_moves RLS: ' || (relrowsecurity::text) FROM pg_class WHERE relname = 'workspace_moves';
+-- migrate:down
+DROP TABLE IF EXISTS workspace_moves, entitlements, bot_access_requests, bot_access_grants, invitations, team_members, teams CASCADE;
+DROP FUNCTION IF EXISTS public.is_team_owner(UUID, UUID);
+DROP FUNCTION IF EXISTS public.is_team_member(UUID, UUID);

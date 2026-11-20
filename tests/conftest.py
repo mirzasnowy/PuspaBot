@@ -70,7 +70,7 @@ def _ensure_app_role(test_dsn):
 
     (create_schema di bawah memberi GRANT ke puspa_app hanya kalau
     peran sudah ada, jadi peran harus ada dulu. Sama seperti yang
-    dilakukan infra/schema_core.sql.)
+    dilakukan migrasi 0001_core.)
 
     Dulu fixture ini tinggal di tests/test_rls.py, jadi peran baru
     dibuat saat file itu berjalan. pytest menjalankan file menurut

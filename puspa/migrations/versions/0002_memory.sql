@@ -1,27 +1,20 @@
--- Skema memori Fase 1 Puspa (definisi 2.7, 2.16, 2.17).
--- Idempotent: jalankan ulang aman (CREATE TABLE IF NOT EXISTS +
--- DROP POLICY IF EXISTS). Nilai domain (asal, status) berbahasa
--- Indonesia sesuai revisi 7; kolom SQL mengikuti konvensi yang sama
--- dengan skema Fase 0 (campuran yang sudah ada di sana).
+-- Memory: profile facts, episodic, procedures (E-08 migration 0002_memory.sql).
 --
--- Tabel:
---   fakta_profil    — Profil (lapis 1): fakta + Usulan + riwayat versi.
---   episodik        — Episodik (lapis 2): riwayat chat/tugas + vektor.
---   prosedur        — Prosedural (lapis 3): prosedur percobaan dari
---                     tugas yang berhasil (Graf Alur Layanan penuh
---                     dibangun Fase 3; di sini jalur tulis + simpan).
---   pemberian_irisan — audit pemberian irisan memori ke sub-agen.
---   ringkasan       — hasil konsolidasi saat sepi.
---   contoh_gaya     — contoh pesan user untuk persona (maks 20).
---   onboarding      — status onboarding per pengguna.
---   persetujuan_data — persetujuan data pribadi per pengguna.
---   tautan_email_digunakan — token tautan email yang sudah dipakai.
+-- Creates the memory tables (profile_facts, episodic, procedures, slice_grants, summaries, style_examples, onboarding, data_consents, used_email_links) with RLS, plus the pgvector extension the episodic embedding column needs.
 --
--- RLS: pola yang sama dengan puspa/accounts/schema.sql — policy FOR ALL
--- membandingkan user_id dengan app.current_user_id; penegakan nyata
--- hanya untuk peran puspa_app (pemilik tabel melewati RLS, sifat
--- Postgres). Semua tabel punya kolom user_id.
+-- Source: puspa/memory/schema.sql (includes the G7 versioned-facts upgrade block).
+--
+-- Reversible: yes. The down section drops the tables this migration
+-- creates (and their data — roll back on a data copy first, never on
+-- a live database without a backup). The puspa_app role, once created
+-- by 0001, is never dropped by any down migration.
+--
+-- Apply with: python -m puspa.migrations up
+-- Never edit an applied migration: add a new numbered migration instead.
+-- Never run this file with psql -f: only the migration runner applies
+-- it, in order, inside one transaction per migration.
 
+-- migrate:up
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE IF NOT EXISTS profile_facts (
@@ -43,9 +36,6 @@ CREATE TABLE IF NOT EXISTS profile_facts (
 );
 CREATE INDEX IF NOT EXISTS idx_fact_user_key ON profile_facts(user_id, key, status);
 
--- G7: versioned facts. Existing tables gain the new columns and
--- the widened status set (idempotent migration for databases
--- created before G7).
 ALTER TABLE profile_facts ADD COLUMN IF NOT EXISTS superseded_by UUID;
 ALTER TABLE profile_facts ADD COLUMN IF NOT EXISTS updated_at
     TIMESTAMPTZ NOT NULL DEFAULT now();
@@ -160,7 +150,6 @@ CREATE TABLE IF NOT EXISTS used_email_links (
     used_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Izin peran aplikasi (pola Fase 0): puspa_app boleh baca/tulis.
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'puspa_app') THEN
@@ -176,7 +165,6 @@ BEGIN
     END IF;
 END $$;
 
--- Row Level Security (pola puspa/accounts/schema.sql).
 ALTER TABLE profile_facts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE episodic ENABLE ROW LEVEL SECURITY;
 ALTER TABLE procedures ENABLE ROW LEVEL SECURITY;
@@ -227,9 +215,9 @@ CREATE POLICY approval_data_own_own ON data_consents FOR ALL
     USING (user_id::text = coalesce(current_setting('app.current_user_id', true), ''))
     WITH CHECK (user_id::text = coalesce(current_setting('app.current_user_id', true), ''));
 
--- tautan_email_digunakan tidak punya user_id: hanya server yang
--- menulis/membaca (cek sekali pakai). Policy menolak semua akses
--- peran app; penegakan sekali-pakai ada di kode (email_link.py).
 DROP POLICY IF EXISTS used_email_links_deny_app ON used_email_links;
 CREATE POLICY used_email_links_deny_app ON used_email_links FOR ALL
     USING (false) WITH CHECK (false);
+
+-- migrate:down
+DROP TABLE IF EXISTS used_email_links, data_consents, onboarding, style_examples, summaries, slice_grants, procedures, episodic, profile_facts CASCADE;

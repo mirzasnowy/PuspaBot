@@ -13,7 +13,7 @@ habit beliefs, and belief contradictions. That is the durable
 knowledge: beliefs and the corrections folded into them. No
 schema change was needed for the contact and habit beliefs:
 ``world_beliefs.state`` is one JSONB snapshot, so the new keys
-ride in the same column (see ``infra/schema_world.sql``). What is NOT stored: the transient
+ride in the same column (see migration 0006_world). What is NOT stored: the transient
 prediction stats (``stats``, ``episode_accuracies``,
 ``mispredictions``), the pending prediction, and the session
 learning loop (its corrections live in ``LearningLoop`` in memory;
@@ -34,23 +34,23 @@ dependency (``psycopg`` only).
 Bitemporal beliefs (Kosmos K3, ``puspa.world.bitemporal``) are
 persisted separately from the snapshot, in table
 ``belief_versions`` (one row per belief version, two time pairs
-per row; see ``infra/schema_world.sql`` and
-``infra/migrate_bitemporal.sql``). The snapshot in
+per row; see migration 0006_world and
+migration 0006_world). The snapshot in
 ``world_beliefs.state`` keeps working exactly as before — the
 version table is additive, and existing callers never see it
 unless they ask for it.
 
 Causal hypotheses (Kosmos K4, ``puspa.world.causal``) are
 persisted the same way, in table ``causal_hypotheses`` (one
-row per hypothesis; see ``infra/schema_world.sql`` and
-``infra/migrate_causal_ledger.sql``). Hypotheses mutate in
+row per hypothesis; see migration 0006_world and
+migration 0006_world). Hypotheses mutate in
 place (strength updates, status changes), so saving upserts
 by id; expired and contradicted rows are kept as history.
 
 Other-agent goal models (Kosmos K5, ``puspa.world.agents``)
 are persisted in table ``agent_goal_models`` (one row per
-(user, agent, contact); see ``infra/schema_world.sql`` and
-``infra/migrate_agent_goal_models.sql``). A model mutates in
+(user, agent, contact); see migration 0006_world and
+migration 0006_world). A model mutates in
 place (goal strengths, predictions, accuracy), so saving
 upserts by (user, agent, contact); dropped goals are kept in
 the row's goals JSONB as history. The world snapshot in
@@ -66,11 +66,12 @@ import json
 import os
 from dataclasses import asdict
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
+
+from puspa.migrations import apply_migrations
 
 from .agents import AgentGoalModel, AgentGoalStore
 from .beliefs import (
@@ -118,16 +119,12 @@ def _resolve_dsn(dsn: str | None) -> str:
 
 
 def create_schema(dsn: str | None = None) -> None:
-    """Run `infra/schema_world.sql` (idempotent).
+    """Apply the world tables (migration 0006_world).
 
     Prerequisite: the Phase 0 schema (users, agents) already exists,
     because `world_beliefs` references both tables.
     """
-    sql = (Path(__file__).resolve().parent.parent.parent / "infra" / "schema_world.sql").read_text(
-        encoding="utf-8"
-    )
-    with psycopg.connect(_resolve_dsn(dsn), autocommit=True) as conn:
-        conn.execute(sql)
+    apply_migrations(_resolve_dsn(dsn), target="0006")
 
 
 def serialize_state(state: dict) -> dict:
@@ -252,21 +249,15 @@ def delete_world_state(user_id, agent_id, *, dsn=None) -> bool:
 
 # -- bitemporal belief versions (Kosmos K3) ---------------------------
 def apply_bitemporal_migration(dsn: str | None = None) -> None:
-    """Run `infra/migrate_bitemporal.sql` (idempotent).
+    """Apply the world tables (migration 0006_world).
 
-    Creates table `belief_versions` when missing and adds
-    `events.valid_at` (backfilled from `created_at`) when the
-    ledger table exists. Safe to run repeatedly and safe to run
-    against a database that already has both. Run this once
-    against an existing database; fresh databases get the same
-    objects from `create_schema` (`schema_world.sql`) and
-    `Ledger.create_schema` (`puspa/ledger/schema.sql`).
+    Kept as a named entry point: the `belief_versions` table and the
+    `events.valid_at` column used to come from the old upgrade script
+    `migrate_bitemporal.sql`; both now live in migration 0006_world,
+    so this applies everything up to that migration. Safe to run
+    repeatedly.
     """
-    sql = (
-        Path(__file__).resolve().parent.parent.parent / "infra" / "migrate_bitemporal.sql"
-    ).read_text(encoding="utf-8")
-    with psycopg.connect(_resolve_dsn(dsn), autocommit=True) as conn:
-        conn.execute(sql)
+    apply_migrations(_resolve_dsn(dsn), target="0006")
 
 
 def _belief_row_to_version(row: dict) -> BeliefVersion:
@@ -428,19 +419,14 @@ def delete_belief_history(user_id, agent_id, *, dsn=None) -> bool:
 
 # -- causal hypotheses (Kosmos K4) ------------------------------------
 def apply_causal_migration(dsn: str | None = None) -> None:
-    """Run `infra/migrate_causal_ledger.sql` (idempotent).
+    """Apply the world tables (migration 0006_world).
 
-    Creates table `causal_hypotheses` when missing. Safe to run
-    repeatedly and safe to run against a database that already
-    has it. Run this once against an existing database; fresh
-    databases get the same objects from `create_schema`
-    (`schema_world.sql`).
+    Kept as a named entry point: the `causal_hypotheses` table used
+    to come from the old upgrade script `migrate_causal_ledger.sql`;
+    it now lives in migration 0006_world, so this applies everything
+    up to that migration. Safe to run repeatedly.
     """
-    sql = (
-        Path(__file__).resolve().parent.parent.parent / "infra" / "migrate_causal_ledger.sql"
-    ).read_text(encoding="utf-8")
-    with psycopg.connect(_resolve_dsn(dsn), autocommit=True) as conn:
-        conn.execute(sql)
+    apply_migrations(_resolve_dsn(dsn), target="0006")
 
 
 def _causal_row_to_hypothesis(row: dict) -> CausalHypothesis:
@@ -604,19 +590,15 @@ def delete_causal_hypotheses(user_id, agent_id, *, dsn=None) -> bool:
 
 # -- other-agent goal models (Kosmos K5) ------------------------------
 def apply_agent_migration(dsn: str | None = None) -> None:
-    """Run `infra/migrate_agent_goal_models.sql` (idempotent).
+    """Apply the world tables (migration 0006_world).
 
-    Creates table `agent_goal_models` when missing. Safe to run
-    repeatedly and safe to run against a database that already
-    has it. Run this once against an existing database; fresh
-    databases get the same objects from `create_schema`
-    (`schema_world.sql`).
+    Kept as a named entry point: the `agent_goal_models` table used
+    to come from the old upgrade script
+    `migrate_agent_goal_models.sql`; it now lives in migration
+    0006_world, so this applies everything up to that migration.
+    Safe to run repeatedly.
     """
-    sql = (
-        Path(__file__).resolve().parent.parent.parent / "infra" / "migrate_agent_goal_models.sql"
-    ).read_text(encoding="utf-8")
-    with psycopg.connect(_resolve_dsn(dsn), autocommit=True) as conn:
-        conn.execute(sql)
+    apply_migrations(_resolve_dsn(dsn), target="0006")
 
 
 def _agent_row_to_model(row: dict) -> AgentGoalModel:

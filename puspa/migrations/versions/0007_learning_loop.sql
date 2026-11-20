@@ -1,10 +1,20 @@
--- Learning loop persistence (idempotent; apply with puspa.memory.loop_store.create_schema).
--- Prerequisite: Phase 0 schema (users, agents) already exists.
+-- Learning loop: corrections and experiences (E-08 migration 0007_learning_loop.sql).
+--
+-- Creates the learning-loop tables (loop_corrections, loop_experiences) with RLS.
+--
+-- Source: infra/schema_learning_loop.sql.
+--
+-- Reversible: yes. The down section drops the tables this migration
+-- creates (and their data — roll back on a data copy first, never on
+-- a live database without a backup). The puspa_app role, once created
+-- by 0001, is never dropped by any down migration.
+--
+-- Apply with: python -m puspa.migrations up
+-- Never edit an applied migration: add a new numbered migration instead.
+-- Never run this file with psql -f: only the migration runner applies
+-- it, in order, inside one transaction per migration.
 
--- One row per correction: the latest correction per (user, agent, task).
--- A later misprediction for the same task overwrites the row (upsert)
--- and bumps correction_count; the experience ids that built it are
--- kept in experience_ids.
+-- migrate:up
 CREATE TABLE IF NOT EXISTS loop_corrections (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     agent_id TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
@@ -21,16 +31,9 @@ CREATE TABLE IF NOT EXISTS loop_corrections (
     PRIMARY KEY (user_id, agent_id, task)
 );
 
--- Upgrade for databases created before feedback_source was
--- stored on the correction row (idempotent).
 ALTER TABLE loop_corrections
     ADD COLUMN IF NOT EXISTS feedback_source TEXT;
 
--- One row per experience that carries a correction: every
--- misprediction experience, and every user-feedback experience whose
--- correction was applied. Experiences without a correction (a
--- "correct" verdict, a "wrong" verdict without a correction) are
--- not stored: they change no prediction.
 CREATE TABLE IF NOT EXISTS loop_experiences (
     id TEXT PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -48,8 +51,6 @@ CREATE TABLE IF NOT EXISTS loop_experiences (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- RLS (same pattern as Phase 0/1/2 and schema_world.sql: app.current_user_id).
--- Real enforcement only for connections as puspa_app.
 ALTER TABLE loop_corrections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE loop_experiences ENABLE ROW LEVEL SECURITY;
 
@@ -64,3 +65,6 @@ BEGIN
         USING (current_setting('app.current_user_id', true) = user_id::text)
         WITH CHECK (current_setting('app.current_user_id', true) = user_id::text);
 END $$;
+
+-- migrate:down
+DROP TABLE IF EXISTS loop_experiences, loop_corrections CASCADE;

@@ -90,8 +90,7 @@ def _ensure_schema(request: Request) -> None:
     """Create the payments tables on first use, once per app.
 
     The B7 mockup pattern: the module schema is not part of
-    ``infra/schema_core.sql`` (it lives in its own migration
-    file), so the API creates it lazily the first time a
+    migration 0001_core (it lives in its own migration file), so the API creates it lazily the first time a
     request arrives, instead of failing on a missing table.
     A failure to create is swallowed on purpose: the request
     then fails loudly on the missing table, the same way it

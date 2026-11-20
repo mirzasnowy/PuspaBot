@@ -224,7 +224,7 @@ spend log, not the ledger — no 32nd event type.
 4. The rule is checked against every other K item (review checklist).
 
 Implemented 19 Nov 2026 (`puspa/policy/conflicts.py`,
-`infra/migrate_conflict_records.sql`, `docs/anti-manipulation.md`):
+migration `0019_conflicts.sql`, `docs/anti-manipulation.md`):
 a deterministic detector over five closed conflict kinds
 (`engagement_vs_goal`, `seller_vs_user`, `provider_vs_user`,
 `retention_vs_independence`, `attention_vs_benefit`); a

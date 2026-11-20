@@ -4,7 +4,7 @@ Semua tes di sini berjalan sebagai peran aplikasi `puspa_app` lewat
 ``SET ROLE`` — BUKAN sebagai pemilik tabel. Pemilik tabel/superuser
 melewati RLS begitu saja (sifat Postgres), jadi tes sebagai root tidak
 membuktikan apa-apa; lihat keputusan "tanpa FORCE" di
-``puspa/accounts/schema.sql`` dan tes terakhir di file ini yang
+``puspa/migrations/versions/0001_core.sql`` dan tes terakhir di file ini yang
 mendokumentasikan bypass pemilik secara eksplisit.
 
 Semantik RLS yang diuji: baris pengguna lain TIDAK TERLIHAT (SELECT

@@ -10,7 +10,7 @@ verbatim):
 
 - ``teams`` — teams as their own entity (billing stays in G2):
   create/delete, owner/member roles, membership in Postgres
-  with RLS (``infra/schema_teams.sql``).
+  with RLS (migration 0009_teams).
 - ``invitations`` — single-use invitation tokens, hash-only in
   the DB, 7-day TTL, revocation, idempotent acceptance.
 - ``visibility`` — visibility as a function of (thread, member),
@@ -30,7 +30,7 @@ verbatim):
   deploy-file validation, allowlist probe judging. The live steps
   (compose up, sandbox tests in a container, restore on a real
   VPS) wait for a VPS; see ``docs/vps-validation.md``.
-- ``schema`` — applies ``infra/schema_teams.sql``.
+- ``schema`` — applies migration 0009_teams.
 
 Google login (``puspa.auth``) stays in front; the G11 hosting auth
 (pairing, loopback, gateway) stays the server-to-server path

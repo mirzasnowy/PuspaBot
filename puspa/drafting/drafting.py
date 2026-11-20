@@ -237,7 +237,7 @@ def _approval_from_row(row) -> DraftApproval:
 
 class PostgresDraftStore:
     """Postgres draft + approval store over ``drafts`` /
-    ``draft_approvals`` (see ``infra/schema_drafting.sql``)."""
+    ``draft_approvals`` (see migration 0012_drafting)."""
 
     def __init__(self, dsn=None):
         self.dsn = resolve_dsn(dsn)
