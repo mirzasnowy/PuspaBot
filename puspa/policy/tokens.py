@@ -19,6 +19,7 @@ import base64
 import hashlib
 import json
 import time
+import uuid
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -27,6 +28,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 __all__ = [
+    "DEFAULT_TOKEN_TTL_SECONDS",
+    "MAX_TOKEN_TTL_SECONDS",
     "TOOL_PERMISSION_LEVELS",
     "TOOL_PERMISSION_RANK",
     "TokenError",
@@ -35,7 +38,9 @@ __all__ = [
     "is_revoked",
     "is_subset",
     "issue_child",
+    "issue_short_lived_token",
     "issue_token",
+    "jti_of",
     "revoke",
     "revoke_all_for_task",
     "token_id",
@@ -132,6 +137,33 @@ def _normalize_id(token_or_id: str) -> str:
     return token_or_id
 
 
+# E-11 (plan section 6.6): permission tokens are short-lived by
+# design. A token lives minutes, not hours, so a stolen token is only
+# briefly useful and a stop takes effect at the next expiry even if a
+# revocation write is delayed. ``issue_short_lived_token`` is the
+# issuance path for agent and subagent tokens; ``issue_token`` keeps
+# accepting caller-supplied ``exp`` for pre-existing issuers and
+# tests, but every token it signs still carries a ``jti``.
+#: Default lifetime of a freshly issued agent token, in seconds.
+DEFAULT_TOKEN_TTL_SECONDS = 300
+#: Hard ceiling for a short-lived token's lifetime, in seconds.
+MAX_TOKEN_TTL_SECONDS = 900
+
+
+def jti_of(payload: dict) -> str | None:
+    """The token id (``jti``) carried by a payload, or None.
+
+    The ``jti`` is the stable identity of one token: revocation
+    lists key on it, and the Gate reports it. Tokens issued before
+    E-11 carry no ``jti`` and report None (they can still be
+    revoked by token hash or by an agent-level revoke-all).
+    """
+    if not isinstance(payload, dict):
+        return None
+    jti = payload.get("jti")
+    return jti if isinstance(jti, str) and jti else None
+
+
 def _validate_payload(payload: dict) -> None:
     if not isinstance(payload, dict):
         raise TokenError("payload token harus dict")
@@ -167,6 +199,11 @@ def _validate_payload(payload: dict) -> None:
         raise TokenError("field subagent_id harus str atau null")
     if payload["parent"] is not None and not isinstance(payload["parent"], str):
         raise TokenError("field parent harus str atau null")
+    # E-11: a token may carry a jti (issue_token always stamps one).
+    # When present it must be a non-empty string; absence is allowed
+    # only for tokens issued before E-11 (legacy, still verifiable).
+    if "jti" in payload and (not isinstance(payload["jti"], str) or not payload["jti"]):
+        raise TokenError("field jti harus string tak kosong")
     permissions = payload.get("tool_permissions")
     if permissions is not None and (
         not isinstance(permissions, dict)
@@ -182,14 +219,51 @@ def issue_token(payload: dict, signing_key: Ed25519PrivateKey) -> str:
     """Tandatangani payload dan kembalikan token string.
 
     Payload pemanggil tidak diubah; salinannya yang ditandatangani.
+
+    E-11: when the payload carries no ``jti``, one is stamped
+    (``uuid4`` hex) before signing, so every token issued through
+    this function has a stable identity for revocation. A caller
+    supplied ``jti`` is kept as-is.
     """
     _validate_payload(payload)
     copy = json.loads(canonical_json(payload).decode("utf-8"))
+    if not copy.get("jti"):
+        copy["jti"] = uuid.uuid4().hex
     raw = canonical_json(copy)
     signature = signing_key.sign(raw)
     token = f"{_b64url_encode(raw)}.{_b64url_encode(signature)}"
     _issued[token_id(token)] = copy
     return token
+
+
+def issue_short_lived_token(
+    payload: dict,
+    signing_key: Ed25519PrivateKey,
+    *,
+    ttl_seconds: int = DEFAULT_TOKEN_TTL_SECONDS,
+) -> str:
+    """Issue a token that lives minutes, not hours (E-11).
+
+    Stamps a fresh ``jti``, sets ``iat`` to now and ``exp`` to
+    ``iat + ttl_seconds`` on a copy of the payload (the caller's
+    dict is untouched), then signs it through :func:`issue_token`.
+    ``ttl_seconds`` must be between 1 and
+    :data:`MAX_TOKEN_TTL_SECONDS` (15 minutes); anything longer is
+    refused instead of silently issued. This is the issuance path
+    for agent and subagent tokens.
+    """
+    if not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool):
+        raise TokenError("ttl_seconds must be an integer number of seconds")
+    if ttl_seconds < 1 or ttl_seconds > MAX_TOKEN_TTL_SECONDS:
+        raise TokenError(
+            f"ttl_seconds must be between 1 and {MAX_TOKEN_TTL_SECONDS}, got {ttl_seconds}"
+        )
+    now = int(time.time())
+    copy = json.loads(canonical_json(payload).decode("utf-8"))
+    copy["jti"] = uuid.uuid4().hex
+    copy["iat"] = now
+    copy["exp"] = now + ttl_seconds
+    return issue_token(copy, signing_key)
 
 
 def decode_payload(token: str) -> dict:
@@ -211,10 +285,20 @@ def decode_payload(token: str) -> dict:
     return payload
 
 
-def verify_token(token: str, public_key: Ed25519PublicKey) -> dict:
+def verify_token(token: str, public_key: Ed25519PublicKey, *, revocations=None) -> dict:
     """Verifikasi signature + field + kedaluwarsa + pencabutan.
 
     Kembalikan payload dict. Gagal apa pun -> raise TokenError.
+
+    ``revocations`` (E-11) is an optional durable revocation list
+    (a :class:`puspa.policy.revocations.RevocationList` or any
+    object with ``is_revoked_payload(payload) -> bool``). When
+    given, a token listed by ``jti`` or covered by an agent-level
+    revoke-all is refused here — so a refresh (``issue_child``,
+    which re-verifies the parent) fails after a stop, in every
+    process, not just the one that recorded the revocation.
+    Without it, only the process-local in-memory set is checked
+    (the pre-E-11 behaviour).
     """
     if not isinstance(token, str) or token.count(".") != 1:
         raise TokenError("format token salah: harus payload.signature")
@@ -236,6 +320,8 @@ def verify_token(token: str, public_key: Ed25519PublicKey) -> dict:
     if payload["exp"] <= int(time.time()):
         raise TokenError("token sudah kedaluwarsa")
     if is_revoked(token_id(token)):
+        raise TokenError("token sudah dicabut")
+    if revocations is not None and revocations.is_revoked_payload(payload):
         raise TokenError("token sudah dicabut")
     _issued[token_id(token)] = payload
     return payload
@@ -308,13 +394,19 @@ def is_subset(child: dict, parent: dict) -> bool:
         return False
 
 
-def issue_child(parent_token: str, requested_payload: dict, signing_key, public_key) -> str:
+def issue_child(
+    parent_token: str, requested_payload: dict, signing_key, public_key, *, revocations=None
+) -> str:
     """Terbitkan token anak dari token induk yang sudah terverifikasi.
 
     Gagal verifikasi induk atau bukan subset -> TokenError dan tidak
     ada token yang keluar. Field ``parent`` anak diisi hash token induk.
+
+    ``revocations`` (E-11) is passed through to the parent
+    verification: a child of a revoked parent is never issued, so
+    stopping an agent also stops token refresh.
     """
-    parent_payload = verify_token(parent_token, public_key)
+    parent_payload = verify_token(parent_token, public_key, revocations=revocations)
     _validate_payload(requested_payload)
     if not is_subset(requested_payload, parent_payload):
         raise TokenError("payload anak bukan himpunan bagian dari token induk")

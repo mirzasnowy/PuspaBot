@@ -401,9 +401,16 @@ class SubagentLifecycle:
         observes the request. A terminal child is returned as-is.
         """
         record = self._resolve(handle)
+        return SubagentState(self._cancel_record(record)["state"])
+
+    def _cancel_record(self, record: ChildRecord) -> dict[str, Any]:
+        """Request cancel for one record (shared by :meth:`cancel`
+        and :meth:`cancel_all_for_agent`). Returns the subagent id
+        plus the state right after the request. A terminal record
+        is reported as-is and never re-finalized."""
         with self._lock:
             if is_terminal(record.state):
-                return record.state
+                return {"subagent_id": record.subagent_id, "state": record.state.value}
             if record.state is SubagentState.PENDING:
                 record.cancel_requested = True
                 self._cancel_events[record.subagent_id].set()
@@ -429,7 +436,37 @@ class SubagentLifecycle:
                     error="cancelled before start",
                 ),
             )
-        return state
+        return {"subagent_id": record.subagent_id, "state": state.value}
+
+    def live_subagent_ids(self, agent_id: str) -> list[str]:
+        """Ids of this agent's children that are not terminal yet."""
+        with self._lock:
+            return [
+                record.subagent_id
+                for record in self._records.values()
+                if record.agent_id == agent_id and not is_terminal(record.state)
+            ]
+
+    def cancel_all_for_agent(self, agent_id: str) -> list[dict[str, Any]]:
+        """Request cancel for every live child of one agent (E-11:
+        the "interrupt all subagents" step of a stop).
+
+        The same cooperative cancel as :meth:`cancel`, applied to
+        all of the agent's live children at once. Returns one entry
+        per affected child (subagent id + state after the request);
+        children already terminal, or with a cancel already
+        requested, are not listed again. Children of other agents
+        are untouched.
+        """
+        with self._lock:
+            live = [
+                record
+                for record in self._records.values()
+                if record.agent_id == agent_id
+                and not is_terminal(record.state)
+                and not record.cancel_requested
+            ]
+        return [self._cancel_record(record) for record in live]
 
     def steer(self, handle: SubagentHandle | str, text: str) -> int:
         """Queue steered text for the child's next iteration boundary.

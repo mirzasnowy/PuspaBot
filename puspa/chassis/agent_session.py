@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from puspa.accounts.user_sessions import validate_session
-from puspa.policy.tokens import issue_token, verify_token
+from puspa.policy.tokens import DEFAULT_TOKEN_TTL_SECONDS, issue_token, verify_token
 
 __all__ = [
     "AgentBrain",
@@ -148,7 +148,7 @@ def bind_turn(
     domains=None,
     connector=None,
     budget=None,
-    exp_seconds: int = 3600,
+    exp_seconds: int = DEFAULT_TOKEN_TTL_SECONDS,
     task_id: str | None = None,
     dsn=None,
     world_model=None,
