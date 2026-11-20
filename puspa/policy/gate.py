@@ -104,13 +104,31 @@ def _token_allows_kind(payload: dict, kind: str) -> bool:
 
 
 class Gate:
-    """Gerbang tunggal aksi keluar."""
+    """Gerbang tunggal aksi keluar.
 
-    def __init__(self, log=None, spending=None, public_key=None):
+    ``revocations`` (E-11) is an optional durable revocation list
+    (a :class:`puspa.policy.revocations.RevocationList` or any
+    object with ``is_revoked_payload(payload) -> bool``). When
+    given, the Gate checks it on every call — at approval request
+    and again at execution — so a token revoked after approval
+    (a stop) cannot execute. Without it, only the process-local
+    in-memory revocation set is checked (the pre-E-11 behaviour).
+    """
+
+    def __init__(self, log=None, spending=None, public_key=None, revocations=None):
         self.log = log
         self.spending = spending
         self.public_key = public_key
+        self.revocations = revocations
         self._requests: dict[str, ApprovalRequest] = {}
+
+    def _is_revoked(self, payload: dict, tid: str) -> bool:
+        """Revoked by the durable list or by the in-memory set."""
+        if is_revoked(tid):
+            return True
+        if self.revocations is not None:
+            return bool(self.revocations.is_revoked_payload(payload))
+        return False
 
     # -- pencatatan ---------------------------------------------------
     def _log(self, event_type: str, content: dict) -> None:
@@ -168,7 +186,7 @@ class Gate:
             if self.public_key is None:
                 raise GateDenied(render_server_line("error.token_needs_public_key"))
             try:
-                payload = verify_token(token, self.public_key)
+                payload = verify_token(token, self.public_key, revocations=self.revocations)
             except TokenError as exc:
                 raise GateDenied(
                     render_server_line("error.token_invalid", detail=str(exc))
@@ -180,7 +198,7 @@ class Gate:
             raise GateDenied(render_server_line("error.token_wrong_owner"))
         if payload.get("exp", 0) <= int(time.time()):
             raise GateDenied(render_server_line("error.token_expired"))
-        if is_revoked(tid):
+        if self._is_revoked(payload, tid):
             raise GateDenied(render_server_line("error.token_revoked"))
         return payload, tid
 
@@ -290,7 +308,7 @@ class Gate:
         # Token masih valid? (cek ulang exp + pencabutan)
         if request.token_payload.get("exp", 0) <= int(time.time()):
             self._deny(request, render_server_line("error.token_expired"), invalidate=True)
-        if is_revoked(request.token_id):
+        if self._is_revoked(request.token_payload, request.token_id):
             self._deny(request, render_server_line("error.token_revoked"), invalidate=True)
         # Batas belanja (cek independen dari persetujuan).
         if request.kind == "prepare_payment":

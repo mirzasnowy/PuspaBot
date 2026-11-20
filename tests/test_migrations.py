@@ -68,6 +68,7 @@ EXPECTED_TABLES = {
     "agent_connectors",
     "agent_goal_models",
     "agent_meta",
+    "agent_revocations",
     "agents",
     "belief_versions",
     "billing_usage_rows",
@@ -145,6 +146,7 @@ EXPECTED_TABLES = {
     "team_members",
     "teams",
     "token_metrics",
+    "token_revocations",
     "tos_checks",
     "trigger_runs",
     "triggers",
@@ -193,8 +195,15 @@ def _maintenance_dsn(dsn: str) -> str:
 
 @pytest.fixture
 def scratch_dsn(request, test_dsn):
-    """A fresh empty database for one test; dropped afterwards."""
-    name = f"puspa_migtest_{request.node.name.replace('[', '_').replace(']', '')}"[:63]
+    """A fresh empty database for one test; dropped afterwards.
+
+    The name carries the process id so a worker run and the central
+    suite (or two workers) can use the same cluster at the same time
+    without dropping each other's scratch database mid-test.
+    """
+    name = (f"puspa_migtest_{os.getpid()}_{request.node.name.replace('[', '_').replace(']', '')}")[
+        :63
+    ]
     dsn = f"dbname={name} " + " ".join(
         f"{key}={value}" for key, value in _dsn_parts(test_dsn).items() if key != "dbname"
     )
@@ -319,10 +328,10 @@ def _pg_dump(dsn: str) -> str:
 
 
 def test_migration_files_are_numbered_and_reversible():
-    """19 migrations, versions 0001-0019, each with up + down."""
+    """20 migrations, versions 0001-0020, each with up + down."""
     migrations = list_migrations()
-    assert [m.version for m in migrations] == [f"{n:04d}" for n in range(1, 20)]
-    assert len({m.name for m in migrations}) == 19
+    assert [m.version for m in migrations] == [f"{n:04d}" for n in range(1, 21)]
+    assert len({m.name for m in migrations}) == 20
     for migration in migrations:
         assert migration.up_sql, f"{migration.name}: empty up"
         assert migration.down_sql, f"{migration.name}: empty down"
@@ -331,15 +340,15 @@ def test_migration_files_are_numbered_and_reversible():
 
 def test_apply_all_to_empty_db_creates_every_table(scratch_dsn):
     applied = apply_migrations(scratch_dsn)
-    assert applied == [f"{n:04d}" for n in range(1, 20)]
+    assert applied == [f"{n:04d}" for n in range(1, 21)]
     assert _tables(scratch_dsn) == EXPECTED_TABLES
     with psycopg.connect(scratch_dsn) as conn:
         (count,) = conn.execute("SELECT count(*) FROM schema_migrations").fetchone()
-    assert count == 19
+    assert count == 20
 
 
 def test_apply_is_idempotent(scratch_dsn):
-    assert len(apply_migrations(scratch_dsn)) == 19
+    assert len(apply_migrations(scratch_dsn)) == 20
     assert apply_migrations(scratch_dsn) == []
     assert apply_migrations(scratch_dsn, target="0006") == []
 
@@ -362,7 +371,7 @@ def test_unknown_target_is_refused(scratch_dsn):
 
 def test_status_reports_pending_then_applied(scratch_dsn):
     before = migration_status(scratch_dsn)
-    assert len(before) == 19
+    assert len(before) == 20
     assert all(not row["applied"] for row in before)
     apply_migrations(scratch_dsn, target="0003")
     after = migration_status(scratch_dsn)
@@ -392,19 +401,20 @@ def test_rollback_round_trip_with_seeded_rows(scratch_dsn):
         )
         conn.execute("INSERT INTO work_items (id) VALUES ('work-seed')")
         conn.commit()
-    rolled_back = rollback_migrations(scratch_dsn, target="0018")
-    assert rolled_back == ["0019"]
+    rolled_back = rollback_migrations(scratch_dsn, target="0019")
+    assert rolled_back == ["0020"]
     tables = _tables(scratch_dsn)
-    assert "conflict_records" not in tables
+    assert "token_revocations" not in tables
+    assert "conflict_records" in tables
     assert "work_items" in tables
     with psycopg.connect(scratch_dsn) as conn:
         (kept,) = conn.execute("SELECT count(*) FROM work_items").fetchone()
     assert kept == 1
-    assert apply_migrations(scratch_dsn) == ["0019"]
+    assert apply_migrations(scratch_dsn) == ["0020"]
     with psycopg.connect(scratch_dsn) as conn:
-        (conflicts,) = conn.execute("SELECT count(*) FROM conflict_records").fetchone()
+        (revocations,) = conn.execute("SELECT count(*) FROM token_revocations").fetchone()
         (users,) = conn.execute("SELECT count(*) FROM users").fetchone()
-    assert conflicts == 0
+    assert revocations == 0
     assert users == 1
 
 
@@ -435,7 +445,7 @@ def test_full_rollback_to_0001_and_back(scratch_dsn):
         )
         conn.commit()
     rolled_back = rollback_migrations(scratch_dsn, target="0001")
-    assert rolled_back == [f"{n:04d}" for n in range(19, 1, -1)]
+    assert rolled_back == [f"{n:04d}" for n in range(20, 1, -1)]
     tables = _tables(scratch_dsn)
     assert tables == {
         "agents",
@@ -454,7 +464,7 @@ def test_full_rollback_to_0001_and_back(scratch_dsn):
         (users,) = conn.execute("SELECT count(*) FROM users").fetchone()
     assert valid_at_columns == 0
     assert users == 1
-    assert apply_migrations(scratch_dsn) == [f"{n:04d}" for n in range(2, 20)]
+    assert apply_migrations(scratch_dsn) == [f"{n:04d}" for n in range(2, 21)]
     assert _tables(scratch_dsn) == EXPECTED_TABLES
     with psycopg.connect(scratch_dsn) as conn:
         (conflicts,) = conn.execute("SELECT count(*) FROM conflict_records").fetchone()
@@ -484,6 +494,7 @@ def test_loader_targets(scratch_dsn):
     from puspa.onboarding.hints import create_schema as create_hints_schema
     from puspa.payments.schema import create_schema as create_payments_schema
     from puspa.policy.conflicts import create_schema as create_conflicts_schema
+    from puspa.policy.revocations import RevocationList
     from puspa.pwa.model_settings import create_schema as create_model_settings_schema
     from puspa.rooms.schema import create_schema as create_rooms_schema
     from puspa.runtime import create_schema as create_runtime_schema
@@ -534,6 +545,7 @@ def test_loader_targets(scratch_dsn):
         (lambda: ensure_work_items_schema(scratch_dsn), "0018"),
         (lambda: ensure_receipts_schema(scratch_dsn), "0018"),
         (lambda: create_conflicts_schema(scratch_dsn), "0019"),
+        (lambda: RevocationList(scratch_dsn).create_schema(), "0020"),
     ]
     for step, expected_max in steps:
         step()

@@ -25,6 +25,7 @@ Two things this module deliberately does NOT do:
 from __future__ import annotations
 
 import time
+import uuid
 from collections.abc import Callable
 from typing import Any
 
@@ -46,8 +47,11 @@ __all__ = [
     "build_parent_token_payload",
 ]
 
-#: Child token lifetime cap (seconds from launch).
-CHILD_TOKEN_TTL_S = 3600
+#: Child token lifetime cap (seconds from launch). E-11: minutes,
+#: not hours — a child token must die soon after its work, so a
+#: stop takes effect at the next expiry even if a revocation write
+#: is delayed. Matches DEFAULT_TOKEN_TTL_SECONDS in policy/tokens.
+CHILD_TOKEN_TTL_S = 300
 #: Child token cost ceiling cap (tokens).
 CHILD_TOKEN_MAX = 20000
 
@@ -96,11 +100,13 @@ def build_child_token_payload(
         "user_id": user_id,
         "agent_id": agent_id,
         "subagent_id": subagent_id,
+        "jti": uuid.uuid4().hex,
         "tools": sorted(tool_names),
         "domains": domains,
         "connectors": connectors,
         "budget": budget,
         "exp": child_exp,
+        "iat": now,
         "task_id": task_id,
     }
 
@@ -118,6 +124,7 @@ def build_parent_token_payload(
         "user_id": user_id,
         "agent_id": agent_id,
         "subagent_id": None,
+        "jti": uuid.uuid4().hex,
         "tools": sorted(tool_names),
         "domains": [],
         "connectors": {},
@@ -127,6 +134,7 @@ def build_parent_token_payload(
             "rupiah_max": CEILING_RP_PER_TASK,
         },
         "exp": now + CHILD_TOKEN_TTL_S,
+        "iat": now,
         "task_id": task_id,
     }
 

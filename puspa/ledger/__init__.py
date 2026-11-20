@@ -1,5 +1,16 @@
 """Buku Kerja — `puspa.ledger` (definisi 2.3)."""
 
+from .anchor import (
+    AnchorConflict,
+    AnchorError,
+    AnchorRecord,
+    AnchorStore,
+    LocalAnchorStore,
+    anchor_day,
+    collect_heads,
+    compute_digest,
+    verify_anchor,
+)
 from .audit import (
     AUDIT_RETENTION_ENV,
     INITIATOR_KINDS,
@@ -19,6 +30,7 @@ from .audit import (
     is_nobody_watching,
     sanitize_cell,
 )
+from .audit_daemon import AuditDaemonError, AuditWriterServer, RemoteAuditWriter
 from .audit_writer import AuditWriter, ensure_audit_role
 from .errors import InvalidEventTypeError, LedgerError
 from .export import EXCLUDED, EXPORT_VERSION, UserExport, build_user_export, export_user_data
@@ -49,8 +61,14 @@ __all__ = [
     "INITIATOR_KINDS",
     "MAX_EXPORT_ROWS",
     "NOBODY_WATCHING_KINDS",
+    "AnchorConflict",
+    "AnchorError",
+    "AnchorRecord",
+    "AnchorStore",
+    "AuditDaemonError",
     "AuditExportLog",
     "AuditWriter",
+    "AuditWriterServer",
     "ControlRejected",
     "ControlState",
     "ExportResult",
@@ -61,11 +79,16 @@ __all__ = [
     "KillSwitchError",
     "Ledger",
     "LedgerError",
+    "LocalAnchorStore",
+    "RemoteAuditWriter",
     "UserExport",
+    "anchor_day",
     "attach_initiator",
     "audit_retention_days",
     "build_user_export",
     "canonical_json",
+    "collect_heads",
+    "compute_digest",
     "compute_event_hash",
     "ensure_audit_role",
     "export_events_csv",
@@ -76,4 +99,5 @@ __all__ = [
     "is_kill_switch_active",
     "is_nobody_watching",
     "sanitize_cell",
+    "verify_anchor",
 ]
