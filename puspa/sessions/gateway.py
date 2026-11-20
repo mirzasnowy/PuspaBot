@@ -1,4 +1,4 @@
-"""The profile gateway: the single writer for a profile (G26).
+"""The profile gateway: the single writer for a profile (G26, E-07).
 
 Only the gateway writes the canonical session database. The rule is
 enforced in code, not just in documentation:
@@ -13,6 +13,16 @@ enforced in code, not just in documentation:
   with SQLite ``mode=ro``: they physically cannot write, however
   many of them exist.
 
+The registry is process-wide only, so E-07 adds the cross-process
+layers from ``puspa.sessions.single_writer`` at open time: an
+exclusive ``flock`` on ``state.db`` (second process on the same
+volume is refused) and a Postgres session-level advisory lock per
+``agent_id`` (second process or container on the same database is
+refused, even on a different volume). Both are held for the
+gateway's lifetime and released on close — or by the OS / the
+database when the holder process dies. See
+``docs/session-storage.md``.
+
 Every other client — workers, subagents, tools — reaches session
 state through the gateway object (or a reader), never by opening
 ``state.db`` itself.
@@ -25,6 +35,7 @@ from pathlib import Path
 
 from .errors import SingleWriterError
 from .home import guard_not_live, resolve_home, state_db_path
+from .single_writer import SingleWriterLock, default_agent_id
 from .store import SessionStore, _WriterToken
 
 #: Live gateways by resolved database path (process-wide registry).
@@ -35,26 +46,49 @@ _LOCK = threading.Lock()
 class SessionGateway:
     """The single writer for one profile's session database."""
 
-    def __init__(self, store: SessionStore, *, db_path, profile) -> None:
+    def __init__(
+        self, store: SessionStore, *, db_path, profile, writer_lock=None, agent_id=None
+    ) -> None:
         self._store = store
         self.db_path = Path(db_path)
         self.profile = profile
+        self._writer_lock = writer_lock
+        self.agent_id = agent_id
 
     # -- opening ---------------------------------------------------------
 
     @classmethod
-    def open(cls, profile=None, *, home=None, allow_live_home=False, busy_timeout_ms=5000):
+    def open(
+        cls,
+        profile=None,
+        *,
+        home=None,
+        allow_live_home=False,
+        busy_timeout_ms=5000,
+        dsn=None,
+        agent_id=None,
+        advisory_lock=True,
+    ):
         """Open (or create) the gateway for a profile.
 
         Raises :class:`SingleWriterError` when a gateway for the same
-        database file is already open in this process, and
-        :class:`LiveHomeError` when the resolved home is the live
-        home without the explicit opt-in.
+        database file is already open in this process, when another
+        process already holds the ``flock`` on ``state.db``, or when
+        another process or container already holds the Postgres
+        advisory lock for this agent — and also when Postgres cannot
+        be reached to verify the claim (fail-closed, unless
+        ``advisory_lock=False``). ``agent_id`` defaults to
+        ``profile:<name>``; pass the real agent id when it is known.
+        ``dsn`` defaults through ``PUSPA_DSN`` / ``PUSPA_TEST_DSN``
+        to the local peer-auth default. Raises :class:`LiveHomeError`
+        when the resolved home is the live home without the explicit
+        opt-in.
         """
         root = resolve_home(profile, home=home)
         guard_not_live(root, allow_live_home=allow_live_home)
         db_path = state_db_path(profile, home=home)
         key = str(db_path.resolve()) if db_path.exists() else str(db_path.absolute())
+        resolved_agent_id = agent_id or default_agent_id(profile)
         with _LOCK:
             active = _ACTIVE.get(key)
             if active is not None and active._store._conn is not None:
@@ -64,21 +98,43 @@ class SessionGateway:
                     "use open_persistence_reader() for read access"
                 )
             db_path.parent.mkdir(parents=True, exist_ok=True)
-            store = SessionStore(
-                db_path,
-                busy_timeout_ms=busy_timeout_ms,
-                _writer_token=_WriterToken(),
+            writer_lock = SingleWriterLock(
+                db_path, resolved_agent_id, dsn=dsn, advisory=advisory_lock
             )
-            gateway = cls(store, db_path=db_path, profile=profile)
+            writer_lock.acquire()
+            try:
+                store = SessionStore(
+                    db_path,
+                    busy_timeout_ms=busy_timeout_ms,
+                    _writer_token=_WriterToken(),
+                )
+            except Exception:
+                writer_lock.release()
+                raise
+            gateway = cls(
+                store,
+                db_path=db_path,
+                profile=profile,
+                writer_lock=writer_lock,
+                agent_id=resolved_agent_id,
+            )
             _ACTIVE[key] = gateway
             return gateway
 
     def close(self) -> None:
-        """Close the writer and release the single-writer claim."""
+        """Close the writer and release the single-writer claim.
+
+        Idempotent. The store closes first, then both cross-process
+        lock layers are released, so no other process can open the
+        database while this gateway still holds a connection to it.
+        """
         key = str(self.db_path.resolve() if self.db_path.exists() else self.db_path.absolute())
         with _LOCK:
             _ACTIVE.pop(key, None)
         self._store.close()
+        writer_lock, self._writer_lock = self._writer_lock, None
+        if writer_lock is not None:
+            writer_lock.release()
 
     def __enter__(self):
         return self
@@ -86,6 +142,12 @@ class SessionGateway:
     def __exit__(self, *exc):
         self.close()
         return False
+
+    @property
+    def advisory_locked(self) -> bool:
+        """True while this gateway holds the Postgres advisory lock
+        (False when the advisory layer was disabled at open)."""
+        return self._writer_lock is not None and self._writer_lock.advisory_held
 
     @property
     def store(self) -> SessionStore:
