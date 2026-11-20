@@ -26,6 +26,12 @@
 
 \restrict h9qUhleswHjHBhgmGfFNCddu9JuqwMaUKwlwsg50kCrbStfE2oCY20rec5ZfKmM
 
+--
+-- PostgreSQL database dump
+--
+
+\restrict 08RSOKFLqDPMddy0sffqJiZ6ALpkpwxZVhPMvkzcpx7eUq9SSc1vG7RqDweRfBR
+
 -- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 
@@ -1136,6 +1142,25 @@ CREATE TABLE public.monthly_credits (
 
 
 ALTER TABLE public.monthly_credits OWNER TO root;
+
+--
+-- Name: morning_notes; Type: TABLE; Schema: public; Owner: root
+--
+
+CREATE TABLE public.morning_notes (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    source text NOT NULL,
+    title text DEFAULT ''::text NOT NULL,
+    raw_text text DEFAULT ''::text NOT NULL,
+    summary text DEFAULT ''::text NOT NULL,
+    actions jsonb DEFAULT '[]'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT morning_notes_source_check CHECK ((source = ANY (ARRAY['voice'::text, 'text'::text, 'meeting'::text, 'lecture'::text, 'study'::text])))
+);
+
+
+ALTER TABLE public.morning_notes OWNER TO root;
 
 --
 -- Name: onboarding; Type: TABLE; Schema: public; Owner: root
@@ -2566,6 +2591,14 @@ ALTER TABLE ONLY public.monthly_credits
 
 
 --
+-- Name: morning_notes morning_notes_pkey; Type: CONSTRAINT; Schema: public; Owner: root
+--
+
+ALTER TABLE ONLY public.morning_notes
+    ADD CONSTRAINT morning_notes_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: onboarding_hint_seen onboarding_hint_seen_pkey; Type: CONSTRAINT; Schema: public; Owner: root
 --
 
@@ -3412,6 +3445,13 @@ CREATE INDEX idx_module_user ON public.modules USING btree (user_id, status);
 
 
 --
+-- Name: idx_morning_notes_user_created; Type: INDEX; Schema: public; Owner: root
+--
+
+CREATE INDEX idx_morning_notes_user_created ON public.morning_notes USING btree (user_id, created_at DESC);
+
+
+--
 -- Name: idx_pemakaian_prosedur; Type: INDEX; Schema: public; Owner: root
 --
 
@@ -4130,6 +4170,14 @@ ALTER TABLE ONLY public.modules
 
 ALTER TABLE ONLY public.monthly_credits
     ADD CONSTRAINT monthly_credits_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: morning_notes morning_notes_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: root
+--
+
+ALTER TABLE ONLY public.morning_notes
+    ADD CONSTRAINT morning_notes_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
 --
@@ -6396,5 +6444,5 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.workspace_moves TO puspa_app;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict h9qUhleswHjHBhgmGfFNCddu9JuqwMaUKwlwsg50kCrbStfE2oCY20rec5ZfKmM
+\unrestrict 08RSOKFLqDPMddy0sffqJiZ6ALpkpwxZVhPMvkzcpx7eUq9SSc1vG7RqDweRfBR
 

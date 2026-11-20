@@ -134,6 +134,18 @@ paths:
     $ref: './openapi-receipts.yaml#/paths/~1api~1receipts~1expenses'
   /api/receipts/status:
     $ref: './openapi-receipts.yaml#/paths/~1api~1receipts~1status'
+  /api/morning/status:
+    $ref: './openapi-morning.yaml#/paths/~1api~1morning~1status'
+  /api/morning/summary:
+    $ref: './openapi-morning.yaml#/paths/~1api~1morning~1summary'
+  /api/morning/notes/text:
+    $ref: './openapi-morning.yaml#/paths/~1api~1morning~1notes~1text'
+  /api/morning/notes/voice:
+    $ref: './openapi-morning.yaml#/paths/~1api~1morning~1notes~1voice'
+  /api/morning/notes:
+    $ref: './openapi-morning.yaml#/paths/~1api~1morning~1notes'
+  /api/morning/notes/{note_id}:
+    $ref: './openapi-morning.yaml#/paths/~1api~1morning~1notes~1{note_id}'
   /api/agen:
     post:
       tags: [agents]
@@ -1018,6 +1030,32 @@ components:
       $ref: './openapi-receipts.yaml#/components/schemas/ReceiptStatus'
     ReceiptRejection:
       $ref: './openapi-receipts.yaml#/components/schemas/ReceiptRejection'
+    MorningSourceStatus:
+      $ref: './openapi-morning.yaml#/components/schemas/MorningSourceStatus'
+    MorningStatus:
+      $ref: './openapi-morning.yaml#/components/schemas/MorningStatus'
+    MorningEvent:
+      $ref: './openapi-morning.yaml#/components/schemas/MorningEvent'
+    MorningBillCandidate:
+      $ref: './openapi-morning.yaml#/components/schemas/MorningBillCandidate'
+    MorningTask:
+      $ref: './openapi-morning.yaml#/components/schemas/MorningTask'
+    MorningHoliday:
+      $ref: './openapi-morning.yaml#/components/schemas/MorningHoliday'
+    MorningPrayer:
+      $ref: './openapi-morning.yaml#/components/schemas/MorningPrayer'
+    MorningSummary:
+      $ref: './openapi-morning.yaml#/components/schemas/MorningSummary'
+    MorningNoteAction:
+      $ref: './openapi-morning.yaml#/components/schemas/MorningNoteAction'
+    MorningNote:
+      $ref: './openapi-morning.yaml#/components/schemas/MorningNote'
+    MorningNoteList:
+      $ref: './openapi-morning.yaml#/components/schemas/MorningNoteList'
+    MorningNoteCreated:
+      $ref: './openapi-morning.yaml#/components/schemas/MorningNoteCreated'
+    MorningVoiceNoteCreated:
+      $ref: './openapi-morning.yaml#/components/schemas/MorningVoiceNoteCreated'
     GraphNode:
       $ref: './openapi-graph.yaml#/components/schemas/GraphNode'
     GraphEdge:

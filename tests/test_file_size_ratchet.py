@@ -125,7 +125,11 @@ BASELINE_LINES = {
     # of the room-activity SSE frame (the psycopg import plus the
     # narrowed handler with its failure-mode comment). The ratchet
     # resumes from 1069.
-    "puspa/pwa/app.py": 1069,
+    # P-07 (morning summary + notes-to-actions, 20 Nov 2026): +19
+    # lines — the "morning" screen in SCREENS, the two morning test
+    # seams on create_app (connector factory + HTTP client), and
+    # the morning route registration. Resumes from 1088.
+    "puspa/pwa/app.py": 1088,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Shared-room delegation (B6): the delegation board, task
@@ -246,7 +250,12 @@ BASELINE_LINES = {
     # byte-identical before/after the split. The ratchet resumes
     # from 1783.
     # P-05 (shared rooms lite, 20 Nov 2026): +4 lines — the room_activity variant on SseEvent plus its $ref to the rooms file. The membership contract lives in docs/openapi-rooms-membership.yaml, not here. Resumes from 1787.
-    "docs/openapi-pwa.yaml": 1787,
+    # P-07 (morning summary + notes-to-actions, 20 Nov 2026): +38
+    # lines — $ref stubs for the 6 morning paths + 13 morning
+    # schemas. The contract itself lives in
+    # docs/openapi-morning.yaml (521 lines) so the main spec stays
+    # under the 2000-line hard cap. Resumes from 1825.
+    "docs/openapi-pwa.yaml": 1825,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:

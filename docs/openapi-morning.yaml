@@ -1,0 +1,521 @@
+# Morning summary + notes-to-actions API contract (P-07, plan 12.8).
+#
+# Split out of docs/openapi-pwa.yaml on 20 Nov 2026 (P-07): the
+# morning contract (6 endpoints + 10 schemas) would have pushed
+# the main spec past the 2000-line hard cap, so it earned its own
+# file, following the voice split of P-03. The main spec references
+# this file with $ref stubs; the generated client is produced from
+# the main spec with openapi-typescript, which resolves external
+# $refs. The Error schema stays in the main spec and is referenced
+# back from here.
+openapi: 3.0.3
+info:
+  title: Puspa morning summary and notes-to-actions API
+  version: 1.0.0
+paths:
+  /api/morning/status:
+    get:
+      tags: [morning]
+      summary: Per-source availability for the morning summary
+      description: |
+        P-07: honest status, like /api/voice/status. Calendar and
+        Gmail report connected / not_connected / unknown from the
+        stored Google token and its granted scopes (Calendar is not
+        connected yet); the transcriber reports its stub engine;
+        prayer times and holidays are public sources, no account.
+      responses:
+        "200":
+          description: Morning source status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MorningStatus"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/morning/summary:
+    get:
+      tags: [morning]
+      summary: Morning summary for one day
+      description: |
+        P-07: schedule, bill candidates, open tasks, national
+        holidays, and prayer times for one day. Each section
+        carries its own status; a source that fails degrades its
+        own section, never the whole summary. Imsak appears only
+        during Ramadan. Bill candidates are keyword matches from
+        Gmail, labelled unverified — open the email to confirm.
+      parameters:
+        - name: date
+          in: query
+          description: Day in YYYY-MM-DD; defaults to today (Jakarta time)
+          schema:
+            type: string
+        - name: city
+          in: query
+          description: City for prayer times; defaults to Jakarta
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Morning summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MorningSummary"
+        "400":
+          description: Bad date format (must be YYYY-MM-DD)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/morning/notes/text:
+    post:
+      tags: [morning]
+      summary: Turn a pasted note into a summary and tracked actions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  description: The note's full text (meeting, lecture, or study note)
+                source:
+                  type: string
+                  enum: [voice, text, meeting, lecture, study]
+                  description: Where the note came from; defaults to text
+                title:
+                  type: string
+      responses:
+        "200":
+          description: Note stored; each action is a tracked task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MorningNoteCreated"
+        "400":
+          description: Empty text or unknown source
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/morning/notes/voice:
+    post:
+      tags: [morning]
+      summary: Turn a voice note into a summary and tracked actions
+      description: |
+        P-07: the audio is transcribed through the P-03 voice
+        pipeline (transcriber still a stub — see
+        /api/voice/status) and deleted right after transcribing.
+        The transcript is then extracted like a pasted note.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                  description: Recorded audio (same types as /api/voice/upload)
+                source:
+                  type: string
+                  enum: [voice, text, meeting, lecture, study]
+                  description: Where the note came from; defaults to voice
+                title:
+                  type: string
+      responses:
+        "200":
+          description: Voice note stored; each action is a tracked task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MorningVoiceNoteCreated"
+        "400":
+          description: Bad recording (wrong type, empty, over 10 MiB) or unknown source
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/morning/notes:
+    get:
+      tags: [morning]
+      summary: List the user's notes, newest first
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Notes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MorningNoteList"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/morning/notes/{note_id}:
+    get:
+      tags: [morning]
+      summary: One note with its full text
+      parameters:
+        - name: note_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Note
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MorningNote"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown note
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    MorningSourceStatus:
+      type: object
+      description: P-07 — one source's honest status (ok, connected, not_connected, unknown, unavailable).
+      required: [status, detail]
+      properties:
+        status:
+          type: string
+          enum: [ok, connected, not_connected, unknown, unavailable, public]
+        detail:
+          type: string
+    MorningStatus:
+      type: object
+      description: P-07 — per-source availability for the morning summary.
+      required: [calendar, gmail, transcriber, prayer, holidays]
+      properties:
+        calendar:
+          $ref: "#/components/schemas/MorningSourceStatus"
+        gmail:
+          $ref: "#/components/schemas/MorningSourceStatus"
+        transcriber:
+          type: object
+          required: [engine, engine_selected]
+          properties:
+            engine:
+              type: string
+            engine_selected:
+              type: boolean
+            note:
+              type: string
+        prayer:
+          $ref: "#/components/schemas/MorningSourceStatus"
+        holidays:
+          $ref: "#/components/schemas/MorningSourceStatus"
+    MorningEvent:
+      type: object
+      description: P-07 — one calendar event today.
+      required: [summary, start, end]
+      properties:
+        summary:
+          type: string
+        start:
+          type: string
+          description: Start (RFC 3339 date-time, or a date for all-day events)
+        end:
+          type: string
+        location:
+          type: string
+    MorningBillCandidate:
+      type: object
+      description: P-07 — a bill candidate from Gmail. A keyword match, never a confirmed bill (verified is always false).
+      required: [message_id, subject, snippet, verified]
+      properties:
+        message_id:
+          type: string
+        subject:
+          type: string
+        snippet:
+          type: string
+        date:
+          type: string
+        due_hint:
+          type: string
+          nullable: true
+          description: Due date printed in the subject or snippet, or null when none was printed
+        due_hint_source:
+          type: string
+          nullable: true
+          enum: [subject_or_snippet]
+        verified:
+          type: boolean
+          description: Always false — open the email to confirm the amount and due date
+        note:
+          type: string
+    MorningTask:
+      type: object
+      description: P-07 — one open task from the task store.
+      required: [task_id, purpose, status]
+      properties:
+        task_id:
+          type: string
+        purpose:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          nullable: true
+    MorningHoliday:
+      type: object
+      description: P-07 — one Indonesian public holiday.
+      required: [date, local_name, name]
+      properties:
+        date:
+          type: string
+          description: YYYY-MM-DD
+        local_name:
+          type: string
+        name:
+          type: string
+    MorningPrayer:
+      type: object
+      description: P-07 — prayer times for one city and day (Aladhan, method 20 Kementerian Agama RI). Imsak is null outside Ramadan.
+      required: [city, date, timings, hijri, is_ramadan, method_name, source]
+      properties:
+        city:
+          type: string
+        date:
+          type: string
+        timings:
+          type: object
+          required: [fajr, sunrise, dhuhr, asr, maghrib, isha]
+          properties:
+            fajr:
+              type: string
+            sunrise:
+              type: string
+            dhuhr:
+              type: string
+            asr:
+              type: string
+            maghrib:
+              type: string
+            isha:
+              type: string
+            imsak:
+              type: string
+              nullable: true
+        hijri:
+          type: object
+          required: [date, month, month_number, year]
+          properties:
+            date:
+              type: string
+            month:
+              type: string
+            month_number:
+              type: integer
+            year:
+              type: string
+        is_ramadan:
+          type: boolean
+        method_name:
+          type: string
+        imsak_note:
+          type: string
+          nullable: true
+        source:
+          type: string
+    MorningSummary:
+      type: object
+      description: P-07 — the morning summary for one day.
+      required: [date, weekday, schedule, bills, tasks, holidays, prayer, source_status]
+      properties:
+        date:
+          type: string
+        weekday:
+          type: string
+        schedule:
+          type: object
+          required: [events]
+          properties:
+            events:
+              type: array
+              items:
+                $ref: "#/components/schemas/MorningEvent"
+        bills:
+          type: object
+          required: [candidates]
+          properties:
+            candidates:
+              type: array
+              items:
+                $ref: "#/components/schemas/MorningBillCandidate"
+        tasks:
+          type: object
+          required: [open]
+          properties:
+            open:
+              type: array
+              items:
+                $ref: "#/components/schemas/MorningTask"
+        holidays:
+          type: object
+          required: [today, upcoming]
+          properties:
+            today:
+              type: array
+              items:
+                $ref: "#/components/schemas/MorningHoliday"
+            upcoming:
+              type: array
+              items:
+                $ref: "#/components/schemas/MorningHoliday"
+        prayer:
+          allOf:
+            - $ref: "#/components/schemas/MorningPrayer"
+          nullable: true
+        source_status:
+          type: object
+          required: [calendar, gmail, tasks, holidays, prayer]
+          properties:
+            calendar:
+              $ref: "#/components/schemas/MorningSourceStatus"
+            gmail:
+              $ref: "#/components/schemas/MorningSourceStatus"
+            tasks:
+              $ref: "#/components/schemas/MorningSourceStatus"
+            holidays:
+              $ref: "#/components/schemas/MorningSourceStatus"
+            prayer:
+              $ref: "#/components/schemas/MorningSourceStatus"
+    MorningNoteAction:
+      type: object
+      description: P-07 — one action extracted from a note; task_id is its tracked task in the task store.
+      required: [text, owner, due_hint, source_line, task_id]
+      properties:
+        text:
+          type: string
+        owner:
+          type: string
+          nullable: true
+          description: Owner name, or null when unassigned (never invented)
+        due_hint:
+          type: string
+          nullable: true
+          description: Date words printed in the note, or null
+        source_line:
+          type: integer
+        task_id:
+          type: string
+    MorningNote:
+      type: object
+      description: P-07 — one stored note with its summary and actions.
+      required: [note_id, source, title, summary, actions]
+      properties:
+        note_id:
+          type: string
+        source:
+          type: string
+          enum: [voice, text, meeting, lecture, study]
+        title:
+          type: string
+        summary:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/MorningNoteAction"
+        raw_text:
+          type: string
+          description: Full text; only on the single-note read
+        created_at:
+          type: string
+          nullable: true
+    MorningNoteList:
+      type: object
+      required: [notes]
+      properties:
+        notes:
+          type: array
+          items:
+            $ref: "#/components/schemas/MorningNote"
+    MorningNoteCreated:
+      type: object
+      description: P-07 — a note just stored from text.
+      required: [ok, note_id, summary, actions]
+      properties:
+        ok:
+          type: boolean
+        note_id:
+          type: string
+        summary:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/MorningNoteAction"
+    MorningVoiceNoteCreated:
+      type: object
+      description: P-07 — a note just stored from a voice recording.
+      required: [ok, note_id, transcript, engine, audio_deleted, summary, actions]
+      properties:
+        ok:
+          type: boolean
+        note_id:
+          type: string
+        transcript:
+          type: string
+        language:
+          type: string
+          nullable: true
+        engine:
+          type: string
+          description: Transcriber that produced the transcript ("stub" until an engine is chosen)
+        audio_deleted:
+          type: boolean
+        summary:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/MorningNoteAction"

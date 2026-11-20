@@ -1,8 +1,9 @@
-"""Tes PWA 9 layar (FastAPI + Jinja + SSE).
+"""Tes PWA 11 layar (FastAPI + Jinja + SSE).
 
 Revisi 7 membatasi PWA pada 7 layar, tetapi kerja kematangan G28
 menambah Insights dan Onboarding (perintah Nero: kerjakan semua
-28 celah), jadi total sekarang 9. Tes jumlah layar di bawah
+28 celah), kanvas mockup menambah satu lagi, dan P-07 menambah
+layar pagi — jadi total sekarang 11. Tes jumlah layar di bawah
 mencerminkan batas baru itu.
 """
 
@@ -21,15 +22,15 @@ def client(make_user):
         yield c
 
 
-def test_ten_screens_exist_and_200(client):
+def test_eleven_screens_exist_and_200(client):
     for screen in SCREENS:
         resp = client.get(f"/{screen}")
         assert resp.status_code == 200, screen
         assert "Puspa" in resp.text
 
 
-def test_no_eleventh_screen_exists():
-    assert len(SCREENS) == 10
+def test_no_twelfth_screen_exists():
+    assert len(SCREENS) == 11
     assert set(SCREENS) == {
         "chat",
         "tasks",
@@ -41,6 +42,8 @@ def test_no_eleventh_screen_exists():
         "insights",
         "onboarding",
         "mockup",
+        # P-07: morning summary + notes-to-actions (plan section 12.8).
+        "morning",
     }
 
 
