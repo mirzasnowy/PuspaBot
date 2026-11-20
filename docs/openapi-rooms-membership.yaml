@@ -1,0 +1,913 @@
+# Shared-rooms membership API contract (P-05, plan section 12.1).
+#
+# Split out of docs/openapi-rooms.yaml on 20 Nov 2026 (P-05
+# ratchet fix): the room-membership contract (rooms, invites,
+# members, memory, jobs) earned its own file once the rooms
+# contract crossed the 2000-line hard cap. The main spec
+# references this file with $ref stubs, and the generated
+# client is produced from the main spec with
+# openapi-typescript, which resolves external $refs. The Error
+# schema stays in the main spec and is referenced back from here.
+openapi: 3.0.3
+info:
+  title: Puspa shared rooms membership API
+  version: 1.0.0
+paths:
+  /api/rooms/join:
+    post:
+      tags: [rooms]
+      summary: Join a room with an invite token or code
+      description: |
+        P-05: the token/code is scoped to its room — it can only
+        ever join that one room. The secret is checked as a hash
+        and is single use: accepting twice as the same user is
+        idempotent, a second user gets a 400. A full room (5
+        members) refuses the join and leaves the invite pending.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                  description: Link-invite token (returned once at issue time)
+                code:
+                  type: string
+                  description: 6-digit one-time code
+      responses:
+        "200":
+          description: The room joined, with the role granted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [room_id, invite_id, role, already_member]
+                properties:
+                  room_id:
+                    type: string
+                    format: uuid
+                  invite_id:
+                    type: string
+                    format: uuid
+                  role:
+                    type: string
+                    enum: [member, guest]
+                  already_member:
+                    type: boolean
+        "400":
+          description: Unknown, expired, revoked, or spent invite, or a full room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/rooms/{room_id}:
+    get:
+      tags: [rooms]
+      summary: Read one room with its members
+      description: |
+        P-05: members and the caller's role in the room. A
+        non-member gets 403; an unknown room gets 404.
+      responses:
+        "200":
+          description: The room with its members
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomDetail"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not a member of the room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    delete:
+      tags: [rooms]
+      summary: Delete a room
+      description: |
+        P-05: owner only. Members, invites, memories, tasks, and
+        jobs cascade in the database.
+      responses:
+        "200":
+          description: The room was deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted, room_id]
+                properties:
+                  deleted:
+                    type: boolean
+                  room_id:
+                    type: string
+                    format: uuid
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not an owner of the room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/rooms/{room_id}/invites:
+    get:
+      tags: [rooms]
+      summary: List a room's invites
+      description: |
+        P-05: owner/member only; guests get 403. The list never
+        carries a token or code — the secret is returned exactly
+        once, at issue time.
+      responses:
+        "200":
+          description: The room's invites, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [room_id, invites]
+                properties:
+                  room_id:
+                    type: string
+                    format: uuid
+                  invites:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RoomInvite"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not a member, or a guest
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    post:
+      tags: [rooms]
+      summary: Issue an invite (link or one-time code)
+      description: |
+        P-05: a link invite lives 7 days, a code invite 24 hours.
+        Only the SHA-256 hash is stored; the token/code is
+        returned exactly once here. Ownership is never granted by
+        invite — role is member or guest only. Guests may not
+        invite.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                kind:
+                  type: string
+                  enum: [link, code]
+                  default: link
+                role:
+                  type: string
+                  enum: [member, guest]
+                  default: member
+      responses:
+        "200":
+          description: The invite, with its secret (returned once)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssuedInvite"
+        "400":
+          description: Bad input (unknown kind or role)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not a member, or a guest
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/rooms/{room_id}/invites/{invite_id}/revoke:
+    post:
+      tags: [rooms]
+      summary: Revoke an invite
+      description: |
+        P-05: owner/member only. Revoking an already decided
+        invite is a no-op returning the current row.
+      responses:
+        "200":
+          description: The invite as it stands now
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomInvite"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not a member, or a guest
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown room or invite
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/rooms/{room_id}/leave:
+    post:
+      tags: [rooms]
+      summary: Leave a room
+      description: |
+        P-05: the leaver's private room memories and money
+        approvals are deleted with the membership, in the same
+        transaction. The last owner cannot leave — they delete
+        the room instead.
+      responses:
+        "200":
+          description: The caller left the room
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [left, room_id]
+                properties:
+                  left:
+                    type: boolean
+                  room_id:
+                    type: string
+                    format: uuid
+        "400":
+          description: The last owner cannot leave
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/rooms/{room_id}/members/{member_id}/role:
+    post:
+      tags: [rooms]
+      summary: Change a member's role
+      description: |
+        P-05: owner only. Demoting the last owner is refused, so
+        a room is never left ownerless.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [owner, member, guest]
+      responses:
+        "200":
+          description: The member with their new role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomMember"
+        "400":
+          description: Last-owner demotion, or an unknown role
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not an owner, or the target is not a member
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/rooms/{room_id}/members/{member_id}/remove:
+    post:
+      tags: [rooms]
+      summary: Remove a member
+      description: |
+        P-05: owner only. The removed member loses access at
+        once: the membership row and their private data go in
+        one transaction, so every later read is a 403.
+      responses:
+        "200":
+          description: The member was removed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [removed, room_id, user_id]
+                properties:
+                  removed:
+                    type: boolean
+                  room_id:
+                    type: string
+                    format: uuid
+                  user_id:
+                    type: string
+                    format: uuid
+        "400":
+          description: The last owner cannot be removed
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not an owner of the room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/rooms/{room_id}/memory:
+    get:
+      tags: [rooms]
+      summary: Read room memory visible to the caller
+      description: |
+        P-05: every room-visible row plus the caller's own private
+        rows — never another member's private rows. The filter is
+        in the SQL. Personal memory never appears here.
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [note, decision, summary]
+      responses:
+        "200":
+          description: The visible room memory, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [room_id, memories]
+                properties:
+                  room_id:
+                    type: string
+                    format: uuid
+                  memories:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RoomMemory"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not a member of the room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    post:
+      tags: [rooms]
+      summary: Record one room-memory row
+      description: |
+        P-05: the row is always attributed to the caller. Guests
+        are read-only and get 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                kind:
+                  type: string
+                  enum: [note, decision, summary]
+                  default: note
+                content:
+                  type: string
+                visibility:
+                  type: string
+                  enum: [room, private]
+                  default: room
+      responses:
+        "200":
+          description: The recorded row
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomMemory"
+        "400":
+          description: Bad input (empty content, unknown kind or visibility)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not a member, or a guest
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/rooms/{room_id}/memory/bring:
+    post:
+      tags: [rooms]
+      summary: Bring one personal memory item into the room
+      description: |
+        P-05: "bring to room" is always explicit, per item. The
+        fact must belong to the caller; it is copied into the room
+        as a room-visible note with a provenance line, and the
+        personal fact itself is untouched.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fact_id]
+              properties:
+                fact_id:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: The room note, with the fact it came from
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/RoomMemory"
+                  - type: object
+                    required: [brought_from_fact_id]
+                    properties:
+                      brought_from_fact_id:
+                        type: string
+                        format: uuid
+        "400":
+          description: Bad input
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not a member, or a guest
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown room, or a fact that is not the caller's
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/rooms/{room_id}/memory/{memory_id}:
+    delete:
+      tags: [rooms]
+      summary: Delete one room-memory row
+      description: |
+        P-05: the author, or an owner for a room-visible row. The
+        row must belong to the room in the path.
+      responses:
+        "200":
+          description: Whether a row was deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted, room_id, memory_id]
+                properties:
+                  deleted:
+                    type: boolean
+                  room_id:
+                    type: string
+                    format: uuid
+                  memory_id:
+                    type: string
+                    format: uuid
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not allowed to delete this row
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown room, or a row that is not visible here
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/rooms/{room_id}/jobs:
+    get:
+      tags: [rooms]
+      summary: List the room's job queue
+      description: |
+        P-05: every job of the room, oldest first. Any member may
+        read, including guests.
+      responses:
+        "200":
+          description: The room's jobs in queue order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [room_id, jobs]
+                properties:
+                  room_id:
+                    type: string
+                    format: uuid
+                  jobs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RoomJob"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not a member of the room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    post:
+      tags: [rooms]
+      summary: Enqueue one room job
+      description: |
+        P-05: kinds are summarize (deterministic chat summary,
+        recorded as a room summary) and note (record one room
+        note). Owner/member only; guests get 403. Jobs for one
+        room run serially, oldest first.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, payload]
+              properties:
+                kind:
+                  type: string
+                  enum: [summarize, note]
+                payload:
+                  type: object
+      responses:
+        "200":
+          description: The queued job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomJob"
+        "400":
+          description: Bad input (unknown kind, bad payload)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not a member, or a guest
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/rooms/{room_id}/jobs/{job_id}/run:
+    post:
+      tags: [rooms]
+      summary: Run one queued room job now
+      description: |
+        P-05: runs the job synchronously under the room advisory
+        lock, so two runs for the same room serialise. Returns
+        the finished job with its result (or error, when the
+        handler failed).
+      responses:
+        "200":
+          description: The finished job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomJob"
+        "400":
+          description: The job is no longer queued
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not a member, or a guest
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown room or job
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    RoomMember:
+      type: object
+      description: |
+        P-05: one membership — which user, which role, since when.
+      required: [user_id, role, joined_at]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [owner, member, guest]
+        joined_at:
+          type: string
+          format: date-time
+    RoomDetail:
+      type: object
+      description: |
+        P-05: one room with its members and the caller's role.
+      required: [id, name, created_by, created_at, role, members]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        created_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        role:
+          type: string
+          enum: [owner, member, guest]
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomMember"
+    RoomInvite:
+      type: object
+      description: |
+        P-05: one room invitation as listed — never carries the
+        token or code.
+      required: [id, room_id, inviter_user_id, kind, role, status, created_at, expires_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        room_id:
+          type: string
+          format: uuid
+        inviter_user_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [link, code]
+        role:
+          type: string
+          enum: [member, guest]
+        status:
+          type: string
+          enum: [pending, accepted, revoked, expired]
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+    IssuedInvite:
+      type: object
+      description: |
+        P-05: an invite as issued — the only response that ever
+        carries the secret (token for a link, code for a code
+        invite). Only the hash is stored.
+      required: [invite_id, kind, role, expires_at]
+      properties:
+        invite_id:
+          type: string
+          format: uuid
+        token:
+          type: string
+          description: Link-invite token (kind link only)
+        code:
+          type: string
+          description: 6-digit one-time code (kind code only)
+        join_link:
+          type: string
+          description: Full join link (kind link only)
+        kind:
+          type: string
+          enum: [link, code]
+        role:
+          type: string
+          enum: [member, guest]
+        expires_at:
+          type: string
+          format: date-time
+    RoomMemory:
+      type: object
+      description: |
+        P-05: one room-memory row. Visibility room is the group's
+        shared record; private is visible only to its author.
+      required: [id, room_id, author_user_id, kind, content, visibility, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        room_id:
+          type: string
+          format: uuid
+        author_user_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [note, decision, summary]
+        content:
+          type: string
+        visibility:
+          type: string
+          enum: [room, private]
+        created_at:
+          type: string
+          format: date-time
+    RoomJob:
+      type: object
+      description: |
+        P-05: one job on the room's serial queue.
+      required: [id, room_id, kind, payload, status, requested_by, result, error, created_at, started_at, finished_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        room_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [summarize, note]
+        payload:
+          type: object
+        status:
+          type: string
+          enum: [queued, processing, done, failed]
+        requested_by:
+          type: string
+          format: uuid
+        result:
+          type: string
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true

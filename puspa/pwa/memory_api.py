@@ -86,7 +86,7 @@ from ..memory import profile as profile_module
 from ..memory.facts import PostgresFactStore
 from ..memory.schema import resolve_dsn
 from ..rooms import memory as room_memory_module
-from ..rooms.errors import NotRoomMemberError
+from ..rooms.errors import GuestReadOnlyError, NotRoomMemberError
 
 __all__ = [
     "MemoryReadService",
@@ -654,7 +654,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
                 kind=data.get("kind", "note"),
                 visibility=data.get("visibility", "room"),
             )
-        except NotRoomMemberError as exc:
+        except (GuestReadOnlyError, NotRoomMemberError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=403)
         except ValueError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)

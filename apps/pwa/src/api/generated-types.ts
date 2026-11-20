@@ -2337,7 +2337,56 @@ export interface paths {
             };
         };
         put?: never;
-        post?: never;
+        /**
+         * Create a shared room
+         * @description P-05: the caller becomes the room's first owner. The room
+         *     starts with one member; the second person joins through
+         *     an invite (see /api/rooms/{room_id}/invites).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The room just created, with the caller's role */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RoomDetail"];
+                    };
+                };
+                /** @description Bad input (empty name) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -6928,9 +6977,25 @@ export interface components {
         };
         SseEvent: {
             /** @enum {string} */
-            type: "office" | "heartbeat";
+            type: "office" | "heartbeat" | "room_activity";
             content?: components["schemas"]["OfficeProjection"];
+            room_activity?: components["schemas"]["RoomActivity"];
             created_at?: number;
+        };
+        /**
+         * @description P-05: one room-activity event on the SSE stream, filtered
+         *     to the rooms the logged-in user belongs to. Carries no
+         *     secret — never an invite token or code.
+         */
+        RoomActivity: {
+            /** Format: uuid */
+            room_id: string;
+            /** @enum {string} */
+            kind: "room_created" | "member_joined" | "member_left" | "member_removed" | "role_changed" | "invite_issued" | "memory_added" | "memory_brought" | "job_done";
+            /** Format: uuid */
+            actor: string;
+            summary: string;
+            created_at: number;
         };
         Manifest: {
             name: string;
@@ -7085,6 +7150,28 @@ export interface components {
             type?: string;
             created_at?: number;
             summary?: string;
+        };
+        /** @description P-05: one membership — which user, which role, since when. */
+        RoomMember: {
+            /** Format: uuid */
+            user_id: string;
+            /** @enum {string} */
+            role: "owner" | "member" | "guest";
+            /** Format: date-time */
+            joined_at: string;
+        };
+        /** @description P-05: one room with its members and the caller's role. */
+        RoomDetail: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            created_by: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @enum {string} */
+            role: "owner" | "member" | "guest";
+            members: components["schemas"]["RoomMember"][];
         };
         MockupTemplates: {
             templates?: {

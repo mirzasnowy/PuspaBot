@@ -523,6 +523,269 @@ export function fetchRoomBoard(
   return getJson<RoomBoard>(`/api/rooms/${encodeURIComponent(roomId)}/tasks`, fetchFn);
 }
 
+/** One member of a shared room, with their role (P-05). */
+export interface RoomMember {
+  user_id: string;
+  role: string;
+  joined_at: string;
+}
+
+/** One shared room with its members and the caller's role (P-05). */
+export interface RoomDetail {
+  id: string;
+  name: string;
+  created_by: string;
+  created_at: string;
+  role: string;
+  members: RoomMember[];
+}
+
+/** One room invitation as listed: never carries the secret (P-05). */
+export interface RoomInvite {
+  id: string;
+  room_id: string;
+  inviter_user_id: string;
+  kind: string;
+  role: string;
+  status: string;
+  created_at: string;
+  expires_at: string;
+}
+
+/** An invite as issued: the only response that carries the secret (P-05). */
+export interface IssuedInvite {
+  invite_id: string;
+  token?: string;
+  code?: string;
+  join_link?: string;
+  kind: string;
+  role: string;
+  expires_at: string;
+}
+
+/** One room-memory row (P-05). */
+export interface RoomMemory {
+  id: string;
+  room_id: string;
+  author_user_id: string;
+  kind: string;
+  content: string;
+  visibility: string;
+  created_at: string;
+}
+
+/** One job on a room's serial queue (P-05). */
+export interface RoomJob {
+  id: string;
+  room_id: string;
+  kind: string;
+  payload: Record<string, unknown>;
+  status: string;
+  requested_by: string;
+  result: string | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+/** Create a shared room; the caller becomes its first owner (P-05). */
+export function createRoom(name: string, fetchFn: FetchFn = fetch): Promise<RoomDetail> {
+  return postJson<RoomDetail>("/api/rooms", { name }, fetchFn);
+}
+
+/** Read one room with its members (P-05). */
+export function fetchRoomDetail(
+  roomId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<RoomDetail> {
+  return getJson<RoomDetail>(`/api/rooms/${encodeURIComponent(roomId)}`, fetchFn);
+}
+
+/** Delete a room (owner only, P-05). */
+export function deleteRoom(
+  roomId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ deleted: boolean; room_id: string }> {
+  return deleteJson(`/api/rooms/${encodeURIComponent(roomId)}`, fetchFn);
+}
+
+/** Issue an invite: a link (7 days) or a one-time code (24 hours, P-05). */
+export function issueRoomInvite(
+  roomId: string,
+  kind: "link" | "code",
+  role: "member" | "guest",
+  fetchFn: FetchFn = fetch,
+): Promise<IssuedInvite> {
+  return postJson<IssuedInvite>(
+    `/api/rooms/${encodeURIComponent(roomId)}/invites`,
+    { kind, role },
+    fetchFn,
+  );
+}
+
+/** List a room's invites; the list never carries a secret (P-05). */
+export function fetchRoomInvites(
+  roomId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ room_id: string; invites: RoomInvite[] }> {
+  return getJson(`/api/rooms/${encodeURIComponent(roomId)}/invites`, fetchFn);
+}
+
+/** Revoke an invite (P-05). */
+export function revokeRoomInvite(
+  roomId: string,
+  inviteId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<RoomInvite> {
+  return postJson<RoomInvite>(
+    `/api/rooms/${encodeURIComponent(roomId)}/invites/${encodeURIComponent(inviteId)}/revoke`,
+    {},
+    fetchFn,
+  );
+}
+
+/** Join a room with an invite token or a one-time code (P-05). */
+export function joinRoom(
+  join: { token: string } | { code: string },
+  fetchFn: FetchFn = fetch,
+): Promise<{ room_id: string; invite_id: string; role: string; already_member: boolean }> {
+  return postJson("/api/rooms/join", join, fetchFn);
+}
+
+/** Leave a room; private room memories leave with the caller (P-05). */
+export function leaveRoom(
+  roomId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ left: boolean; room_id: string }> {
+  return postJson(`/api/rooms/${encodeURIComponent(roomId)}/leave`, {}, fetchFn);
+}
+
+/** Change a member's role (owner only, P-05). */
+export function setMemberRole(
+  roomId: string,
+  memberId: string,
+  role: "owner" | "member" | "guest",
+  fetchFn: FetchFn = fetch,
+): Promise<RoomMember> {
+  return postJson<RoomMember>(
+    `/api/rooms/${encodeURIComponent(roomId)}/members/${encodeURIComponent(memberId)}/role`,
+    { role },
+    fetchFn,
+  );
+}
+
+/** Remove a member; they lose access at once (owner only, P-05). */
+export function removeMember(
+  roomId: string,
+  memberId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ removed: boolean; room_id: string; user_id: string }> {
+  return postJson(
+    `/api/rooms/${encodeURIComponent(roomId)}/members/${encodeURIComponent(memberId)}/remove`,
+    {},
+    fetchFn,
+  );
+}
+
+/** Read room memory visible to the caller (P-05). */
+export function fetchRoomMemory(
+  roomId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ room_id: string; memories: RoomMemory[] }> {
+  return getJson(`/api/rooms/${encodeURIComponent(roomId)}/memory`, fetchFn);
+}
+
+/** Record one room-memory row (P-05). */
+export function addRoomMemory(
+  roomId: string,
+  content: string,
+  visibility: "room" | "private",
+  kind: "note" | "decision" | "summary" = "note",
+  fetchFn: FetchFn = fetch,
+): Promise<RoomMemory> {
+  return postJson<RoomMemory>(
+    `/api/rooms/${encodeURIComponent(roomId)}/memory`,
+    { kind, content, visibility },
+    fetchFn,
+  );
+}
+
+/** Bring one personal memory item into the room, explicitly (P-05). */
+export function bringMemoryToRoom(
+  roomId: string,
+  factId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<RoomMemory & { brought_from_fact_id: string }> {
+  return postJson(
+    `/api/rooms/${encodeURIComponent(roomId)}/memory/bring`,
+    { fact_id: factId },
+    fetchFn,
+  );
+}
+
+/** Delete one room-memory row (P-05). */
+export function deleteRoomMemory(
+  roomId: string,
+  memoryId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ deleted: boolean; room_id: string; memory_id: string }> {
+  return deleteJson(
+    `/api/rooms/${encodeURIComponent(roomId)}/memory/${encodeURIComponent(memoryId)}`,
+    fetchFn,
+  );
+}
+
+/** List a room's job queue, oldest first (P-05). */
+export function fetchRoomJobs(
+  roomId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ room_id: string; jobs: RoomJob[] }> {
+  return getJson(`/api/rooms/${encodeURIComponent(roomId)}/jobs`, fetchFn);
+}
+
+/** Enqueue one room job (P-05). */
+export function enqueueRoomJob(
+  roomId: string,
+  kind: "summarize" | "note",
+  payload: Record<string, unknown>,
+  fetchFn: FetchFn = fetch,
+): Promise<RoomJob> {
+  return postJson<RoomJob>(
+    `/api/rooms/${encodeURIComponent(roomId)}/jobs`,
+    { kind, payload },
+    fetchFn,
+  );
+}
+
+/** Run one queued room job now, under the room lock (P-05). */
+export function runRoomJob(
+  roomId: string,
+  jobId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<RoomJob> {
+  return postJson<RoomJob>(
+    `/api/rooms/${encodeURIComponent(roomId)}/jobs/${encodeURIComponent(jobId)}/run`,
+    {},
+    fetchFn,
+  );
+}
+
+/** One personal memory fact as the memory API returns it (P-05: bring to room). */
+export interface MemoryFactItem {
+  id: string;
+  key: string;
+  content: string | null;
+  status: string;
+}
+
+/** List the caller's own personal memory facts (P-05: pick one to bring to a room). */
+export function fetchMemoryFacts(
+  fetchFn: FetchFn = fetch,
+): Promise<{ facts: MemoryFactItem[]; total_facts: number }> {
+  return getJson<{ facts: MemoryFactItem[]; total_facts: number }>("/api/memory", fetchFn);
+}
+
 /** Read one bounded page of the user's knowledge graph (B18). */
 export function fetchGraphPage(
   params: { limit?: number; offset?: number; kind?: string; since?: string } = {},

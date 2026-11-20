@@ -1506,11 +1506,15 @@ components:
       properties:
         type:
           type: string
-          enum: [office, heartbeat]
+          enum: [office, heartbeat, room_activity]
         content:
           $ref: "#/components/schemas/OfficeProjection"
+        room_activity:
+          $ref: "#/components/schemas/RoomActivity"
         created_at:
           type: number
+    RoomActivity:
+      $ref: './openapi-rooms.yaml#/components/schemas/RoomActivity'
     Manifest:
       type: object
       required: [name, short_name, start_url, display]

@@ -76,7 +76,7 @@ from fastapi.responses import JSONResponse
 from ..i18n.server_lines import render as render_server_line
 from ..rooms import DelegationService, NotRoomMemberError, RoomNotFoundError, SplitService
 from ..rooms.delegation import BoardRow
-from ..rooms.errors import MoneyApprovalError, SplitError
+from ..rooms.errors import GuestReadOnlyError, MoneyApprovalError, SplitError
 from ..rooms.splitting import Share, Split
 from ..rooms.tasks import RoomTask
 
@@ -279,7 +279,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             if row is None:  # pragma: no cover - the task was just created
                 raise ValueError("created task is not on the board")
             return _task_dict(row)
-        except NotRoomMemberError as exc:
+        except (GuestReadOnlyError, NotRoomMemberError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=403)
         except ValueError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)

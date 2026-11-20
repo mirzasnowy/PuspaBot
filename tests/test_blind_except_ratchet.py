@@ -25,9 +25,11 @@ Baseline history: 203 swallowing handlers before E-20. The "~98"
 figure in the old ``pyproject.toml`` comment was never measured and was
 wrong. E-20 narrowed 11 handlers with provably narrow failure modes
 (see ``docs/e20-blind-except-audit.md``, section 2.2); the ratchet
-resumes from 192. Every handler on a money, credential, or approval
-path was audited; the audit notes which must stay blind-except and why
-are in that document.
+resumes from 192. P-05 (20 Nov 2026) adds 1 recorded handler — the
+room job runner, which must stay blind by design (audit section 2.1)
+— so the ratchet resumes from 193. Every handler on a money,
+credential, or approval path was audited; the audit notes which must
+stay blind-except and why are in that document.
 
 This test uses only the standard library plus the ``ruff`` binary, and
 touches no database, so it also runs in CI's dependency-free ``checks``
@@ -104,6 +106,7 @@ BASELINE_BLE001: dict[str, int] = {
     "puspa/pwa/mockup_api.py": 6,
     "puspa/pwa/model_settings.py": 1,
     "puspa/pwa/onboarding_api.py": 1,
+    "puspa/rooms/job_queue.py": 1,
     "puspa/router/compression.py": 3,
     "puspa/runtime/context_compression.py": 3,
     "puspa/runtime/hierarchy.py": 4,
@@ -147,8 +150,10 @@ BASELINE_BLE001: dict[str, int] = {
     "tests/test_world_store.py": 1,
 }
 
-#: Total baseline: the sum of BASELINE_BLE001 (192 on 20 Nov 2026).
-BASELINE_TOTAL = 192
+#: Total baseline: the sum of BASELINE_BLE001 (193 on 20 Nov 2026;
+#: P-05 adds 1 recorded handler — the room job runner, see
+#: docs/e20-blind-except-audit.md section 2.1).
+BASELINE_TOTAL = 193
 
 
 def _repo_root() -> Path:

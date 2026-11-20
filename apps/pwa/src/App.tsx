@@ -11,6 +11,7 @@ import { OfficeScreen } from "./screens/OfficeScreen";
 import { InsightsScreen } from "./screens/InsightsScreen";
 import { OnboardingScreen } from "./screens/OnboardingScreen";
 import { MockupScreen } from "./screens/MockupScreen";
+import { RoomsScreen } from "./screens/RoomsScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { HintBanner } from "./components/HintBanner";
 
@@ -49,6 +50,9 @@ export function App({ bootstrap, screen }: { bootstrap: Bootstrap; screen: Scree
       break;
     case "mockup":
       content = <MockupScreen />;
+      break;
+    case "rooms":
+      content = <RoomsScreen />;
       break;
   }
   return (

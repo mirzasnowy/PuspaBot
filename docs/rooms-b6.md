@@ -180,3 +180,65 @@ already recorded in `REUSE.md` for G13/G14.
 Helpers: `tests/rooms_helpers.py` (schema fixture + factories;
 the DSN always comes from the `test_dsn` fixture, never a
 hardcoded database name).
+
+## P-05 — Shared rooms lite (plan section 12.1)
+
+The B6 service layer already owned rooms, invites, memory,
+tasks, and the money gate; P-05 wires the room itself into the
+PWA: the room as a resource, the per-room serial job queue, and
+the Rooms screen.
+
+- **HTTP** (`puspa/pwa/rooms_membership_api.py`, registered in
+  `create_app`): create room, room detail with members, delete
+  room, issue/list/revoke invites, join by token or code, leave,
+  set role, remove member, room memory list/add/bring/delete,
+  job queue list/enqueue/run. Contract in
+  `docs/openapi-rooms-membership.yaml` (split out of
+  `docs/openapi-rooms.yaml` when it crossed the 2000-line hard
+  cap); the main spec reaches it through `openapi-rooms.yaml`
+  `$ref` stubs. The room-memory routes P-01 shipped under
+  `/api/memory/rooms/*` stay as an alias; the `/api/rooms/*`
+  routes are the room surface (they add guest-read-only 403s,
+  404s, room-scoped delete, and bring).
+- **Guest read-only** is now enforced in the service layer:
+  `RoomTaskStore.add_task` and `RoomMemoryStore.record_memory`
+  raise `GuestReadOnlyError` (403 at the HTTP layer) for a
+  guest writer. No existing test wrote as a guest, so nothing
+  else changed behaviour; the board/split endpoints map the new
+  error to 403, as does the P-01 record endpoint.
+- **Per-room job queue** (`puspa/rooms/job_queue.py`, table
+  `room_job_queue`, migration 0024): enqueue, oldest-first
+  claim under a Postgres advisory lock keyed on the room id, so
+  two members' conflicting requests serialise; kinds today are
+  `summarize` (deterministic summary recorded as a room summary)
+  and `note`. A failed job is marked, never kills the queue.
+- **Room activity on SSE**: mutations append a `room_activity`
+  event (no secret in it) to `app.state.event`; the existing
+  `/sse` stream yields those frames filtered to the rooms the
+  caller belongs to, so a removed member stops seeing the room
+  at once. The Rooms screen refreshes on frames for its room.
+- **Rooms screen** (`apps/pwa/src/screens/RoomsScreen.tsx`,
+  `/rooms` in the nav): list + create + join by code, members
+  with role controls, invite issue (secret shown once) and
+  revoke, room memory with visibility, bring-one-personal-fact,
+  shared board, job queue with run, leave/delete. Guests see no
+  write controls.
+- **Scoped tokens**: the invite token/code is the room-scoped
+  token — it is bound to one room id at issue time, stored only
+  as a hash, single use, and can never join another room.
+
+Tests: `tests/test_rooms_queue.py` (9: FIFO, both handlers,
+guest/outsider refusal, failure marking, two-thread
+serialisation) and `tests/test_pwa_rooms_p05_api.py` (13:
+lifecycle, single-use/revoke, guest read-only, last-owner
+guard, removed-member-loses-access-at-once incl. SSE silence,
+leave/delete, memory layers + delete scoping, bring, jobs over
+HTTP, full-room refusal, SSE frames).
+
+Not built here (honest limits): productive features inside the
+room (meeting minutes to action items, shopping/dues lists,
+group reminders, light voting) beyond the task board, splits,
+and research links that B9/B11/B12 already ship; live Telegram
+group delivery is still MockTransport-only (B6); the agent does
+not yet speak in the room on its own — jobs run when a member
+runs them, and @Puspa routing answers only when mentioned.

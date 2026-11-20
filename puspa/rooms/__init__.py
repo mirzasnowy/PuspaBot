@@ -85,6 +85,7 @@ from .delegation import (
     start_work,
 )
 from .errors import (
+    GuestReadOnlyError,
     InviteError,
     LastOwnerError,
     MoneyApprovalError,
@@ -110,6 +111,7 @@ from .invites import (
     purge_expired,
     revoke_invite,
 )
+from .job_queue import JOB_KINDS, JOB_STATUSES, RoomJob, RoomJobQueue
 from .memory import (
     MAX_MEMORY_CONTENT_CHARS,
     MEMORY_KINDS,
@@ -231,6 +233,8 @@ __all__ = [
     "DEFAULT_REMINDER_TIMEZONE",
     "DELEGATION_STATUSES",
     "INVITE_LINK_TTL_DAYS",
+    "JOB_KINDS",
+    "JOB_STATUSES",
     "JOIN_LINK_BASE",
     "MAX_LABEL_CHARS",
     "MAX_MEMORY_CONTENT_CHARS",
@@ -251,6 +255,7 @@ __all__ = [
     "DelegatedTask",
     "DelegationService",
     "GroupComparison",
+    "GuestReadOnlyError",
     "InviteError",
     "LastOwnerError",
     "MoneyApprovalError",
@@ -269,6 +274,8 @@ __all__ = [
     "RoomFullError",
     "RoomInvite",
     "RoomInviteStore",
+    "RoomJob",
+    "RoomJobQueue",
     "RoomMember",
     "RoomMemory",
     "RoomMemoryStore",

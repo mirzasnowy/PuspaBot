@@ -1,4 +1,5 @@
-# Shared-rooms API contract (B6 rooms, B9 delegation, B11 splits).
+# Shared-rooms API contract (B6 rooms, B9 delegation, B11 splits,
+# P-05 room membership + memory + job queue).
 #
 # Split out of docs/openapi-pwa.yaml on 19 Nov 2026 (Wave 30 ratchet
 # fix): the rooms contract earned its own file once it passed 5
@@ -38,6 +39,66 @@ paths:
             application/json:
               schema:
                 $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    post:
+      tags: [rooms]
+      summary: Create a shared room
+      description: |
+        P-05: the caller becomes the room's first owner. The room
+        starts with one member; the second person joins through
+        an invite (see /api/rooms/{room_id}/invites).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        "200":
+          description: The room just created, with the caller's role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomDetail"
+        "400":
+          description: Bad input (empty name)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/rooms/join:
+    $ref: './openapi-rooms-membership.yaml#/paths/~1api~1rooms~1join'
+  /api/rooms/{room_id}:
+    $ref: './openapi-rooms-membership.yaml#/paths/~1api~1rooms~1{room_id}'
+  /api/rooms/{room_id}/invites:
+    $ref: './openapi-rooms-membership.yaml#/paths/~1api~1rooms~1{room_id}~1invites'
+  /api/rooms/{room_id}/invites/{invite_id}/revoke:
+    $ref: './openapi-rooms-membership.yaml#/paths/~1api~1rooms~1{room_id}~1invites~1{invite_id}~1revoke'
+  /api/rooms/{room_id}/leave:
+    $ref: './openapi-rooms-membership.yaml#/paths/~1api~1rooms~1{room_id}~1leave'
+  /api/rooms/{room_id}/members/{member_id}/role:
+    $ref: './openapi-rooms-membership.yaml#/paths/~1api~1rooms~1{room_id}~1members~1{member_id}~1role'
+  /api/rooms/{room_id}/members/{member_id}/remove:
+    $ref: './openapi-rooms-membership.yaml#/paths/~1api~1rooms~1{room_id}~1members~1{member_id}~1remove'
+  /api/rooms/{room_id}/memory:
+    $ref: './openapi-rooms-membership.yaml#/paths/~1api~1rooms~1{room_id}~1memory'
+  /api/rooms/{room_id}/memory/bring:
+    $ref: './openapi-rooms-membership.yaml#/paths/~1api~1rooms~1{room_id}~1memory~1bring'
+  /api/rooms/{room_id}/memory/{memory_id}:
+    $ref: './openapi-rooms-membership.yaml#/paths/~1api~1rooms~1{room_id}~1memory~1{memory_id}'
+  /api/rooms/{room_id}/jobs:
+    $ref: './openapi-rooms-membership.yaml#/paths/~1api~1rooms~1{room_id}~1jobs'
+  /api/rooms/{room_id}/jobs/{job_id}/run:
+    $ref: './openapi-rooms-membership.yaml#/paths/~1api~1rooms~1{room_id}~1jobs~1{job_id}~1run'
   /api/rooms/{room_id}/tasks:
     get:
       tags: [rooms]
@@ -894,6 +955,39 @@ components:
         role:
           type: string
           enum: [owner, member, guest]
+    RoomMember:
+      $ref: './openapi-rooms-membership.yaml#/components/schemas/RoomMember'
+    RoomDetail:
+      $ref: './openapi-rooms-membership.yaml#/components/schemas/RoomDetail'
+    RoomInvite:
+      $ref: './openapi-rooms-membership.yaml#/components/schemas/RoomInvite'
+    IssuedInvite:
+      $ref: './openapi-rooms-membership.yaml#/components/schemas/IssuedInvite'
+    RoomMemory:
+      $ref: './openapi-rooms-membership.yaml#/components/schemas/RoomMemory'
+    RoomJob:
+      $ref: './openapi-rooms-membership.yaml#/components/schemas/RoomJob'
+    RoomActivity:
+      type: object
+      description: |
+        P-05: one room-activity event on the SSE stream, filtered
+        to the rooms the logged-in user belongs to. Carries no
+        secret — never an invite token or code.
+      required: [room_id, kind, actor, summary, created_at]
+      properties:
+        room_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [room_created, member_joined, member_left, member_removed, role_changed, invite_issued, memory_added, memory_brought, job_done]
+        actor:
+          type: string
+          format: uuid
+        summary:
+          type: string
+        created_at:
+          type: number
     RoomBoardTask:
       type: object
       description: |
