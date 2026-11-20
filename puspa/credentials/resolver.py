@@ -406,7 +406,7 @@ def default_registry() -> ProviderRegistry:
         from ..router.router import CATALOG
 
         openrouter_models = tuple(row[1] for row in CATALOG if row[0] == "openrouter")
-    except Exception:
+    except ImportError:
         openrouter_models = ()
     registry.register(
         ApiKeyProviderProfile(

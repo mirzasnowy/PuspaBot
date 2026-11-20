@@ -150,7 +150,7 @@ def _verify_manifest_dict(manifest: dict, public_key) -> bool:
     try:
         signature = _b64url_decode(signature_b64)
         public_key.verify(signature, canonical_json(_unsigned_manifest(manifest)))
-    except (InvalidSignature, ValueError, TypeError, Exception):
+    except (InvalidSignature, ValueError, TypeError):
         return False
     return True
 

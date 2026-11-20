@@ -177,7 +177,7 @@ def verify_revocation_list(
     try:
         signature = _b64url_decode(signature_b64)
         issuer_public_key.verify(signature, canonical_json(_unsigned_body(data)))
-    except (InvalidSignature, ValueError, TypeError, Exception):
+    except (InvalidSignature, ValueError, TypeError):
         return False, "revocation list signature invalid"
     return True, "ok"
 
