@@ -52,6 +52,10 @@ button:disabled {
   color: #0f766e;
   border: 1px solid #0f766e;
 }
+.button-danger {
+  background: #b91c1c;
+  color: #fff;
+}
 input,
 select {
   padding: 8px;

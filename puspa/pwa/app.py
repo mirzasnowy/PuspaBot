@@ -867,6 +867,19 @@ def create_app(
 
     # -- end G33 ---------------------------------------------------------
 
+    # -- P-02: stop-all + autonomy dial + weekly report -------------
+    # One dial per process, owned by the app: the turn loop consults
+    # this same instance when it runs in-process, and the PWA
+    # controls (ceilings, suggestions) read and write it. The
+    # controls set every shown area's ceiling to Ask first at
+    # startup; Money is locked there by the dial itself.
+    from puspa.autonomy.controls import AutonomyControls
+    from puspa.autonomy.dial import AutonomyDial
+
+    app.state.autonomy_dial = AutonomyDial()
+    app.state.autonomy_controls = AutonomyControls(app.state.autonomy_dial)
+    # -- end P-02 ------------------------------------------------------
+
     # -- G28: insights + onboarding (wiring) ---------------------------
     # The two G28 API modules mount their own routes on this app
     # with the app's login resolver; the pages themselves already
@@ -874,6 +887,7 @@ def create_app(
     # fetch all their data through these APIs, so _context_screen
     # needs no new bootstrap data for them.
     from puspa.pwa import (
+        controls_api,
         drafts_api,
         graph_api,
         insights_api,
@@ -889,6 +903,7 @@ def create_app(
     app.state.memory_service = memory_api.MemoryReadService(dsn=app.state.dsn)
     graph_api.register_routes(app, need_user)
     memory_api.register_routes(app, need_user)
+    controls_api.register_routes(app, need_user)
     mockup_api.register_routes(app, need_user)
     insights_api.register_routes(app, need_user)
     onboarding_api.register_routes(app, need_user)
