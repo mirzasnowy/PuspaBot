@@ -1540,6 +1540,371 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/morning/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Per-source availability for the morning summary
+         * @description P-07: honest status, like /api/voice/status. Calendar and
+         *     Gmail report connected / not_connected / unknown from the
+         *     stored Google token and its granted scopes (Calendar is not
+         *     connected yet); the transcriber reports its stub engine;
+         *     prayer times and holidays are public sources, no account.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Morning source status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MorningStatus"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/morning/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Morning summary for one day
+         * @description P-07: schedule, bill candidates, open tasks, national
+         *     holidays, and prayer times for one day. Each section
+         *     carries its own status; a source that fails degrades its
+         *     own section, never the whole summary. Imsak appears only
+         *     during Ramadan. Bill candidates are keyword matches from
+         *     Gmail, labelled unverified — open the email to confirm.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Day in YYYY-MM-DD; defaults to today (Jakarta time) */
+                    date?: string;
+                    /** @description City for prayer times; defaults to Jakarta */
+                    city?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Morning summary */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MorningSummary"];
+                    };
+                };
+                /** @description Bad date format (must be YYYY-MM-DD) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/morning/notes/text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Turn a pasted note into a summary and tracked actions */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description The note's full text (meeting, lecture, or study note) */
+                        text: string;
+                        /**
+                         * @description Where the note came from; defaults to text
+                         * @enum {string}
+                         */
+                        source?: "voice" | "text" | "meeting" | "lecture" | "study";
+                        title?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Note stored; each action is a tracked task */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MorningNoteCreated"];
+                    };
+                };
+                /** @description Empty text or unknown source */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/morning/notes/voice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn a voice note into a summary and tracked actions
+         * @description P-07: the audio is transcribed through the P-03 voice
+         *     pipeline (transcriber still a stub — see
+         *     /api/voice/status) and deleted right after transcribing.
+         *     The transcript is then extracted like a pasted note.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /**
+                         * Format: binary
+                         * @description Recorded audio (same types as /api/voice/upload)
+                         */
+                        audio: string;
+                        /**
+                         * @description Where the note came from; defaults to voice
+                         * @enum {string}
+                         */
+                        source?: "voice" | "text" | "meeting" | "lecture" | "study";
+                        title?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Voice note stored; each action is a tracked task */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MorningVoiceNoteCreated"];
+                    };
+                };
+                /** @description Bad recording (wrong type, empty, over 10 MiB) or unknown source */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/morning/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the user's notes, newest first */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Notes */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MorningNoteList"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/morning/notes/{note_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One note with its full text */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    note_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Note */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MorningNote"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown note */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agen": {
         parameters: {
             query?: never;
@@ -6451,6 +6816,154 @@ export interface components {
             /** @enum {string} */
             document_kind: "id_document" | "official_letter";
             reason: string;
+        };
+        /** @description P-07 — one source's honest status (ok, connected, not_connected, unknown, unavailable). */
+        MorningSourceStatus: {
+            /** @enum {string} */
+            status: "ok" | "connected" | "not_connected" | "unknown" | "unavailable" | "public";
+            detail: string;
+        };
+        /** @description P-07 — per-source availability for the morning summary. */
+        MorningStatus: {
+            calendar: components["schemas"]["MorningSourceStatus"];
+            gmail: components["schemas"]["MorningSourceStatus"];
+            transcriber: {
+                engine: string;
+                engine_selected: boolean;
+                note?: string;
+            };
+            prayer: components["schemas"]["MorningSourceStatus"];
+            holidays: components["schemas"]["MorningSourceStatus"];
+        };
+        /** @description P-07 — one calendar event today. */
+        MorningEvent: {
+            summary: string;
+            /** @description Start (RFC 3339 date-time, or a date for all-day events) */
+            start: string;
+            end: string;
+            location?: string;
+        };
+        /** @description P-07 — a bill candidate from Gmail. A keyword match, never a confirmed bill (verified is always false). */
+        MorningBillCandidate: {
+            message_id: string;
+            subject: string;
+            snippet: string;
+            date?: string;
+            /** @description Due date printed in the subject or snippet, or null when none was printed */
+            due_hint?: string | null;
+            /** @enum {string|null} */
+            due_hint_source?: "subject_or_snippet" | null;
+            /** @description Always false — open the email to confirm the amount and due date */
+            verified: boolean;
+            note?: string;
+        };
+        /** @description P-07 — one open task from the task store. */
+        MorningTask: {
+            task_id: string;
+            purpose: string;
+            status: string;
+            created_at?: string | null;
+        };
+        /** @description P-07 — one Indonesian public holiday. */
+        MorningHoliday: {
+            /** @description YYYY-MM-DD */
+            date: string;
+            local_name: string;
+            name: string;
+        };
+        /** @description P-07 — prayer times for one city and day (Aladhan, method 20 Kementerian Agama RI). Imsak is null outside Ramadan. */
+        MorningPrayer: {
+            city: string;
+            date: string;
+            timings: {
+                fajr: string;
+                sunrise: string;
+                dhuhr: string;
+                asr: string;
+                maghrib: string;
+                isha: string;
+                imsak?: string | null;
+            };
+            hijri: {
+                date: string;
+                month: string;
+                month_number: number;
+                year: string;
+            };
+            is_ramadan: boolean;
+            method_name: string;
+            imsak_note?: string | null;
+            source: string;
+        };
+        /** @description P-07 — the morning summary for one day. */
+        MorningSummary: {
+            date: string;
+            weekday: string;
+            schedule: {
+                events: components["schemas"]["MorningEvent"][];
+            };
+            bills: {
+                candidates: components["schemas"]["MorningBillCandidate"][];
+            };
+            tasks: {
+                open: components["schemas"]["MorningTask"][];
+            };
+            holidays: {
+                today: components["schemas"]["MorningHoliday"][];
+                upcoming: components["schemas"]["MorningHoliday"][];
+            };
+            prayer: components["schemas"]["MorningPrayer"] | null;
+            source_status: {
+                calendar: components["schemas"]["MorningSourceStatus"];
+                gmail: components["schemas"]["MorningSourceStatus"];
+                tasks: components["schemas"]["MorningSourceStatus"];
+                holidays: components["schemas"]["MorningSourceStatus"];
+                prayer: components["schemas"]["MorningSourceStatus"];
+            };
+        };
+        /** @description P-07 — one action extracted from a note; task_id is its tracked task in the task store. */
+        MorningNoteAction: {
+            text: string;
+            /** @description Owner name, or null when unassigned (never invented) */
+            owner: string | null;
+            /** @description Date words printed in the note, or null */
+            due_hint: string | null;
+            source_line: number;
+            task_id: string;
+        };
+        /** @description P-07 — one stored note with its summary and actions. */
+        MorningNote: {
+            note_id: string;
+            /** @enum {string} */
+            source: "voice" | "text" | "meeting" | "lecture" | "study";
+            title: string;
+            summary: string;
+            actions: components["schemas"]["MorningNoteAction"][];
+            /** @description Full text; only on the single-note read */
+            raw_text?: string;
+            created_at?: string | null;
+        };
+        MorningNoteList: {
+            notes: components["schemas"]["MorningNote"][];
+        };
+        /** @description P-07 — a note just stored from text. */
+        MorningNoteCreated: {
+            ok: boolean;
+            note_id: string;
+            summary: string;
+            actions: components["schemas"]["MorningNoteAction"][];
+        };
+        /** @description P-07 — a note just stored from a voice recording. */
+        MorningVoiceNoteCreated: {
+            ok: boolean;
+            note_id: string;
+            transcript: string;
+            language?: string | null;
+            /** @description Transcriber that produced the transcript ("stub" until an engine is chosen) */
+            engine: string;
+            audio_deleted: boolean;
+            summary: string;
+            actions: components["schemas"]["MorningNoteAction"][];
         };
         /**
          * @description B18: one knowledge-graph node. `sources` are the passage

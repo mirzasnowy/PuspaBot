@@ -12,6 +12,7 @@ import { InsightsScreen } from "./screens/InsightsScreen";
 import { OnboardingScreen } from "./screens/OnboardingScreen";
 import { MockupScreen } from "./screens/MockupScreen";
 import { RoomsScreen } from "./screens/RoomsScreen";
+import { MorningScreen } from "./screens/MorningScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { HintBanner } from "./components/HintBanner";
 
@@ -53,6 +54,9 @@ export function App({ bootstrap, screen }: { bootstrap: Bootstrap; screen: Scree
       break;
     case "rooms":
       content = <RoomsScreen />;
+      break;
+    case "morning":
+      content = <MorningScreen />;
       break;
   }
   return (
