@@ -2658,6 +2658,284 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/live-view/{agent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live frame for one agent
+         * @description P-09: the live frame for one of the logged-in user's
+         *     agents — status (held / working / idle), the open task,
+         *     the last tool call, the replayable ledger events
+         *     (oldest first, with the hash chain, for the P-10 replay)
+         *     and the ephemeral in-memory live tail. `screenshot` is
+         *     always null: no backend can produce frames yet.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Narrow the frame to one task. */
+                    task_id?: string;
+                };
+                header?: never;
+                path: {
+                    agent_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Live frame */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LiveFrame"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The agent does not belong to this user */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live-view/{agent_id}/takeover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take over one agent
+         * @description P-09: pauses the agent's autonomous work — writes a
+         *     hold row, interrupts the live children (lifecycle cancel
+         *     + PWA pool stop, children only: the agent's own tokens
+         *     are NOT revoked, so release can resume it), and appends
+         *     a `takeover_started` event to the ledger. While the hold
+         *     stands, the turn loop refuses new work for the agent.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    agent_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["TakeoverRequest"];
+                };
+            };
+            responses: {
+                /** @description Takeover report */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TakeoverReport"];
+                    };
+                };
+                /** @description The takeover body is not a JSON object */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The agent does not belong to this user */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The agent is already held */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live-view/{agent_id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release a takeover
+         * @description P-09: deletes the hold row and appends a
+         *     `takeover_released` event to the ledger. The agent
+         *     resumes autonomous work on its next turn.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    agent_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Release report */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TakeoverReleaseReport"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The agent does not belong to this user */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Nothing is held for this agent */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live-view/{agent_id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live frame as a server-sent stream
+         * @description P-09: one `live_frame` SSE event (the same frame as the
+         *     GET) plus a heartbeat, then the stream ends — the same
+         *     snapshot idiom as the app's `/sse` endpoint. The PWA
+         *     polls the GET for fresh frames; the stream is for the
+         *     first paint. A 403 becomes an `error` SSE event, not an
+         *     HTTP error, so the EventSource stays open.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    agent_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description SSE stream of one live frame + heartbeat */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/event-stream": string;
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rooms": {
         parameters: {
             query?: never;
@@ -7445,6 +7723,110 @@ export interface components {
             audit_trail_url: string;
             linked_events: components["schemas"]["WeeklyLinkedEvent"][];
         };
+        /** @description One live hold — a human has taken over this agent. */
+        TakeoverHold: {
+            agent_id: string;
+            held_by_user_id: string;
+            reason: string;
+            task_id: string | null;
+            /** Format: date-time */
+            held_at: string;
+        };
+        /**
+         * @description One event in a live frame. `source` is `ledger` for the
+         *     replayable ledger events (with the hash chain) or `live`
+         *     for the ephemeral in-memory tail (no hash, never part of
+         *     a replay).
+         */
+        LiveFrameEvent: {
+            id: string;
+            type: string;
+            task_id: string;
+            agent_id: string;
+            subagent_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** @description The event's payload (arbitrary JSON). */
+            content: {
+                [key: string]: unknown;
+            };
+            hash?: string;
+            previous_hash?: string;
+            /** @enum {string} */
+            source: "ledger" | "live";
+        };
+        /** @description The newest tool call (or completion) in the frame. */
+        LiveFrameTool: {
+            tool: string;
+            task_id: string;
+            /** @enum {string} */
+            type: "tool_called" | "tool_completed";
+            /** Format: date-time */
+            created_at: string;
+        };
+        /**
+         * @description One live-view frame: what the bot is doing right now.
+         *     `status` is `held` (a human has taken over), `working`
+         *     (an open task with an event in the last 5 minutes), or
+         *     `idle`. `events` are the replayable ledger events,
+         *     oldest first; `live_tail` is the ephemeral tail.
+         *     `screenshot` stays null until a backend that can
+         *     produce frames exists.
+         */
+        LiveFrame: {
+            agent_id: string;
+            /** @enum {string} */
+            status: "held" | "working" | "idle";
+            hold: components["schemas"]["TakeoverHold"] | null;
+            current_task_id: string | null;
+            last_tool?: components["schemas"]["LiveFrameTool"] | null;
+            /** Format: date-time */
+            last_event_at?: string | null;
+            events: components["schemas"]["LiveFrameEvent"][];
+            live_tail: components["schemas"]["LiveFrameEvent"][];
+            screenshot: string | null;
+            /** Format: date-time */
+            generated_at: string;
+        };
+        TakeoverRequest: {
+            /** @description Why the user is taking over (shown in the ledger event). */
+            reason?: string;
+        };
+        /** @description What one takeover press did. */
+        TakeoverReport: {
+            agent_id: string;
+            /** @enum {string} */
+            status: "held";
+            held_by: string;
+            actor: string;
+            reason: string;
+            task_id?: string | null;
+            /** Format: date-time */
+            held_at: string;
+            interrupted_subagents?: {
+                [key: string]: unknown;
+            }[];
+            pool_stopped?: number;
+            lifecycle_wired?: boolean;
+            pool_wired?: boolean;
+            ledger_event_id: string;
+            audit_trail_url: string;
+        };
+        /** @description What one release did. */
+        TakeoverReleaseReport: {
+            agent_id: string;
+            /** @enum {string} */
+            status: "released";
+            held_by: string;
+            actor: string;
+            /** Format: date-time */
+            held_at: string;
+            /** Format: date-time */
+            released_at: string;
+            reason?: string;
+            ledger_event_id: string;
+            audit_trail_url: string;
+        };
         ApprovalRequest: {
             request_id: string;
             /** @description Action kind, e.g. spend, send, share */
@@ -7547,7 +7929,7 @@ export interface components {
          */
         Bootstrap: {
             /** @enum {string} */
-            screen?: "chat" | "tasks" | "modules" | "connectors" | "memory" | "settings" | "office" | "insights" | "onboarding" | "login";
+            screen?: "chat" | "tasks" | "modules" | "connectors" | "memory" | "settings" | "office" | "live" | "insights" | "onboarding" | "login";
             user_id?: string;
             messages?: components["schemas"]["ChatMessage"][];
             approvals?: components["schemas"]["ApprovalRequest"][];

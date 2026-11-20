@@ -38,6 +38,8 @@ tags:
     description: Cost and token insights from the usage ledger (G28)
   - name: controls
     description: Stop-all, autonomy dial, and weekly report (P-02, plan 12.7)
+  - name: live-view
+    description: Live view of a bot + human takeover (P-09, plan 12.9)
   - name: office
     description: Office screen and operator panels (G31 serve modes)
   - name: settings
@@ -452,6 +454,14 @@ paths:
     $ref: './openapi-controls.yaml#/paths/~1api~1autonomy-dial~1{area}~1ceiling'
   /api/weekly-report:
     $ref: './openapi-controls.yaml#/paths/~1api~1weekly-report'
+  /api/live-view/{agent_id}:
+    $ref: './openapi-live-view.yaml#/paths/~1api~1live-view~1{agent_id}'
+  /api/live-view/{agent_id}/takeover:
+    $ref: './openapi-live-view.yaml#/paths/~1api~1live-view~1{agent_id}~1takeover'
+  /api/live-view/{agent_id}/release:
+    $ref: './openapi-live-view.yaml#/paths/~1api~1live-view~1{agent_id}~1release'
+  /api/live-view/{agent_id}/stream:
+    $ref: './openapi-live-view.yaml#/paths/~1api~1live-view~1{agent_id}~1stream'
   /api/rooms:
     $ref: './openapi-rooms.yaml#/paths/~1api~1rooms'
   /api/rooms/{room_id}/tasks:
@@ -1455,6 +1465,20 @@ components:
       $ref: './openapi-controls.yaml#/components/schemas/WeeklyLinkedEvent'
     WeeklyReport:
       $ref: './openapi-controls.yaml#/components/schemas/WeeklyReport'
+    TakeoverHold:
+      $ref: './openapi-live-view.yaml#/components/schemas/TakeoverHold'
+    LiveFrameEvent:
+      $ref: './openapi-live-view.yaml#/components/schemas/LiveFrameEvent'
+    LiveFrameTool:
+      $ref: './openapi-live-view.yaml#/components/schemas/LiveFrameTool'
+    LiveFrame:
+      $ref: './openapi-live-view.yaml#/components/schemas/LiveFrame'
+    TakeoverRequest:
+      $ref: './openapi-live-view.yaml#/components/schemas/TakeoverRequest'
+    TakeoverReport:
+      $ref: './openapi-live-view.yaml#/components/schemas/TakeoverReport'
+    TakeoverReleaseReport:
+      $ref: './openapi-live-view.yaml#/components/schemas/TakeoverReleaseReport'
     ApprovalRequest:
       type: object
       required: [request_id, status]
@@ -1604,7 +1628,7 @@ components:
       properties:
         screen:
           type: string
-          enum: [chat, tasks, modules, connectors, memory, settings, office, insights, onboarding, login]
+          enum: [chat, tasks, modules, connectors, memory, settings, office, live, insights, onboarding, login]
         user_id:
           type: string
         messages:

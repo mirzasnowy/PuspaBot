@@ -1,0 +1,372 @@
+# Live view + takeover API contract (P-09, plan section 12.9).
+#
+# Split out of docs/openapi-pwa.yaml on 20 Nov 2026 (P-09): the
+# live-view contract (4 endpoints + 7 schemas) would have pushed
+# the main spec past the 2000-line hard cap (Wave 30 precedent:
+# rooms, graph, mockup, payments, and controls split the same
+# way). The main spec references this file with $ref stubs; the
+# generated client is produced from the main spec with
+# openapi-typescript, which resolves external $refs. The Error
+# schema stays in the main spec and is referenced back from here.
+#
+# Honest scope, in the contract: the live view shows the bot's
+# live activity as a frame built from ledger events (status,
+# open task, last tool call, replayable event stream) — there is
+# no video stream of a desktop, and `screenshot` stays null
+# until a backend that can produce frames exists. Takeover
+# pauses autonomous work (hold row + interrupted live work +
+# ledger event); V2 click-and-type control is out of scope.
+openapi: 3.0.3
+info:
+  title: Puspa live view and takeover API
+  version: 1.0.0
+paths:
+  /api/live-view/{agent_id}:
+    get:
+      tags: [live-view]
+      summary: Live frame for one agent
+      description: |
+        P-09: the live frame for one of the logged-in user's
+        agents — status (held / working / idle), the open task,
+        the last tool call, the replayable ledger events
+        (oldest first, with the hash chain, for the P-10 replay)
+        and the ephemeral in-memory live tail. `screenshot` is
+        always null: no backend can produce frames yet.
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: task_id
+          in: query
+          required: false
+          description: Narrow the frame to one task.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Live frame
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveFrame"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: The agent does not belong to this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/live-view/{agent_id}/takeover:
+    post:
+      tags: [live-view]
+      summary: Take over one agent
+      description: |
+        P-09: pauses the agent's autonomous work — writes a
+        hold row, interrupts the live children (lifecycle cancel
+        + PWA pool stop, children only: the agent's own tokens
+        are NOT revoked, so release can resume it), and appends
+        a `takeover_started` event to the ledger. While the hold
+        stands, the turn loop refuses new work for the agent.
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TakeoverRequest"
+      responses:
+        "200":
+          description: Takeover report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TakeoverReport"
+        "400":
+          description: The takeover body is not a JSON object
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: The agent does not belong to this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "409":
+          description: The agent is already held
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/live-view/{agent_id}/release:
+    post:
+      tags: [live-view]
+      summary: Release a takeover
+      description: |
+        P-09: deletes the hold row and appends a
+        `takeover_released` event to the ledger. The agent
+        resumes autonomous work on its next turn.
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Release report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TakeoverReleaseReport"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: The agent does not belong to this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Nothing is held for this agent
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/live-view/{agent_id}/stream:
+    get:
+      tags: [live-view]
+      summary: Live frame as a server-sent stream
+      description: |
+        P-09: one `live_frame` SSE event (the same frame as the
+        GET) plus a heartbeat, then the stream ends — the same
+        snapshot idiom as the app's `/sse` endpoint. The PWA
+        polls the GET for fresh frames; the stream is for the
+        first paint. A 403 becomes an `error` SSE event, not an
+        HTTP error, so the EventSource stays open.
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE stream of one live frame + heartbeat
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    TakeoverHold:
+      type: object
+      description: One live hold — a human has taken over this agent.
+      properties:
+        agent_id:
+          type: string
+        held_by_user_id:
+          type: string
+        reason:
+          type: string
+        task_id:
+          type: string
+          nullable: true
+        held_at:
+          type: string
+          format: date-time
+      required: [agent_id, held_by_user_id, reason, task_id, held_at]
+    LiveFrameEvent:
+      type: object
+      description: |
+        One event in a live frame. `source` is `ledger` for the
+        replayable ledger events (with the hash chain) or `live`
+        for the ephemeral in-memory tail (no hash, never part of
+        a replay).
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        task_id:
+          type: string
+        agent_id:
+          type: string
+        subagent_id:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        content:
+          type: object
+          additionalProperties: true
+          description: The event's payload (arbitrary JSON).
+        hash:
+          type: string
+        previous_hash:
+          type: string
+        source:
+          type: string
+          enum: [ledger, live]
+      required: [id, type, task_id, agent_id, created_at, content, source]
+    LiveFrameTool:
+      type: object
+      description: The newest tool call (or completion) in the frame.
+      properties:
+        tool:
+          type: string
+        task_id:
+          type: string
+        type:
+          type: string
+          enum: [tool_called, tool_completed]
+        created_at:
+          type: string
+          format: date-time
+      required: [tool, task_id, type, created_at]
+    LiveFrame:
+      type: object
+      description: |
+        One live-view frame: what the bot is doing right now.
+        `status` is `held` (a human has taken over), `working`
+        (an open task with an event in the last 5 minutes), or
+        `idle`. `events` are the replayable ledger events,
+        oldest first; `live_tail` is the ephemeral tail.
+        `screenshot` stays null until a backend that can
+        produce frames exists.
+      properties:
+        agent_id:
+          type: string
+        status:
+          type: string
+          enum: [held, working, idle]
+        hold:
+          allOf:
+            - $ref: "#/components/schemas/TakeoverHold"
+          nullable: true
+        current_task_id:
+          type: string
+          nullable: true
+        last_tool:
+          allOf:
+            - $ref: "#/components/schemas/LiveFrameTool"
+          nullable: true
+        last_event_at:
+          type: string
+          format: date-time
+          nullable: true
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveFrameEvent"
+        live_tail:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveFrameEvent"
+        screenshot:
+          type: string
+          nullable: true
+        generated_at:
+          type: string
+          format: date-time
+      required: [agent_id, status, hold, current_task_id, events, live_tail, screenshot, generated_at]
+    TakeoverRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          description: Why the user is taking over (shown in the ledger event).
+      required: []
+    TakeoverReport:
+      type: object
+      description: What one takeover press did.
+      properties:
+        agent_id:
+          type: string
+        status:
+          type: string
+          enum: [held]
+        held_by:
+          type: string
+        actor:
+          type: string
+        reason:
+          type: string
+        task_id:
+          type: string
+          nullable: true
+        held_at:
+          type: string
+          format: date-time
+        interrupted_subagents:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        pool_stopped:
+          type: integer
+        lifecycle_wired:
+          type: boolean
+        pool_wired:
+          type: boolean
+        ledger_event_id:
+          type: string
+        audit_trail_url:
+          type: string
+      required: [agent_id, status, held_by, actor, reason, held_at, ledger_event_id, audit_trail_url]
+    TakeoverReleaseReport:
+      type: object
+      description: What one release did.
+      properties:
+        agent_id:
+          type: string
+        status:
+          type: string
+          enum: [released]
+        held_by:
+          type: string
+        actor:
+          type: string
+        held_at:
+          type: string
+          format: date-time
+        released_at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        ledger_event_id:
+          type: string
+        audit_trail_url:
+          type: string
+      required: [agent_id, status, held_by, actor, held_at, released_at, ledger_event_id, audit_trail_url]

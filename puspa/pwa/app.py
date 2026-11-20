@@ -56,6 +56,7 @@ SCREENS = (
     "memory",
     "settings",
     "office",
+    "live",
     "insights",
     "onboarding",
     "mockup",
@@ -409,6 +410,18 @@ def create_app(
 
                 ctx["agents"] = list_agents(user_id, dsn=app.state.dsn)
             except Exception:
+                ctx["agents"] = []
+        elif screen == "live":
+            # P-09: the live screen needs the user's agents to
+            # pick which bot to watch (same source as connectors).
+            # Narrowed failure modes, like the room-activity SSE
+            # frame: the agent list read itself (a database error
+            # or an invalid user id), never a bare except.
+            try:
+                from puspa.runtime.agents import list_agents
+
+                ctx["agents"] = list_agents(user_id, dsn=app.state.dsn)
+            except (psycopg.Error, ValueError, TypeError, AttributeError):
                 ctx["agents"] = []
         return ctx
 
@@ -973,6 +986,7 @@ def create_app(
         drafts_api,
         graph_api,
         insights_api,
+        live_view_api,
         memory_api,
         mockup_api,
         onboarding_api,
@@ -987,6 +1001,15 @@ def create_app(
     graph_api.register_routes(app, need_user)
     memory_api.register_routes(app, need_user)
     controls_api.register_routes(app, need_user)
+
+    # P-09: live view + takeover. The store is one per process;
+    # the turn loop consults the same table through its own
+    # TakeoverStore, so the hold the PWA sets is the hold the
+    # loop enforces.
+    from puspa.pwa.live_view import TakeoverStore
+
+    app.state.takeover_store = TakeoverStore(dsn=app.state.dsn)
+    live_view_api.register_routes(app, need_user)
     mockup_api.register_routes(app, need_user)
     insights_api.register_routes(app, need_user)
     onboarding_api.register_routes(app, need_user)

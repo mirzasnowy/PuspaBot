@@ -147,6 +147,7 @@ EXPECTED_TABLES = {
     "style_examples",
     "summaries",
     "system_heartbeats",
+    "takeover_holds",
     "tasks",
     "team_members",
     "teams",
@@ -333,10 +334,10 @@ def _pg_dump(dsn: str) -> str:
 
 
 def test_migration_files_are_numbered_and_reversible():
-    """25 migrations, versions 0001-0025, each with up + down."""
+    """27 migrations, versions 0001-0027, each with up + down."""
     migrations = list_migrations()
-    assert [m.version for m in migrations] == [f"{n:04d}" for n in range(1, 26)]
-    assert len({m.name for m in migrations}) == 25
+    assert [m.version for m in migrations] == [f"{n:04d}" for n in range(1, 28)]
+    assert len({m.name for m in migrations}) == 27
     for migration in migrations:
         assert migration.up_sql, f"{migration.name}: empty up"
         assert migration.down_sql, f"{migration.name}: empty down"
@@ -345,15 +346,15 @@ def test_migration_files_are_numbered_and_reversible():
 
 def test_apply_all_to_empty_db_creates_every_table(scratch_dsn):
     applied = apply_migrations(scratch_dsn)
-    assert applied == [f"{n:04d}" for n in range(1, 26)]
+    assert applied == [f"{n:04d}" for n in range(1, 28)]
     assert _tables(scratch_dsn) == EXPECTED_TABLES
     with psycopg.connect(scratch_dsn) as conn:
         (count,) = conn.execute("SELECT count(*) FROM schema_migrations").fetchone()
-    assert count == 25
+    assert count == 27
 
 
 def test_apply_is_idempotent(scratch_dsn):
-    assert len(apply_migrations(scratch_dsn)) == 25
+    assert len(apply_migrations(scratch_dsn)) == 27
     assert apply_migrations(scratch_dsn) == []
     assert apply_migrations(scratch_dsn, target="0006") == []
 
@@ -376,7 +377,7 @@ def test_unknown_target_is_refused(scratch_dsn):
 
 def test_status_reports_pending_then_applied(scratch_dsn):
     before = migration_status(scratch_dsn)
-    assert len(before) == 25
+    assert len(before) == 27
     assert all(not row["applied"] for row in before)
     apply_migrations(scratch_dsn, target="0003")
     after = migration_status(scratch_dsn)
@@ -407,7 +408,7 @@ def test_rollback_round_trip_with_seeded_rows(scratch_dsn):
         conn.execute("INSERT INTO work_items (id) VALUES ('work-seed')")
         conn.commit()
     rolled_back = rollback_migrations(scratch_dsn, target="0019")
-    assert rolled_back == ["0025", "0024", "0023", "0022", "0021", "0020"]
+    assert rolled_back == ["0027", "0026", "0025", "0024", "0023", "0022", "0021", "0020"]
     tables = _tables(scratch_dsn)
     assert "token_revocations" not in tables
     assert "embedding_state" not in tables
@@ -418,7 +419,16 @@ def test_rollback_round_trip_with_seeded_rows(scratch_dsn):
     with psycopg.connect(scratch_dsn) as conn:
         (kept,) = conn.execute("SELECT count(*) FROM work_items").fetchone()
     assert kept == 1
-    assert apply_migrations(scratch_dsn) == ["0020", "0021", "0022", "0023", "0024", "0025"]
+    assert apply_migrations(scratch_dsn) == [
+        "0020",
+        "0021",
+        "0022",
+        "0023",
+        "0024",
+        "0025",
+        "0026",
+        "0027",
+    ]
     with psycopg.connect(scratch_dsn) as conn:
         (revocations,) = conn.execute("SELECT count(*) FROM token_revocations").fetchone()
         (users,) = conn.execute("SELECT count(*) FROM users").fetchone()
@@ -453,7 +463,7 @@ def test_full_rollback_to_0001_and_back(scratch_dsn):
         )
         conn.commit()
     rolled_back = rollback_migrations(scratch_dsn, target="0001")
-    assert rolled_back == [f"{n:04d}" for n in range(25, 1, -1)]
+    assert rolled_back == [f"{n:04d}" for n in range(27, 1, -1)]
     tables = _tables(scratch_dsn)
     assert tables == {
         "agents",
@@ -472,7 +482,7 @@ def test_full_rollback_to_0001_and_back(scratch_dsn):
         (users,) = conn.execute("SELECT count(*) FROM users").fetchone()
     assert valid_at_columns == 0
     assert users == 1
-    assert apply_migrations(scratch_dsn) == [f"{n:04d}" for n in range(2, 26)]
+    assert apply_migrations(scratch_dsn) == [f"{n:04d}" for n in range(2, 28)]
     assert _tables(scratch_dsn) == EXPECTED_TABLES
     with psycopg.connect(scratch_dsn) as conn:
         (conflicts,) = conn.execute("SELECT count(*) FROM conflict_records").fetchone()
@@ -504,6 +514,7 @@ def test_loader_targets(scratch_dsn):
     from puspa.payments.schema import create_schema as create_payments_schema
     from puspa.policy.conflicts import create_schema as create_conflicts_schema
     from puspa.policy.revocations import RevocationList
+    from puspa.pwa.live_view import TakeoverStore
     from puspa.pwa.model_settings import create_schema as create_model_settings_schema
     from puspa.rooms.job_queue import create_schema as create_queue_schema
     from puspa.rooms.schema import create_schema as create_rooms_schema
@@ -557,13 +568,13 @@ def test_loader_targets(scratch_dsn):
         (lambda: RevocationList(scratch_dsn).create_schema(), "0020"),
         # Memory lands on 0023 (0023_memory_rights), not 0002.
         (lambda: create_memory_schema(scratch_dsn), "0023"),
-        # The room job queue owns the second-newest migration
-        # (0024_room_job_queue); its loader runs second-to-last and
-        # lands on 0024.
+        # The room job queue lands on 0024 and the morning
+        # notes on 0025; the takeover holds own the newest
+        # migrations (0026_takeover_holds +
+        # 0027_takeover_check_dedup) and its loader runs last.
         (lambda: create_queue_schema(scratch_dsn), "0024"),
-        # Morning notes own the newest migration (0025_morning_notes);
-        # its loader runs last and lands on 0025.
         (lambda: create_morning_notes_schema(scratch_dsn), "0025"),
+        (lambda: TakeoverStore(scratch_dsn).create_schema(), "0027"),
     ]
     for step, expected_max in steps:
         step()

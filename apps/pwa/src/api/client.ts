@@ -39,6 +39,11 @@ export type DialSuggestion = components["schemas"]["DialSuggestion"];
 export type CeilingName = components["schemas"]["CeilingRequest"]["ceiling"];
 export type WeeklyReport = components["schemas"]["WeeklyReport"];
 export type WeeklyLinkedEvent = components["schemas"]["WeeklyLinkedEvent"];
+export type LiveFrame = components["schemas"]["LiveFrame"];
+export type LiveFrameEvent = components["schemas"]["LiveFrameEvent"];
+export type TakeoverHold = components["schemas"]["TakeoverHold"];
+export type TakeoverReport = components["schemas"]["TakeoverReport"];
+export type TakeoverReleaseReport = components["schemas"]["TakeoverReleaseReport"];
 export type ReceiptUpload = components["schemas"]["ReceiptUpload"];
 export type ReceiptDraft = components["schemas"]["ReceiptDraft"];
 export type ReceiptExpense = components["schemas"]["ReceiptExpense"];
@@ -299,6 +304,39 @@ export function stopTask(taskId: string, fetchFn: FetchFn = fetch): Promise<Stop
  */
 export function stopAll(fetchFn: FetchFn = fetch): Promise<StopAllReport> {
   return postJson<StopAllReport>("/api/stop-all", {}, fetchFn);
+}
+
+/** Read the live frame for one agent: status, open task, last tool, replayable events. */
+export function fetchLiveFrame(
+  agentId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<LiveFrame> {
+  return getJson<LiveFrame>(`/api/live-view/${encodeURIComponent(agentId)}`, fetchFn);
+}
+
+/** Take over one agent: pause its autonomous work (hold + interrupt + ledger event). */
+export function takeoverAgent(
+  agentId: string,
+  reason: string,
+  fetchFn: FetchFn = fetch,
+): Promise<TakeoverReport> {
+  return postJson<TakeoverReport>(
+    `/api/live-view/${encodeURIComponent(agentId)}/takeover`,
+    { reason },
+    fetchFn,
+  );
+}
+
+/** Release a takeover so the agent resumes autonomous work on its next turn. */
+export function releaseTakeover(
+  agentId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<TakeoverReleaseReport> {
+  return postJson<TakeoverReleaseReport>(
+    `/api/live-view/${encodeURIComponent(agentId)}/release`,
+    {},
+    fetchFn,
+  );
 }
 
 /** Read the autonomy dial state: five areas, ceilings, streaks, suggestions. */

@@ -190,10 +190,10 @@ def test_agent_role_cannot_touch_kill_switch_table(test_dsn):
             conn.execute("DELETE FROM kill_switch WHERE id = 1")
 
 
-def test_event_types_still_closed_at_31():
-    """K12 adds no 32nd event type: activation/deactivation reuse
+def test_event_types_still_closed_at_33():
+    """K12 adds no 34th event type: activation/deactivation reuse
     existing types (task_stopped / user_message)."""
-    assert len(EVENT_TYPES) == 31
+    assert len(EVENT_TYPES) == 33
     assert "task_stopped" in EVENT_TYPES
     assert "user_message" in EVENT_TYPES
 

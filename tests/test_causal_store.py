@@ -21,7 +21,7 @@ What is proven here:
 - the valid-time query answers which claims held at a moment;
 - a hypothesis can cite a real ledger event as evidence, and
   the event is really in the ledger — with the closed set of
-  31 event types untouched (no 32nd type was added).
+  33 event types untouched (no 34th type was added).
 """
 
 import os
@@ -170,11 +170,11 @@ def test_hypothesis_can_cite_a_real_ledger_event():
 
     No new event type is added for this: the outcome is recorded
     with the existing `evidence_recorded` type, and the
-    hypothesis cites the event by id. The closed set stays 31.
+    hypothesis cites the event by id. The closed set stays 33.
     """
     if not _dsn_available():
         pytest.skip("Postgres is not running")
-    assert len(EVENT_TYPES) == 31
+    assert len(EVENT_TYPES) == 33
     user_id, agent_id = _make_user_agent()
     try:
         apply_causal_migration(DSN)

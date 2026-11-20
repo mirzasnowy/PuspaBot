@@ -137,6 +137,10 @@ constructor refuses a local-backed executor when
 3. **Human-takeover UI.** The surface where a human takes over
    a browser session for sign-in / captcha / 2FA, then hands
    control back. Without it, no browser automation ships.
+   (Not the same as P-09's takeover button: P-09 pauses the
+   bot's autonomous work from the Live screen and records it
+   in the ledger — see `docs/live-view.md` — but it does not
+   hand a browser session to a human. That UI is still open.)
 4. **Browser launcher + CDP driving.** Per-task sessions,
    Chromium reuse, orphan reaping with process kill — only
    after (1) and (3) exist. This is the foundation for the

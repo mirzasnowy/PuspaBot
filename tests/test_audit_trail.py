@@ -44,11 +44,11 @@ def _event(event_type="tool_called", *, initiator=None, content=None, task_id="t
     }
 
 
-# --- initiator attribute: still 31 event types ---
+# --- initiator attribute: still 33 event types ---
 
 
-def test_event_types_still_31():
-    assert len(EVENT_TYPES) == 31
+def test_event_types_still_33():
+    assert len(EVENT_TYPES) == 33
 
 
 def test_initiator_kinds():
