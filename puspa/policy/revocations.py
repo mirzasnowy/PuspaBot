@@ -28,6 +28,7 @@ from __future__ import annotations
 import os
 import re
 from datetime import UTC, datetime
+from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
@@ -47,6 +48,20 @@ _ROLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
 
 class RevocationError(Exception):
     """A revocation could not be recorded or read."""
+
+
+def _revoked_at(row: dict[str, Any]) -> datetime:
+    """The ``revoked_at`` column of a revocation row, as a datetime.
+
+    The row comes from a ``dict_row`` cursor, so the value is typed
+    ``Any``; a row without a datetime cutoff is corrupt data, not a
+    usable revocation, so it fails loudly instead of returning a
+    non-datetime to a caller that declared ``datetime``.
+    """
+    value = row["revoked_at"]
+    if not isinstance(value, datetime):
+        raise RevocationError("revocation row has no datetime revoked_at")
+    return value
 
 
 class RevocationList:
@@ -72,7 +87,7 @@ class RevocationList:
 
     # -- connections ----------------------------------------------------
 
-    def _connect(self, *, for_read: bool = False):
+    def _connect(self, *, for_read: bool = False) -> psycopg.Connection[dict[str, Any]]:
         conn = psycopg.connect(self.dsn, row_factory=dict_row)
         if for_read and self.read_role is not None:
             with conn.cursor() as cur:
@@ -111,7 +126,7 @@ class RevocationList:
             ) from exc
         if row is None:  # cannot happen; last defence
             raise RevocationError(f"revocation for jti {jti!r} vanished after insert")
-        return row["revoked_at"]
+        return _revoked_at(row)
 
     def revoke_all_for_agent(self, agent_id: str, *, actor: str, reason: str) -> datetime:
         """Revoke every token of one agent issued up to now.
@@ -148,7 +163,7 @@ class RevocationList:
             ) from exc
         if row is None:  # cannot happen; last defence
             raise RevocationError(f"revoke-all for agent {agent_id!r} vanished after upsert")
-        return row["revoked_at"]
+        return _revoked_at(row)
 
     # -- reads (Gate path: every call) ----------------------------------
 
@@ -167,7 +182,7 @@ class RevocationList:
             raise RevocationError(
                 "agent_revocations table is missing; run RevocationList.create_schema() first"
             ) from exc
-        return row["revoked_at"] if row is not None else None
+        return _revoked_at(row) if row is not None else None
 
     def is_revoked_jti(self, jti: str) -> bool:
         """True when this ``jti`` is listed as individually revoked."""
@@ -185,7 +200,7 @@ class RevocationList:
                 "token_revocations table is missing; run RevocationList.create_schema() first"
             ) from exc
 
-    def is_revoked_payload(self, payload: dict) -> bool:
+    def is_revoked_payload(self, payload: dict[str, Any]) -> bool:
         """True when a verified token payload is revoked.
 
         Either its ``jti`` is individually listed, or its agent has

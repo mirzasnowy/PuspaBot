@@ -193,7 +193,7 @@ def score_skill_dir(
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if not isinstance(manifest, dict):
             manifest = {}
-    except Exception:
+    except (OSError, ValueError):
         manifest = {}
     return score_module(
         manifest=manifest,

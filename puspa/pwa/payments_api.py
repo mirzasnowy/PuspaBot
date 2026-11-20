@@ -273,7 +273,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
         try:
             try:
                 data = await request.json()
-            except Exception:
+            except ValueError:
                 data = {}
             if not isinstance(data, dict):
                 raise ValueError("payment body must be a JSON object")

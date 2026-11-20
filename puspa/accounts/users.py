@@ -25,7 +25,7 @@ class DuplicateEmailError(Exception):
 _PASSWORD_HASHER = PasswordHasher(time_cost=2, memory_cost=65536, parallelism=1)
 
 
-def resolve_dsn(dsn=None):
+def resolve_dsn(dsn: str | None = None) -> str:
     """DSN Postgres: argumen eksplisit, lalu env PUSPA_DSN / PUSPA_TEST_DSN,
     lalu default peer-auth lokal."""
     return dsn or os.environ.get("PUSPA_DSN") or os.environ.get("PUSPA_TEST_DSN") or DEFAULT_DSN
