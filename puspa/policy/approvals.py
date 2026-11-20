@@ -45,7 +45,7 @@ it.
   target pattern (recipient, domain, path glob) and a nominal cap,
   so it only ever applies to the same kind of action it was
   granted for. In beta mode, "always" is disabled entirely for
-  ``pay`` and ``send_to_other``.
+  ``pay``, ``send_to_other``, and ``share``.
 - (E-10, plan 6.2) What the user sees is rendered server-side from
   the structured arguments by ``puspa.policy.approval_cards``;
   this module's :meth:`ApprovalPolicy.render_card` is the seam.
@@ -128,11 +128,14 @@ ANSWER_SCOPES = frozenset({"once", "conversation", "always"})
 ANSWER_TTL_SECONDS = 24 * 3600
 
 #: Kinds for which "always" is disabled entirely in beta (plan
-#: 6.3): a standing yes to moving money, or to messaging someone
-#: else, is exactly the approval fatigue the beta must not
-#: create. Enforced by ``ApprovalStore`` and ``ApprovalPolicy``
-#: when ``beta_mode`` is on.
-BETA_ALWAYS_FORBIDDEN_KINDS = frozenset({"pay", "send_to_other"})
+#: 6.3): a standing yes to moving money, to messaging someone
+#: else, or to sharing content is exactly the approval fatigue
+#: the beta must not create. "share" joined this set after the
+#: E-16 follow-up showed a broad "always" share grant auto-
+#: allowing a payload that tells the bot to publish the whole
+#: chat (see docs/eval-e16.md). Enforced by ``ApprovalStore``
+#: and ``ApprovalPolicy`` when ``beta_mode`` is on.
+BETA_ALWAYS_FORBIDDEN_KINDS = frozenset({"pay", "send_to_other", "share"})
 
 #: Argument keys read for each "always" narrowing axis.
 _RECIPIENT_KEYS = ("recipient", "recipient_name", "recipient_account", "payee", "to", "target")
@@ -526,8 +529,9 @@ class ApprovalAnswer:
                 and self._narrowing_matches(content)
             )
         if self.scope == "always":
-            # Beta: "always" never applies to pay / send_to_other,
-            # even to an answer recorded before beta mode was on.
+            # Beta: "always" never applies to pay / send_to_other
+            # / share, even to an answer recorded before beta mode
+            # was on.
             if beta_mode and self.kind in BETA_ALWAYS_FORBIDDEN_KINDS:
                 return False
             return self._narrowing_matches(content)
@@ -696,7 +700,7 @@ class ApprovalPolicy:
     7. A usable tiered answer -> allow. An "always" answer only
        applies when its narrowing (target pattern, nominal cap)
        covers this action; in beta mode it never applies to
-       ``pay`` or ``send_to_other``.
+       ``pay``, ``send_to_other``, or ``share``.
     8. Otherwise -> ask (these kinds always ask by default).
     """
 
@@ -852,8 +856,8 @@ class ApprovalPolicy:
         """Store a tiered answer ("once" / "conversation" /
         "always"). A "once" answer is bound to the exact content;
         an "always" answer may be narrowed to a target pattern
-        and a nominal cap. In beta mode, "always" for ``pay`` or
-        ``send_to_other`` is refused."""
+        and a nominal cap. In beta mode, "always" for ``pay``,
+        ``send_to_other``, or ``share`` is refused."""
         return self.store.record(
             kind,
             scope,

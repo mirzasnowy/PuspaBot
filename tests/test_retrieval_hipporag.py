@@ -119,6 +119,25 @@ def test_retriever_falls_back_to_vector_without_seeds():
     assert all(r["graph_score"] == 0.0 for r in results)
 
 
+def test_retriever_returns_one_result_per_document():
+    # E-16 follow-up: the top-5 shortlist used to fill with
+    # several sentence chunks of the same two or three documents,
+    # so a document whose answer sits in a second sentence never
+    # got a slot (HippoRAG recall@5 0.74 on the eval set). One
+    # result per document now: the best chunk stands for its
+    # document.
+    graph = build_price_graph()
+    retriever = HippoRAGRetriever(graph, embedder=HashEmbedding())
+    reranker = DeterministicReranker(embedder=HashEmbedding())
+    results = retriever.retrieve(
+        "Is the cheap Galaxy S24 deal trustworthy?", top_k=5, reranker=reranker
+    )
+    assert len(results) == 5
+    docs = [r["passage_id"].split("#", maxsplit=1)[0] for r in results]
+    assert len(set(docs)) == len(docs)
+    assert "d4" in docs
+
+
 def test_retriever_with_reranker_keeps_the_walk():
     graph = build_price_graph()
     retriever = HippoRAGRetriever(graph, embedder=HashEmbedding())

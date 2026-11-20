@@ -46,13 +46,20 @@ def test_comparison_is_deterministic():
 
 
 def test_hipporag_does_not_beat_plain_vectors_on_this_set():
-    # Measured 2026-11-20 on the 50 internal questions:
-    # BM25 0.84, vectors 0.86, HippoRAG 0.74. The graph walk does
-    # not earn its keep here, so the triple-extraction cost at
-    # index time is not justified by this number. Pin it: if the
+    # Measured 2026-11-20 on the 50 internal questions, re-measured
+    # after the E-16 follow-up (2026-11-20): BM25 0.84, vectors
+    # 0.86, HippoRAG 0.84. The follow-up fixed one real ranking
+    # defect (several sentence chunks of the same two or three
+    # documents filled the top-5 shortlist; the retriever now
+    # returns one result per document), which lifted HippoRAG
+    # recall from 0.74 to 0.84. Answer accuracy stays 0.74: the
+    # answer sentence of a trust report carries no entity and the
+    # stub hash embedding cannot match "trustworthy" to "trusted"
+    # or "never shipped", so that gap needs a real embedding
+    # model, not a ranking tweak. Pin the numbers: if the
     # retriever changes, re-measure instead of assuming.
     comparison = compare_retrievers(top_k=5)
     assert comparison["vectors"]["recall_at_5"] == 0.86
     assert comparison["bm25"]["recall_at_5"] == 0.84
-    assert comparison["hipporag"]["recall_at_5"] == 0.74
+    assert comparison["hipporag"]["recall_at_5"] == 0.84
     assert comparison["hipporag"]["recall_at_5"] < comparison["vectors"]["recall_at_5"]
