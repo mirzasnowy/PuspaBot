@@ -1,10 +1,11 @@
-"""Tes PWA 11 layar (FastAPI + Jinja + SSE).
+"""Tes PWA 13 layar (FastAPI + Jinja + SSE).
 
 Revisi 7 membatasi PWA pada 7 layar, tetapi kerja kematangan G28
 menambah Insights dan Onboarding (perintah Nero: kerjakan semua
-28 celah), kanvas mockup menambah satu lagi, dan P-07 menambah
-layar pagi — jadi total sekarang 11. Tes jumlah layar di bawah
-mencerminkan batas baru itu.
+28 celah), kanvas mockup menambah satu lagi, P-07 menambah layar
+pagi, P-09 menambah layar live, dan P-10 menambah layar replay —
+jadi total sekarang 13. Tes jumlah layar di bawah mencerminkan
+batas baru itu.
 """
 
 import pytest
@@ -29,13 +30,13 @@ def test_eleven_screens_exist_and_200(client):
         assert "Puspa" in resp.text
 
 
-def test_twelve_screens_exist_including_live():
-    """The morning and live screens are the eleventh and twelfth.
+def test_thirteen_screens_exist_including_replay():
+    """The morning, live, and replay screens are the eleventh, twelfth, and thirteenth.
 
-    The count is pinned on purpose: a thirteenth screen must be a
+    The count is pinned on purpose: a fourteenth screen must be a
     deliberate decision with its own ticket, not an accident.
     """
-    assert len(SCREENS) == 12
+    assert len(SCREENS) == 13
     assert set(SCREENS) == {
         "chat",
         "tasks",
@@ -50,6 +51,8 @@ def test_twelve_screens_exist_including_live():
         "mockup",
         # P-07: morning summary + notes-to-actions (plan section 12.8).
         "morning",
+        # P-10: replay timeline of a bot's steps (plan section 12.10).
+        "replay",
     }
 
 

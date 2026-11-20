@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Replay</h1>
+<p class="pesan-sub">Putar ulang langkah-langkah bot dari log kejadian asli — seperti video, tiap langkah lengkap dengan alasan dan hasilnya. Tangkapan layar di tiap langkah adalah frame hasil render dari data kejadian, bukan rekaman layar desktop.</p>
+{% for a in agents %}
+<div class="kartu"><strong>{{ a.name or a.agent_id }}</strong><br>Tugas: {{ a.purpose or "-" }}<br><a href="/api/replay/{{ a.agent_id }}/tasks">Lihat tugas yang bisa diputar ulang (JSON)</a></div>
+{% else %}
+<p class="pesan-sub">Belum ada agen untuk diputar ulang.</p>
+{% endfor %}
+<p class="pesan-sub">Pemutar, penggeser langkah, dan ekspor GIF ada di aplikasi: pilih agen dan tugas, tekan Putar, geser ke langkah mana pun, lalu unduh GIF-nya. Tanpa build aplikasi, buka <a href="/api/replay/puspa/tasks">/api/replay/puspa/tasks</a> untuk melihat daftar tugasnya.</p>
+{% endblock %}

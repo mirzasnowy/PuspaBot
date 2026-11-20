@@ -10,10 +10,14 @@ import {
   discardVoice,
   fetchGraphNode,
   fetchGraphPage,
+  fetchReplay,
+  fetchReplayStep,
+  fetchReplayTasks,
   fetchRoomBoard,
   fetchRooms,
   renameGraphNode,
   releaseTakeover,
+  replayGifUrl,
   takeoverAgent,
   fetchAutonomyDial,
   fetchLiveFrame,
@@ -516,5 +520,43 @@ describe("P-09 live view", () => {
     expect(url).toBe("/api/live-view/puspa-1/release");
     expect(init.method).toBe("POST");
     expect(result.status).toBe("released");
+  });
+});
+
+describe("P-10 replay timeline", () => {
+  it("fetchReplayTasks reads /api/replay/{agent_id}/tasks", async () => {
+    const fetchMock = mockFetch([{ task_id: "tugas-1", event_count: 3 }]);
+    const result = await fetchReplayTasks("puspa-1", fetchMock as unknown as typeof fetch);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/replay/puspa-1/tasks");
+    expect(result[0].task_id).toBe("tugas-1");
+  });
+
+  it("fetchReplay reads /api/replay/{agent_id}/{task_id}", async () => {
+    const fetchMock = mockFetch({ task_id: "tugas-1", step_count: 3, steps: [] });
+    const result = await fetchReplay(
+      "puspa-1",
+      "tugas-1",
+      fetchMock as unknown as typeof fetch,
+    );
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/replay/puspa-1/tugas-1");
+    expect(result.step_count).toBe(3);
+  });
+
+  it("fetchReplayStep reads one step by index", async () => {
+    const fetchMock = mockFetch({ index: 2, type: "tool_completed" });
+    const result = await fetchReplayStep(
+      "puspa-1",
+      "tugas-1",
+      2,
+      fetchMock as unknown as typeof fetch,
+    );
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/replay/puspa-1/tugas-1/steps/2");
+    expect(result.type).toBe("tool_completed");
+  });
+
+  it("replayGifUrl builds the export URL", () => {
+    expect(replayGifUrl("puspa-1", "tugas-1")).toBe(
+      "/api/replay/puspa-1/tugas-1/export.gif",
+    );
   });
 });

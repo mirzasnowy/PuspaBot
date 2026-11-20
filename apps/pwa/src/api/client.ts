@@ -44,6 +44,9 @@ export type LiveFrameEvent = components["schemas"]["LiveFrameEvent"];
 export type TakeoverHold = components["schemas"]["TakeoverHold"];
 export type TakeoverReport = components["schemas"]["TakeoverReport"];
 export type TakeoverReleaseReport = components["schemas"]["TakeoverReleaseReport"];
+export type ReplayStep = components["schemas"]["ReplayStep"];
+export type ReplayTimeline = components["schemas"]["ReplayTimeline"];
+export type ReplayTaskSummary = components["schemas"]["ReplayTaskSummary"];
 export type ReceiptUpload = components["schemas"]["ReceiptUpload"];
 export type ReceiptDraft = components["schemas"]["ReceiptDraft"];
 export type ReceiptExpense = components["schemas"]["ReceiptExpense"];
@@ -337,6 +340,54 @@ export function releaseTakeover(
     {},
     fetchFn,
   );
+}
+
+/**
+ * Replay timeline (P-10): list the agent's tasks that have ledger
+ * events, newest first — the picker the replay screen plays from.
+ */
+export function fetchReplayTasks(
+  agentId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<ReplayTaskSummary[]> {
+  return getJson<ReplayTaskSummary[]>(
+    `/api/replay/${encodeURIComponent(agentId)}/tasks`,
+    fetchFn,
+  );
+}
+
+/** Replay timeline (P-10): every step of one task, oldest first. */
+export function fetchReplay(
+  agentId: string,
+  taskId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<ReplayTimeline> {
+  return getJson<ReplayTimeline>(
+    `/api/replay/${encodeURIComponent(agentId)}/${encodeURIComponent(taskId)}`,
+    fetchFn,
+  );
+}
+
+/** Replay timeline (P-10): one step by 0-based index, for scrubbing. */
+export function fetchReplayStep(
+  agentId: string,
+  taskId: string,
+  index: number,
+  fetchFn: FetchFn = fetch,
+): Promise<ReplayStep> {
+  return getJson<ReplayStep>(
+    `/api/replay/${encodeURIComponent(agentId)}/${encodeURIComponent(taskId)}/steps/${index}`,
+    fetchFn,
+  );
+}
+
+/**
+ * Replay GIF export (P-10): the download URL for the whole timeline
+ * as an animated GIF (rendered frames, not a desktop recording).
+ * A plain link — the browser sends the login cookie with it.
+ */
+export function replayGifUrl(agentId: string, taskId: string): string {
+  return `/api/replay/${encodeURIComponent(agentId)}/${encodeURIComponent(taskId)}/export.gif`;
 }
 
 /** Read the autonomy dial state: five areas, ceilings, streaks, suggestions. */

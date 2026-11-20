@@ -40,6 +40,8 @@ tags:
     description: Stop-all, autonomy dial, and weekly report (P-02, plan 12.7)
   - name: live-view
     description: Live view of a bot + human takeover (P-09, plan 12.9)
+  - name: replay
+    description: Replay timeline of a bot's steps + GIF export (P-10, plan 12.10)
   - name: office
     description: Office screen and operator panels (G31 serve modes)
   - name: settings
@@ -462,6 +464,14 @@ paths:
     $ref: './openapi-live-view.yaml#/paths/~1api~1live-view~1{agent_id}~1release'
   /api/live-view/{agent_id}/stream:
     $ref: './openapi-live-view.yaml#/paths/~1api~1live-view~1{agent_id}~1stream'
+  /api/replay/{agent_id}/tasks:
+    $ref: './openapi-replay.yaml#/paths/~1api~1replay~1{agent_id}~1tasks'
+  /api/replay/{agent_id}/{task_id}:
+    $ref: './openapi-replay.yaml#/paths/~1api~1replay~1{agent_id}~1{task_id}'
+  /api/replay/{agent_id}/{task_id}/steps/{index}:
+    $ref: './openapi-replay.yaml#/paths/~1api~1replay~1{agent_id}~1{task_id}~1steps~1{index}'
+  /api/replay/{agent_id}/{task_id}/export.gif:
+    $ref: './openapi-replay.yaml#/paths/~1api~1replay~1{agent_id}~1{task_id}~1export.gif'
   /api/rooms:
     $ref: './openapi-rooms.yaml#/paths/~1api~1rooms'
   /api/rooms/{room_id}/tasks:
@@ -1479,6 +1489,12 @@ components:
       $ref: './openapi-live-view.yaml#/components/schemas/TakeoverReport'
     TakeoverReleaseReport:
       $ref: './openapi-live-view.yaml#/components/schemas/TakeoverReleaseReport'
+    ReplayTaskSummary:
+      $ref: './openapi-replay.yaml#/components/schemas/ReplayTaskSummary'
+    ReplayStep:
+      $ref: './openapi-replay.yaml#/components/schemas/ReplayStep'
+    ReplayTimeline:
+      $ref: './openapi-replay.yaml#/components/schemas/ReplayTimeline'
     ApprovalRequest:
       type: object
       required: [request_id, status]
@@ -1628,7 +1644,7 @@ components:
       properties:
         screen:
           type: string
-          enum: [chat, tasks, modules, connectors, memory, settings, office, live, insights, onboarding, login]
+          enum: [chat, tasks, modules, connectors, memory, settings, office, live, replay, insights, onboarding, login]
         user_id:
           type: string
         messages:

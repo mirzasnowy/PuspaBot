@@ -2936,6 +2936,315 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/replay/{agent_id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tasks of one agent that can be replayed
+         * @description P-10: the agent's tasks that have ledger events, newest
+         *     first — step count, first and last event time, and the
+         *     status from the newest event. The screen replays from
+         *     this list.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    agent_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Replayable tasks, newest first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReplayTaskSummary"][];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The agent does not belong to this user */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/replay/{agent_id}/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Replay timeline for one task
+         * @description P-10: every step of one task, oldest first — each step
+         *     with its reason, result, and hash-chain link — plus the
+         *     chain verification (`chain_ok` + `broken_event_ids`)
+         *     and the task status. `screenshot` is always null: no
+         *     backend can produce a real frame yet.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    agent_id: string;
+                    task_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Replay timeline */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReplayTimeline"];
+                    };
+                };
+                /** @description The task has more steps than the replay limit */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The agent does not belong to this user */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The task has no recorded events */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/replay/{agent_id}/{task_id}/steps/{index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One step of a replay, by index
+         * @description P-10: a single step (0-based) of the task's replay, for
+         *     scrubbing to an exact position — forward or back — without
+         *     re-fetching the whole timeline.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    agent_id: string;
+                    task_id: string;
+                    /** @description 0-based step index. */
+                    index: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description One replay step */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReplayStep"];
+                    };
+                };
+                /** @description The task has more steps than the replay limit */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The agent does not belong to this user */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown task, or the step index is out of range */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/replay/{agent_id}/{task_id}/export.gif": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export a replay as an animated GIF
+         * @description P-10: the whole timeline as an animated GIF, one rendered
+         *     frame per step (800 ms each, looping). The frames are
+         *     drawn from the steps' own data — step number, event type,
+         *     tool, reason, result — not from a desktop recording, and
+         *     each frame says so. The export is deterministic: the same
+         *     timeline always exports the same bytes.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    agent_id: string;
+                    task_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Animated GIF of the replay */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "image/gif": string;
+                    };
+                };
+                /** @description The task has more steps than the replay limit */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The agent does not belong to this user */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The task has no recorded events */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rooms": {
         parameters: {
             query?: never;
@@ -7827,6 +8136,69 @@ export interface components {
             ledger_event_id: string;
             audit_trail_url: string;
         };
+        /** @description One task that can be replayed, from the task picker. */
+        ReplayTaskSummary: {
+            task_id: string;
+            /** @description How many steps the replay holds. */
+            event_count: number;
+            /** Format: date-time */
+            first_event_at: string;
+            /** Format: date-time */
+            last_event_at: string;
+            /** @enum {string} */
+            status: "running" | "completed" | "failed" | "stopped";
+        };
+        /**
+         * @description One step of a replay: one ledger event, played like a
+         *     frame. `reason` says why the step happened and `result`
+         *     what came of it (null when the step has no outcome yet);
+         *     both are derived from the stored event content only.
+         *     `screenshot` stays null until a backend that can produce
+         *     frames exists.
+         */
+        ReplayStep: {
+            /** @description 0-based position in the timeline. */
+            index: number;
+            event_id: string;
+            type: string;
+            task_id: string;
+            agent_id: string;
+            subagent_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            tool: string | null;
+            reason: string;
+            result: string | null;
+            /** @description The event's payload (arbitrary JSON). */
+            content: {
+                [key: string]: unknown;
+            };
+            hash: string;
+            previous_hash: string;
+            screenshot: string | null;
+        };
+        /**
+         * @description A whole task, replayable step by step. `status` is
+         *     `completed` / `failed` / `stopped` when the last event
+         *     ends the task, else `running`. `chain_ok` is false with
+         *     the broken event ids when the hash chain does not verify.
+         */
+        ReplayTimeline: {
+            agent_id: string;
+            task_id: string;
+            step_count: number;
+            /** @enum {string} */
+            status: "running" | "completed" | "failed" | "stopped";
+            chain_ok: boolean;
+            broken_event_ids: string[];
+            /** Format: date-time */
+            started_at: string | null;
+            /** Format: date-time */
+            ended_at: string | null;
+            /** Format: date-time */
+            generated_at: string;
+            steps: components["schemas"]["ReplayStep"][];
+        };
         ApprovalRequest: {
             request_id: string;
             /** @description Action kind, e.g. spend, send, share */
@@ -7929,7 +8301,7 @@ export interface components {
          */
         Bootstrap: {
             /** @enum {string} */
-            screen?: "chat" | "tasks" | "modules" | "connectors" | "memory" | "settings" | "office" | "live" | "insights" | "onboarding" | "login";
+            screen?: "chat" | "tasks" | "modules" | "connectors" | "memory" | "settings" | "office" | "live" | "replay" | "insights" | "onboarding" | "login";
             user_id?: string;
             messages?: components["schemas"]["ChatMessage"][];
             approvals?: components["schemas"]["ApprovalRequest"][];

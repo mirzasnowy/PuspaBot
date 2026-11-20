@@ -57,6 +57,8 @@ SCREENS = (
     "settings",
     "office",
     "live",
+    # P-10: replay timeline of a bot's steps (plan section 12.10).
+    "replay",
     "insights",
     "onboarding",
     "mockup",
@@ -417,6 +419,15 @@ def create_app(
             # Narrowed failure modes, like the room-activity SSE
             # frame: the agent list read itself (a database error
             # or an invalid user id), never a bare except.
+            try:
+                from puspa.runtime.agents import list_agents
+
+                ctx["agents"] = list_agents(user_id, dsn=app.state.dsn)
+            except (psycopg.Error, ValueError, TypeError, AttributeError):
+                ctx["agents"] = []
+        elif screen == "replay":
+            # P-10: the replay screen needs the same agent list
+            # to pick which bot's task to replay.
             try:
                 from puspa.runtime.agents import list_agents
 
@@ -992,6 +1003,7 @@ def create_app(
         onboarding_api,
         payments_api,
         proof_api,
+        replay_api,
         rooms_api,
         rooms_membership_api,
     )
@@ -1010,6 +1022,8 @@ def create_app(
 
     app.state.takeover_store = TakeoverStore(dsn=app.state.dsn)
     live_view_api.register_routes(app, need_user)
+    # P-10: replay timeline + GIF export, same login resolver.
+    replay_api.register_routes(app, need_user)
     mockup_api.register_routes(app, need_user)
     insights_api.register_routes(app, need_user)
     onboarding_api.register_routes(app, need_user)
