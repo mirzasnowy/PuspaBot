@@ -1,7 +1,7 @@
 """Helper Row Level Security (RLS) Puspa — definisi 2.15.
 
 Satu-satunya tempat kode aplikasi memasang pengguna saat ini pada
-koneksi Postgres. Policy RLS di ``puspa/accounts/schema.sql`` membaca
+koneksi Postgres. The RLS policies in migration 0001_core read
 variabel sesi ``app.current_user_id``; modul ini yang menuliskannya,
 supaya kode aplikasi lain tidak menulis SQL mentah di mana-mana.
 
@@ -22,7 +22,7 @@ CATATAN PENTING — dua operasi TIDAK bisa lewat helper ini:
   - Login/registrasi (``create_user``, ``authenticate``,
     ``validate_session``): sebelum sesi divalidasi, user_id belum
     diketahui (ayam-telur). Operasi itu jalan sebagai pemilik tabel
-    (bypass RLS — lihat keputusan "tanpa FORCE" di schema.sql).
+    (bypass RLS — see the no-FORCE decision in migration 0001_core).
     Alurnya: validasi sesi sebagai pemilik -> dapat user_id -> buka
     koneksi peran app -> ``as_user(conn, user_id)`` untuk semua
     query berikutnya.

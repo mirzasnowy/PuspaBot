@@ -1,114 +1,20 @@
--- Shared-room schema for group chat (B6).
+-- Rooms: group chat, tasks, splits (E-08 migration 0010_rooms.sql).
 --
--- Tables: rooms, room_members, room_invites, room_memories,
--- room_tasks, room_money_approvals, room_channel_links,
--- delegated_tasks, delegated_task_steps, room_splits,
--- split_shares, split_payments, split_settlements.
--- delegated_tasks, delegated_task_steps, room_research_links.
+-- Creates the shared-room tables (rooms, room_members, room_invites, room_memories, room_tasks, room_money_approvals, room_channel_links, delegated_tasks, delegated_task_steps, room_splits, split_shares, split_payments, split_settlements, room_research_links), the SECURITY DEFINER membership helpers, and the RLS policies.
 --
--- B9 adds the last two: a delegation row per room task handed
--- to the agent or to a teammate (puspa/rooms/delegation.py), and
--- one row per proposed step of a delegated task. A step marked
--- irreversible may only run after approval through the G4/G5
--- approval path; the step row is what records that decision, so
--- the gate is never bypassed by a caller that forgets to ask.
+-- Source: infra/schema_rooms.sql.
 --
--- B11 adds the last four: a split row per shared bill
--- (puspa/rooms/splitting.py), one share row per participant
--- (integer sen, never floats; ``position`` is the creation
--- order, which decides who gets leftover sen on an equal
--- split), one append-only row per recorded (partial) payment,
--- and one row per prepared settlement. A settlement is
--- prepare-only (B8 phase 1 seam): status ``prepared`` means
--- the recipient + amount + evidence are verified and recorded;
--- nothing ever executes from this table, and ``superseded``
--- marks a preparation replaced by a newer one for the same
--- debtor. There is no balance, no wallet, and no executed
--- status anywhere in this schema.
+-- Reversible: yes. The down section drops the tables this migration
+-- creates (and their data — roll back on a data copy first, never on
+-- a live database without a backup). The puspa_app role, once created
+-- by 0001, is never dropped by any down migration.
 --
--- Run AFTER infra/schema_core.sql (the users table must exist
--- first), as a Postgres superuser, from the build/ directory:
---
---     psql "dbname=puspa_test user=root host=/var/run/postgresql" \
---          -f infra/schema_rooms.sql
---
--- Idempotent: CREATE TABLE IF NOT EXISTS + DROP POLICY IF EXISTS, so
--- re-running it is safe. The Python entry point is
--- puspa.rooms.create_schema(), which executes this file (the test
--- suite calls it; conftest does NOT apply it).
---
--- Design (B6, beta-lite):
---   - A room has 2-5 people (MAX_ROOM_SIZE = 5, enforced in
---     puspa/rooms/rooms.py, not by a CHECK: the cap is a product
---     rule for the beta, not a permanent schema fact).
---   - Roles: owner / member / guest. The creator is the first owner.
---     A room always has at least one owner (enforced in Python).
---   - Invites are hash-only (see puspa/rooms/invites.py): a link
---     token or a one-time code; only the SHA-256 hash is stored.
---   - Group memory is separate from personal memory: room_memories
---     holds only what members share with the room. A row with
---     visibility = 'private' is a private answer: only its author
---     may read it, and it is deleted when the author leaves the
---     room (see puspa/rooms/memory.py). Personal memory stays in
---     puspa/memory and is never copied into a room.
---   - Money actions need two people or the owner (see
---     puspa/rooms/money.py). Approvals are recorded here; there
---     are no shared funds in the beta (no balance, no wallet).
---   - A channel group chat (Telegram group, WhatsApp group) is
---     linked to a room through room_channel_links; the link is
---     what routes a group message to the room (see
---     puspa/rooms/routing.py). WhatsApp groups are a postponed
---     surface (plan section 12.4): the link table is
---     transport-agnostic, but no live WhatsApp-group delivery is
---     verified in this iteration.
---
--- ROW LEVEL SECURITY (RLS) — same rules as infra/schema_teams.sql:
--- RLS is enabled WITHOUT "FORCE ROW LEVEL SECURITY". The table
--- owner (the role that runs this file, root in dev/tests) bypasses
--- RLS and performs the privileged operations that cannot run
--- through it: room creation (the first owner membership row
--- cannot pass the owner-only INSERT policy yet) and invitation
--- acceptance (the invitee has no membership row yet). Everything
--- else runs as the application role `puspa_app` under the policies
--- below. The application sets the current user per transaction
--- with SET LOCAL app.current_user_id (see puspa/accounts/rls.py).
---
--- Policies, in short:
---   - rooms: visible / updated / deleted only by a member;
---     only an owner may update or delete. INSERT has no policy
---     for puspa_app: rooms are created as the table owner.
---   - room_members: a member sees their own row; an owner sees
---     all rows of their room. INSERT/UPDATE only by an owner;
---     DELETE by an owner, or by the member themselves (leaving).
---   - room_invites: only a room owner or member may see them;
---     only an owner or member may create them; acceptance runs
---     as the table owner.
---   - room_memories: visible to room members, except private rows,
---     which only their author sees. INSERT only by a member, for
---     themselves. DELETE by the author, or by an owner.
---   - room_tasks: visible / created / updated only by a member of
---     the room.
---   - room_money_approvals: visible only to members of the room;
---     INSERT only by a member, for themselves.
---   - room_channel_links: visible / created / deleted only by a
---     member of the room.
---   - delegated_tasks: visible / created / updated only by a
---     member of the room (the room task itself is visible to
---     members under the room_tasks policy; the delegation row
---     follows the same rule).
---   - delegated_task_steps: visible / created / updated only by
---     a member of the room the task belongs to.
---   - room_splits / split_shares / split_payments /
---     split_settlements: visible / created / updated only by a
---     member of the room the split belongs to (the payer's
---     identity and every debtor's balance are group-visible;
---     a guest may read them, like the rest of the room).
---   - room_research_links: visible / created / deleted only by a
---     member of the room (B12).
---
--- No password anywhere in this file: auth is peer auth (local
--- socket, OS user = Postgres role). Do not add a password here.
+-- Apply with: python -m puspa.migrations up
+-- Never edit an applied migration: add a new numbered migration instead.
+-- Never run this file with psql -f: only the migration runner applies
+-- it, in order, inside one transaction per migration.
 
+-- migrate:up
 CREATE TABLE IF NOT EXISTS rooms (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name       TEXT NOT NULL,
@@ -184,12 +90,6 @@ CREATE TABLE IF NOT EXISTS room_channel_links (
 );
 CREATE INDEX IF NOT EXISTS idx_room_channel_links_room ON room_channel_links(room_id);
 
--- Delegated tasks (B9): one row per room task handed to the agent
--- or to a teammate. The room task itself (room_tasks) keeps its
--- owner, deadline, and open/done status; this row adds the
--- delegation: who works on it (an agent subagent id, or a
--- teammate user id), and the delegation status. A task that was
--- never delegated has no row here.
 CREATE TABLE IF NOT EXISTS delegated_tasks (
     task_id        UUID PRIMARY KEY REFERENCES room_tasks(id) ON DELETE CASCADE,
     room_id        UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
@@ -207,14 +107,6 @@ CREATE TABLE IF NOT EXISTS delegated_tasks (
 CREATE INDEX IF NOT EXISTS idx_delegated_tasks_room_id ON delegated_tasks(room_id);
 CREATE INDEX IF NOT EXISTS idx_delegated_tasks_status ON delegated_tasks(status);
 
--- Proposed steps of a delegated task (B9). A step is one unit of
--- work the agent wants to do; ``irreversible`` marks steps that
--- must wait for approval (delete, send, share, post, pay, or any
--- step the worker flags irreversible). ``content`` is the exact
--- action payload the approval binds to (same content-hash idea
--- as the G4/G5 gate). ``result`` holds the executor's return
--- value once, so re-executing an executed step returns the
--- stored result instead of running twice.
 CREATE TABLE IF NOT EXISTS delegated_task_steps (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     task_id             UUID NOT NULL REFERENCES room_tasks(id) ON DELETE CASCADE,
@@ -235,11 +127,6 @@ CREATE TABLE IF NOT EXISTS delegated_task_steps (
 CREATE INDEX IF NOT EXISTS idx_delegated_task_steps_task_id ON delegated_task_steps(task_id);
 CREATE INDEX IF NOT EXISTS idx_delegated_task_steps_status ON delegated_task_steps(status);
 
--- Shared splits (B11): one row per shared bill or purchase.
--- Money is integer sen (1 rupiah = 100 sen); the CHECKs keep
--- it that way at the database layer too. ``status`` is
--- maintained by puspa/rooms/splitting.py: open -> partially_paid
--- -> settled (with settled_at) once every share is fully paid.
 CREATE TABLE IF NOT EXISTS room_splits (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     room_id        UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
@@ -256,10 +143,6 @@ CREATE TABLE IF NOT EXISTS room_splits (
 );
 CREATE INDEX IF NOT EXISTS idx_room_splits_room_id ON room_splits(room_id);
 
--- One share per participant. ``position`` is the creation order
--- (it decides who gets leftover sen on an equal split).
--- ``paid_cents`` never exceeds ``share_cents``: overpaying is
--- refused in Python and impossible here too.
 CREATE TABLE IF NOT EXISTS split_shares (
     split_id     UUID NOT NULL REFERENCES room_splits(id) ON DELETE CASCADE,
     user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -271,9 +154,6 @@ CREATE TABLE IF NOT EXISTS split_shares (
 );
 CREATE INDEX IF NOT EXISTS idx_split_shares_split_id ON split_shares(split_id);
 
--- Recorded (partial) payments: append-only, one row per payment.
--- Nothing here moves money; it records that the debtor paid the
--- payer (in their own bank/e-wallet app, or in cash) and how much.
 CREATE TABLE IF NOT EXISTS split_payments (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     split_id        UUID NOT NULL REFERENCES room_splits(id) ON DELETE CASCADE,
@@ -284,10 +164,6 @@ CREATE TABLE IF NOT EXISTS split_payments (
 );
 CREATE INDEX IF NOT EXISTS idx_split_payments_split_id ON split_payments(split_id);
 
--- Prepared settlements (B8 phase-1 seam): a prepared payment the
--- user pays in their own bank/e-wallet app. ``status`` is only
--- ever ``prepared`` or ``superseded`` — there is no executed
--- status, because nothing here executes a payment.
 CREATE TABLE IF NOT EXISTS split_settlements (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     split_id          UUID NOT NULL REFERENCES room_splits(id) ON DELETE CASCADE,
@@ -301,12 +177,6 @@ CREATE TABLE IF NOT EXISTS split_settlements (
     prepared_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_split_settlements_split_id ON split_settlements(split_id);
--- Collected product links (B12): one row per product link a room
--- member collected for the group comparison. A link is collected
--- once per room (UNIQUE room_id + url); the label is the name the
--- member gave the option. `source` is the marketplace the URL
--- belongs to (Tokopedia / Shopee / Blibli) or "other" for an
--- allowlisted host outside the three marketplaces.
 CREATE TABLE IF NOT EXISTS room_research_links (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     room_id    UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
@@ -319,12 +189,6 @@ CREATE TABLE IF NOT EXISTS room_research_links (
 );
 CREATE INDEX IF NOT EXISTS idx_room_research_links_room_id ON room_research_links(room_id);
 
--- Application-role grants (same shape as infra/schema_teams.sql):
--- puspa_app may read/write all seven tables; isolation between
--- users is enforced by the RLS policies below, not by revoking
--- grants. Room creation / invitation acceptance INSERTs are still
--- denied to puspa_app by the absence of an INSERT policy (see
--- above).
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'puspa_app') THEN
@@ -345,10 +209,6 @@ BEGIN
     END IF;
 END $$;
 
--- SECURITY DEFINER helpers: a policy must never subquery the table
--- it guards (Postgres reports infinite recursion in the policy),
--- so the owner/member checks live in these helpers (same pattern
--- as infra/schema_teams.sql).
 CREATE OR REPLACE FUNCTION is_room_owner(p_room_id UUID, p_user_id UUID)
 RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE AS $$
     SELECT EXISTS (
@@ -527,10 +387,6 @@ CREATE POLICY delegated_task_steps_delete ON delegated_task_steps FOR DELETE TO 
         )
     );
 
--- Shared splits (B11): visible / created / updated only by a
--- member of the room the split belongs to. The share and
--- payment rows follow their split; the settlement rows follow
--- theirs.
 DROP POLICY IF EXISTS room_splits_select ON room_splits;
 CREATE POLICY room_splits_select ON room_splits FOR SELECT TO puspa_app
     USING (is_room_member(room_id, current_setting('app.current_user_id', TRUE)::UUID));
@@ -636,3 +492,8 @@ CREATE POLICY room_research_links_insert ON room_research_links FOR INSERT TO pu
 DROP POLICY IF EXISTS room_research_links_delete ON room_research_links;
 CREATE POLICY room_research_links_delete ON room_research_links FOR DELETE TO puspa_app
     USING (is_room_member(room_id, current_setting('app.current_user_id', TRUE)::UUID));
+
+-- migrate:down
+DROP TABLE IF EXISTS room_research_links, split_settlements, split_payments, split_shares, room_splits, delegated_task_steps, delegated_tasks, room_channel_links, room_money_approvals, room_tasks, room_memories, room_invites, room_members, rooms CASCADE;
+DROP FUNCTION IF EXISTS public.is_room_owner(UUID, UUID);
+DROP FUNCTION IF EXISTS public.is_room_member(UUID, UUID);

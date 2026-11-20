@@ -1,13 +1,4 @@
-"""Team schema loader: apply ``infra/schema_teams.sql``.
-
-The migration file lives in ``infra/`` (not inside the package) so
-it sits next to the other schema migrations and is applied the same
-way: as a superuser, after ``infra/schema_core.sql`` (the ``users``
-table must exist first). See ``docs/teams.md`` for the exact
-commands. This module is only the programmatic entry point — the
-test suite calls ``create_schema()`` so each test run starts from
-the same schema.
-"""
+"""Team schema loader: the team tables come from migration 0009_teams (``puspa/migrations/versions/0009_teams.sql``). This module is only the programmatic entry point — the test suite calls ``create_schema()`` so each test run starts from the same schema. See ``docs/teams.md`` for the design."""
 
 from __future__ import annotations
 
@@ -16,6 +7,7 @@ from pathlib import Path
 import psycopg
 
 from puspa.accounts.users import resolve_dsn
+from puspa.migrations import apply_migrations
 
 __all__ = ["create_schema", "reset_tables", "schema_path"]
 
@@ -31,19 +23,18 @@ TEAMS_TABLES = (
 
 
 def schema_path() -> Path:
-    """Absolute path of ``infra/schema_teams.sql`` (two levels above
-    this package: ``puspa/teams/`` -> ``build/`` -> ``infra/``)."""
-    return Path(__file__).resolve().parents[2] / "infra" / "schema_teams.sql"
+    """Absolute path of migration 0009_teams."""
+    return (
+        Path(__file__).resolve().parents[2] / "puspa" / "migrations" / "versions" / "0009_teams.sql"
+    )
 
 
 def create_schema(dsn=None):
-    """Run ``infra/schema_teams.sql`` (CREATE TABLE IF NOT EXISTS +
-    RLS policies). Idempotent; safe to call before every test.
+    """Apply the tables (migration 0009_teams).
+
+    Idempotent; safe to call before every test.
     """
-    sql = schema_path().read_text(encoding="utf-8")
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
-        conn.execute(sql)
-        conn.commit()
+    apply_migrations(resolve_dsn(dsn), target="0009")
 
 
 def reset_tables(dsn=None):

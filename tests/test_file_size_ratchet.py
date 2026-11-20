@@ -228,6 +228,10 @@ SKIPPED_FILES = {
     "package-lock.json",
     "yarn.lock",
     "pnpm-lock.yaml",
+    # Committed schema snapshot (E-08): `pg_dump -s` output, regenerated
+    # from the migrations with one command (see its header). Generated
+    # output, not hand-written source — it is 6000+ lines by nature.
+    "schema_snapshot.sql",
 }
 
 #: Generated output (e.g. TypeScript types from the OpenAPI spec):

@@ -203,14 +203,15 @@ ledger are deliberately not in the MVP: they need real volume first.
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-psql "dbname=postgres user=root host=/var/run/postgresql" -f infra/schema_core.sql
+sudo -u postgres psql -c "CREATE ROLE root LOGIN SUPERUSER;" -c "CREATE DATABASE puspa_test OWNER root;"
+.venv/bin/python -m puspa.migrations up
 .venv/bin/python -m pytest tests -q
 ```
 
 Needs a local Postgres 16 (database `puspa_test`). The schema setup is idempotent
-and safe to re-run. On this host, installing the agent chassis needs
+and safe to re-run: the migration runner applies only pending migrations. On this host, installing the agent chassis needs
 `NANOBOT_SKIP_WEBUI_BUILD=1` (the chassis web UI build is not used by the tests).
-See the header comments of `infra/schema_core.sql` for setup and recovery notes.
+See `docs/migrations.md` for setup and recovery notes.
 
 ## Repository layout
 

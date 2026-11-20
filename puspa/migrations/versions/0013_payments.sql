@@ -1,25 +1,20 @@
--- Agent payments, phase 1: prepare only (B8).
+-- Payments: prepared payments and billing usage (E-08 migration 0013_payments.sql).
 --
--- One row per prepared payment: a verified recipient + an amount
--- in integer Rupiah + a named Indonesian rail + the evidence that
--- proves both, with an idempotency key and an expiry. The user
--- pays in their own bank or e-wallet app; Puspa never executes a
--- payment, so this table has no gateway reference, no credential
--- column, and no executed flag to flip — there is nothing here
--- an executor could run.
+-- Creates the prepared-payments table (prepared_payments, prepare-only: no execution) with RLS, and the billing usage ledger (billing_usage_rows).
 --
--- Status flow: awaiting_approval -> approved -> paid_by_user
--- (the user asserts they paid in their own app), or
--- awaiting_approval -> rejected, or any open status -> expired
--- once past expires_at. A preparation becomes visible as
--- payable only after approval (see puspa.payments.prepare).
+-- Sources: infra/schema_payments.sql; billing_usage_rows from puspa/billing/ledger.py (USAGE_SCHEMA_SQL).
 --
--- Idempotent: CREATE TABLE IF NOT EXISTS + DROP POLICY IF
--- EXISTS, so the file is safe to apply on every test run and
--- after infra/schema_core.sql (the users table must exist
--- first). Amounts are integer Rupiah (not sen): B8 prepares
--- real-world payments, and the B11 split maths already own
--- the sen unit.
+-- Reversible: yes. The down section drops the tables this migration
+-- creates (and their data — roll back on a data copy first, never on
+-- a live database without a backup). The puspa_app role, once created
+-- by 0001, is never dropped by any down migration.
+--
+-- Apply with: python -m puspa.migrations up
+-- Never edit an applied migration: add a new numbered migration instead.
+-- Never run this file with psql -f: only the migration runner applies
+-- it, in order, inside one transaction per migration.
+
+-- migrate:up
 CREATE TABLE IF NOT EXISTS prepared_payments (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -60,9 +55,6 @@ GRANT SELECT, INSERT, UPDATE ON prepared_payments TO puspa_app;
 
 ALTER TABLE prepared_payments ENABLE ROW LEVEL SECURITY;
 
--- Owner-only: a user sees and changes only their own prepared
--- payments. The app sets app.current_user_id per request (same
--- session variable the room policies use).
 DROP POLICY IF EXISTS prepared_payments_select ON prepared_payments;
 CREATE POLICY prepared_payments_select ON prepared_payments FOR SELECT TO puspa_app
     USING (user_id = current_setting('app.current_user_id', TRUE)::UUID);
@@ -72,3 +64,35 @@ CREATE POLICY prepared_payments_insert ON prepared_payments FOR INSERT TO puspa_
 DROP POLICY IF EXISTS prepared_payments_update ON prepared_payments;
 CREATE POLICY prepared_payments_update ON prepared_payments FOR UPDATE TO puspa_app
     USING (user_id = current_setting('app.current_user_id', TRUE)::UUID);
+
+CREATE TABLE IF NOT EXISTS billing_usage_rows (
+    id BIGSERIAL PRIMARY KEY,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    user_id TEXT NOT NULL,
+    bot_id TEXT NOT NULL,
+    thread_id TEXT NOT NULL DEFAULT '',
+    task_id TEXT NOT NULL DEFAULT '',
+    driver TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    input_tokens BIGINT NOT NULL DEFAULT 0,
+    output_tokens BIGINT NOT NULL DEFAULT 0,
+    cached_tokens BIGINT NOT NULL DEFAULT 0,
+    cost_idr BIGINT NOT NULL DEFAULT 0,
+    trigger TEXT NOT NULL DEFAULT '',
+    outcome TEXT NOT NULL DEFAULT '',
+    steps INT NOT NULL DEFAULT 0,
+    tools JSONB NOT NULL DEFAULT '[]',
+    tool_errors INT NOT NULL DEFAULT 0,
+    currency TEXT NOT NULL DEFAULT 'IDR',
+    provider TEXT NOT NULL DEFAULT '',
+    module_id TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_billing_usage_user_time
+    ON billing_usage_rows (user_id, recorded_at);
+CREATE INDEX IF NOT EXISTS idx_billing_usage_task
+    ON billing_usage_rows (user_id, task_id);
+CREATE INDEX IF NOT EXISTS idx_billing_usage_bot_time
+    ON billing_usage_rows (bot_id, recorded_at);
+
+-- migrate:down
+DROP TABLE IF EXISTS billing_usage_rows, prepared_payments CASCADE;

@@ -21,7 +21,7 @@ What the agent cannot do (enforced by Postgres, not by a promise):
 
 - UPDATE or DELETE any row of `events`. The schema revokes both
   from PUBLIC and grants the application role SELECT + INSERT only
-  (`puspa/ledger/schema.sql`). An attempt fails with
+  (`puspa/migrations/versions/0001_core.sql`). An attempt fails with
   `InsufficientPrivilege` and changes nothing.
 - INSERT, UPDATE, or DELETE the `kill_switch` flag row. The role
   has SELECT only on that table.
@@ -53,9 +53,9 @@ What this does NOT protect against:
 
 | Rule | Where | How it is proven |
 | --- | --- | --- |
-| Agent cannot UPDATE/DELETE `events` | `puspa/ledger/schema.sql` (REVOKE + GRANT) | `tests/test_audit_kill_switch.py::test_agent_role_cannot_update_or_delete_events`, plus `AuditWriter.probe_tamper` |
+| Agent cannot UPDATE/DELETE `events` | migration `0001_core.sql` (REVOKE + GRANT) | `tests/test_audit_kill_switch.py::test_agent_role_cannot_update_or_delete_events`, plus `AuditWriter.probe_tamper` |
 | Agent writes only as `puspa_app` | `puspa/ledger/audit_writer.py` (`Ledger(role="puspa_app")`, `SET ROLE` per connection) | `test_audit_writer_appends_as_app_role_and_chain_verifies` |
-| Agent cannot touch the flag table | `puspa/ledger/schema.sql` (SELECT only for `puspa_app`) | `test_agent_role_cannot_touch_kill_switch_table`, `test_agent_cannot_deactivate_kill_switch` |
+| Agent cannot touch the flag table | migration `0001_core.sql` (SELECT only for `puspa_app`) | `test_agent_role_cannot_touch_kill_switch_table`, `test_agent_cannot_deactivate_kill_switch` |
 | Agent cannot flip the flag | `puspa/ledger/kill_switch.py` (operator-only methods) | same tests as above |
 | Tamper is detected if it ever happens | hash chain, `Ledger.verify_chain` | chain asserted valid after every tamper attempt |
 

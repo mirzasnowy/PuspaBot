@@ -106,7 +106,7 @@ unaffected.
 ## Persistence: `puspa/world/store.py`
 
 One row per (user, agent) in table `world_beliefs`
-(`infra/schema_world.sql`).
+(migration `0006_world.sql`).
 
 Stored: entities, relations, day, price beliefs, bill beliefs,
 schedule beliefs, capability beliefs, and belief contradictions.
@@ -123,7 +123,7 @@ dict. The round trip is exact for plain JSON values.
 
 API:
 
-- `create_schema(dsn=None)`: apply `infra/schema_world.sql`
+- `create_schema(dsn=None)`: apply migration `0006_world.sql`
   (idempotent). Prerequisite: the Phase 0 schema (users, agents)
   already exists, because `world_beliefs` references both tables.
 - `save_world_state(user_id, agent_id, model, dsn=None)`: upsert
@@ -141,7 +141,7 @@ cd build
 .venv/bin/python -c "from puspa.world.store import create_schema; create_schema()"
 ```
 
-or run `infra/schema_world.sql` with `psql`. DSN resolution
+or run `python -m puspa.migrations up --target 0006`. DSN resolution
 follows `puspa.ledger`: argument, else `PUSPA_TEST_DSN`, else the
 peer-auth default `dbname=puspa_test user=root
 host=/var/run/postgresql`.

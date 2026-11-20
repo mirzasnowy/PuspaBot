@@ -372,10 +372,15 @@ def test_migration_is_idempotent_and_backfills_honestly(ledger, task_id):
     # Two entries written before the migration runs.
     first = _append(ledger, task_id, event_type="task_created", content={"a": 1})
     second = _append(ledger, task_id, event_type="heartbeat", content={"b": 2})
-    # Simulate a pre-K3 database: drop the column and the table.
+    # Simulate a pre-K3 database: drop the column and the table, and
+    # forget that the migration ran. (Numbered migrations trust the
+    # schema_migrations table: re-applying a recorded migration is a
+    # no-op by design, so dropping the objects alone is not enough
+    # to simulate a database the migration never touched.)
     with psycopg.connect(DSN, autocommit=True) as conn:
         conn.execute("ALTER TABLE events DROP COLUMN IF EXISTS valid_at")
         conn.execute("DROP TABLE IF EXISTS belief_versions")
+        conn.execute("DELETE FROM schema_migrations WHERE version = '0006'")
     # Run the migration twice: the second run must change nothing.
     apply_bitemporal_migration(DSN)
     apply_bitemporal_migration(DSN)

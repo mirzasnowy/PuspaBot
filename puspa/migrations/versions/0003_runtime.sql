@@ -1,6 +1,20 @@
--- Skema Postgres Fase 2 (idempotent; jalankan lewat puspa.runtime.create_schema).
--- Prasyarat: skema Fase 0 (pengguna, agen, kejadian) sudah ada.
+-- Runtime: agent metadata, tasks, handoffs, evidence (E-08 migration 0003_runtime.sql).
+--
+-- Creates the runtime tables (agent_meta, tasks, handoffs, evidence, triggers, trigger_runs, agent_connectors, cassettes, push_subscriptions, system_heartbeats), the trigger that refuses deleting the mandatory Puspa agent, and the RLS policies.
+--
+-- Source: infra/schema_runtime.sql.
+--
+-- Reversible: yes. The down section drops the tables this migration
+-- creates (and their data — roll back on a data copy first, never on
+-- a live database without a backup). The puspa_app role, once created
+-- by 0001, is never dropped by any down migration.
+--
+-- Apply with: python -m puspa.migrations up
+-- Never edit an applied migration: add a new numbered migration instead.
+-- Never run this file with psql -f: only the migration runner applies
+-- it, in order, inside one transaction per migration.
 
+-- migrate:up
 CREATE TABLE IF NOT EXISTS agent_meta (
     agent_id TEXT PRIMARY KEY REFERENCES agents(agent_id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -121,8 +135,6 @@ CREATE TABLE IF NOT EXISTS system_heartbeats (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Penolakan hapus Puspa di level DATABASE (bukan hanya API/UI):
--- baris agen_meta dengan wajib=TRUE tidak bisa di-DELETE.
 CREATE OR REPLACE FUNCTION tolak_delete_puspa() RETURNS trigger AS $$
 BEGIN
     IF OLD.required THEN
@@ -135,8 +147,6 @@ DROP TRIGGER IF EXISTS trg_tolak_delete_puspa ON agent_meta;
 CREATE TRIGGER trg_tolak_delete_puspa BEFORE DELETE ON agent_meta
 FOR EACH ROW EXECUTE FUNCTION tolak_delete_puspa();
 
--- RLS (pola yang sama seperti Fase 0/1: app.current_user_id).
--- Penegakan nyata hanya untuk koneksi sebagai puspa_app.
 ALTER TABLE agent_meta ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE handoffs ENABLE ROW LEVEL SECURITY;
@@ -157,3 +167,8 @@ BEGIN
             'isolasi_' || t, t, 'app.current_user_id', 'app.current_user_id');
     END LOOP;
 END $$;
+
+-- migrate:down
+DROP TRIGGER IF EXISTS trg_tolak_delete_puspa ON agent_meta;
+DROP FUNCTION IF EXISTS tolak_delete_puspa();
+DROP TABLE IF EXISTS system_heartbeats, push_subscriptions, cassettes, agent_connectors, trigger_runs, triggers, evidence, handoffs, tasks, agent_meta CASCADE;

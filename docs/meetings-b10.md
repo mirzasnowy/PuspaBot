@@ -15,8 +15,7 @@ get reminders through the G8 scheduler.
 
 ## Modules
 
-All new code lives in `puspa/meetings/`; the schema is
-`infra/schema_meetings.sql` (applied by
+All new code lives in `puspa/meetings/`; the schema is migration `0011_meetings.sql` (applied by
 `puspa.meetings.create_schema`, like `puspa/rooms`).
 
 | File | What it owns |

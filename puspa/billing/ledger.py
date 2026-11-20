@@ -15,7 +15,7 @@ data, not causal events.
 Two stores share one interface:
 - ``MemoryUsageStore``: in-memory, for tests.
 - ``PostgresUsageStore``: the same rows in Postgres (see
-  ``create_schema`` / ``USAGE_SCHEMA_SQL``).
+  ``create_schema`` (migration 0013_payments)).
 
 On top of the rows:
 - ``battery_view``: totals for the last 7 days per bot/routine, each
@@ -37,40 +37,11 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
+from puspa.migrations import apply_migrations
+
 from .config import TASK_COST_CEILING_IDR, BillingConfig, default_config
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
-
-USAGE_SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS billing_usage_rows (
-    id BIGSERIAL PRIMARY KEY,
-    recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    user_id TEXT NOT NULL,
-    bot_id TEXT NOT NULL,
-    thread_id TEXT NOT NULL DEFAULT '',
-    task_id TEXT NOT NULL DEFAULT '',
-    driver TEXT NOT NULL DEFAULT '',
-    model TEXT NOT NULL DEFAULT '',
-    input_tokens BIGINT NOT NULL DEFAULT 0,
-    output_tokens BIGINT NOT NULL DEFAULT 0,
-    cached_tokens BIGINT NOT NULL DEFAULT 0,
-    cost_idr BIGINT NOT NULL DEFAULT 0,
-    trigger TEXT NOT NULL DEFAULT '',
-    outcome TEXT NOT NULL DEFAULT '',
-    steps INT NOT NULL DEFAULT 0,
-    tools JSONB NOT NULL DEFAULT '[]',
-    tool_errors INT NOT NULL DEFAULT 0,
-    currency TEXT NOT NULL DEFAULT 'IDR',
-    provider TEXT NOT NULL DEFAULT '',
-    module_id TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS idx_billing_usage_user_time
-    ON billing_usage_rows (user_id, recorded_at);
-CREATE INDEX IF NOT EXISTS idx_billing_usage_task
-    ON billing_usage_rows (user_id, task_id);
-CREATE INDEX IF NOT EXISTS idx_billing_usage_bot_time
-    ON billing_usage_rows (bot_id, recorded_at);
-"""
 
 
 @dataclass
@@ -156,13 +127,8 @@ class MemoryUsageStore:
 
 
 def create_schema(dsn: str | None = None) -> None:
-    """Create the billing usage table (idempotent)."""
-    import psycopg
-
-    dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    with psycopg.connect(dsn) as conn:
-        conn.execute(USAGE_SCHEMA_SQL)
-        conn.commit()
+    """Apply the billing usage table (migration 0013_payments)."""
+    apply_migrations(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), target="0013")
 
 
 class PostgresUsageStore:

@@ -1,12 +1,20 @@
--- Skema Postgres Fase 3 (idempotent; jalankan lewat puspa.graphs.create_schema).
--- Prasyarat: skema Fase 0 (pengguna, agen, kejadian), Fase 1 (prosedur),
--- Fase 2 (bukti, pemicu) sudah ada.
+-- Graphs: products, price series, shared graphs (E-08 migration 0004_graphs.sql).
 --
--- Nilai domain Indonesia (revisi 7): status tautan
--- otomatis / dikonfirmasi_user / ditolak_user; status prosedur
--- percobaan / terverifikasi / rusak (dipakai ulang dari tabel `prosedur`
--- Fase 1); vonis Terverifikasi / Belum pasti / Tidak bisa dipastikan.
+-- Creates the price-comparison graph tables (canonical_products, listing_links, price_series, watchlist, read_budgets, evidence_cache, source_readings, procedure_versions, procedure_uses, canary_runs, false_reports, monthly_credits, token_metrics, workflow_library, block_requests, tos_checks) and the shared-graph tables (shared_seller_flags, shared_price_observations, shared_graph_private_records) with RLS.
+--
+-- Source: infra/schema_graphs.sql (already contains the shared tables).
+--
+-- Reversible: yes. The down section drops the tables this migration
+-- creates (and their data — roll back on a data copy first, never on
+-- a live database without a backup). The puspa_app role, once created
+-- by 0001, is never dropped by any down migration.
+--
+-- Apply with: python -m puspa.migrations up
+-- Never edit an applied migration: add a new numbered migration instead.
+-- Never run this file with psql -f: only the migration runner applies
+-- it, in order, inside one transaction per migration.
 
+-- migrate:up
 CREATE TABLE IF NOT EXISTS canonical_products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     brand TEXT NOT NULL,
@@ -35,8 +43,6 @@ CREATE TABLE IF NOT EXISTS listing_links (
 );
 CREATE INDEX IF NOT EXISTS idx_tautan_product ON listing_links(product_id);
 
--- Deret waktu harga: satu baris per pembacaan. TIDAK ADA angka tanpa
--- bukti_id (ditegakkan kode: catat_harga menolak bukti_id kosong).
 CREATE TABLE IF NOT EXISTS price_series (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tautan_id UUID NOT NULL REFERENCES listing_links(id) ON DELETE CASCADE,
@@ -60,7 +66,6 @@ CREATE TABLE IF NOT EXISTS watchlist (
     UNIQUE (user_id, product_id)
 );
 
--- Anggaran baca sampler: maks 20 baca/hari/pengguna (§2.14, §3.8).
 CREATE TABLE IF NOT EXISTS read_budgets (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     date DATE NOT NULL,
@@ -68,7 +73,6 @@ CREATE TABLE IF NOT EXISTS read_budgets (
     PRIMARY KEY (user_id, date)
 );
 
--- Cache bukti bersama: satu baris per (sumber, kunci). TTL 30 menit.
 CREATE TABLE IF NOT EXISTS evidence_cache (
     key TEXT PRIMARY KEY,
     sumber TEXT NOT NULL,
@@ -79,8 +83,6 @@ CREATE TABLE IF NOT EXISTS evidence_cache (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Pembacaan per sumber: bahan Skor Keandalan (§3.4) per
--- (marketplace x kategori) dan per prosedur.
 CREATE TABLE IF NOT EXISTS source_readings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -91,7 +93,6 @@ CREATE TABLE IF NOT EXISTS source_readings (
 );
 CREATE INDEX IF NOT EXISTS idx_pembacaan_sumber ON source_readings(sumber, category, created_at DESC);
 
--- Versi prosedur (rollback, §3.3): snapshot langkah tiap versi baru.
 CREATE TABLE IF NOT EXISTS procedure_versions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     prosedur_id UUID NOT NULL REFERENCES procedures(id) ON DELETE CASCADE,
@@ -102,7 +103,6 @@ CREATE TABLE IF NOT EXISTS procedure_versions (
     UNIQUE (prosedur_id, versi)
 );
 
--- Pemakaian ulang prosedur lintas agen (§3.3, §3.6).
 CREATE TABLE IF NOT EXISTS procedure_uses (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     prosedur_id UUID NOT NULL REFERENCES procedures(id) ON DELETE CASCADE,
@@ -113,7 +113,6 @@ CREATE TABLE IF NOT EXISTS procedure_uses (
 );
 CREATE INDEX IF NOT EXISTS idx_pemakaian_prosedur ON procedure_uses(prosedur_id, used_at DESC);
 
--- Jalan canary harian (§3.3).
 CREATE TABLE IF NOT EXISTS canary_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     prosedur_id UUID NOT NULL REFERENCES procedures(id) ON DELETE CASCADE,
@@ -124,8 +123,6 @@ CREATE TABLE IF NOT EXISTS canary_runs (
     jalan_pada TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Laporan salah dari panel Bukti (§3.8); kejadian `laporan_salah` di
--- Buku Kerja tetap dicatat lewat Ledger (jenis sudah ada, §2.3).
 CREATE TABLE IF NOT EXISTS false_reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     evidence_id TEXT NOT NULL,
@@ -136,7 +133,6 @@ CREATE TABLE IF NOT EXISTS false_reports (
 );
 CREATE INDEX IF NOT EXISTS idx_laporan_evidence ON false_reports(evidence_id);
 
--- Kredit bulanan: 15 kredit gratis/bulan (§4.1). Cek detail = 1 kredit.
 CREATE TABLE IF NOT EXISTS monthly_credits (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     month TEXT NOT NULL,
@@ -144,8 +140,6 @@ CREATE TABLE IF NOT EXISTS monthly_credits (
     PRIMARY KEY (user_id, month)
 );
 
--- Token per tugas (bahan metrik roda gila §3.6: token/perbandingan
--- minggu terakhir vs minggu pertama).
 CREATE TABLE IF NOT EXISTS token_metrics (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     task_id TEXT NOT NULL,
@@ -156,8 +150,6 @@ CREATE TABLE IF NOT EXISTS token_metrics (
 );
 CREATE INDEX IF NOT EXISTS idx_metrik_token_jenis ON token_metrics(type, dicatat DESC);
 
--- Pustaka alur + Permintaan Blok (§3.8; fondasi Fase 4, metrik alur
--- aktif TIDAK diklaim di Fase 3).
 CREATE TABLE IF NOT EXISTS workflow_library (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -176,7 +168,6 @@ CREATE TABLE IF NOT EXISTS block_requests (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Hasil cek syarat layanan per sumber (keputusan 15, §10).
 CREATE TABLE IF NOT EXISTS tos_checks (
     sumber TEXT PRIMARY KEY,
     result TEXT NOT NULL,
@@ -186,11 +177,6 @@ CREATE TABLE IF NOT EXISTS tos_checks (
     keputusan TEXT NOT NULL DEFAULT 'awaiting_nero_decision'
 );
 
--- B3 shared graphs (anti-fraud + prices, per-user privacy).
--- Shared tables have NO user_id column: a contributor is recorded
--- only as a hash of (user, subject) for de-duplication, and that
--- hash is never returned by any read code.
--- Private records live in their own table, with user_id.
 CREATE TABLE IF NOT EXISTS shared_seller_flags (
     seller_key TEXT NOT NULL,
     reporter_hash TEXT NOT NULL,
@@ -218,10 +204,6 @@ CREATE TABLE IF NOT EXISTS shared_graph_private_records (
 CREATE INDEX IF NOT EXISTS idx_private_records_user
     ON shared_graph_private_records(user_id, kind, created_at DESC);
 
--- RLS: semua tabel ber-user_id memakai kebijakan yang sama
--- (app.current_user_id). Penegakan nyata hanya untuk koneksi sebagai
--- peran puspa_app (pola Fase 0/1/2). Tabel tanpa user_id
--- (cek_syarat_layanan) adalah data referensi bersama, tanpa RLS.
 ALTER TABLE canonical_products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE listing_links ENABLE ROW LEVEL SECURITY;
 ALTER TABLE price_series ENABLE ROW LEVEL SECURITY;
@@ -251,12 +233,12 @@ BEGIN
     END LOOP;
 END $$;
 
--- produk_kanonik dan cache_bukti adalah data bersama tanpa identitas
--- (graf bersama, §2.17): semua pengguna yang sudah login boleh baca;
--- tulis tetap lewat kode aplikasi. Kebijakan baca-terbuka:
 DROP POLICY IF EXISTS read_shared_canonical_products ON canonical_products;
 CREATE POLICY read_shared_canonical_products ON canonical_products
     FOR SELECT USING (current_setting('app.current_user_id', true) <> '');
 DROP POLICY IF EXISTS read_shared_evidence_cache ON evidence_cache;
 CREATE POLICY read_shared_evidence_cache ON evidence_cache
     FOR SELECT USING (current_setting('app.current_user_id', true) <> '');
+
+-- migrate:down
+DROP TABLE IF EXISTS tos_checks, block_requests, workflow_library, token_metrics, monthly_credits, false_reports, canary_runs, procedure_uses, procedure_versions, source_readings, evidence_cache, read_budgets, watchlist, price_series, listing_links, canonical_products, shared_graph_private_records, shared_price_observations, shared_seller_flags CASCADE;

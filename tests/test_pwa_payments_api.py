@@ -185,7 +185,7 @@ def test_idempotent_prepare_over_http(make_user, test_dsn):
 
 def test_api_creates_schema_when_table_missing(make_user, test_dsn):
     """The lazy schema (B7 mockup pattern): a server that only
-    ran schema_core.sql still serves payments — the first
+    ran migration 0001_core.sql still serves payments — the first
     request creates the table instead of failing on it."""
     import psycopg
 
@@ -193,7 +193,13 @@ def test_api_creates_schema_when_table_missing(make_user, test_dsn):
 
     user_id = make_user()["user_id"]
     with psycopg.connect(resolve_dsn(test_dsn)) as conn:
+        # Simulate a server the payments migration never ran on:
+        # drop the table AND forget the migration. (Numbered
+        # migrations trust schema_migrations: re-applying a recorded
+        # migration is a no-op by design, so dropping the table
+        # alone would not make the lazy path do anything.)
         conn.execute("DROP TABLE IF EXISTS prepared_payments CASCADE")
+        conn.execute("DELETE FROM schema_migrations WHERE version = '0013'")
         conn.commit()
     # A fresh app has never set the ready flag, so the first
     # request must create the table itself.

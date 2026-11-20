@@ -2,7 +2,7 @@
 
 Source: plan section 8.7, ticket B12 in `docs/tickets-beta-plan.md`.
 Module: `puspa/rooms/research.py` (service `ResearchService`),
-links table `room_research_links` in `infra/schema_rooms.sql`,
+links table `room_research_links` in migration `0010_rooms.sql`,
 routing hook in `puspa/rooms/routing.py`
 (`handle_group_inbound(..., research=...)`).
 Tests: `tests/test_rooms_research_b12.py` (18 tests).

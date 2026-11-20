@@ -43,13 +43,18 @@ user (no password in any file). Setup, from the repo root:
 
 ```sh
 pg_ctlcluster 16 main start                                  # if the cluster is down
-psql "dbname=postgres user=root host=/var/run/postgresql" -f infra/schema_core.sql
+sudo -u postgres psql -c "CREATE ROLE root LOGIN SUPERUSER;" -c "CREATE DATABASE puspa_test OWNER root;"
+.venv/bin/python -m puspa.migrations up
 ```
 
-`infra/schema_core.sql` is idempotent: it creates the `root` and
-`puspa_app` roles, the `puspa_test` database, and the ledger + accounts
-schema. Individual test modules create their own extra schema through
-their fixtures. Postgres does not survive a VM replacement here: if
+The migration runner is idempotent: it applies every migration in
+`puspa/migrations/versions/` that has not run yet, and records it in
+`schema_migrations`. The roles + database are created once, before
+the first run (the runner connects to an existing database). See
+`docs/migrations.md` for the full story — adding a migration, rolling
+one back, the committed schema snapshot, and the container setup.
+Individual test modules create their own extra schema through their
+fixtures. Postgres does not survive a VM replacement here: if
 `pg_lsclusters` finds nothing, reinstall (`apt-get install -y
 postgresql-16 postgresql-16-pgvector`) and run the setup again. The
 default DSN is `dbname=puspa_test user=root host=/var/run/postgresql`;
@@ -87,7 +92,7 @@ Some docs restate code, and a restated fact rots. The rule is
 mechanical where it can be: `tests/test_docs_drift.py` checks the one
 concrete rule this repo enforces today — the 31 ledger event types
 must be identical in `puspa/ledger/ledger.py` (`EVENT_TYPES`), in both
-`CHECK` lists in `puspa/ledger/schema.sql`, and in the "Closed type
+`CHECK` lists in `puspa/migrations/versions/0001_core.sql`, and in the "Closed type
 set" line in `docs/contracts.md`. Adding an event type means updating
 all three in one commit. New drift rules are added the same way: a
 test, not a reminder.

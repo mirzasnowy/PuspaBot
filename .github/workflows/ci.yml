@@ -12,8 +12,11 @@
 #              (python code/deps/workflow vs docs). Every other lane
 #              waits for it.
 #   test     — the full suite, SOLO (one pytest process, no parallel
-#              runner), against Postgres 16 + pgvector, with
-#              infra/schema_core.sql applied first.
+#              runner), against Postgres 16 + pgvector (pinned image
+#              pgvector/pgvector:0.6.0-pg16, the version the committed
+#              schema snapshot was dumped against), with the test
+#              database created by the migration runner
+#              (`python -m puspa.migrations up`, E-08).
 #   sandbox  — the live container + Chromium tests that can never run
 #              on the dev VM (its kernel rejects container namespaces):
 #              the 4 live tests in tests/test_sandbox.py, the Docker
@@ -114,7 +117,7 @@ jobs:
             PYTHON=true
             DOCS=true
           else
-            echo "$FILES" | grep -qE '\.py$|requirements.*\.txt$|pyproject\.toml$|^infra/|^.github/' && PYTHON=true
+            echo "$FILES" | grep -qE '\.py$|\.sql$|requirements.*\.txt$|pyproject\.toml$|^infra/|^.github/' && PYTHON=true
             echo "$FILES" | grep -qE '\.md$|^docs/' && DOCS=true
           fi
           echo "python=$PYTHON" >> "$GITHUB_OUTPUT"
@@ -129,7 +132,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: pgvector/pgvector:0.6.0-pg16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: puspa-ci-test
@@ -164,12 +167,18 @@ jobs:
         env:
           PGPASSWORD: puspa-ci-test
         run: |
-          psql "host=localhost user=postgres dbname=postgres" -f infra/schema_core.sql
+          # The suite connects as role root over TCP; create that role
+          # and the test database as the service superuser, then apply
+          # the schema with the migration runner (E-08: the old
+          # infra/schema_core.sql setup script is gone; the runner is
+          # the only schema path now).
+          psql "host=localhost user=postgres dbname=postgres" -c "CREATE ROLE root LOGIN SUPERUSER;" -c "CREATE DATABASE puspa_test OWNER root;"
           # The suite connects as role root over TCP; give that role the
           # same throwaway password as the service superuser. Local runs
           # use peer auth instead and need no password (see
           # docs/verification.md).
           psql "host=localhost user=postgres dbname=postgres" -c "ALTER ROLE root WITH PASSWORD 'puspa-ci-test';"
+          python -m puspa.migrations up
 
       - name: Run the full suite (SOLO, no parallel runner)
         run: python -m pytest
@@ -181,7 +190,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: pgvector/pgvector:0.6.0-pg16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: puspa-ci-test
@@ -217,11 +226,17 @@ jobs:
         env:
           PGPASSWORD: puspa-ci-test
         run: |
-          psql "host=localhost user=postgres dbname=postgres" -f infra/schema_core.sql
+          # The suite connects as role root over TCP; create that role
+          # and the test database as the service superuser, then apply
+          # the schema with the migration runner (E-08: the old
+          # infra/schema_core.sql setup script is gone; the runner is
+          # the only schema path now).
+          psql "host=localhost user=postgres dbname=postgres" -c "CREATE ROLE root LOGIN SUPERUSER;" -c "CREATE DATABASE puspa_test OWNER root;"
           # Same as the test lane: the suite connects as role root
           # over TCP, so give that role the same throwaway password
           # as the service superuser.
           psql "host=localhost user=postgres dbname=postgres" -c "ALTER ROLE root WITH PASSWORD 'puspa-ci-test';"
+          python -m puspa.migrations up
 
       - name: Build the sandbox image
         run: |

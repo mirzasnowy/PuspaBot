@@ -117,11 +117,11 @@ All routes require login; all responses are JSON. See
   Only an approved, unexpired preparation can be marked.
 - `POST /api/payments/{id}/execute` — always 403.
 
-The schema lives in `infra/schema_payments.sql` (apply after
-`infra/schema_core.sql`: the `users` table must exist first).
+The schema lives in migration `0013_payments.sql` (apply after
+`0001_core.sql`: the `users` table must exist first).
 The API also creates it lazily on the first request (the B7
 mockup pattern, once per app), so a server that only ran
-`schema_core.sql` still serves payments. The full contract
+migration `0001_core.sql` still serves payments. The full contract
 is `docs/openapi-payments.yaml`.
 
 ## Relation to other tickets

@@ -48,7 +48,7 @@ so existing callers that only know "now" keep working unchanged.
 
 This module is pure Python (no database, no network). Durable
 storage lives in ``puspa.world.store`` (table
-``belief_versions``) and in ``infra/migrate_bitemporal.sql``.
+``belief_versions``) and in migration 0006_world.
 There is deliberately no delete API: history is append-only,
 and erasing it is a separate (K12 / data-deletion) concern.
 """

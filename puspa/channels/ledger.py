@@ -12,7 +12,7 @@ status, and the attempt count. The ledger serves two jobs:
 
 Design decision (documented in ``docs/channels.md``): the ledger
 is its OWN Postgres table (``channel_deliveries``, see
-``infra/schema_channels.sql``), NOT the core ledger. The core
+migration 0008_channels), NOT the core ledger. The core
 ledger (``puspa.ledger``) is a closed set of 31 task event types
 in a hash-chained audit log for tasks; delivery records are
 operational rows that need lookup by platform message id and
@@ -167,7 +167,7 @@ class PostgresDeliveryLedger:
 
     Same interface as :class:`InMemoryDeliveryLedger`. The table is
     created by ``puspa.channels.schema.create_schema()`` (which
-    applies ``infra/schema_channels.sql``). All writes are
+    applies migration 0008_channels). All writes are
     best-effort from the caller's point of view: a ledger failure
     must never drop a user message — callers that need that
     guarantee wrap the call (see ``puspa.channels.inbound``).

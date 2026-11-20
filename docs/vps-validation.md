@@ -24,7 +24,7 @@ document has run. Nothing below claims otherwise.
 | Machine-replacement drill, timed live run | PENDING — no VPS yet | drill below |
 
 What WAS proven here, on this VM: the rebuild script's dry-run
-prints all 11 steps in order and exits 0; the health-check module
+prints all 10 steps in order and exits 0; the health-check module
 passes Postgres (tables + RLS on `puspa_test_w2`), HTTP probes
 against a local server, and the offline deploy validation; the
 backup module creates an encrypted backup of `puspa_test_w2` and
@@ -53,13 +53,13 @@ curl -O https://raw.githubusercontent.com/mirzasnowy/puspa-ai/main/scripts/vps-r
 bash vps-rebuild.sh
 ```
 
-The script (11 timed steps, log at `~/vps-rebuild.log`) installs
+The script (10 timed steps, log at `~/vps-rebuild.log`) installs
 Python 3.12 + PostgreSQL 16 + pgvector + Docker, starts the
 cluster, creates role `root` (superuser, peer auth) BEFORE running
-`infra/schema_core.sql`, clones the tree to `~/puspa`, installs the
+the migration runner, clones the tree to `~/puspa`, installs the
 pinned requirements into a venv, creates the `puspa` app database
-(`schema_core.sql` creates `puspa_test` itself), applies the
-ledger + accounts schemas to the app database, verifies RLS on
+(the runner applies the schema to whichever database the DSN
+names), applies the migrations to the app database, verifies RLS on
 both databases, verifies Docker + Compose, and runs the offline
 deploy validation pytest. It is idempotent — re-running it
 re-applies the same guarded steps. Auth is peer auth everywhere;
@@ -75,8 +75,7 @@ Record the timings (fill in on the live run):
 | Fetch Puspa tree | |
 | Create venv + install requirements | |
 | Create databases | |
-| Apply core schema | |
-| Apply app schemas | |
+| Apply migrations (app + test databases) | |
 | Verify RLS | |
 | Verify Docker and Compose | |
 | Offline deploy validation | |

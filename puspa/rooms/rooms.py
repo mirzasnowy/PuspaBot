@@ -30,7 +30,7 @@ Rules, all enforced here (never left to the caller):
 - ``delete_room`` is owner-only and deletes the room row; members,
   invites, memories, tasks, approvals, splits, and channel links cascade
   in the database (``ON DELETE CASCADE`` in
-  ``infra/schema_rooms.sql``).
+  migration 0010_rooms).
 - Leaving is always allowed for a non-owner member, and for an
   owner when another owner remains. Leaving is private-data
   aware: the leaver's private room memories (visibility
@@ -47,7 +47,7 @@ Rules, all enforced here (never left to the caller):
 Privilege note: ``create_room`` inserts the room row and the first
 owner membership row in one transaction as the table owner (the
 connection this module opens). The RLS policies in
-``infra/schema_rooms.sql`` have no INSERT policy for ``rooms``
+migration 0010_rooms have no INSERT policy for ``rooms``
 and an owner-only INSERT policy for ``room_members`` on the
 ``puspa_app`` role, so room creation cannot run as the application
 role — the same "privileged operation runs as the owner" decision

@@ -1,7 +1,7 @@
 """Versioned profile facts (G7, DuskBot pattern rewritten for Puspa).
 
 Facts live in the existing ``profile_facts`` table (see
-``puspa/memory/schema.sql``). G7 widens that table: the status set
+migration 0002_memory). G7 widens that table: the status set
 gains ``"superseded"`` and ``"expired"``, and two columns are added
 (``superseded_by``, ``updated_at``). A replaced / expired fact
 becomes history, never deleted, so a question about the past can

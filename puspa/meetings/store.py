@@ -15,7 +15,7 @@ One meeting, end to end, from a transcript:
    (``RoomMemoryStore.record_decision``), so the room's shared
    record holds it.
 4. Store the rendered minutes plus the structured extraction in
-   ``meeting_minutes`` (see ``infra/schema_meetings.sql``).
+   ``meeting_minutes`` (see migration 0011_meetings).
 5. When a ledger is given, append ledger events for the decisions
    and the action items, through the existing ledger / evidence
    pattern — no new event type (the closed set of 31 stays

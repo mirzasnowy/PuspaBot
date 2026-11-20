@@ -1,13 +1,4 @@
-"""Payment schema loader: apply ``infra/schema_payments.sql``.
-
-The migration file lives in ``infra/`` (not inside the package)
-so it sits next to the other schema migrations and is applied
-the same way: as a superuser, after ``infra/schema_core.sql``
-(the ``users`` table must exist first). This module is only the
-programmatic entry point — the test suite calls
-``create_schema()`` so each test run starts from the same
-schema.
-"""
+"""Payment schema loader: the payment tables come from migration 0013_payments (``puspa/migrations/versions/0013_payments.sql``). This module is only the programmatic entry point — the test suite calls ``create_schema()`` so each test run starts from the same schema."""
 
 from __future__ import annotations
 
@@ -16,6 +7,7 @@ from pathlib import Path
 import psycopg
 
 from puspa.accounts.users import resolve_dsn
+from puspa.migrations import apply_migrations
 
 __all__ = ["PAYMENTS_TABLES", "create_schema", "reset_tables", "schema_path"]
 
@@ -23,20 +15,22 @@ PAYMENTS_TABLES = ("prepared_payments",)
 
 
 def schema_path() -> Path:
-    """Absolute path of ``infra/schema_payments.sql`` (two levels
-    above this package: ``puspa/payments/`` -> ``build/`` ->
-    ``infra/``)."""
-    return Path(__file__).resolve().parents[2] / "infra" / "schema_payments.sql"
+    """Absolute path of migration 0013_payments."""
+    return (
+        Path(__file__).resolve().parents[2]
+        / "puspa"
+        / "migrations"
+        / "versions"
+        / "0013_payments.sql"
+    )
 
 
 def create_schema(dsn=None):
-    """Run ``infra/schema_payments.sql`` (CREATE TABLE IF NOT
-    EXISTS + RLS policies). Idempotent; safe to call before
-    every test."""
-    sql = schema_path().read_text(encoding="utf-8")
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
-        conn.execute(sql)
-        conn.commit()
+    """Apply the tables (migration 0013_payments).
+
+    Idempotent; safe to call before every test.
+    """
+    apply_migrations(resolve_dsn(dsn), target="0013")
 
 
 def reset_tables(dsn=None):

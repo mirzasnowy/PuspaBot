@@ -25,10 +25,10 @@ baru, cukup panggil `require_owner` sebelum SELECT isi. Lihat
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import psycopg
 from psycopg.rows import dict_row
+
+from puspa.migrations import apply_migrations
 
 from .user_sessions import owner_of_token
 from .users import resolve_dsn
@@ -67,15 +67,13 @@ def require_owner(requesting_user_id, owner_user_id):
 
 
 def create_agent_schema(dsn=None):
-    """Jalankan schema_agen.sql (CREATE TABLE IF NOT EXISTS agen).
+    """Apply the agent registry table (migration 0001_core).
 
-    Tabel `pengguna` harus sudah ada (FK agen.user_id -> pengguna(id));
-    panggil setelah `puspa.accounts.create_schema`.
+    The ``agents`` table comes from the migration, not from a schema
+    file: see puspa/migrations. Idempotent; safe to call before
+    every test.
     """
-    sql = (Path(__file__).parent / "schema_agent.sql").read_text(encoding="utf-8")
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
-        conn.execute(sql)
-        conn.commit()
+    apply_migrations(resolve_dsn(dsn), target="0001")
 
 
 def register_agent(agent_id, user_id, dsn=None):

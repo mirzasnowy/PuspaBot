@@ -4,8 +4,8 @@
 # Rebuilds a machine from scratch: installs Python 3.12 + PostgreSQL 16
 # (+ pgvector) + Docker, creates the Postgres roles and databases,
 # fetches the Puspa tree, installs the pinned requirements, applies
-# infra/schema_core.sql, and verifies RLS. These are the same steps the
-# coordinator does by hand after every VM replacement (see
+# the numbered migrations (puspa/migrations up), and verifies RLS.
+# These are the same steps the coordinator does by hand after every VM replacement (see
 # docs/vps-validation.md and the Postgres recovery notes in the
 # coordinator pipeline doc) — here as one script, timed, so the
 # "machine replaced" drill is a single run plus a stopwatch read.
@@ -26,8 +26,9 @@
 # - Auth is peer auth everywhere (OS user = Postgres role). No
 #   credentials are created, read, or stored by this script.
 # - The script is idempotent: re-running it re-applies the same
-#   guarded steps (role/DB creation is guarded, schema_core.sql is
-#   idempotent, an existing tree is pulled instead of re-cloned).
+#   guarded steps (role/DB creation is guarded, the migration
+#   runner applies only pending migrations, an existing tree is
+#   pulled instead of re-cloned).
 # - This script does NOT start the app: `docker compose up` is the
 #   first step of the VPS validation procedure
 #   (docs/vps-validation.md), run after this rebuild finishes.
@@ -70,7 +71,7 @@ APP_DSN="dbname=${APP_DB} user=root host=/var/run/postgresql"
 LOG_FILE="$HOME/vps-rebuild.log"
 STARTED_AT="$(date +%s)"
 STEP_INDEX=0
-STEP_TOTAL=11
+STEP_TOTAL=10
 
 log() {
     local line="$1"
@@ -121,8 +122,8 @@ start_postgres_cluster() {
 }
 
 create_role_root() {
-    # Role root must exist BEFORE infra/schema_core.sql runs: the
-    # schema connects as root. Guarded, so re-runs are no-ops.
+    # Role root must exist BEFORE the migration runner runs: the
+    # runner connects as root. Guarded, so re-runs are no-ops.
     run "${SUDO[@]}" su postgres -c "psql -v ON_ERROR_STOP=1 -d postgres" <<'SQL'
 SELECT 'CREATE ROLE root LOGIN SUPERUSER'
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'root')
@@ -156,19 +157,16 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '${APP_DB}')
 SQL
 }
 
-apply_core_schema() {
-    # Creates puspa_test + applies ledger/accounts schemas to it.
-    # The \ir paths inside are relative to the file, so run with -f
-    # on the real path — never via a /tmp copy.
-    run "${SUDO[@]}" psql "$ROOT_DSN" -v ON_ERROR_STOP=1 \
-        -f "$TARGET_DIR/infra/schema_core.sql"
-}
-
-apply_app_schemas() {
-    run "${SUDO[@]}" psql "$APP_DSN" -v ON_ERROR_STOP=1 \
-        -f "$TARGET_DIR/puspa/ledger/schema.sql"
-    run "${SUDO[@]}" psql "$APP_DSN" -v ON_ERROR_STOP=1 \
-        -f "$TARGET_DIR/puspa/accounts/schema.sql"
+apply_migrations() {
+    # Applies all numbered migrations (puspa/migrations/versions/)
+    # to the app database and to puspa_test. The runner is
+    # idempotent: re-running it applies only pending migrations.
+    # The root role must exist first (create_role_root runs before
+    # this step) because the runner connects as root. Run from the
+    # tree directory so the runner resolves its migration files
+    # from the checked-out package.
+    run env -C "$TARGET_DIR" "$TARGET_DIR/.venv/bin/python" -m puspa.migrations up --dsn "$APP_DSN"
+    run env -C "$TARGET_DIR" "$TARGET_DIR/.venv/bin/python" -m puspa.migrations up --dsn "dbname=puspa_test user=root host=/var/run/postgresql"
 }
 
 verify_rls() {
@@ -208,8 +206,7 @@ main() {
     step "Fetch Puspa tree (clone or pull)" fetch_puspa_tree
     step "Create Python virtualenv and install requirements" install_python_deps
     step "Create databases (app + test)" create_app_database
-    step "Apply core schema (infra/schema_core.sql)" apply_core_schema
-    step "Apply ledger + accounts schemas to the app database" apply_app_schemas
+    step "Apply migrations (puspa/migrations up)" apply_migrations
     step "Verify RLS on app and test databases" verify_rls
     step "Verify Docker and Compose" verify_docker
     step "Offline deploy validation (Dockerfile + compose pytest)" offline_deploy_validation

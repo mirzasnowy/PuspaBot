@@ -15,6 +15,8 @@ import threading
 
 import psycopg
 
+from puspa.migrations import apply_migrations
+
 __all__ = [
     "DEFAULT_DSN",
     "InMemoryReceiptStore",
@@ -27,16 +29,9 @@ DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 
 def ensure_receipts_schema(dsn: str | None = None) -> None:
-    """Create the ``event_receipts`` table if it does not exist."""
+    """Apply the ``event_receipts`` table (migration 0018_scheduler)."""
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    with psycopg.connect(dsn, autocommit=True) as conn:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS event_receipts ("
-            "  idempotency_key TEXT PRIMARY KEY,"
-            "  payload JSONB NOT NULL DEFAULT '{}'::jsonb,"
-            "  received_at TIMESTAMPTZ NOT NULL DEFAULT now()"
-            ")"
-        )
+    apply_migrations(dsn, target="0018")
 
 
 class InMemoryReceiptStore:

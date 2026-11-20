@@ -18,12 +18,11 @@ repo root/
   puspa/
     __init__.py
     ledger/           # Ledger (2.3)
-      __init__.py  schema.sql  ledger.py  errors.py
+      __init__.py  ledger.py  errors.py
     policy/           # Permission tokens, skills, gate, spending (2.6)
       __init__.py  tokens.py  skill_signing.py  gate.py  spending.py
     accounts/         # Basic accounts (2.13) + RLS (2.15) + cross-user access (2.6)
       __init__.py  users.py  user_sessions.py  vault.py  rls.py  access.py
-      schema.sql  schema_agent.sql
     quarantine/       # Quarantined reader + injection (2.6)
       __init__.py  reader.py  injection.py
     sandbox/          # Fail-closed sandbox (2.6)
@@ -41,7 +40,9 @@ repo root/
     mock_provider_server.py  MATRIKS_BYOK.md  LAPORAN_DEMO.md  NOTES.md
     mock_logs/  data/
   infra/
-    schema_core.sql
+    schema_snapshot.sql   # committed pg_dump -s of the migrated schema
+  puspa/migrations/     # numbered migrations + runner (E-08)
+    versions/           # 0001_core.sql .. 0019_conflicts.sql
   requirements.txt  pytest.ini  README.md
   docs/contracts.md  docs/status-phase-0.md
   NOTICE.md  docs/nanobot-inventory.md
@@ -60,10 +61,10 @@ repo root/
 
 - Table `events`, append-only. Columns: `id UUID PK DEFAULT gen_random_uuid()`, `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`, `task_id TEXT NOT NULL`, `agent_id TEXT NOT NULL`, `subagent_id TEXT`, `type TEXT NOT NULL CHECK (type IN (...31 types...))`, `content JSONB NOT NULL DEFAULT '{}'`, `parent_id UUID REFERENCES events(id)`, `previous_hash TEXT NOT NULL`, `hash TEXT NOT NULL UNIQUE`. Indexes: `(task_id, id)`, `type`, `created_at`.
 - Closed type set (31, revision 7: 22 old + 9 new): task_created, plan_created, subagent_created, handoff_proposed, handoff_accepted, handoff_handed_over, handoff_rejected, handoff_expired, heartbeat, tool_called, tool_completed, evidence_recorded, verification_completed, approval_requested, approval_granted, approval_rejected, user_message, agent_message, budget_exhausted, task_completed, task_failed, task_stopped, workflow_proposed, workflow_activated, workflow_paused, trigger_fired, trigger_missed, module_proposed, module_activated, false_report, data_consent.
-- Type CHECK migration (idempotent, in `puspa/ledger/schema.sql`): `CREATE TABLE IF NOT EXISTS` does not change the constraint of a table that already exists (e.g. one created when the set still had 22 types), so the migration block at the end of the schema DROPs the old constraint and ADDs a new constraint with the revision 7 list of 31 types, under the same constraint name (`event_jenis_check`).
+- Type CHECK migration (idempotent, in `puspa/migrations/versions/0001_core.sql`): `CREATE TABLE IF NOT EXISTS` does not change the constraint of a table that already exists (e.g. one created when the set still had 22 types), so the migration block at the end of the schema DROPs the old constraint and ADDs a new constraint with the revision 7 list of 31 types, under the same constraint name (`event_jenis_check`).
 - DB permissions: the application role has only INSERT + SELECT on `events`. No UPDATE/DELETE (REVOKE).
 - API:
-  - `Ledger(dsn)`; `create_schema()` — runs `schema.sql` (CREATE TABLE IF NOT EXISTS + REVOKE).
+  - `Ledger(dsn)`; `create_schema()` — applies migration `0001_core.sql` through the runner (CREATE TABLE IF NOT EXISTS + REVOKE).
   - `append_event(*, task_id, agent_id, subagent_id=None, event_type, content: dict, parent_id=None) -> dict` — validates `event_type`; `previous_hash` = hash of the previous event in the same `task_id` (ordered by `(created_at, id)`), or the string `"GENESIS"` for the first event; `hash = sha256(canonical_json({task_id, agent_id, subagent_id, event_type, content, parent_id, previous_hash, time_iso}))`; `created_at` comes from the DB (`now()`), read back after insert.
   - `verify_chain(task_id) -> (bool, list[str])` — recompute the hash of each event in sequence; return (True, []) or (False, [ids of the events where the chain breaks]).
   - `events(task_id, event_type=None) -> list[dict]`.
@@ -100,22 +101,22 @@ repo root/
 - `users.py`: `create_user(email, password) -> user_id` (email lowercased/stripped, unique; Argon2id hash via argon2-cffi, time_cost=2, memory_cost=65536, parallelism=1); `authenticate(email, password) -> user_id` (raises `AuthError` if wrong); `delete_user(user_id)` — delete the user row + revoke all sessions + delete the vault; events in the ledger are NOT deleted (append-only audit). Revision 7 NOTE: this password login is replaced by Google login in phase 1; sessions + vault are reused (docs/status-phase-0.md decision 20).
 - `user_sessions.py`: `create_session(user_id, device_label) -> token` (`secrets.token_urlsafe(32)`, only its sha256 is stored); `validate_session(token) -> user_id` (updates `last_seen_at`); `owner_of_token(token) -> user_id` (owner lookup WITHOUT side effects — used by `resolve_session_as`, so that a rejection does not change someone else's session `last_seen_at`); `revoke_session(token)`; `revoke_all_sessions(user_id)`; `list_sessions(user_id)`.
 - `vault.py`: per-user key = `derive_user_key(master_key, user_id)` — HKDF-SHA256(master_key, info=str(user_id)), length 32, salt=None — then Fernet. `put(user_id, name, value)`, `get(user_id, name)`, `delete(user_id, name)`, `list_names(user_id)`. Master key from env `PUSPA_VAULT_MASTER_KEY` (base64 urlsafe 32 bytes); if the env is missing, raise — never create a default key. **`derive_user_key` parameters are FROZEN** (docs/status-phase-0.md decision 16): changing them makes all old ciphertext undecryptable.
-- Tables (`schema.sql`): `users(id UUID PK, email TEXT UNIQUE, password_hash TEXT, created_at TIMESTAMPTZ DEFAULT now())`, `sessions(id UUID PK, user_id UUID FK, token_hash TEXT UNIQUE, device_label TEXT, created_at, last_seen_at, revoked BOOL DEFAULT false)`, `vault(user_id UUID, name TEXT, ciphertext TEXT, updated_at TIMESTAMPTZ, PRIMARY KEY (user_id, name))`. All queries filter by `user_id`.
+- Tables (migration `0001_core.sql`): `users(id UUID PK, email TEXT UNIQUE, password_hash TEXT, created_at TIMESTAMPTZ DEFAULT now())`, `sessions(id UUID PK, user_id UUID FK, token_hash TEXT UNIQUE, device_label TEXT, created_at, last_seen_at, revoked BOOL DEFAULT false)`, `vault(user_id UUID, name TEXT, ciphertext TEXT, updated_at TIMESTAMPTZ, PRIMARY KEY (user_id, name))`. All queries filter by `user_id`.
 
-## Row Level Security — `puspa/accounts/rls.py` + `schema.sql` (definition 2.15)
+## Row Level Security — `puspa/accounts/rls.py` + migration `0001_core.sql` (definition 2.15)
 
 - RLS active on tables `users`, `sessions`, `vault` — WITHOUT `FORCE ROW LEVEL SECURITY` (docs/status-phase-0.md decision 15): the table owner / superuser bypasses RLS (a Postgres property); real enforcement only applies to connections as the `puspa_app` role (NOLOGIN; connections run as the owner then `SET ROLE puspa_app` — evidence in `tests/test_rls.py`).
-- 6 policies (counted from `schema.sql`): `users` — SELECT own, INSERT register-or-own, UPDATE own, DELETE own; `sessions` — FOR ALL own; `vault` — FOR ALL own. Policies read `app.current_user_id` (`coalesce(current_setting(..., true), '')`).
+- 6 policies (counted from migration `0001_core.sql`): `users` — SELECT own, INSERT register-or-own, UPDATE own, DELETE own; `sessions` — FOR ALL own; `vault` — FOR ALL own. Policies read `app.current_user_id` (`coalesce(current_setting(..., true), '')`).
 - Registration INSERT exception: the `users` INSERT policy allows an empty `app.current_user_id` (before a session is validated, the user_id is not yet known). Login / registration / session validation run as the table owner; once the user_id is known, all subsequent queries go through the RLS helper as `puspa_app`.
 - Helper `rls.py` (the only place application code sets the current user): `set_current_user(conn, user_id)` / `clear_current_user(conn)` / `current_user_id(conn)` / `require_current_user(conn)` (raises `RlsError` if not yet set — fail-closed) / `as_user(conn, user_id)` (context manager, `SET LOCAL` — the value disappears on its own when the transaction ends). `user_id` is validated as a UUID before being set.
-- Setup + recovery: `infra/schema_core.sql` (idempotent) creates roles `root` + `puspa_app` + DB `puspa_test` then applies the ledger + accounts schemas. Postgres on this VM does not survive restarts — recover with that file (docs/status-phase-0.md decision 14, README section "Database setup").
+- Setup + recovery: `python -m puspa.migrations up` (idempotent) applies the schema; the roles `root` + `puspa_app` and the DB `puspa_test` are created once beforehand (see README section "Database setup" and `docs/migrations.md`). Postgres on this VM does not survive restarts — recover with those two commands (docs/status-phase-0.md decision 14).
 - RLS on the `events` table does NOT exist yet (phase 2): ledger isolation currently goes through the agent registry + `require_owner` in the owned readers (see the Access section below).
 
 ## Cross-user access — `puspa/accounts/access.py` (definition 2.6, attack path 8)
 
 - `require_owner(requesting_user_id, owner_user_id)` — the ONLY place ownership is checked; every read API MUST call it BEFORE querying content / decrypting. Fail-closed: reject (`AccessDeniedError`) if either id is None / empty / not a string, or if the two differ. Does NOT touch the database.
 - Owned read functions (scoped readers) (same pattern: determine the owner -> `require_owner` -> then read): `read_vault_entry(requesting_user_id, owner_user_id, name)` (rejected BEFORE decryption; correct owner + missing name -> `KeyError`); `resolve_session_as(requesting_user_id, token)` (the token itself is the ownership credential; uses side-effect-free `owner_of_token`; unknown/revoked token -> `SessionError`); `read_ledger_event(requesting_user_id, event_id)` (check existence first -> owner from the registry -> `require_owner` -> then read content; unregistered agent -> `AccessDeniedError`); `read_ledger_events_for_task(requesting_user_id, task_id)` (all agents in the task are checked first; a single one belonging to someone else -> the whole task is rejected).
-- Agent registry (`schema_agent.sql`, table `agents`: `agent_id TEXT PK`, `user_id UUID FK -> users(id) ON DELETE CASCADE`): `create_agent_schema()`, `register_agent(agent_id, user_id)` (idempotent to the same owner; to a different owner -> `AccessDeniedError`), `owner_of(agent_id)` (None if not yet registered = rejected fail-closed). The `agents` table is created on demand by `create_agent_schema()`, not by `infra/schema_core.sql`.
+- Agent registry (migration `0001_core.sql`, table `agents`: `agent_id TEXT PK`, `user_id UUID FK -> users(id) ON DELETE CASCADE`): `create_agent_schema()`, `register_agent(agent_id, user_id)` (idempotent to the same owner; to a different owner -> `AccessDeniedError`), `owner_of(agent_id)` (None if not yet registered = rejected fail-closed). The `agents` table is created by migration `0001_core.sql`; `create_agent_schema()` applies that migration on demand.
 - Workflows/modules do NOT yet have owned read functions (their tables only arrive in phase 4): when their tables exist, use the same `require_owner` with the `owner_user_id` from the workflow/module row.
 - Tests: `tests/test_access.py` (23 tests) + 3 path-8 tests in `tests/test_attacks.py` (26 path-8 tests total).
 

@@ -180,8 +180,7 @@ messages to third parties.
 ## Persistence
 
 Table `agent_goal_models` (one row per (user, agent,
-contact); see `infra/schema_world.sql` and
-`infra/migrate_agent_goal_models.sql`, idempotent and
+contact); see migration `0006_world.sql`, idempotent and
 additive). Saving upserts by (user, agent, contact):
 re-saving writes the same rows again with their current
 values. Dropped goals are saved too, as history. The world

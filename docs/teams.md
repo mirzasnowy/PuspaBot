@@ -19,14 +19,13 @@ run at all, and how a bot moves between workspaces.
 
 ## Schema: how to apply it
 
-The migration is `infra/schema_teams.sql` (seven tables: `teams`,
+The migration is `0009_teams.sql` (seven tables: `teams`,
 `team_members`, `invitations`, `bot_access_grants`,
 `bot_access_requests`, `entitlements`, `workspace_moves`). Apply it
-AFTER `infra/schema_core.sql` (the `users` table must exist first),
-as a Postgres superuser, from the `build/` directory:
+AFTER `0001_core.sql` (the `users` table must exist first):
 
 ```sh
-psql "dbname=puspa_test user=root host=/var/run/postgresql" -f infra/schema_teams.sql
+python -m puspa.migrations up --target 0009
 ```
 
 It is idempotent (`CREATE TABLE IF NOT EXISTS` + `DROP POLICY IF
@@ -58,8 +57,8 @@ Invariants, enforced in code (never left to the caller):
   a different role it is a role change under the same owner-only
   rule.
 
-RLS (`infra/schema_teams.sql`, same rules as
-`puspa/accounts/schema.sql`, no `FORCE`): members see their team;
+RLS (migration `0009_teams.sql`, same rules as
+migration `0001_core.sql`, no `FORCE`): members see their team;
 only owners update/delete it; `team_members` rows are visible to
 the member themselves or to a team owner; membership INSERT/UPDATE
 is owner-only; DELETE is owner-only or self-removal. Three
