@@ -9,6 +9,7 @@ import { MemoryScreen } from "./screens/MemoryScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { OfficeScreen } from "./screens/OfficeScreen";
 import { LiveViewScreen } from "./screens/LiveViewScreen";
+import { ReplayScreen } from "./screens/ReplayScreen";
 import { InsightsScreen } from "./screens/InsightsScreen";
 import { OnboardingScreen } from "./screens/OnboardingScreen";
 import { MockupScreen } from "./screens/MockupScreen";
@@ -46,6 +47,9 @@ export function App({ bootstrap, screen }: { bootstrap: Bootstrap; screen: Scree
       break;
     case "live":
       content = <LiveViewScreen bootstrap={bootstrap} />;
+      break;
+    case "replay":
+      content = <ReplayScreen bootstrap={bootstrap} />;
       break;
     case "insights":
       content = <InsightsScreen />;

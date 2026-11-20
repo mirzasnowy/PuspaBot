@@ -140,7 +140,20 @@ BASELINE_LINES = {
     # except, no new blind handler), and the takeover store +
     # live-view route registration (with a blank separator line).
     # Resumes from 1111.
-    "puspa/pwa/app.py": 1111,
+    # P-10 (replay timeline, 21 Nov 2026): +14 lines — the
+    # "replay" screen in SCREENS, its agents context (same
+    # narrowed except as live), and the replay route
+    # registration. Resumes from 1125.
+    "puspa/pwa/app.py": 1125,
+    # PWA typed API client: every screen's fetch wrapper plus
+    # the generated-types aliases in one file. Crossed 1000
+    # lines in P-10 (21 Nov 2026): the replay fetchers (tasks,
+    # timeline, single step, GIF URL) and their three type
+    # aliases added 51 lines to the 982-line client. Split
+    # candidate when it grows again: one fetch module per
+    # feature area (live/replay, rooms, morning), keeping the
+    # type aliases in client.ts. The ratchet resumes from 1033.
+    "apps/pwa/src/api/client.ts": 1033,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Shared-room delegation (B6): the delegation board, task
@@ -272,7 +285,13 @@ BASELINE_LINES = {
     # docs/openapi-live-view.yaml, same split precedent), and
     # "live" in the Bootstrap screen enum. Main spec 1849, still
     # under the 2000-line hard cap. Resumes from 1849.
-    "docs/openapi-pwa.yaml": 1849,
+    # P-10 (replay timeline, 21 Nov 2026): +16 lines — the
+    # `replay` tag (2), $ref stubs for 4 replay paths + 3 replay
+    # schemas (contract split out to docs/openapi-replay.yaml,
+    # same split precedent), and "replay" in the Bootstrap
+    # screen enum. Main spec 1865, still under the 2000-line
+    # hard cap. Resumes from 1865.
+    "docs/openapi-pwa.yaml": 1865,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:
