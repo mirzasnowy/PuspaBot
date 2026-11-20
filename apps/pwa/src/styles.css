@@ -70,6 +70,25 @@ select {
   color: #b91c1c;
   font-size: 13px;
 }
+/* P-11: the highlighted target of a pending approval — the
+   frame row (or the overlay's target box) the action points
+   at. A visible outline, not a screenshot annotation: there is
+   no desktop image to draw on. */
+.overlay-highlight {
+  outline: 2px solid #b45309;
+  outline-offset: 2px;
+  background: #fffbeb;
+}
+.overlay-card {
+  border-color: #b45309;
+}
+.overlay-target {
+  border: 1px dashed #b45309;
+  border-radius: 6px;
+  padding: 8px;
+  margin: 8px 0;
+  background: #fffbeb;
+}
 .composer {
   display: flex;
   gap: 8px;

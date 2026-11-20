@@ -40,6 +40,8 @@ tags:
     description: Stop-all, autonomy dial, and weekly report (P-02, plan 12.7)
   - name: live-view
     description: Live view of a bot + human takeover (P-09, plan 12.9)
+  - name: approval-overlay
+    description: Visual approval overlay over the G4 gate (P-11, plan 12.10)
   - name: replay
     description: Replay timeline of a bot's steps + GIF export (P-10, plan 12.10)
   - name: office
@@ -464,6 +466,12 @@ paths:
     $ref: './openapi-live-view.yaml#/paths/~1api~1live-view~1{agent_id}~1release'
   /api/live-view/{agent_id}/stream:
     $ref: './openapi-live-view.yaml#/paths/~1api~1live-view~1{agent_id}~1stream'
+  /api/live-view/{agent_id}/approvals:
+    $ref: './openapi-approval-overlay.yaml#/paths/~1api~1live-view~1{agent_id}~1approvals'
+  /api/live-view/{agent_id}/approvals/{request_id}/approve:
+    $ref: './openapi-approval-overlay.yaml#/paths/~1api~1live-view~1{agent_id}~1approvals~1{request_id}~1approve'
+  /api/live-view/{agent_id}/approvals/{request_id}/reject:
+    $ref: './openapi-approval-overlay.yaml#/paths/~1api~1live-view~1{agent_id}~1approvals~1{request_id}~1reject'
   /api/replay/{agent_id}/tasks:
     $ref: './openapi-replay.yaml#/paths/~1api~1replay~1{agent_id}~1tasks'
   /api/replay/{agent_id}/{task_id}:
@@ -1489,6 +1497,22 @@ components:
       $ref: './openapi-live-view.yaml#/components/schemas/TakeoverReport'
     TakeoverReleaseReport:
       $ref: './openapi-live-view.yaml#/components/schemas/TakeoverReleaseReport'
+    ApprovalCardLine:
+      $ref: './openapi-approval-overlay.yaml#/components/schemas/ApprovalCardLine'
+    TargetElement:
+      $ref: './openapi-approval-overlay.yaml#/components/schemas/TargetElement'
+    ApprovalOverlayCard:
+      $ref: './openapi-approval-overlay.yaml#/components/schemas/ApprovalOverlayCard'
+    OverlayHighlight:
+      $ref: './openapi-approval-overlay.yaml#/components/schemas/OverlayHighlight'
+    ApprovalOverlay:
+      $ref: './openapi-approval-overlay.yaml#/components/schemas/ApprovalOverlay'
+    ApprovalOverlayList:
+      $ref: './openapi-approval-overlay.yaml#/components/schemas/ApprovalOverlayList'
+    ProposeOverlayRequest:
+      $ref: './openapi-approval-overlay.yaml#/components/schemas/ProposeOverlayRequest'
+    OverlayDecisionRequest:
+      $ref: './openapi-approval-overlay.yaml#/components/schemas/OverlayDecisionRequest'
     ReplayTaskSummary:
       $ref: './openapi-replay.yaml#/components/schemas/ReplayTaskSummary'
     ReplayStep:

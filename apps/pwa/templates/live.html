@@ -3,7 +3,7 @@
 <h1>Live</h1>
 <p class="pesan-sub">Aktivitas bot yang sedang berjalan, dari log kejadian asli — bukan rekaman layar. Yang ditampilkan adalah status, tugas terbuka, tool terakhir, dan rangkaian event yang bisa diputar ulang; tangkapan layar selalu kosong.</p>
 {% for a in agents %}
-<div class="kartu"><strong>{{ a.name or a.agent_id }}</strong><br>Tugas: {{ a.purpose or "-" }}<br><a href="/api/live-view/{{ a.agent_id }}">Lihat frame live (JSON)</a></div>
+<div class="kartu"><strong>{{ a.name or a.agent_id }}</strong><br>Tugas: {{ a.purpose or "-" }}<br><a href="/api/live-view/{{ a.agent_id }}">Lihat frame live (JSON)</a> · <a href="/api/live-view/{{ a.agent_id }}/approvals">Persetujuan yang menunggu (JSON)</a></div>
 {% else %}
 <p class="pesan-sub">Belum ada agen untuk diawasi.</p>
 {% endfor %}

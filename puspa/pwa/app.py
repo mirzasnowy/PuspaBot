@@ -993,6 +993,7 @@ def create_app(
     # fetch all their data through these APIs, so _context_screen
     # needs no new bootstrap data for them.
     from puspa.pwa import (
+        approval_overlay_api,
         controls_api,
         drafts_api,
         graph_api,
@@ -1022,6 +1023,13 @@ def create_app(
 
     app.state.takeover_store = TakeoverStore(dsn=app.state.dsn)
     live_view_api.register_routes(app, need_user)
+    # P-11: visual approval overlay over the G4 gate. The store
+    # is one per process, like the gate's requests; the ledger is
+    # the durable record of every proposal and decision.
+    from puspa.pwa.approval_overlay import OverlayStore
+
+    app.state.overlay_store = OverlayStore(dsn=app.state.dsn)
+    approval_overlay_api.register_routes(app, need_user)
     # P-10: replay timeline + GIF export, same login resolver.
     replay_api.register_routes(app, need_user)
     mockup_api.register_routes(app, need_user)
