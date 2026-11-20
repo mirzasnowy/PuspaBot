@@ -330,7 +330,19 @@ def tick(
         return []
     heartbeat(dsn=dsn, now=now)
     result = []
-    for trigger in list_due_triggers(dsn=dsn, now=now):
+    due_triggers = list_due_triggers(dsn=dsn, now=now)
+    if due_triggers:
+        # E-18: queue age is the oldest due trigger's lateness.
+        with contextlib.suppress(Exception):
+            from puspa.observability import metrics as observability_metrics
+
+            from .due import lateness
+
+            oldest_s = max(
+                lateness(trigger.next_trigger_at, now).total_seconds() for trigger in due_triggers
+            )
+            observability_metrics.get_metrics().record_queue_age(oldest_s)
+    for trigger in due_triggers:
         run = run_trigger(
             trigger, sink=sink, dsn=dsn, now=now, budget=budget, kill_switch=kill_switch
         )

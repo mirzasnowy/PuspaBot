@@ -41,6 +41,7 @@ yang dipanggil dari sini.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 
 # (provider, model, keluarga, rp_per_1k_input, rp_per_1k_output, vision, lolos_acuan)
@@ -228,8 +229,20 @@ def get_valid_oauth_token(provider: str, http_client=None) -> str:
     when the stored token expires inside the leeway, raises
     `TokenRefreshError` when no usable token exists. The caller
     sends the returned value as the Bearer token.
+
+    E-18: a failed refresh is recorded in the observability
+    metrics (per provider) before the error propagates.
     """
-    return oauth_refresher().get_valid_token(provider, http_client)
+    from puspa.observability import metrics as observability_metrics
+
+    from .oauth import TokenRefreshError
+
+    try:
+        return oauth_refresher().get_valid_token(provider, http_client)
+    except TokenRefreshError:
+        with contextlib.suppress(Exception):
+            observability_metrics.get_metrics().record_credential_refresh_failure(provider)
+        raise
 
 
 def translate_chat_request(payload: dict, *, source: str, target: str):

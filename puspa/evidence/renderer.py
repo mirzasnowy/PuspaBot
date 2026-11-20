@@ -13,6 +13,7 @@ tidak bisa memastikan.
 
 from __future__ import annotations
 
+import contextlib
 import re
 
 from puspa.evidence.evidence import EvidenceRecord
@@ -79,7 +80,9 @@ def find_orphan_numbers(draft_text: str) -> list[str]:
     return [m.group(0) for m in ORPHAN_NUMBER_RE.finditer(without_markers(draft_text))]
 
 
-def present(draft_text: str, evidence_by_id: dict[str, EvidenceRecord], fix=None) -> dict:
+def present(
+    draft_text: str, evidence_by_id: dict[str, EvidenceRecord], fix=None, *, task_id=None
+) -> dict:
     """Sajikan pesan lewat renderer dengan aturan angka yatim.
 
     - Render penanda dari bukti.
@@ -88,9 +91,13 @@ def present(draft_text: str, evidence_by_id: dict[str, EvidenceRecord], fix=None
     - Kalau setelah perbaikan masih yatim: buang angkanya, ganti
       pernyataan tidak bisa memastikan.
     Kembalikan {"teks": ..., "ditahan": bool, "dibuang": [...]}.
+
+    E-18: numbers held for repair (or dropped) are recorded in
+    the observability metrics as held orphan numbers.
     """
     text, _missing = render(draft_text, evidence_by_id)
     orphans = find_orphan_numbers(draft_text)
+    held_count = len(orphans)
     held = False
     if orphans:
         held = True
@@ -103,4 +110,11 @@ def present(draft_text: str, evidence_by_id: dict[str, EvidenceRecord], fix=None
         for number in orphans:
             text = text.replace(number, UNCERTAIN_STATEMENT, 1)
             dropped.append(number)
+    if held:
+        with contextlib.suppress(Exception):
+            from puspa.observability import metrics as observability_metrics
+
+            observability_metrics.get_metrics().record_held_orphan_numbers(
+                held_count, task_id=task_id
+            )
     return {"text": text, "held": held, "dropped": dropped}

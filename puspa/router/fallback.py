@@ -73,7 +73,11 @@ proven here without inventing a call path.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
+
+from puspa.observability import metrics as observability_metrics
+from puspa.observability import tracing as observability_tracing
 
 from .quota import QuotaStore
 from .router import CATALOG, ChoiceModel, compute_cost
@@ -473,6 +477,25 @@ class FallbackResult:
         return [attempt.tier for attempt in self.attempts]
 
 
+def _observe_fallback(chain_label: str, hops: int) -> None:
+    """Record one fallback run in the observability metrics (never raises)."""
+    with contextlib.suppress(Exception):
+        observability_metrics.get_metrics().record_fallback(chain_label, hops=hops)
+
+
+def _observe_quota(provider_key: str, quota_store: QuotaStore | None) -> None:
+    """Report a provider's remaining quota fraction (never raises)."""
+    if quota_store is None:
+        return
+    with contextlib.suppress(Exception):
+        snapshot = quota_store.snapshot(provider_key)
+        if snapshot and snapshot.get("limit_tokens"):
+            remaining = snapshot.get("tokens_remaining") or 0
+            observability_metrics.get_metrics().report_quota(
+                provider_key, remaining / snapshot["limit_tokens"]
+            )
+
+
 def _failure_from_exception(exc: BaseException) -> ProviderFailure:
     """Normalize any ``call_fn`` failure into a ``ProviderFailure``.
 
@@ -521,6 +544,8 @@ def call_with_fallback(
 
     if not chain:
         raise ValueError("fallback chain is empty")
+    # E-18: the chain label identifies the fallback rate series.
+    chain_label = "->".join(entry.tier for entry in chain)
     if budget is not None and budget.remaining_rupiah <= 0:
         raise BudgetExhausted(
             f"budget exhausted before any tier was tried (ceiling Rp{budget.rupiah_max})"
@@ -536,6 +561,9 @@ def call_with_fallback(
         next_entry = chain[index + 1] if index + 1 < len(chain) else None
 
         if quota_store is not None and quota_store.is_exhausted(entry.provider_key):
+            # E-18: a skipped tier reports the remaining quota fraction,
+            # so the near-exhausted alarm can fire before the last tier dies.
+            _observe_quota(entry.provider_key, quota_store)
             attempts.append(
                 FallbackAttempt(
                     tier=entry.tier,
@@ -556,7 +584,18 @@ def call_with_fallback(
             continue
 
         try:
-            raw = call_fn(entry)
+            # E-18: one ``router`` span per tier attempt.
+            with observability_tracing.span(
+                f"router:{entry.tier}",
+                kind="router",
+                attributes={
+                    "chain": chain_label,
+                    "tier": entry.tier,
+                    "provider": entry.provider,
+                    "model": entry.model,
+                },
+            ):
+                raw = call_fn(entry)
         except BaseException as exc:  # failure of this tier, not of the run
             failure = _failure_from_exception(exc)
             attempts.append(
@@ -577,6 +616,7 @@ def call_with_fallback(
                 )
             if not failure.retryable:
                 failure.attempts = list(attempts)
+                _observe_fallback(chain_label, len(hops))
                 raise failure from exc
             if next_entry is not None:
                 hops.append(
@@ -618,6 +658,7 @@ def call_with_fallback(
             # and the run stops here: no cheaper tier is tried to
             # dodge the ceiling.
             budget.record_cost(cost_rp, input_tokens + output_tokens)
+        _observe_fallback(chain_label, len(hops))
         return FallbackResult(
             value=value,
             tier_used=entry,
@@ -628,4 +669,5 @@ def call_with_fallback(
             total_output_tokens=total_out,
         )
 
+    _observe_fallback(chain_label, len(hops))
     raise AllTiersFailed(attempts, hops)

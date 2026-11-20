@@ -35,6 +35,7 @@ helpers below are the thin database layer over migration 0022.
 
 from __future__ import annotations
 
+import contextlib
 import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -201,6 +202,11 @@ def evaluate_startup(
     dimension = dimension_of(embedder)
     hash_only = isinstance(embedder, HashEmbedding)
     fallback_count = 1 if (fell_back or hash_only) else 0
+    # E-18: every startup resolution feeds the embedding fallback ratio.
+    with contextlib.suppress(Exception):
+        from puspa.observability import metrics as observability_metrics
+
+        observability_metrics.get_metrics().record_embedding_fallback(fallback_count > 0)
     if environment == "production" and hash_only:
         if production_policy == "strict":
             raise EmbeddingStartupRefused(
