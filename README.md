@@ -277,6 +277,8 @@ Vietnam, Thailand, India, Brazil, Mexico), and a module store.
 - `docs/status-phase-0.md` … `docs/status-phase-4.md`: per-phase status and evidence
 - `docs/reuse.md`: what was reused, as a dependency or as a pattern, and its license
 - `docs/nanobot-inventory.md`: inventory of the chassis package
+- `CONTRIBUTING.md`: how to contribute, including signing the CLA
+- `CLA.md`: the Contributor License Agreement (lightweight, no copyright assignment)
 
 ## License
 
