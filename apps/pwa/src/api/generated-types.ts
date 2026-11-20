@@ -1125,6 +1125,374 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat/widgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post an interactive widget into the chat
+         * @description P-14: validate one widget payload (calculator / form /
+         *     comparison / diagram / simulation) and append it as a
+         *     `puspa` message carrying the widget, so the Chat screen
+         *     shows it in the thread. A bad widget is a 400: unknown
+         *     kind, a formula over an unknown input, a cycle in a
+         *     diagram, simulation prices that do not match the
+         *     simulator.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ChatWidgetRequest"];
+                };
+            };
+            responses: {
+                /** @description The appended chat message, with its widget */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatMessage"];
+                    };
+                };
+                /** @description Bad widget payload */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/widgets/compute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compute a calculator widget's result
+         * @description P-14: evaluate a calculator widget's formula for the
+         *     given input values and return the result. The client
+         *     evaluates the same formula locally for the live result
+         *     as the user types; this endpoint is the authoritative
+         *     check the bot uses when it generates the widget. A
+         *     missing or out-of-range value is a 400.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ComputeWidgetRequest"];
+                };
+            };
+            responses: {
+                /** @description The computed result, raw and formatted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ComputeWidgetResult"];
+                    };
+                };
+                /** @description Bad widget, or a missing / out-of-range value */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/widgets/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit a form widget's answers
+         * @description P-14: validate a form widget's answers server-side
+         *     (required fields, number answers, select answers within
+         *     the field's options) and append a chat message listing
+         *     them, so the thread keeps a readable record of what the
+         *     user sent. A missing required field is a 400.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SubmitWidgetRequest"];
+                };
+            };
+            responses: {
+                /** @description The appended chat message, with its form widget */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatMessage"];
+                    };
+                };
+                /** @description Bad widget, or invalid answers */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/widgets/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Step a simulation widget forward
+         * @description P-14: apply one action (`advance_day`, `pay_bill`,
+         *     `buy_from_store`) to a simulation widget. The server
+         *     re-derives the world from the widget's day and bill
+         *     state, applies the action through the deterministic
+         *     simulator, and appends a message carrying the rebuilt
+         *     widget. Paying an already paid bill, advancing past day
+         *     30, or an unknown store is a 400.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SimulateWidgetRequest"];
+                };
+            };
+            responses: {
+                /** @description The appended chat message, with the stepped widget */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatMessage"];
+                    };
+                };
+                /** @description Bad widget, or an action the simulator refuses */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/widgets/price-compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show the simulated phone prices as a comparison widget
+         * @description P-14: build a comparison widget from the world
+         *     simulator's day-15 prices (one row per store) and
+         *     append it as a `puspa` chat message. The prices are
+         *     simulated, not live market data; the widget title says
+         *     so.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The appended chat message, with its comparison widget */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatMessage"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/widgets/simulation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show a fresh simulation widget in chat
+         * @description P-14: build a day-15 simulation widget from the world
+         *     simulator (prices per store, the PLN bill, price
+         *     history from the episode start) and append it as a
+         *     `puspa` chat message.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The appended chat message, with its simulation widget */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatMessage"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/voice/upload": {
         parameters: {
             query?: never;
@@ -8415,6 +8783,8 @@ export interface components {
             created_at: number;
             /** @description Optional rich card (P-12) shown inside the chat message */
             card?: components["schemas"]["ChatCard"];
+            /** @description Optional interactive widget (P-14) shown inside the chat message */
+            widget?: components["schemas"]["ChatWidget"];
         };
         Agent: {
             agent_id: string;
@@ -8757,6 +9127,17 @@ export interface components {
          *     (OSM tiles with markers and a route).
          */
         ChatCard: components["schemas"]["DraftCard"] | components["schemas"]["OptionsCard"] | components["schemas"]["ChartCard"] | components["schemas"]["MapCard"];
+        /**
+         * @description One interactive widget, as carried on a chat message.
+         *     The `kind` field discriminates: `calculator` (inputs
+         *     plus a formula, result updates live), `form` (fields
+         *     the user fills in and submits), `comparison` (rows
+         *     against named columns, numeric columns sortable),
+         *     `diagram` (nodes and edges, an acyclic flow the user
+         *     taps through), `simulation` (the deterministic world
+         *     simulator as a widget: prices, bill, day stepper).
+         */
+        ChatWidget: components["schemas"]["CalculatorWidget"] | components["schemas"]["FormWidget"] | components["schemas"]["ComparisonWidget"] | components["schemas"]["DiagramWidget"] | components["schemas"]["SimulationWidget"];
         /** @description One action to propose for approval. */
         ProposeOverlayRequest: {
             /** @description The tool the bot is about to run. */
@@ -9158,10 +9539,212 @@ export interface components {
             markers: components["schemas"]["MapPoint"][];
             route: components["schemas"]["MapPoint"][];
         };
+        /**
+         * @description One calculator input: a typed number field or a slider.
+         *     `value` must sit within `min` and `max`.
+         */
+        CalculatorInput: {
+            id: string;
+            label: string;
+            /** @enum {string} */
+            input_kind: "number" | "slider";
+            value: number;
+            min: number;
+            max: number;
+            step: number;
+        };
+        /**
+         * @description A calculator: inputs plus a formula over the input ids
+         *     (`+ - * / % **`, parentheses, `min`/`max`/`abs`/`round`).
+         *     The formula is evaluated by an AST whitelist, never
+         *     eval, and may only name the input ids.
+         */
+        CalculatorWidget: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "calculator";
+            title: string;
+            inputs: components["schemas"]["CalculatorInput"][];
+            formula: string;
+            result_label: string;
+            /** @enum {string} */
+            value_format: "number" | "rupiah" | "percent";
+        };
+        /**
+         * @description One form field. A `select` field needs 2..20 options;
+         *     other kinds ignore `options`.
+         */
+        FormField: {
+            id: string;
+            label: string;
+            /** @enum {string} */
+            field_kind: "text" | "number" | "select" | "checkbox";
+            required: boolean;
+            options?: string[];
+            placeholder?: string;
+        };
+        /**
+         * @description A form: labelled fields the user fills in and submits.
+         *     Submitting validates the answers server-side and posts
+         *     them as a chat message.
+         */
+        FormWidget: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "form";
+            title: string;
+            fields: components["schemas"]["FormField"][];
+            submit_label: string;
+        };
+        /**
+         * @description One comparison column. Numeric columns hold numbers,
+         *     are sortable, and get a cheapest-row highlight.
+         */
+        ComparisonColumn: {
+            id: string;
+            label: string;
+            numeric: boolean;
+        };
+        /** @description One compared row, with one value per column. */
+        ComparisonRow: {
+            id: string;
+            label: string;
+            values: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * @description A comparison: rows compared across named columns (2..6
+         *     columns, 1..20 rows). Every row carries a value for
+         *     every column.
+         */
+        ComparisonWidget: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "comparison";
+            title: string;
+            columns: components["schemas"]["ComparisonColumn"][];
+            rows: components["schemas"]["ComparisonRow"][];
+        };
+        /** @description One diagram node; `detail` shows when tapped. */
+        DiagramNode: {
+            id: string;
+            label: string;
+            detail?: string;
+        };
+        /** @description One directed edge between two diagram nodes. */
+        DiagramEdge: {
+            from: string;
+            to: string;
+        };
+        /**
+         * @description A diagram: nodes and edges forming an acyclic flow the
+         *     user taps through. Cycles are refused: a flow must have
+         *     a direction.
+         */
+        DiagramWidget: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "diagram";
+            title: string;
+            nodes: components["schemas"]["DiagramNode"][];
+            edges: components["schemas"]["DiagramEdge"][];
+        };
+        /** @description The simulated PLN bill observation. */
+        SimulationBill: {
+            /** @enum {string} */
+            status: "not_due" | "due_soon" | "due" | "paid";
+            amount_due: number;
+            amount: number;
+            due_day: number;
+            bill_id: string;
+            day: number;
+        };
+        /** @description Simulated prices per store on one day. */
+        SimulationHistoryDay: {
+            day: number;
+            prices: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * @description The deterministic world simulator as a widget: the
+         *     watched phone's price per store, the PLN bill, and the
+         *     price history from the episode start to the current
+         *     day. `day` and `bill_paid` are the widget's own state;
+         *     prices, bill, and history are re-derived from the
+         *     simulator on every step, so a forged widget is refused.
+         *     Simulated prices, not live market data.
+         */
+        SimulationWidget: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "simulation";
+            title: string;
+            product_id: string;
+            stores: string[];
+            start_day: number;
+            day: number;
+            bill_id: string;
+            bill_paid: boolean;
+            prices: {
+                [key: string]: number;
+            };
+            bill: components["schemas"]["SimulationBill"];
+            history: components["schemas"]["SimulationHistoryDay"][];
+        };
         /** @description Post one card into the chat (message text + card payload). */
         ChatCardRequest: {
             text: string;
             card: components["schemas"]["ChatCard"];
+        };
+        /** @description Post one widget into the chat (message text + widget payload). */
+        ChatWidgetRequest: {
+            text: string;
+            widget: components["schemas"]["ChatWidget"];
+        };
+        /** @description Compute a calculator widget's result for the given input values. */
+        ComputeWidgetRequest: {
+            widget: components["schemas"]["CalculatorWidget"];
+            values: {
+                [key: string]: number;
+            };
+        };
+        /** @description The computed result, raw and formatted for display. */
+        ComputeWidgetResult: {
+            result: number;
+            formatted: string;
+        };
+        /** @description Submit a form widget's answers, keyed by field id. */
+        SubmitWidgetRequest: {
+            widget: components["schemas"]["FormWidget"];
+            answers: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * @description Step a simulation widget: `advance_day` moves one day
+         *     forward, `pay_bill` pays the PLN bill, `buy_from_store`
+         *     buys the watched phone at the current simulated price
+         *     (`store` required for a buy).
+         */
+        SimulateWidgetRequest: {
+            widget: components["schemas"]["SimulationWidget"];
+            action: {
+                /** @enum {string} */
+                type: "advance_day" | "pay_bill" | "buy_from_store";
+                store?: string;
+            };
         };
         /** @description P-05: one membership — which user, which role, since when. */
         RoomMember: {
