@@ -15,6 +15,7 @@ import pytest
 
 from puspa.marketplace import MarketplaceRegistry
 from puspa.marketplace.discovery import (
+    SKILL_INSTALL_ENV_VAR,
     DiscoveredSkill,
     DiscoveryCache,
     InstallApproval,
@@ -392,6 +393,20 @@ def test_search_with_cache_serves_cache_when_live_fails(tmp_path):
 
 
 # -- install gates ------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _skill_install_enabled(monkeypatch):
+    """Installs from skills.sh are off by default (plan 6.7); the
+    install-gate tests below opt in through the feature flag."""
+    monkeypatch.setenv(SKILL_INSTALL_ENV_VAR, "1")
+
+
+def test_install_refused_when_flag_off(tmp_path, monkeypatch):
+    monkeypatch.delenv(SKILL_INSTALL_ENV_VAR, raising=False)
+    registry = MarketplaceRegistry()
+    with pytest.raises(DiscoveryError, match="feature flag"):
+        install_discovered(registry, _skill(), skills_root=tmp_path / "skills", **_install_kwargs())
 
 
 def test_install_happy_path_records_sha256_source_license(tmp_path):

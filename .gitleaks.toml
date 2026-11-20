@@ -1,0 +1,43 @@
+# Gitleaks allowlist for the Puspa repo (E-12, plan 6.8).
+#
+# Full-history scan, 20 Nov 2026 (gitleaks 8.28.0, 168 commits,
+# ~11.5 MB): 9 findings, ALL false positives, 0 real secrets. Each
+# entry below names one verified false positive so the CI
+# supply-chain lane stays green without hiding a future real leak:
+# a new finding in any other file, line, or commit still fails.
+#
+# The allowlist is by fingerprint (commit + file + rule + line),
+# the narrowest possible scope. Gitleaks 8.28 also requires the
+# global allowlist to carry at least one of commits / paths /
+# regexes / stopwords, so one inert stopword is listed below that
+# matches no real value anywhere; the fingerprints do the actual
+# allowlisting, and the stopword entry exists only to satisfy
+# that validation.
+#
+# What each finding is:
+# - tests/test_vps_validation_e02.py:276 — the sequential-bytes
+#   base64 test vector (bytes 0..31), used as a throwaway backup key
+#   in a test, not a real key.
+# - tests/test_audit_trail.py:198 — a literal placeholder value in
+#   a redaction test.
+# - puspa/hosting/identity.py:71, puspa/hosting/seal.py:92 — type
+#   annotations (``private_key: Ed25519PrivateKey`` /
+#   ``private_key: X25519PrivateKey``), not key material.
+# - tests/test_credentials_redact.py (5 lines) — fake placeholder
+#   tokens in redaction tests (``sk-...`` fakes and a
+#   sequential-pattern fake token); the test file's whole point is
+#   that these values get redacted.
+
+[allowlist]
+stopwords = ["gitleaks-allowlist-fingerprint-only-no-real-value"]
+fingerprints = [
+  "ae0001c939531bd266ff793886a151852fbfe12b:tests/test_vps_validation_e02.py:generic-api-key:276",
+  "b7d35a634722ab47ac5bd4aaf12c56b0b822627c:tests/test_audit_trail.py:generic-api-key:198",
+  "25cc465a3c1d17ccfccba33f80b03c6e5386aef0:puspa/hosting/identity.py:generic-api-key:71",
+  "25cc465a3c1d17ccfccba33f80b03c6e5386aef0:puspa/hosting/seal.py:generic-api-key:92",
+  "6d6f4fc600bc590efa85231550a50295156327a2:tests/test_credentials_redact.py:generic-api-key:53",
+  "6d6f4fc600bc590efa85231550a50295156327a2:tests/test_credentials_redact.py:generic-api-key:64",
+  "6d6f4fc600bc590efa85231550a50295156327a2:tests/test_credentials_redact.py:generic-api-key:116",
+  "6d6f4fc600bc590efa85231550a50295156327a2:tests/test_credentials_redact.py:generic-api-key:130",
+  "6d6f4fc600bc590efa85231550a50295156327a2:tests/test_credentials_redact.py:generic-api-key:154",
+]

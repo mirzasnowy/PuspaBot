@@ -58,10 +58,12 @@ from puspa.auth.google_oauth import (
 from puspa.channels.telegram import TelegramAdapter
 from puspa.marketplace import MarketplaceRegistry, install_discovered
 from puspa.marketplace.discovery import (
+    SKILL_INSTALL_ENV_VAR,
     InstallApproval,
     SkillsShClient,
     rank_results,
     search_skills,
+    skill_install_enabled,
 )
 from puspa.pwa.model_settings import DEFAULT_LOCAL_BASE_URL, LOCAL_DUMMY_KEY
 from puspa.router.complete import complete_detailed, make_call_fn, resolve_role
@@ -577,6 +579,22 @@ def probe_skill_discovery(
         if license_text is not None
         else _fetch_license_text(skill.source, http_client=http_client)
     )
+    if not skill_install_enabled():
+        # Plan 6.7: search ran (discovery is unaffected by the
+        # flag), but the install step is disabled for beta, so the
+        # probe stops here with a skip instead of failing on a
+        # feature that is off on purpose.
+        return ProbeResult(
+            name="skill_discovery",
+            status="skip",
+            latency_ms=elapsed(),
+            provider="skills.sh",
+            model=skill.slug,
+            detail=(
+                f"found {len(outcome.skills)} skill(s) for {query!r}; "
+                f"install skipped ({SKILL_INSTALL_ENV_VAR} is not set)"
+            ),
+        )
     staging: tempfile.TemporaryDirectory | None = None
     try:
         root = Path(skills_root) if skills_root is not None else None

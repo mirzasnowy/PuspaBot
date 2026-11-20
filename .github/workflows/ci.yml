@@ -41,6 +41,13 @@
 #   checks   — dependency-light checks that need no database: the
 #              file-size ratchet and the docs-drift test, plus a parse
 #              check of this workflow file itself.
+#   supply-chain — dependency + secret hygiene (E-12, plan 6.7/6.8):
+#              the hashed requirements file is in sync with
+#              requirements.txt (uv pip compile --generate-hashes),
+#              pip-audit over the hashed file, a CycloneDX SBOM, and
+#              a gitleaks scan over the full git history (needs
+#              fetch-depth 0; false positives are allowlisted by
+#              fingerprint in .gitleaks.toml).
 #   lint     — ruff check (lint rules in pyproject.toml [tool.ruff.lint]).
 #   format   — ruff format --check (width and style in pyproject.toml
 #              [tool.ruff]).
@@ -351,6 +358,75 @@ jobs:
       - name: Check this workflow file parses
         run: python -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml')); print('ci.yml parses')"
 
+  supply-chain:
+    name: Supply chain (hashes, audit, SBOM, gitleaks)
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Gitleaks scans the whole history, not just the checkout.
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install audit tools
+        # uv (hashed-file sync check), pip-audit, cyclonedx-bom.
+        # Pinned like the dev tools so the lane is reproducible.
+        run: python -m pip install "uv==0.13.9" "pip-audit==2.10.1" "cyclonedx-bom==9.0.0"
+
+      - name: Check the hashed requirements file is in sync
+        # Regenerate in place, then fail on any diff: any drift
+        # between requirements.txt and requirements-hashed.txt
+        # fails the lane. Regenerate with the same command after
+        # any dependency change. (uv 0.13.9 has no --check flag,
+        # and regenerating to a different path changes the header
+        # comment, so a temp-file diff would always mismatch.)
+        run: |
+          uv pip compile requirements.txt --python-version 3.12 --generate-hashes -o requirements-hashed.txt
+          git diff --exit-code -- requirements-hashed.txt
+
+      - name: Audit dependencies (pip-audit)
+        # Audits the exact pinned tree in requirements-hashed.txt
+        # (uv's fresh resolution: starlette 1.10.0, which resolves
+        # the 0.46.2 conflict the venv still carries). The nanobot
+        # line is filtered out first: pip cannot hash-verify a
+        # version-control checkout, so `pip-audit -r` refuses any
+        # file that hashes one — nanobot-ai's integrity comes from
+        # its git commit pin instead (see requirements.txt). A
+        # known vulnerability fails the lane: fix it (bump the pin
+        # and regenerate the hashed file) or record a dated
+        # exception.
+        run: |
+          grep -v "nanobot-ai @ git" requirements-hashed.txt > /tmp/requirements-audit.txt
+          pip-audit -r /tmp/requirements-audit.txt
+
+      - name: Generate the SBOM (CycloneDX 1.6)
+        run: |
+          cyclonedx-py requirements requirements-hashed.txt -o sbom.json --of JSON --sv 1.6
+          python -c "import json; d=json.load(open('sbom.json')); print(f\"SBOM: {len(d['components'])} components\")"
+
+      - name: Upload the SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
+
+      - name: Scan the full git history (gitleaks)
+        # The 20 Nov 2026 baseline scan (gitleaks 8.28.0, 168
+        # commits) found 9 findings, all verified false positives;
+        # they are allowlisted by fingerprint in .gitleaks.toml, so
+        # any new finding fails this step.
+        run: |
+          curl -sL -o /tmp/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz
+          tar xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks git . --log-opts="--all"
+
   lint:
     name: Lint (ruff check)
     needs: changes
@@ -421,13 +497,13 @@ jobs:
   # failure or a cancellation fails the gate.
   all-checks-pass:
     name: All checks pass
-    needs: [changes, test, sandbox, checks, lint, format, typecheck]
+    needs: [changes, test, sandbox, checks, supply-chain, lint, format, typecheck]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Verify every lane passed
         run: |
-          for result in "${{ needs.changes.result }}" "${{ needs.test.result }}" "${{ needs.sandbox.result }}" "${{ needs.checks.result }}" "${{ needs.lint.result }}" "${{ needs.format.result }}" "${{ needs.typecheck.result }}"; do
+          for result in "${{ needs.changes.result }}" "${{ needs.test.result }}" "${{ needs.sandbox.result }}" "${{ needs.checks.result }}" "${{ needs.supply-chain.result }}" "${{ needs.lint.result }}" "${{ needs.format.result }}" "${{ needs.typecheck.result }}"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               echo "a lane failed or was cancelled: $result"
               exit 1

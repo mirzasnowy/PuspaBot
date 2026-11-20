@@ -65,6 +65,7 @@ answer would still look valid.
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -93,6 +94,7 @@ __all__ = [
     "MIN_EXACT_RESULTS",
     "RECOMMENDED_MIN_INSTALLS",
     "SEARCH_API_BASE",
+    "SKILL_INSTALL_ENV_VAR",
     "SUSPECT_MAX_INSTALLS",
     "SUSPECT_MAX_STARS",
     "TRUSTED_SOURCE_OWNERS",
@@ -111,6 +113,7 @@ __all__ = [
     "rank_results",
     "search_skills",
     "search_with_cache",
+    "skill_install_enabled",
 ]
 
 #: Default registry base URL (override with ``SKILLS_API_URL``-style
@@ -140,6 +143,28 @@ INSTALL_LICENSE_ALLOWLIST = frozenset({"MIT", "Apache-2.0", "BSD-2-Clause", "BSD
 
 #: Default cache lifetime for discovery results (24 hours).
 DEFAULT_CACHE_TTL_SECONDS = 24 * 3600
+
+#: Env var that enables installing skills discovered via skills.sh
+#: (plan 6.7). For beta, installs from skills.sh are OFF by
+#: default: only built-in skills and the self-signed allowlist may
+#: install, and the registry path is the only install route. An
+#: operator turns the flag on explicitly
+#: (``PUSPA_SKILL_INSTALL_ENABLED=1``) when they accept third-party
+#: skills; searching the registry is unaffected — the flag gates
+#: installation only, never discovery.
+SKILL_INSTALL_ENV_VAR = "PUSPA_SKILL_INSTALL_ENABLED"
+
+
+def skill_install_enabled() -> bool:
+    """True when skills.sh installs are enabled by the feature flag.
+
+    Reads ``PUSPA_SKILL_INSTALL_ENABLED`` on every call (no cached
+    value), so a test or an operator can flip it without a restart.
+    Anything but ``1`` / ``true`` / ``yes`` (case-insensitive)
+    counts as off, including an unset variable.
+    """
+    return os.environ.get(SKILL_INSTALL_ENV_VAR, "").strip().lower() in {"1", "true", "yes"}
+
 
 #: Raw GitHub paths tried for a skill's SKILL.md, in order.
 #: ``{owner}`` / ``{repo}`` come from the result's ``source``
@@ -772,6 +797,9 @@ def install_discovered(
     Order of gates (fail-closed, each refusal leaves nothing
     installed):
 
+    0. The skills.sh install feature flag must be on
+       (``PUSPA_SKILL_INSTALL_ENABLED=1``); off by default for
+       beta (plan 6.7).
     1. The slug must be a valid marketplace skill id.
     2. SKILL.md is fetched (or taken from ``skill_text``) and
        its sha256 computed.
@@ -800,7 +828,19 @@ def install_discovered(
     str`` callables (tests pass fakes; the defaults hit
     raw.githubusercontent.com, with ``http_client`` injected
     for tests that exercise the default fetchers).
+
+    Plan 6.7: gate 0 comes before all of the above — installing a
+    skill discovered via skills.sh is disabled by default
+    (``PUSPA_SKILL_INSTALL_ENABLED`` unset). For beta only
+    built-in skills and the self-signed allowlist may install.
     """
+    if not skill_install_enabled():
+        raise DiscoveryError(
+            "installing skills discovered via skills.sh is disabled "
+            f"by the feature flag ({SKILL_INSTALL_ENV_VAR} is not set); "
+            "for beta only built-in skills and the self-signed allowlist "
+            "may install"
+        )
     slug = skill.slug
     if not SKILL_ID_PATTERN.match(slug):
         raise MarketplaceError(f"discovered skill id {slug!r} is not a valid skill id")

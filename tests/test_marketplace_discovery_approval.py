@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 from puspa.marketplace import MarketplaceRegistry
 from puspa.marketplace.discovery import (
+    SKILL_INSTALL_ENV_VAR,
     DiscoveredSkill,
     approval_from_store,
     consume_install_approval,
@@ -42,6 +45,13 @@ a copy of this software and associated documentation files.
 SLUG = "react-best-practices"
 DIGEST = sha256_bytes(SKILL_TEXT.encode("utf-8"))
 CONTENT = {"skill_slug": SLUG, "sha256": DIGEST}
+
+
+@pytest.fixture(autouse=True)
+def _skill_install_enabled(monkeypatch):
+    """Installs from skills.sh are off by default (plan 6.7); the
+    full-flow test below opts in through the feature flag."""
+    monkeypatch.setenv(SKILL_INSTALL_ENV_VAR, "1")
 
 
 def _skill() -> DiscoveredSkill:

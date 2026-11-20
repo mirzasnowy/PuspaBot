@@ -322,7 +322,8 @@ def test_skill_discovery_skips_when_disabled(tmp_path):
     assert "disabled" in result.detail
 
 
-def test_skill_discovery_searches_and_installs_to_a_temp_dir(tmp_path):
+def test_skill_discovery_searches_and_installs_to_a_temp_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("PUSPA_SKILL_INSTALL_ENABLED", "1")
     result = probe_skill_discovery(
         enabled=True,
         http_client=_client(_skills_handler),
@@ -335,6 +336,20 @@ def test_skill_discovery_searches_and_installs_to_a_temp_dir(tmp_path):
     assert result.model == "test-skill"
     assert result.response_shape["quality"] == "recommended"
     assert (tmp_path / "skills" / "test-skill" / "SKILL.md").read_text() == SKILL_TEXT
+
+
+def test_skill_discovery_skips_install_when_flag_off(tmp_path, monkeypatch):
+    monkeypatch.delenv("PUSPA_SKILL_INSTALL_ENABLED", raising=False)
+    result = probe_skill_discovery(
+        enabled=True,
+        http_client=_client(_skills_handler),
+        skills_root=tmp_path / "skills",
+        skill_text=SKILL_TEXT,
+        license_text=MIT_LICENSE,
+    )
+    assert result.status == "skip"
+    assert "install skipped" in result.detail
+    assert not (tmp_path / "skills" / "test-skill").exists()
 
 
 def test_skill_discovery_fails_when_the_registry_returns_nothing(tmp_path):

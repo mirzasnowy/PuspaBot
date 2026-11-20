@@ -71,6 +71,11 @@ installable skill from the open agent skills ecosystem:
 
 ## Install gates (in order, fail-closed)
 
+0. The skills.sh install feature flag must be on
+   (`PUSPA_SKILL_INSTALL_ENABLED=1`). Off by default for beta
+   (plan 6.7, E-12): only built-in skills and the self-signed
+   allowlist may install. Searching the registry is unaffected —
+   the flag gates installation only, never discovery.
 1. The slug must be a valid marketplace skill id.
 2. SKILL.md is fetched (or supplied) and its sha256 computed.
 3. When an expected sha256 is given, the computed hash must

@@ -29,6 +29,8 @@ from .vault import delete as vault_delete
 from .vault import get as vault_get
 from .vault import list_names as vault_list_names
 from .vault import put as vault_put
+from .vault import rekey_all as vault_rekey_all
+from .vault import rotate_entry as vault_rotate_entry
 
 __all__ = [
     "AuthError",
@@ -49,6 +51,8 @@ __all__ = [
     "vault_get",
     "vault_list_names",
     "vault_put",
+    "vault_rekey_all",
+    "vault_rotate_entry",
 ]
 
 

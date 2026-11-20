@@ -1,0 +1,31 @@
+# Dependabot version updates (E-12, plan 6.7).
+#
+# Keeps the pinned dependencies in requirements.txt /
+# requirements-dev.txt (and the GitHub Actions in .github/workflows)
+# up to date with weekly pull requests. A Dependabot PR that bumps
+# a version must also regenerate requirements-hashed.txt
+# (`uv pip compile requirements.txt --python-version 3.12
+# --generate-hashes -o requirements-hashed.txt`) before it can
+# merge — the supply-chain lane checks the hashed file is in sync.
+#
+# NOTE: enabling Dependabot itself is a repository setting (a human
+# with repo-settings access turns it on under Settings > Code
+# security); this file only declares what it updates once enabled.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
