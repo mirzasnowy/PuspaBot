@@ -9,6 +9,7 @@ import {
 } from "../state/chat";
 import { VoiceRecorder } from "../components/VoiceRecorder";
 import { ReceiptUpload } from "../components/ReceiptUpload";
+import { TaskProgressRail } from "../components/TaskProgressRail";
 import { WorkStrip } from "../components/WorkStrip";
 import { ChatCard } from "../components/ChatCard";
 
@@ -69,20 +70,23 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
         pesanmu selalu menyela tugas yang berjalan.
       </p>
       <WorkStrip office={state.liveOffice} connected={state.liveConnected} />
-      <div aria-live="polite">
-        {state.messages.length === 0 ? (
-          <p className="muted">Belum ada pesan. Sapa Puspa dulu.</p>
-        ) : (
-          state.messages.map((m, i) => (
-            <div key={`${m.created_at}-${i}`} className="card">
-              <strong>{m.sender}</strong>: {m.text}
-              {m.card ? (
-                <ChatCard card={m.card} onPickOption={(option) => void sendText(option.label)} />
-              ) : null}
-            </div>
-          ))
-        )}
-        <div ref={bottomRef} />
+      <div className="chat-layout">
+        <div className="chat-thread" aria-live="polite">
+          {state.messages.length === 0 ? (
+            <p className="muted">Belum ada pesan. Sapa Puspa dulu.</p>
+          ) : (
+            state.messages.map((m, i) => (
+              <div key={`${m.created_at}-${i}`} className="card">
+                <strong>{m.sender}</strong>: {m.text}
+                {m.card ? (
+                  <ChatCard card={m.card} onPickOption={(option) => void sendText(option.label)} />
+                ) : null}
+              </div>
+            ))
+          )}
+          <div ref={bottomRef} />
+        </div>
+        <TaskProgressRail office={state.liveOffice} connected={state.liveConnected} />
       </div>
       {state.error ? <p role="alert" className="error">{state.error}</p> : null}
       <form onSubmit={onSend} className="composer">

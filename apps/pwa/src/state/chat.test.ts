@@ -47,4 +47,11 @@ describe("chat store", () => {
     expect(workingAgents(null)).toEqual([]);
     expect(workingAgents({ agent: {} })).toEqual([]);
   });
+
+  it("reads working agents from the list shape the server sends", () => {
+    const office = {
+      agents: [{ agent_id: "puspa", status: "working" as const, cost_rp: 0 }],
+    };
+    expect(workingAgents(office)).toEqual(["puspa"]);
+  });
 });
