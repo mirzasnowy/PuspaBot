@@ -12,6 +12,7 @@ import { ReceiptUpload } from "../components/ReceiptUpload";
 import { TaskProgressRail } from "../components/TaskProgressRail";
 import { WorkStrip } from "../components/WorkStrip";
 import { ChatCard } from "../components/ChatCard";
+import { ChatWidget } from "../components/ChatWidget";
 
 export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
   const [state, setState] = useState(() => initialChatState(bootstrap.messages ?? []));
@@ -80,6 +81,14 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
                 <strong>{m.sender}</strong>: {m.text}
                 {m.card ? (
                   <ChatCard card={m.card} onPickOption={(option) => void sendText(option.label)} />
+                ) : null}
+                {m.widget ? (
+                  <ChatWidget
+                    widget={m.widget}
+                    onNewMessage={(message) =>
+                      setState((prev) => appendMessage(prev, message))
+                    }
+                  />
                 ) : null}
               </div>
             ))

@@ -995,6 +995,7 @@ def create_app(
     from puspa.pwa import (
         approval_overlay_api,
         chat_cards_api,
+        chat_widgets_api,
         controls_api,
         drafts_api,
         graph_api,
@@ -1035,6 +1036,11 @@ def create_app(
     # The cards ride on the in-memory chat store, so no new
     # table and no new screen: the Chat screen renders them.
     chat_cards_api.register_routes(app, need_user)
+    # P-14: interactive widgets in Chat (calculator / form /
+    # comparison / diagram / simulation). Same seam as the
+    # cards: declarative JSON on a chat message, in-memory
+    # chat store, no new table and no new screen.
+    chat_widgets_api.register_routes(app, need_user)
     # P-10: replay timeline + GIF export, same login resolver.
     replay_api.register_routes(app, need_user)
     mockup_api.register_routes(app, need_user)
