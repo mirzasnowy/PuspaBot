@@ -144,6 +144,38 @@ select {
 .work-strip {
   background: #ecfdf5;
 }
+/* P-13: the chat thread and the running-task rail side by side;
+   the rail drops below the thread on narrow screens. */
+.chat-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.chat-thread {
+  flex: 1;
+  min-width: 0;
+}
+.task-rail {
+  flex: 0 0 230px;
+  background: #f9fafb;
+}
+.task-rail h2 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.task-rail-row {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 8px;
+}
+@media (max-width: 640px) {
+  .chat-layout {
+    flex-direction: column;
+  }
+  .task-rail {
+    flex: none;
+    width: 100%;
+  }
+}
 .panel {
   background: #f9fafb;
 }

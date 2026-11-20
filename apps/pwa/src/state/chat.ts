@@ -5,6 +5,7 @@
  * update the live work strip, never the message list.
  */
 import type { ChatMessage, OfficeProjection, SseEvent } from "../api/client";
+import { officeAgents } from "./office";
 
 export interface ChatState {
   messages: ChatMessage[];
@@ -51,8 +52,7 @@ export function applySseEvent(state: ChatState, event: SseEvent): ChatState {
 
 /** Agents currently working, from the latest office projection. */
 export function workingAgents(office: OfficeProjection | null): string[] {
-  if (!office?.agent) return [];
-  return Object.values(office.agent)
+  return officeAgents(office)
     .filter((a) => a.status === "working")
     .map((a) => a.agent_id ?? "")
     .filter((id) => id.length > 0);
