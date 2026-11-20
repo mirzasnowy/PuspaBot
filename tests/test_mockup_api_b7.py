@@ -145,6 +145,43 @@ def test_op_patch_undo_redo_round_trip(make_user, test_dsn):
         )
 
 
+def test_asset_upload_is_an_op_and_survives_later_ops(make_user, test_dsn):
+    """P-06: uploading an asset writes a numbered add_asset op.
+
+    Before P-06 the endpoint mutated the stored doc without an op,
+    so the version stayed put and the cached undo session kept the
+    pre-upload doc; the next op then overwrote the stored doc and
+    the asset was silently lost.
+    """
+    user_id = make_user()["user_id"]
+    client = _client(user_id, test_dsn)
+    with client:
+        doc = _create(client)
+        mockup_id = doc["id"]
+        moved = client.post(
+            f"/api/mockups/{mockup_id}/ops",
+            json={"op": {"type": "move_node", "node_id": "price", "payload": {"x": 120, "y": 420}}},
+        )
+        assert moved.status_code == 200, moved.text
+        uploaded = client.post(
+            f"/api/mockups/{mockup_id}/assets",
+            json={"asset_id": "logo", "data_uri": TINY_PNG, "name": "logo.png"},
+        )
+        assert uploaded.status_code == 200, uploaded.text
+        assert uploaded.json()["version"] == 2
+        assert uploaded.json()["ops"][-1]["type"] == "add_asset"
+        assert uploaded.json()["ops"][-1]["seq"] == 2
+        assert "logo" in uploaded.json()["assets"]
+        moved2 = client.post(
+            f"/api/mockups/{mockup_id}/ops",
+            json={"op": {"type": "set_text", "node_id": "price", "payload": {"text": "Rp20.000"}}},
+        )
+        assert moved2.status_code == 200, moved2.text
+        fetched = client.get(f"/api/mockups/{mockup_id}").json()
+        assert "logo" in fetched["assets"]
+        assert fetched["version"] == 3
+
+
 def test_asset_upload_only_accepts_image_data_uris(make_user, test_dsn):
     user_id = make_user()["user_id"]
     client = _client(user_id, test_dsn)

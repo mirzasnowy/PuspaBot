@@ -200,6 +200,74 @@ def test_template_filling_uses_slots():
     assert find_node(doc["nodes"], "product-0-name")["text"] == "Batik"
 
 
+def test_add_asset_op_is_numbered_and_undoable():
+    doc = _banner_doc()
+    apply_op(
+        doc,
+        {
+            "type": "add_asset",
+            "payload": {
+                "asset_id": "logo",
+                "asset": {"kind": "image", "data_uri": TINY_PNG, "name": "logo.png"},
+            },
+            "note": "Added shop logo.",
+        },
+    )
+    assert doc["version"] == 1
+    assert doc["ops"][0]["seq"] == 1
+    assert doc["ops"][0]["type"] == "add_asset"
+    assert doc["assets"]["logo"]["data_uri"] == TINY_PNG
+    assert doc["decisions"] == [{"seq": 1, "note": "Added shop logo."}]
+    session = DesignSession(_banner_doc())
+    session.apply(
+        {
+            "type": "add_asset",
+            "payload": {
+                "asset_id": "logo",
+                "asset": {"kind": "image", "data_uri": TINY_PNG, "name": "logo.png"},
+            },
+        }
+    )
+    assert "logo" in session.doc["assets"]
+    session.undo()
+    assert "logo" not in session.doc["assets"]
+
+
+def test_add_asset_op_rejects_bad_assets():
+    doc = _banner_doc()
+    with pytest.raises(DesignError):
+        apply_op(
+            doc,
+            {
+                "type": "add_asset",
+                "payload": {
+                    "asset_id": "evil",
+                    "asset": {
+                        "kind": "image",
+                        "data_uri": "https://example.com/x.png",
+                        "name": "x.png",
+                    },
+                },
+            },
+        )
+    with pytest.raises(DesignError):
+        apply_op(doc, {"type": "add_asset", "payload": {"asset_id": "", "asset": {}}})
+    full = _banner_doc()
+    for index in range(32):
+        full["assets"][f"a{index}"] = {"kind": "image", "data_uri": TINY_PNG, "name": "x.png"}
+    with pytest.raises(DesignError):
+        apply_op(
+            full,
+            {
+                "type": "add_asset",
+                "payload": {
+                    "asset_id": "one-more",
+                    "asset": {"kind": "image", "data_uri": TINY_PNG, "name": "x.png"},
+                },
+            },
+        )
+
+
 def test_new_doc_with_asset_validates_data_uri_only():
     doc = new_doc(title="T", template="promo_banner")
     doc["assets"]["logo"] = {"kind": "image", "data_uri": TINY_PNG, "name": "logo.png"}

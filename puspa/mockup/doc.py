@@ -78,6 +78,9 @@ ALLOWED_COMPONENTS = ("text", "image", "button", "card", "list", "form", "table"
 ALLOWED_FONTS = ("Inter", "Poppins", "Nunito", "Lato", "Open Sans", "Roboto")
 
 #: Op types both the LLM patcher and the drag-and-drop editor may write.
+#: ``add_asset`` (P-06) is how an image upload enters the doc: it is a
+#: numbered op like any other edit, so the version bumps and the
+#: in-memory undo session never goes stale on an asset the store has.
 ALLOWED_OP_TYPES = (
     "add_node",
     "remove_node",
@@ -88,6 +91,7 @@ ALLOWED_OP_TYPES = (
     "reorder",
     "set_theme",
     "set_title",
+    "add_asset",
 )
 
 #: Hard caps: a design doc is user data, but it must stay small enough
@@ -188,6 +192,17 @@ def _validate_node(node: dict, *, path: str, seen: set[str]) -> int:
     return count
 
 
+def _validate_asset(asset_id: str, asset: dict) -> None:
+    """One image asset: image kind, image data URI, under the size cap."""
+    if not isinstance(asset, dict) or asset.get("kind") != "image":
+        raise DesignError(f"doc.assets.{asset_id} must be an image asset")
+    data_uri = asset.get("data_uri", "")
+    if not isinstance(data_uri, str) or not _DATA_URI_IMAGE.match(data_uri):
+        raise DesignError(f"doc.assets.{asset_id} must be an image data URI")
+    if len(data_uri.encode("utf-8")) > MAX_ASSET_BYTES:
+        raise DesignError(f"doc.assets.{asset_id} exceeds the asset size cap")
+
+
 def validate_doc(doc: dict) -> dict:
     """Validate a design doc dict in place-safe style; return it unchanged.
 
@@ -216,13 +231,7 @@ def validate_doc(doc: dict) -> dict:
     if not isinstance(assets, dict) or len(assets) > MAX_ASSETS:
         raise DesignError("doc.assets must be an object with at most 32 entries")
     for asset_id, asset in assets.items():
-        if not isinstance(asset, dict) or asset.get("kind") != "image":
-            raise DesignError(f"doc.assets.{asset_id} must be an image asset")
-        data_uri = asset.get("data_uri", "")
-        if not isinstance(data_uri, str) or not _DATA_URI_IMAGE.match(data_uri):
-            raise DesignError(f"doc.assets.{asset_id} must be an image data URI")
-        if len(data_uri.encode("utf-8")) > MAX_ASSET_BYTES:
-            raise DesignError(f"doc.assets.{asset_id} exceeds the asset size cap")
+        _validate_asset(asset_id, asset)
     nodes = doc.get("nodes", [])
     if not isinstance(nodes, list):
         raise DesignError("doc.nodes must be a list")
@@ -393,6 +402,17 @@ def validate_op(op: dict, doc: dict) -> dict:
             raise DesignError(f"set_theme font {theme['font']!r} is not an OFL font")
     if op_type == "set_title" and not isinstance((op.get("payload") or {}).get("title"), str):
         raise DesignError("set_title payload.title must be a string")
+    if op_type == "add_asset":
+        payload = op.get("payload", {})
+        asset_id = payload.get("asset_id")
+        if not isinstance(asset_id, str) or not asset_id:
+            raise DesignError("add_asset payload.asset_id must be a non-empty string")
+        if not isinstance(payload.get("asset"), dict):
+            raise DesignError("add_asset payload.asset must be an object")
+        _validate_asset(asset_id, payload["asset"])
+        assets = doc.get("assets", {})
+        if asset_id not in assets and len(assets) >= MAX_ASSETS:
+            raise DesignError(f"doc already has the maximum of {MAX_ASSETS} assets")
     return op
 
 
@@ -453,6 +473,8 @@ def apply_op(doc: dict, op: dict) -> dict:
         doc["theme"].update(copy.deepcopy(payload["theme"]))
     elif op_type == "set_title":
         doc["title"] = payload["title"]
+    elif op_type == "add_asset":
+        doc.setdefault("assets", {})[payload["asset_id"]] = copy.deepcopy(payload["asset"])
     doc.setdefault("ops", []).append(stored)
     doc["version"] = doc.get("version", 0) + 1
     note = stored.get("note")

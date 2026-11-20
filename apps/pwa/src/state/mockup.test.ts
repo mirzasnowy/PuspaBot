@@ -84,6 +84,31 @@ describe("mockup editor state (B7)", () => {
     expect(next.decisions).toEqual([{ seq: 1, note: "Green fits the shop." }]);
   });
 
+  it("mirrors an add_asset op into the doc (P-06)", () => {
+    const next = applyOp(bannerDoc(), {
+      type: "add_asset",
+      payload: {
+        asset_id: "logo",
+        asset: { kind: "image", data_uri: "data:image/png;base64,AAA", name: "logo.png" },
+      },
+    });
+    expect(next.assets.logo.data_uri).toBe("data:image/png;base64,AAA");
+    expect(next.ops).toHaveLength(1);
+    expect(next.ops[0].seq).toBe(1);
+    expect(next.version).toBe(1);
+  });
+
+  it("mirrors a reorder op (P-06)", () => {
+    const next = applyOp(bannerDoc(), {
+      type: "reorder",
+      node_id: "price",
+      payload: { index: 1 },
+    });
+    expect(next.nodes[1].id).toBe("price");
+    expect(next.nodes[0].id).toBe("headline");
+    expect(next.version).toBe(1);
+  });
+
   it("rejects ops on unknown nodes", () => {
     expect(() =>
       applyOp(bannerDoc(), { type: "move_node", node_id: "nope", payload: { x: 1, y: 1 } }),

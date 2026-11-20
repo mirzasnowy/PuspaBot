@@ -4642,7 +4642,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Add an image asset (data URI only) to a mockup */
+        /**
+         * Add an image asset (data URI only) to a mockup
+         * @description P-06: the upload writes a numbered `add_asset` op, so the
+         *     doc version bumps and the op log stays the single history.
+         *     Before P-06 the endpoint mutated the stored doc without an
+         *     op, and the next edit silently dropped the uploaded asset.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -7182,7 +7188,7 @@ export interface components {
         MockupOp: {
             seq?: number;
             /** @enum {string} */
-            type?: "add_node" | "remove_node" | "move_node" | "set_text" | "set_style" | "set_image" | "reorder" | "set_theme" | "set_title";
+            type?: "add_node" | "remove_node" | "move_node" | "set_text" | "set_style" | "set_image" | "reorder" | "set_theme" | "set_title" | "add_asset";
             node_id?: string;
             parent_id?: string;
             payload?: {
