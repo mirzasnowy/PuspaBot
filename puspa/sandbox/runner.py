@@ -61,8 +61,12 @@ from __future__ import annotations
 import contextlib
 import shutil
 import subprocess
+import time
 import uuid
 from pathlib import Path
+
+from puspa.observability import metrics as observability_metrics
+from puspa.observability import tracing as observability_tracing
 
 from .allowlist import DEFAULT_ALLOWLIST, Allowlist
 from .egress import EgressError, EgressProxy
@@ -520,6 +524,8 @@ class Sandbox:
         gagal start. Dalam kasus itu TIDAK ADA kode yang dieksekusi di mana
         pun (bukan di host, bukan di container).
         """
+        # E-18: wall-clock start for the sandbox run-time metric.
+        run_started = time.monotonic()
         if not isinstance(code, str):
             raise TypeError("code harus str")
         if len(code) > _MAX_CODE_CHARS:
@@ -537,7 +543,23 @@ class Sandbox:
                 "menolak eksekusi (fail-closed, tidak ada fallback host)"
                 + (f" Alasan: {reason}" if reason else "")
             )
-        result = self._run_container(code, timeout_s=timeout_s, name="puspa-run", user_id=user_id)
+        # E-18: one ``sandbox`` span per container run (the trace id
+        # comes from the surrounding turn when one is running).
+        with observability_tracing.span(
+            "sandbox:run",
+            kind="sandbox",
+            attributes={"user_id": str(user_id or "")},
+        ):
+            result = self._run_container(
+                code, timeout_s=timeout_s, name="puspa-run", user_id=user_id
+            )
+        # E-18: full wall time of the sandbox run (spawn + execution).
+        # The start-time p95 alarm reads the warm-pool / cold-create
+        # series instead: this run time includes code execution.
+        with contextlib.suppress(Exception):
+            observability_metrics.get_metrics().record_sandbox_run(
+                time.monotonic() - run_started, user_id=user_id
+            )
         if result is None:
             # Container gagal start setelah probe lolos (mis. daemon mati
             # di tengah jalan): tetap fail-closed.

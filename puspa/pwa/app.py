@@ -27,6 +27,7 @@ proses) untuk demo lokal; jalur produksi menulis ke Buku Kerja
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import time
@@ -488,8 +489,13 @@ def create_app(
             return JSONResponse(
                 {"error": render_server_line("error.not_logged_in")}, status_code=401
             )
+        from puspa.observability.health import observability_block
         from puspa.pwa.serve_modes import operator_status
 
+        # E-18: the same observability block /health serves.
+        block = None
+        with contextlib.suppress(Exception):
+            block = observability_block()
         return operator_status(
             app.state.serve_mode,
             pairing_store=app.state.pairing_store,
@@ -497,6 +503,7 @@ def create_app(
             decision_log=app.state.gateway_log,
             recent_events=app.state.event,
             embedding=getattr(app.state, "embedding_health", None),
+            observability=block,
         )
 
     # -- end G31 ---------------------------------------------------------
@@ -508,9 +515,20 @@ def create_app(
     # the status field carries ok / degraded.
     @app.get("/health")
     def health_endpoint():
+        from puspa.observability.health import observability_block
         from puspa.pwa.health import build_health_payload
 
-        return build_health_payload(app.state.embedding_health, serve_mode=app.state.serve_mode)
+        # E-18: the same observability block the operator surface
+        # serves, so /health and the operator status never disagree
+        # about the alarms.
+        block = None
+        with contextlib.suppress(Exception):
+            block = observability_block()
+        return build_health_payload(
+            app.state.embedding_health,
+            serve_mode=app.state.serve_mode,
+            observability=block,
+        )
 
     # -- end E-14 --------------------------------------------------------
 
@@ -666,6 +684,17 @@ def create_app(
             approved=(approve == "ya"),
             presented_at=item.get("presented_at"),
         )
+        # E-18: approval latency, from the card being shown to the decision.
+        presented_at = item.get("presented_at")
+        if presented_at:
+            with contextlib.suppress(Exception):
+                from puspa.observability import metrics as observability_metrics
+
+                observability_metrics.get_metrics().record_approval_latency(
+                    max(0.0, time.time() - float(presented_at)),
+                    request_id=request_id,
+                    approved=(approve == "ya"),
+                )
         app.state.event.append(
             {
                 "type": "approval_granted" if approve == "ya" else "approval_rejected",

@@ -295,6 +295,7 @@ def operator_status(
     decision_log: GatewayDecisionLog | None = None,
     recent_events=(),
     embedding: dict | None = None,
+    observability: dict | None = None,
 ) -> dict:
     """The full ``GET /api/operator/status`` payload for a serve mode.
 
@@ -310,6 +311,11 @@ def operator_status(
     embedding is visible on the operator surface. The hosted
     payload is unchanged: the operator surface of a hosted
     deployment lives elsewhere.
+
+    E-18: in local mode the payload also carries the
+    observability block (metrics + active alarms + tracing)
+    from :mod:`puspa.observability.health`, so the operator sees
+    the alarms on this surface too. None when not supplied.
     """
     normalized = str(mode).strip().lower()
     if normalized != LOCAL:
@@ -330,4 +336,5 @@ def operator_status(
         "log": operator_log_lines(recent_events),
         "embedding": embedding,
         "embedding_banner": embedding_banner(embedding),
+        "observability": observability,
     }

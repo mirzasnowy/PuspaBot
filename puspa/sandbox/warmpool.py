@@ -49,6 +49,8 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from puspa.observability import metrics as observability_metrics
+
 __all__ = [
     "DEFAULT_POOL_COMMAND",
     "ContainerRuntime",
@@ -279,9 +281,16 @@ class WarmPool:
         """
         if not user_id:
             raise PoolError("warm pool acquire needs a non-empty user_id")
+        # E-18: checkout time is the sandbox start time the caller
+        # experiences (a warm container is already started).
+        started = time.monotonic()
         container_id = self._warm.pop() if self._warm else self._create_fresh()
         slot = WarmSlot(container_id=container_id, user_id=user_id, created_at=self._clock())
         self._checked_out[container_id] = slot
+        with contextlib.suppress(Exception):
+            observability_metrics.get_metrics().record_sandbox_start(
+                time.monotonic() - started, source="warm_pool"
+            )
         return slot
 
     def start(self, slot: WarmSlot, *, input: str, timeout_s: int) -> dict | None:
@@ -345,8 +354,17 @@ class WarmPool:
     # -- helpers ---------------------------------------------------------------
 
     def _create_fresh(self) -> str:
+        # E-18: cold-create time is the sandbox start time for the
+        # one-shot path (``docker create`` latency).
+        started = time.monotonic()
         flags = self._flags_builder()
-        return self._runtime.create(self._image, flags, list(self._command))
+        try:
+            return self._runtime.create(self._image, flags, list(self._command))
+        finally:
+            with contextlib.suppress(Exception):
+                observability_metrics.get_metrics().record_sandbox_start(
+                    time.monotonic() - started, source="cold_create"
+                )
 
     def _refill(self) -> None:
         """Create one fresh container when the warm stock is short."""

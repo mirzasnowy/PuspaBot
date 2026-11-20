@@ -44,9 +44,13 @@ from __future__ import annotations
 
 import contextlib
 import threading
+import time
+import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from puspa.observability import metrics as observability_metrics
+from puspa.observability import tracing as observability_tracing
 from puspa.router.fallback import AllTiersFailed, ProviderFailure
 from puspa.runtime.budget import BudgetExhausted
 
@@ -251,7 +255,66 @@ class TurnLoop:
         ``search_tools`` for the whole turn, and a catalog past
         the hard tool limit refuses the turn with a failed result
         instead of starting it.
+
+        E-18: the turn runs under one trace id (the task id) in a
+        ``turn`` span, and its latency, cost, and abandoned cost
+        are recorded in the observability metrics. Observability
+        never changes the result: a metrics failure is swallowed.
         """
+        trace_id = task_id or f"turn-{uuid.uuid4().hex[:12]}"
+        started = time.monotonic()
+        token = observability_tracing.start_trace(trace_id)
+        result: TurnResult | None = None
+        try:
+            with observability_tracing.span(
+                "turn",
+                kind="turn",
+                attributes={"task_id": trace_id, "agent_id": agent_id},
+                task_id=trace_id,
+            ):
+                result = self._run_turn_impl(
+                    messages,
+                    user_id=user_id,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    tools=tools,
+                    interrupt_event=interrupt_event,
+                    model_call=model_call,
+                    tool_call=tool_call,
+                    budget=budget,
+                )
+            return result
+        finally:
+            with contextlib.suppress(Exception):
+                latency_s = time.monotonic() - started
+                status = result.status if result is not None else "error"
+                observability_metrics.get_metrics().record_turn_latency(
+                    latency_s, status=status, task_id=trace_id, user_id=user_id
+                )
+                if result is not None and result.cost_rp:
+                    observability_metrics.get_metrics().record_cost(
+                        trace_id, user_id, result.cost_rp
+                    )
+                    if result.status == TURN_INTERRUPTED:
+                        observability_metrics.get_metrics().record_abandoned_cost(
+                            trace_id, user_id, result.cost_rp
+                        )
+            observability_tracing.end_trace(token)
+
+    def _run_turn_impl(
+        self,
+        messages: list[InternalMessage],
+        *,
+        user_id=None,
+        agent_id: str = "puspa",
+        task_id: str | None = None,
+        tools: list[dict] | None = None,
+        interrupt_event: threading.Event | None = None,
+        model_call=None,
+        tool_call=None,
+        budget: IterationBudget | None = None,
+    ) -> TurnResult:
+        """The turn itself, after observability is set up (see :meth:`run_turn`)."""
         if tools is None and self.tool_catalog is not None:
             prepared = self._prepare_run_tools(messages, agent_id=agent_id, task_id=task_id)
             if prepared is None:
@@ -369,6 +432,10 @@ class TurnLoop:
         conflict_decisions: list = []
         cost_rp = 0
         tier_used = ""
+        # E-18: time to first token is the first model reply's
+        # arrival (the model call is not streamed).
+        ttft_recorded = False
+        call_started = time.monotonic()
         self._record(
             "turn_started",
             {"agent_id": agent_id, "task_id": task_id, "messages": len(history)},
@@ -412,6 +479,7 @@ class TurnLoop:
                 notes.append(overflow_note)
 
             try:
+                call_started = time.monotonic()
                 outcome = call_model(
                     history,
                     config=self.config,
@@ -477,6 +545,12 @@ class TurnLoop:
                 raise
 
             history = [*history, outcome.as_assistant_message()]
+            if not ttft_recorded:
+                with contextlib.suppress(Exception):
+                    observability_metrics.get_metrics().record_ttft(
+                        time.monotonic() - call_started, task_id=task_id, user_id=user_id
+                    )
+                ttft_recorded = True
             attempts = list(outcome.attempts)
             hops = list(outcome.hops)
             cost_rp += outcome.total_cost_rp
@@ -706,7 +780,14 @@ class TurnLoop:
                             history.append(message)
                             continue
                 try:
-                    raw = registry(name, arguments)
+                    # E-18: one ``tool`` span per registry call.
+                    with observability_tracing.span(
+                        f"tool:{name}",
+                        kind="tool",
+                        attributes={"task_id": task_id or "", "agent_id": agent_id, "tool": name},
+                        task_id=task_id,
+                    ):
+                        raw = registry(name, arguments)
                     result_text = _result_text(raw)
                     is_error = False
                 except Exception as exc:

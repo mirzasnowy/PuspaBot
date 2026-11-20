@@ -84,6 +84,16 @@ xxhash==4.1.0
 lz4==4.4.5
 psutil==7.2.2
 
+# E-18 observability (plan 9.2): OpenTelemetry spans for turn,
+# router, tool, and sandbox, stored locally only (in-memory
+# exporter, no OTLP endpoint). opentelemetry-api was already
+# present as a transitive dependency (via fastapi); the SDK is
+# new here and is pinned to the same 1.45.2 line as the API.
+# Regenerate requirements-hashed.txt after this change (see the
+# note at the end of this file).
+opentelemetry-api==1.45.2
+opentelemetry-sdk==1.45.2
+
 # Development tools (ruff, mypy, types-PyYAML) live in requirements-dev.txt,
 # not here, so the CI lint lanes stay fast (they do not install torch).
 # The typecheck lane installs both files. See pyproject.toml.
