@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react";
 import {
+  approveOverlay,
+  fetchApprovalOverlays,
   fetchLiveFrame,
+  rejectOverlay,
   releaseTakeover,
   takeoverAgent,
+  type ApprovalOverlay,
+  type ApprovalOverlayList,
   type Bootstrap,
   type LiveFrame,
 } from "../api/client";
+import { ApprovalOverlayPanel } from "./ApprovalOverlay";
 
 /** The live frame is polled: the SSE stream carries one frame for the first paint. */
 export const LIVE_FRAME_POLL_MS = 5000;
@@ -33,6 +39,7 @@ export function LiveViewScreen({ bootstrap }: { bootstrap: Bootstrap }) {
   const agents = bootstrap.agents ?? [];
   const [agentId, setAgentId] = useState(agents[0]?.agent_id ?? "");
   const [frame, setFrame] = useState<LiveFrame | null>(null);
+  const [overlays, setOverlays] = useState<ApprovalOverlayList | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -58,6 +65,14 @@ export function LiveViewScreen({ bootstrap }: { bootstrap: Bootstrap }) {
         }
       } finally {
         if (!cancelled) setLoading(false);
+      }
+      // The overlays ride along with the frame but never break
+      // it: when the overlay read fails, the frame still shows.
+      try {
+        const nextOverlays = await fetchApprovalOverlays(agentId);
+        if (!cancelled) setOverlays(nextOverlays);
+      } catch {
+        if (!cancelled) setOverlays(null);
       }
     }
     load();
@@ -108,7 +123,50 @@ export function LiveViewScreen({ bootstrap }: { bootstrap: Bootstrap }) {
     }
   }
 
+  async function onDecideOverlay(
+    requestId: string,
+    decision: "approved" | "rejected",
+    reason: string,
+  ) {
+    setBusy(true);
+    setError(null);
+    try {
+      const decided =
+        decision === "approved"
+          ? await approveOverlay(agentId, requestId, reason)
+          : await rejectOverlay(agentId, requestId, reason);
+      setOverlays((prev) =>
+        prev === null
+          ? prev
+          : {
+              ...prev,
+              pending: prev.pending.filter((item) => item.request_id !== requestId),
+              decided: [decided, ...prev.decided],
+            },
+      );
+      setNotice(
+        decision === "approved"
+          ? "Disetujui: aksi berjalan."
+          : "Ditolak: aksi dibatalkan dan dicatat di Buku Kerja.",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memutuskan persetujuan.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const events = [...(frame?.events ?? [])].reverse().slice(0, 10);
+  const pending = overlays?.pending ?? [];
+  const decided = overlays?.decided ?? [];
+  // Which frame rows the pending overlays point at, so the
+  // screen marks exactly those rows as highlighted.
+  const highlightedRefs = new Set(
+    pending.flatMap((item) => (item.highlight?.frame_ref ? [item.highlight.frame_ref] : [])),
+  );
+  const highlightedEventIds = new Set(
+    pending.flatMap((item) => (item.highlight?.event_id ? [item.highlight.event_id] : [])),
+  );
 
   return (
     <div>
@@ -116,7 +174,8 @@ export function LiveViewScreen({ bootstrap }: { bootstrap: Bootstrap }) {
       <p className="muted">
         Yang sedang dikerjakan botmu, langsung dari Buku Kerja. Bukan rekaman layar: yang tampil
         adalah tugas, panggilan tool, dan kejadian — tangkapan layar belum tersedia karena belum
-        ada backend yang bisa menghasilkan frame.
+        ada backend yang bisa menghasilkan frame. Kalau bot mau melakukan aksi yang butuh
+        persetujuan, elemen targetnya disorot di bawah dan kamu bisa setuju atau tolak per aksi.
       </p>
       {agents.length === 0 ? (
         <p className="muted">Belum ada agen untuk ditonton.</p>
@@ -129,6 +188,7 @@ export function LiveViewScreen({ bootstrap }: { bootstrap: Bootstrap }) {
               onChange={(event) => {
                 setAgentId(event.target.value);
                 setFrame(null);
+                setOverlays(null);
                 setLoading(true);
                 setNotice("");
               }}
@@ -150,8 +210,20 @@ export function LiveViewScreen({ bootstrap }: { bootstrap: Bootstrap }) {
             <>
               <p>
                 Status: <strong>{STATUS_LABEL[frame.status] ?? frame.status}</strong>
-                {frame.current_task_id ? ` · tugas ${frame.current_task_id}` : ""}
-                {frame.last_tool ? ` · tool terakhir ${frame.last_tool.tool}` : ""}
+                {frame.current_task_id ? (
+                  <span className={highlightedRefs.has("current_task") ? "overlay-highlight" : undefined}>
+                    {` · tugas ${frame.current_task_id}`}
+                  </span>
+                ) : (
+                  ""
+                )}
+                {frame.last_tool ? (
+                  <span className={highlightedRefs.has("last_tool") ? "overlay-highlight" : undefined}>
+                    {` · tool terakhir ${frame.last_tool.tool}`}
+                  </span>
+                ) : (
+                  ""
+                )}
               </p>
               {frame.hold ? (
                 <>
@@ -185,13 +257,42 @@ export function LiveViewScreen({ bootstrap }: { bootstrap: Bootstrap }) {
                   {notice} <a href="/api/proof/audit-trail">Lihat audit</a>
                 </p>
               ) : null}
+              {pending.length > 0 || decided.length > 0 ? (
+                <>
+                  <h2>Menunggu persetujuan</h2>
+                  <p className="muted">
+                    Elemen yang mau diklik atau dijalankan bot disorot di bawah — dan baris yang
+                    sama ikut disorot di frame. Setuju atau tolak per aksi; yang ditolak batal dan
+                    tercatat.
+                  </p>
+                  {pending.map((overlay: ApprovalOverlay) => (
+                    <ApprovalOverlayPanel
+                      key={overlay.request_id}
+                      overlay={overlay}
+                      onDecide={onDecideOverlay}
+                      busy={busy}
+                    />
+                  ))}
+                  {decided.slice(0, 3).map((overlay: ApprovalOverlay) => (
+                    <ApprovalOverlayPanel
+                      key={overlay.request_id}
+                      overlay={overlay}
+                      onDecide={async () => {}}
+                      busy
+                    />
+                  ))}
+                </>
+              ) : null}
               <h2>Kejadian terakhir</h2>
               {events.length === 0 ? (
                 <p className="muted">Belum ada kejadian.</p>
               ) : (
                 <ul>
                   {events.map((event) => (
-                    <li key={`${event.id || event.type}-${event.created_at}`}>
+                    <li
+                      key={`${event.id || event.type}-${event.created_at}`}
+                      className={event.id && highlightedEventIds.has(event.id) ? "overlay-highlight" : undefined}
+                    >
                       {event.type}
                       {event.content && typeof event.content === "object" && "tool" in event.content
                         ? ` · ${(event.content as { tool?: string }).tool}`
