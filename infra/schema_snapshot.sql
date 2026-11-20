@@ -19,12 +19,10 @@
 -- truth; this file is only the comparison target.
 --
 --
---
---
 -- PostgreSQL database dump
 --
 
-\restrict DyuAbAhNp3IAf8nHUmGi8mvZEhscZ1g1SzJUte9qtkqeX1S5IolkMZ0W9HEAzZp
+\restrict UAygzzZWrLxyDrAKINRVzaYsSGMgsd9sy1F6N79fZHA3GayMTdyIS1GLpxOMWBn
 
 -- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -498,7 +496,8 @@ CREATE TABLE public.data_consents (
     user_id uuid NOT NULL,
     text_version text NOT NULL,
     approved_at timestamp with time zone DEFAULT now() NOT NULL,
-    event_id uuid
+    event_id uuid,
+    withdrawn_at timestamp with time zone
 );
 
 
@@ -1308,6 +1307,9 @@ CREATE TABLE public.profile_facts (
     event_id uuid,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    confidence real,
+    source_detail text,
+    CONSTRAINT profile_facts_confidence_check CHECK (((confidence IS NULL) OR ((confidence >= (0)::double precision) AND (confidence <= (1)::double precision)))),
     CONSTRAINT profile_facts_source_check CHECK ((source = ANY (ARRAY['user_stated'::text, 'user_confirmed'::text, 'inferred'::text]))),
     CONSTRAINT profile_facts_status_check CHECK ((status = ANY (ARRAY['proposed'::text, 'active'::text, 'rejected'::text, 'replaced'::text, 'superseded'::text, 'expired'::text])))
 );
@@ -6338,5 +6340,5 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.workspace_moves TO puspa_app;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict DyuAbAhNp3IAf8nHUmGi8mvZEhscZ1g1SzJUte9qtkqeX1S5IolkMZ0W9HEAzZp
+\unrestrict UAygzzZWrLxyDrAKINRVzaYsSGMgsd9sy1F6N79fZHA3GayMTdyIS1GLpxOMWBn
 

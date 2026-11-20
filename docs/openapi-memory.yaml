@@ -1,0 +1,591 @@
+# Memory screen API contract (P-01, plan section 12.6).
+#
+# The "What Puspa knows about me" endpoints: the facts list with
+# source labels and confidence, correction / forget / proposal
+# actions, export, consent withdrawal, guest mode, and room memory
+# (separate from personal memory). The Error schema stays in the
+# main spec (docs/openapi-pwa.yaml) and is referenced back from
+# here, as in docs/openapi-graph.yaml.
+openapi: 3.0.3
+info:
+  title: Puspa memory screen API
+  version: 1.0.0
+paths:
+  /api/memory:
+    get:
+      tags: [memory]
+      summary: Memory screen payload for the logged-in user
+      description: |
+        One page of the user's facts (each with `source_label`, a
+        human-readable provenance such as "you told Puspa on 3
+        November 2026", and `confidence`), the inferred proposals
+        waiting for confirmation, the consent state, and the
+        guest-mode flag. Default view is live memory (active +
+        proposed). `status` takes one exact status, or `history`
+        for every past version; `limit` is capped at 100.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, proposed, superseded, expired, replaced, rejected, history]
+        - name: include_history
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Memory screen payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryScreen"
+        "400":
+          description: Bad limit, offset, or status value
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/memory/facts/{fact_id}:
+    get:
+      tags: [memory]
+      summary: One fact plus every past version of its key
+      parameters:
+        - name: fact_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Fact with history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactDetail"
+        "404":
+          description: Unknown fact
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    patch:
+      tags: [memory]
+      summary: Correct a fact (the old version is superseded)
+      description: |
+        The correction is recorded as user-confirmed and audited
+        as a memory-rights ledger event carrying ids only, never
+        fact content.
+      parameters:
+        - name: fact_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+      responses:
+        "200":
+          description: Corrected fact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactDetail"
+        "400":
+          description: Empty content
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown fact
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    delete:
+      tags: [memory]
+      summary: Forget a fact (same as POST .../forget)
+      description: |
+        Hard-deletes the fact and all its past versions. The
+        audit event carries ids only, never fact content.
+      parameters:
+        - name: fact_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Forgotten fact ids
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForgetResult"
+        "404":
+          description: Unknown fact
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/memory/facts/{fact_id}/forget:
+    post:
+      tags: [memory]
+      summary: Forget a fact ("forget this" button)
+      parameters:
+        - name: fact_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Forgotten fact ids
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForgetResult"
+        "404":
+          description: Unknown fact
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/memory/facts/{fact_id}/confirm:
+    post:
+      tags: [memory]
+      summary: Confirm an inferred proposal (it enters the profile)
+      parameters:
+        - name: fact_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Confirmed fact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactDetail"
+        "404":
+          description: Unknown proposal
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/memory/facts/{fact_id}/reject:
+    post:
+      tags: [memory]
+      summary: Reject an inferred proposal (it stays on record as rejected)
+      parameters:
+        - name: fact_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Rejected fact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactDetail"
+        "404":
+          description: Unknown proposal
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/memory/export:
+    get:
+      tags: [memory]
+      summary: Export all the user's data as a JSON download
+      description: |
+        Wired to the existing full export
+        (`puspa.ledger.export.build_user_export`): profile facts
+        (with history), episodes, procedures, summaries, grants,
+        style examples, onboarding, consents, ledger events, and
+        vault metadata. Token references are withheld.
+      responses:
+        "200":
+          description: Export document (attachment puspa-memory-export.json)
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Unknown user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/memory/consent:
+    get:
+      tags: [memory]
+      summary: The user's data-consent state
+      responses:
+        "200":
+          description: Consent state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentStatus"
+  /api/memory/consent/withdraw:
+    post:
+      tags: [memory]
+      summary: Withdraw data consent
+      description: |
+        Marks the latest consent row withdrawn and audits the
+        withdrawal. Withdrawing stops future storage; it does not
+        delete stored data (that is the forget / account-delete
+        path). Idempotent: withdrawing twice reports the same
+        withdrawn state.
+      responses:
+        "200":
+          description: Withdrawn consent state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentStatus"
+        "404":
+          description: No consent was ever recorded
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/memory/guest:
+    post:
+      tags: [memory]
+      summary: Start or end a guest turn (a turn that saves no memory)
+      description: |
+        While guest mode is on, the memory provider and the
+        turn-loop memory tool refuse every write. Guest mode is
+        process-local: restarting the server ends every guest turn.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [guest]
+              properties:
+                guest:
+                  type: boolean
+      responses:
+        "200":
+          description: New guest state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [guest_mode]
+                properties:
+                  guest_mode:
+                    type: boolean
+        "400":
+          description: guest must be true or false
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/memory/rooms/{room_id}:
+    get:
+      tags: [memory]
+      summary: Room memory visible to one member
+      description: |
+        Every room-visible row plus the viewer's own private rows;
+        never another member's private rows, and never personal
+        memory. Room memory lives in its own table, separate from
+        every member's personal memory.
+      parameters:
+        - name: room_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Visible room memory, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomMemoryList"
+        "403":
+          description: Not a member of the room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/memory/rooms/{room_id}/memories:
+    post:
+      tags: [memory]
+      summary: Record one room-memory row
+      parameters:
+        - name: room_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  maxLength: 10000
+                kind:
+                  type: string
+                  enum: [note, decision, summary]
+                  default: note
+                visibility:
+                  type: string
+                  enum: [room, private]
+                  default: room
+      responses:
+        "200":
+          description: Recorded room memory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomMemory"
+        "400":
+          description: Empty or oversize content, unknown kind or visibility
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: Not a member of the room
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/memory/rooms/{room_id}/memories/{memory_id}:
+    delete:
+      tags: [memory]
+      summary: Delete one room-memory row
+      description: |
+        Allowed to the author, or to a room owner when the row is
+        room-visible. An owner may not delete another member's
+        private row.
+      parameters:
+        - name: room_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: memory_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Whether a row was deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: boolean
+        "403":
+          description: May not delete this row
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    MemoryFact:
+      type: object
+      required: [id, key, content, status, source, source_label, confidence]
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+        content:
+          type: string
+        status:
+          type: string
+          enum: [active, proposed, superseded, expired, replaced, rejected]
+        source:
+          type: string
+          enum: [user_stated, user_confirmed, inferred]
+        source_label:
+          type: string
+          description: Human-readable provenance, for example "you told Puspa on 3 November 2026"
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        confidence_stored:
+          type: boolean
+          description: False when the confidence is derived from the source (1.0 user-stated/confirmed, 0.5 unverified inference), not measured
+        valid_from:
+          type: string
+          format: date-time
+        valid_until:
+          type: string
+          format: date-time
+          nullable: true
+        event_id:
+          type: string
+          format: uuid
+          nullable: true
+        agent_id:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    FactDetail:
+      type: object
+      required: [fact, history]
+      properties:
+        fact:
+          $ref: "#/components/schemas/MemoryFact"
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemoryFact"
+    ForgetResult:
+      type: object
+      required: [forgotten_ids, key, forgotten]
+      properties:
+        forgotten_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        key:
+          type: string
+        forgotten:
+          type: integer
+    ConsentStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [granted, withdrawn, none]
+        text_version:
+          type: string
+          nullable: true
+        approved_at:
+          type: string
+          format: date-time
+          nullable: true
+        withdrawn_at:
+          type: string
+          format: date-time
+          nullable: true
+    MemoryScreen:
+      type: object
+      required: [facts, total_facts, proposals, consent, guest_mode]
+      properties:
+        facts:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemoryFact"
+        total_facts:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        proposals:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemoryFact"
+        consent:
+          $ref: "#/components/schemas/ConsentStatus"
+        guest_mode:
+          type: boolean
+    RoomMemory:
+      type: object
+      required: [id, room_id, author_user_id, kind, content, visibility]
+      properties:
+        id:
+          type: string
+          format: uuid
+        room_id:
+          type: string
+          format: uuid
+        author_user_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [note, decision, summary]
+        content:
+          type: string
+        visibility:
+          type: string
+          enum: [room, private]
+        created_at:
+          type: string
+          format: date-time
+    RoomMemoryList:
+      type: object
+      required: [room_id, memories, total]
+      properties:
+        room_id:
+          type: string
+          format: uuid
+        memories:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomMemory"
+        total:
+          type: integer

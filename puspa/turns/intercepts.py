@@ -70,6 +70,7 @@ class InterceptedTools:
         subagent_token: dict | None = None,
         check_store=None,
         check_dsn: str | None = None,
+        guest_mode: bool = False,
     ) -> None:
         self.user_id = user_id
         self.agent_id = agent_id
@@ -82,6 +83,11 @@ class InterceptedTools:
         self.subagent_token = subagent_token
         self.check_store = check_store
         self.check_dsn = check_dsn
+        # Guest mode (P-01): a turn that saves no memory. While on,
+        # the ``memory`` record action is refused (the model is told
+        # so in the synthetic result); list and recall keep working
+        # because reading stored memory is not saving anything.
+        self.guest_mode = bool(guest_mode)
 
     # -- entry point ---------------------------------------------------
 
@@ -196,6 +202,17 @@ class InterceptedTools:
         if self.user_id is None:
             return self._error("memory", "no user_id: memory tools need a user to scope facts to")
         if action == "record":
+            if self.guest_mode:
+                return self._ok(
+                    "memory",
+                    {
+                        "recorded": {
+                            "stored": False,
+                            "guest_mode": True,
+                            "reason": "guest mode: this turn saves no memory",
+                        }
+                    },
+                )
             key = arguments.get("key", "")
             content = arguments.get("content", "")
             result = record_fact(

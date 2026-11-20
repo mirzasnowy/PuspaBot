@@ -48,12 +48,24 @@ def _row_to_fact(row):
         "status": row["status"],
         "valid_from": row["valid_from"],
         "valid_until": row["valid_until"],
+        "confidence": row.get("confidence"),
+        "source_detail": row.get("source_detail"),
         "event_id": str(row["event_id"]) if row["event_id"] else None,
         "created_at": row["created_at"],
     }
 
 
-def add_fact(user_id, key, value, source, agent_id=None, event_id=None, dsn=None):
+def add_fact(
+    user_id,
+    key,
+    value,
+    source,
+    agent_id=None,
+    event_id=None,
+    dsn=None,
+    confidence=None,
+    source_detail=None,
+):
     """Tambah fakta. Kembalikan dict fakta + `konflik_dengan` (id atau None).
 
     - `asal='disimpulkan'` -> status `usulan` (tidak masuk profil).
@@ -66,6 +78,12 @@ def add_fact(user_id, key, value, source, agent_id=None, event_id=None, dsn=None
         raise ValueError("kunci harus string tak kosong")
     if not isinstance(value, str) or value == "":
         raise ValueError("nilai harus string tak kosong")
+    if confidence is not None:
+        confidence = float(confidence)
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError(f"confidence must be between 0 and 1, got {confidence!r}")
+    if source_detail is not None and not isinstance(source_detail, str):
+        raise ValueError("source_detail must be a string")
     status = STATUS_PROPOSED if source == "inferred" else STATUS_ACTIVE
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
@@ -86,9 +104,20 @@ def add_fact(user_id, key, value, source, agent_id=None, event_id=None, dsn=None
                     )
             cur.execute(
                 "INSERT INTO profile_facts (user_id, agent_id, key, value, "
-                "source, status, event_id) VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                "source, status, event_id, confidence, source_detail) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
                 "RETURNING *",
-                (user_id, agent_id, key, value, source, status, event_id),
+                (
+                    user_id,
+                    agent_id,
+                    key,
+                    value,
+                    source,
+                    status,
+                    event_id,
+                    confidence,
+                    source_detail,
+                ),
             )
             row = cur.fetchone()
         conn.commit()

@@ -1,14 +1,128 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Memori</h1>
-<h2>Profil</h2>
+<h1>What Puspa knows about you</h1>
+<p class="pesan-sub">Every fact Puspa stored about you, where it came from, and how sure Puspa is. Correct a fact, forget it, or export everything. Forgetting removes the fact and its past versions from your profile.</p>
+
+<h2>Guest mode</h2>
+<div class="kartu">
+  <span id="guest-state">{% if guest_mode %}Guest mode is ON: this turn saves no memory.{% else %}Guest mode is off: Puspa remembers this chat as usual.{% endif %}</span>
+  <button type="button" onclick="setGuest(true)">Start a guest turn</button>
+  <button type="button" onclick="setGuest(false)">End guest turn</button>
+</div>
+
+<h2>Your facts</h2>
 {% for f in profile %}
-<div class="kartu"><strong>{{ f.key }}</strong>: {{ f.value }} <span class="pesan-sub">({{ f.status }})</span></div>
+<div class="kartu" id="fact-{{ f.id }}">
+  <strong>{{ f.key }}</strong>: <span class="fact-content">{{ f.content }}</span>
+  <br><span class="pesan-sub">{{ f.source_label }} &middot; confidence {{ "%.0f"|format(f.confidence * 100) }}%{% if not f.confidence_stored %} (estimated, not measured){% endif %} &middot; {{ f.status }}</span>
+  <br>
+  <input data-edit-for="{{ f.id }}" value="{{ f.content }}" style="width:70%" aria-label="Corrected fact">
+  <button type="button" onclick="editFact('{{ f.id }}')">Save correction</button>
+  <button type="button" onclick="forgetFact('{{ f.id }}')">Forget this</button>
+</div>
 {% else %}
-<p class="pesan-sub">Belum ada fakta profil. Puspa belajar dari percakapanmu.</p>
+<p class="pesan-sub">No profile facts yet. Puspa learns from your chats.</p>
 {% endfor %}
-<h2>Usulan</h2>
-<p class="pesan-sub">Fakta yang disimpulkan agen menunggu konfirmasimu di sini (fase 1: Usulan).</p>
-<h2>Ekspor dan hapus</h2>
-<p class="pesan-sub">Ekspor penuh dan hapus akun tersedia lewat jalur Fase 1 (puspa.consent.account). Hapus akun menghapus memori, alur, modul, kaset, dan blob; rantai hash Buku Kerja tetap utuh lewat tombstone.</p>
+
+<h2>Inferred facts waiting for you</h2>
+<p class="pesan-sub">Facts Puspa inferred from your chats. Nothing here enters your profile until you confirm it.</p>
+<div id="proposals"><p class="pesan-sub">Proposals load from the memory API.</p></div>
+
+<h2>Room memory</h2>
+<p class="pesan-sub">Memory shared with a room lives in that room, never in your personal memory. Open a room from the room board to see its shared notes, decisions, and summaries.</p>
+
+<h2>Consent and export</h2>
+<div class="kartu">
+  <span>Data consent: <strong id="consent-state">{{ memory_consent.status if memory_consent else "none" }}</strong></span>
+  <br><a href="/api/memory/export">Export all my data (JSON)</a>
+  <br><button type="button" onclick="withdrawConsent()">Withdraw data consent</button>
+  <p class="pesan-sub">Withdrawing consent stops future storage. It does not delete what is already stored; use "Forget this" per fact, or delete your account for a full deletion.</p>
+</div>
+
+<script>
+async function callApi(url, options) {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    const body = await response.json().catch(function () { return {}; });
+    alert(body.error || ("Request failed: " + response.status));
+    return null;
+  }
+  return response.json();
+}
+async function editFact(factId) {
+  const input = document.querySelector('[data-edit-for="' + factId + '"]');
+  const result = await callApi("/api/memory/facts/" + factId, {
+    method: "PATCH",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({content: input.value}),
+  });
+  if (result) { location.reload(); }
+}
+async function forgetFact(factId) {
+  if (!confirm("Forget this fact? It and its past versions will be deleted from your profile.")) { return; }
+  const result = await callApi("/api/memory/facts/" + factId + "/forget", {method: "POST"});
+  if (result) {
+    const card = document.getElementById("fact-" + factId);
+    if (card) { card.remove(); }
+  }
+}
+async function setGuest(guest) {
+  const result = await callApi("/api/memory/guest", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({guest: guest}),
+  });
+  if (result) {
+    document.getElementById("guest-state").textContent = result.guest_mode
+      ? "Guest mode is ON: this turn saves no memory."
+      : "Guest mode is off: Puspa remembers this chat as usual.";
+  }
+}
+async function withdrawConsent() {
+  if (!confirm("Withdraw data consent? Puspa will stop storing new memory for you.")) { return; }
+  const result = await callApi("/api/memory/consent/withdraw", {method: "POST"});
+  if (result) {
+    document.getElementById("consent-state").textContent = result.status;
+  }
+}
+async function loadProposals() {
+  const data = await callApi("/api/memory?status=proposed");
+  const box = document.getElementById("proposals");
+  if (!data) { return; }
+  if (!data.facts.length) {
+    box.innerHTML = "<p class=\"pesan-sub\">No inferred facts waiting.</p>";
+    return;
+  }
+  box.innerHTML = "";
+  data.facts.forEach(function (fact) {
+    const card = document.createElement("div");
+    card.className = "kartu";
+    const label = document.createElement("strong");
+    label.textContent = fact.key + ": " + fact.content;
+    const meta = document.createElement("span");
+    meta.className = "pesan-sub";
+    meta.textContent = " " + fact.source_label;
+    const confirmButton = document.createElement("button");
+    confirmButton.type = "button";
+    confirmButton.textContent = "Confirm";
+    confirmButton.onclick = async function () {
+      if (await callApi("/api/memory/facts/" + fact.id + "/confirm", {method: "POST"})) { location.reload(); }
+    };
+    const rejectButton = document.createElement("button");
+    rejectButton.type = "button";
+    rejectButton.textContent = "Reject";
+    rejectButton.onclick = async function () {
+      if (await callApi("/api/memory/facts/" + fact.id + "/reject", {method: "POST"})) { location.reload(); }
+    };
+    card.appendChild(label);
+    card.appendChild(document.createElement("br"));
+    card.appendChild(meta);
+    card.appendChild(document.createElement("br"));
+    card.appendChild(confirmButton);
+    card.appendChild(rejectButton);
+    box.appendChild(card);
+  });
+}
+loadProposals();
+</script>
 {% endblock %}
