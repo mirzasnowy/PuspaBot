@@ -34,6 +34,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
+import psycopg
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -510,6 +511,44 @@ def create_app(
             from puspa.evidence.projections import office as office_projection
 
             yield f"data: {json.dumps({'type': 'office', 'content': office_projection(app.state.event)}, ensure_ascii=False)}\n\n"
+            # P-05: the same stream carries room activity, filtered
+            # to the rooms this user belongs to — the Rooms screen
+            # refreshes when one arrives. Membership is checked
+            # here, so a removed member stops seeing a room's
+            # activity the moment their membership is gone.
+            try:
+                from puspa.rooms import RoomStore
+
+                mine = {room.id for room in RoomStore(app.state.dsn).list_rooms_for_user(user_id)}
+                for event in app.state.event:
+                    if event.get("type") == "room_activity" and event.get("room_id") in mine:
+                        yield (
+                            "data: "
+                            + json.dumps(
+                                {
+                                    "type": "room_activity",
+                                    "room_activity": {
+                                        "room_id": event.get("room_id"),
+                                        "kind": event.get("kind"),
+                                        "actor": event.get("actor"),
+                                        "summary": event.get("summary"),
+                                        "created_at": event.get("created_at"),
+                                    },
+                                    "created_at": time.time(),
+                                },
+                                ensure_ascii=False,
+                            )
+                            + "\n\n"
+                        )
+            except (psycopg.Error, ValueError, TypeError, KeyError, AttributeError):
+                # Room activity is best effort: the office frame
+                # above already went out, and the stream must not
+                # die because the room lookup failed. The narrowed
+                # failure modes are the room lookup itself (a
+                # database error, or an invalid user id) and the
+                # frame encoding (a malformed event or row, or a
+                # value json cannot encode).
+                pass
             yield f"data: {json.dumps({'type': 'heartbeat', 'created_at': time.time()}, ensure_ascii=False)}\n\n"
 
         return StreamingResponse(
@@ -927,6 +966,7 @@ def create_app(
         payments_api,
         proof_api,
         rooms_api,
+        rooms_membership_api,
     )
 
     app.state.graph_views = graph_api.GraphViewService(dsn=app.state.dsn)
@@ -938,6 +978,7 @@ def create_app(
     insights_api.register_routes(app, need_user)
     onboarding_api.register_routes(app, need_user)
     rooms_api.register_routes(app, need_user)
+    rooms_membership_api.register_routes(app, need_user)
     drafts_api.register_routes(app, need_user)
     proof_api.register_routes(app, need_user)
     payments_api.register_routes(app, need_user)

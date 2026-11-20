@@ -21,8 +21,10 @@
 --
 -- PostgreSQL database dump
 --
+-- PostgreSQL database dump
+--
 
-\restrict UAygzzZWrLxyDrAKINRVzaYsSGMgsd9sy1F6N79fZHA3GayMTdyIS1GLpxOMWBn
+\restrict h9qUhleswHjHBhgmGfFNCddu9JuqwMaUKwlwsg50kCrbStfE2oCY20rec5ZfKmM
 
 -- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -1385,6 +1387,29 @@ CREATE TABLE public.room_invites (
 ALTER TABLE public.room_invites OWNER TO root;
 
 --
+-- Name: room_job_queue; Type: TABLE; Schema: public; Owner: root
+--
+
+CREATE TABLE public.room_job_queue (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    room_id uuid NOT NULL,
+    kind text NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    status text DEFAULT 'queued'::text NOT NULL,
+    requested_by uuid NOT NULL,
+    result text,
+    error text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    started_at timestamp with time zone,
+    finished_at timestamp with time zone,
+    CONSTRAINT room_job_queue_kind_check CHECK ((kind = ANY (ARRAY['summarize'::text, 'note'::text]))),
+    CONSTRAINT room_job_queue_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'processing'::text, 'done'::text, 'failed'::text])))
+);
+
+
+ALTER TABLE public.room_job_queue OWNER TO root;
+
+--
 -- Name: room_members; Type: TABLE; Schema: public; Owner: root
 --
 
@@ -2661,6 +2686,14 @@ ALTER TABLE ONLY public.room_invites
 
 
 --
+-- Name: room_job_queue room_job_queue_pkey; Type: CONSTRAINT; Schema: public; Owner: root
+--
+
+ALTER TABLE ONLY public.room_job_queue
+    ADD CONSTRAINT room_job_queue_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: room_members room_members_pkey; Type: CONSTRAINT; Schema: public; Owner: root
 --
 
@@ -3477,6 +3510,13 @@ CREATE INDEX idx_room_invites_room_id ON public.room_invites USING btree (room_i
 
 
 --
+-- Name: idx_room_job_queue_room_status; Type: INDEX; Schema: public; Owner: root
+--
+
+CREATE INDEX idx_room_job_queue_room_status ON public.room_job_queue USING btree (room_id, status, created_at);
+
+
+--
 -- Name: idx_room_members_user_id; Type: INDEX; Schema: public; Owner: root
 --
 
@@ -4226,6 +4266,22 @@ ALTER TABLE ONLY public.room_invites
 
 ALTER TABLE ONLY public.room_invites
     ADD CONSTRAINT room_invites_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id) ON DELETE CASCADE;
+
+
+--
+-- Name: room_job_queue room_job_queue_requested_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: root
+--
+
+ALTER TABLE ONLY public.room_job_queue
+    ADD CONSTRAINT room_job_queue_requested_by_fkey FOREIGN KEY (requested_by) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: room_job_queue room_job_queue_room_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: root
+--
+
+ALTER TABLE ONLY public.room_job_queue
+    ADD CONSTRAINT room_job_queue_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id) ON DELETE CASCADE;
 
 
 --
@@ -6340,5 +6396,5 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.workspace_moves TO puspa_app;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict UAygzzZWrLxyDrAKINRVzaYsSGMgsd9sy1F6N79fZHA3GayMTdyIS1GLpxOMWBn
+\unrestrict h9qUhleswHjHBhgmGfFNCddu9JuqwMaUKwlwsg50kCrbStfE2oCY20rec5ZfKmM
 

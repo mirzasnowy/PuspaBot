@@ -48,8 +48,8 @@ from psycopg.rows import dict_row
 
 from puspa.accounts.users import resolve_dsn
 
-from .errors import NotRoomMemberError
-from .rooms import RoomStore, _validate_uuid
+from .errors import GuestReadOnlyError, NotRoomMemberError
+from .rooms import ROLE_GUEST, RoomStore, _validate_uuid
 
 __all__ = [
     "MAX_MEMORY_CONTENT_CHARS",
@@ -117,8 +117,9 @@ class RoomMemoryStore:
         the row is always attributed to the author.
 
         Raises ``NotRoomMemberError`` for a non-member,
-        ``ValueError`` for an empty/oversize content, an unknown
-        kind, or an unknown visibility.
+        ``GuestReadOnlyError`` for a guest (guests are read-only,
+        plan section 12.1), ``ValueError`` for an empty/oversize
+        content, an unknown kind, or an unknown visibility.
         """
         room_id = _validate_uuid(room_id, "room_id")
         author = _validate_uuid(author_user_id, "author_user_id")
@@ -132,6 +133,8 @@ class RoomMemoryStore:
             raise ValueError(f"content is longer than {MAX_MEMORY_CONTENT_CHARS} characters")
         if not self.rooms.is_member(room_id, author):
             raise NotRoomMemberError(f"user {author} is not a member of room {room_id}")
+        if self.rooms.role_of(room_id, author) == ROLE_GUEST:
+            raise GuestReadOnlyError(f"guest {author} may not write memory to room {room_id}")
         with _connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO room_memories (room_id, author_user_id, kind, content, visibility) "

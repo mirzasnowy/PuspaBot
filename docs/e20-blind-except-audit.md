@@ -94,6 +94,12 @@ it never grants money, access, or approval by default.
   `puspa/chassis/tools.py:318` (package metadata lookup) and
   `puspa/chassis/tools.py:568, 581` (MCP transport call, compression
   fallback — both return an error dict or the uncompressed result).
+* **Room job runner** (`puspa/rooms/job_queue.py`, P-05, 20 Nov 2026):
+  a claimed job runs a caller-supplied handler, so any exception type
+  can escape it. The handler marks the job `failed` and the queue
+  moves on; a failed job must never kill the queue. Narrowing to a
+  fixed exception list would let an unexpected handler failure
+  propagate and stop every later job for that room.
 
 ### 2.2 Narrowed during E-20 (11 sites, baseline 203 -> 192)
 

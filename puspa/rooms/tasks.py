@@ -40,8 +40,8 @@ from puspa.accounts.users import resolve_dsn
 from puspa.evidence.outcomes import write_outcome
 from puspa.ledger import Ledger
 
-from .errors import NotRoomMemberError
-from .rooms import RoomStore, _validate_uuid
+from .errors import GuestReadOnlyError, NotRoomMemberError
+from .rooms import ROLE_GUEST, RoomStore, _validate_uuid
 
 __all__ = [
     "RoomTask",
@@ -166,7 +166,9 @@ class RoomTaskStore:
         the owner must both be members of the room.
 
         Raises ``NotRoomMemberError`` for a non-member creator or
-        owner, ``ValueError`` for an empty or oversize title.
+        owner, ``GuestReadOnlyError`` for a guest creator (guests
+        are read-only, plan section 12.1), ``ValueError`` for an
+        empty or oversize title.
         """
         room_id = _validate_uuid(room_id, "room_id")
         creator = _validate_uuid(created_by, "created_by")
@@ -177,6 +179,8 @@ class RoomTaskStore:
             raise ValueError(f"title is longer than {MAX_TASK_TITLE_CHARS} characters")
         if not self.rooms.is_member(room_id, creator):
             raise NotRoomMemberError(f"user {creator} is not a member of room {room_id}")
+        if self.rooms.role_of(room_id, creator) == ROLE_GUEST:
+            raise GuestReadOnlyError(f"guest {creator} may not add tasks to room {room_id}")
         if owner is not None and not self.rooms.is_member(room_id, owner):
             raise NotRoomMemberError(f"user {owner} is not a member of room {room_id}")
         with _connect(self.dsn) as conn, conn.cursor() as cur:
