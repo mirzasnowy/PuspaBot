@@ -294,6 +294,7 @@ def operator_status(
     gateway=None,
     decision_log: GatewayDecisionLog | None = None,
     recent_events=(),
+    embedding: dict | None = None,
 ) -> dict:
     """The full ``GET /api/operator/status`` payload for a serve mode.
 
@@ -302,6 +303,13 @@ def operator_status(
     invented data). Hosted mode: the operator panels do not exist
     here, so the panel fields are null/empty and ``operator_panels``
     is False — the client hides the panels on that flag alone.
+
+    E-14: in local mode the payload also carries the embedding
+    snapshot (``embedding``) and its operator banner
+    (``embedding_banner``, None when healthy), so a degraded
+    embedding is visible on the operator surface. The hosted
+    payload is unchanged: the operator surface of a hosted
+    deployment lives elsewhere.
     """
     normalized = str(mode).strip().lower()
     if normalized != LOCAL:
@@ -312,10 +320,14 @@ def operator_status(
             "gateway": None,
             "log": [],
         }
+    from puspa.pwa.health import embedding_banner
+
     return {
         "mode": LOCAL,
         "operator_panels": True,
         "pairing": pairing_status(pairing_store) if pairing_store is not None else None,
         "gateway": gateway_status(gateway, decision_log) if gateway is not None else None,
         "log": operator_log_lines(recent_events),
+        "embedding": embedding,
+        "embedding_banner": embedding_banner(embedding),
     }

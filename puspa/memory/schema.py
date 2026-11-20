@@ -19,5 +19,5 @@ def resolve_dsn(dsn=None):
 
 
 def create_schema(dsn=None):
-    """Apply the Phase 1 memory tables (migration 0002_memory)."""
-    apply_migrations(resolve_dsn(dsn), target="0002")
+    """Apply the Phase 1 memory tables (migration 0022_embedding_health)."""
+    apply_migrations(resolve_dsn(dsn), target="0022")

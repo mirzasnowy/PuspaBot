@@ -301,6 +301,51 @@ def _vector_literal(vector):
     return "[" + ",".join(f"{v:.6f}" for v in vector) + "]"
 
 
+def _check_active_embedder(embedder_id, dimension, dsn=None):
+    """Refuse a write whose embedder differs from the active one.
+
+    The active embedder lives in the ``embedding_state`` singleton
+    (migration 0022). The first writer claims it; later writers
+    with a different embedder (or dimension) are refused with
+    ``MixedEmbedderError``. The sanctioned way to change it is a
+    tiered re-embed job, never a silent switch. On a database that
+    predates migration 0022 there is no state to enforce, so the
+    check is skipped (the insert itself then fails loudly on the
+    missing columns, which is the operator's cue to migrate).
+    """
+    from puspa.retrieval.embedding_health import MixedEmbedderError
+
+    try:
+        with _connect(dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT active_embedder_id, active_dimension FROM embedding_state WHERE id = 1"
+                )
+                row = cur.fetchone()
+            if row is None:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO embedding_state "
+                        "(id, active_embedder_id, active_dimension) "
+                        "VALUES (1, %s, %s) ON CONFLICT (id) DO NOTHING",
+                        (embedder_id, dimension),
+                    )
+            elif (row["active_embedder_id"], int(row["active_dimension"])) != (
+                embedder_id,
+                dimension,
+            ):
+                raise MixedEmbedderError(
+                    f"refusing episode from embedder {embedder_id} "
+                    f"(dim {dimension}): active embedder is "
+                    f"{row['active_embedder_id']} "
+                    f"(dim {row['active_dimension']}); "
+                    "finish a re-embed job before switching embedders"
+                )
+            conn.commit()
+    except psycopg.errors.UndefinedTable:
+        return
+
+
 def record_episode(
     user_id,
     content,
@@ -311,20 +356,32 @@ def record_episode(
     embedder=None,
     dsn=None,
 ):
-    """Tulis satu episode; kembalikan dict episode (tanpa vektor)."""
+    """Tulis satu episode; kembalikan dict episode (tanpa vektor).
+
+    The row stores the embedder that produced its vector
+    (``embedder_id`` + ``dimension``, E-14), and the write is
+    refused when that embedder differs from the active one, so
+    vectors from different embedders never share one index.
+    """
     if not isinstance(content, str) or content == "":
         raise ValueError("isi harus string tak kosong")
     if not isinstance(event_type, str) or event_type == "":
         raise ValueError("jenis harus string tak kosong")
     embedder = embedder or HashEmbedding()
     vector = embedder.embed(content)
+    from puspa.retrieval.embedding_health import dimension_of, embedder_id_of
+
+    embedder_id = embedder_id_of(embedder)
+    dimension = dimension_of(embedder)
+    _check_active_embedder(embedder_id, dimension, dsn)
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO episodic (user_id, agent_id, task_id, type, content, "
-                "embedding, event_id) VALUES (%s, %s, %s, %s, %s, %s::vector, %s) "
+                "embedding, embedder_id, dimension, event_id) "
+                "VALUES (%s, %s, %s, %s, %s, %s::vector, %s, %s, %s) "
                 "RETURNING id, user_id, agent_id, task_id, type, content, "
-                "event_id, created_at",
+                "embedder_id, dimension, event_id, created_at",
                 (
                     user_id,
                     agent_id,
@@ -332,6 +389,8 @@ def record_episode(
                     event_type,
                     content,
                     _vector_literal(vector),
+                    embedder_id,
+                    dimension,
                     event_id,
                 ),
             )
@@ -344,6 +403,8 @@ def record_episode(
         "task_id": str(row["task_id"]) if row["task_id"] else None,
         "type": row["type"],
         "content": row["content"],
+        "embedder_id": row["embedder_id"],
+        "dimension": int(row["dimension"]),
         "event_id": str(row["event_id"]) if row["event_id"] else None,
         "created_at": row["created_at"],
     }
@@ -354,30 +415,40 @@ def search_episodes(user_id, query, limit=5, agent_id=None, embedder=None, dsn=N
 
     Kembalikan list dict episode + `jarak` (0 = identik) + `kemiripan`
     (1 - jarak), urut paling mirip dulu. Hanya episode milik user ini.
+    Only rows from the query embedder are compared (E-14): vectors
+    from another embedder never score, even when they share a table.
     """
     if not isinstance(query, str) or query == "":
         raise ValueError("query harus string tak kosong")
     if limit < 1:
         raise ValueError("limit minimal 1")
     embedder = embedder or HashEmbedding()
+    from puspa.retrieval.embedding_health import dimension_of, embedder_id_of
+
+    embedder_id = embedder_id_of(embedder)
+    dimension = dimension_of(embedder)
     vector = _vector_literal(embedder.embed(query))
     with _connect(dsn) as conn, conn.cursor() as cur:
         if agent_id is None:
             cur.execute(
                 "SELECT id, user_id, agent_id, task_id, type, content, "
+                "embedder_id, dimension, "
                 "event_id, created_at, "
                 "embedding <=> %s::vector AS distance FROM episodic "
-                "WHERE user_id = %s ORDER BY distance ASC LIMIT %s",
-                (vector, user_id, limit),
+                "WHERE user_id = %s AND embedder_id = %s AND dimension = %s "
+                "ORDER BY distance ASC LIMIT %s",
+                (vector, user_id, embedder_id, dimension, limit),
             )
         else:
             cur.execute(
                 "SELECT id, user_id, agent_id, task_id, type, content, "
+                "embedder_id, dimension, "
                 "event_id, created_at, "
                 "embedding <=> %s::vector AS distance FROM episodic "
                 "WHERE user_id = %s AND (agent_id IS NULL OR agent_id = %s) "
+                "AND embedder_id = %s AND dimension = %s "
                 "ORDER BY distance ASC LIMIT %s",
-                (vector, user_id, agent_id, limit),
+                (vector, user_id, agent_id, embedder_id, dimension, limit),
             )
         out = []
         for r in cur.fetchall():
@@ -389,6 +460,8 @@ def search_episodes(user_id, query, limit=5, agent_id=None, embedder=None, dsn=N
                     "task_id": str(r["task_id"]) if r["task_id"] else None,
                     "type": r["type"],
                     "content": r["content"],
+                    "embedder_id": r["embedder_id"],
+                    "dimension": int(r["dimension"]),
                     "event_id": str(r["event_id"]) if r["event_id"] else None,
                     "created_at": r["created_at"],
                     "distance": float(r["distance"]),
