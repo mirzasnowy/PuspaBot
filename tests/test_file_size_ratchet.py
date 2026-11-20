@@ -117,7 +117,10 @@ BASELINE_LINES = {
     # Split candidate when it grows again: the route registrations
     # into a routes module, or the screen context into its own
     # module.
-    "puspa/pwa/app.py": 1009,
+    # P-04 (receipt photos, 20 Nov 2026): +19 lines — the
+    # ocr_engine argument, the receipt pending/expense state, and
+    # the receipt route registration. The ratchet resumes from 1028.
+    "puspa/pwa/app.py": 1028,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Shared-room delegation (B6): the delegation board, task
@@ -228,7 +231,16 @@ BASELINE_LINES = {
     # to docs/openapi-controls.yaml, 359 lines, same split
     # precedent as P-03's voice contract). The ratchet resumes
     # from 1980.
-    "docs/openapi-pwa.yaml": 1980,
+    # P-04 (receipt photos, 20 Nov 2026): +22 lines of $ref stubs
+    # (5 receipt paths + 6 receipt schemas, contract split out to
+    # docs/openapi-receipts.yaml, 393 lines) pushed the merged spec
+    # to 2002, 2 over the 2000-line hard cap — so the 18 HTML page
+    # routes moved to docs/openapi-pages.yaml (272 lines, its own
+    # contract; Error/Manifest/HealthStatus referenced back), and
+    # the main spec keeps $ref stubs. Regenerated client types are
+    # byte-identical before/after the split. The ratchet resumes
+    # from 1783.
+    "docs/openapi-pwa.yaml": 1783,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:
