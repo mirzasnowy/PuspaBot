@@ -112,7 +112,7 @@ def test_verify_chain_detects_silent_changes(ledger, task_id):
 
 
 def test_event_type_outside_closed_set_rejected(ledger, task_id):
-    assert len(EVENT_TYPES) == 31  # definisi 2.3 revisi 7: 22 lama + 9 baru
+    assert len(EVENT_TYPES) == 33  # definisi 2.3 revisi 7: 22 lama + 9 baru + 2 ambil alih (P-09)
     with pytest.raises(InvalidEventTypeError):
         _append(ledger, task_id, event_type="bogus_type", content={})
     with pytest.raises(InvalidEventTypeError):

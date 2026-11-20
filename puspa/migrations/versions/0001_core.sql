@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS events (
         'workflow_proposed', 'workflow_activated', 'workflow_paused',
         'trigger_fired', 'trigger_missed',
         'module_proposed', 'module_activated',
-        'false_report', 'data_consent'
+        'false_report', 'data_consent',
+        'takeover_started', 'takeover_released'
     )),
     content JSONB NOT NULL DEFAULT '{}',
     parent_id UUID REFERENCES events(id),
@@ -69,7 +70,8 @@ ALTER TABLE events ADD CONSTRAINT event_jenis_check CHECK (type IN (
     'workflow_proposed', 'workflow_activated', 'workflow_paused',
     'trigger_fired', 'trigger_missed',
     'module_proposed', 'module_activated',
-    'false_report', 'data_consent'
+    'false_report', 'data_consent',
+    'takeover_started', 'takeover_released'
 ));
 
 ALTER TABLE events ADD COLUMN IF NOT EXISTS valid_at TIMESTAMPTZ;

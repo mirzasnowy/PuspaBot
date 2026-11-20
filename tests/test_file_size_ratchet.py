@@ -106,7 +106,13 @@ BASELINE_LINES = {
     # the model call, TTFT/cost/abandoned-cost metrics).
     # Split candidate when it grows again: the model-call step
     # into its own module, or the tool-call loop into one.
-    "puspa/turns/loop.py": 1080,
+    # P-09 (live view + takeover, 20 Nov 2026): +82 lines — the
+    # takeover_hold gate (constructor param, _check_takeover_hold
+    # before every model call and every registry tool call, the
+    # TurnInterrupted catch at both sites, the takeover reason
+    # through _finish_interrupted). The ratchet resumes from 1163
+    # (1162 + 1 line from `ruff format`).
+    "puspa/turns/loop.py": 1163,
     # PWA app factory (G28 wiring + P-01/P-02/P-03): the FastAPI
     # app, the screen context + bootstrap, and every API module's
     # route registration in one place. Crossed 1000 lines in
@@ -129,7 +135,12 @@ BASELINE_LINES = {
     # lines — the "morning" screen in SCREENS, the two morning test
     # seams on create_app (connector factory + HTTP client), and
     # the morning route registration. Resumes from 1088.
-    "puspa/pwa/app.py": 1088,
+    # P-09 (live view + takeover, 20 Nov 2026): +23 lines — the
+    # "live" screen in SCREENS, its agents context (narrowed
+    # except, no new blind handler), and the takeover store +
+    # live-view route registration (with a blank separator line).
+    # Resumes from 1111.
+    "puspa/pwa/app.py": 1111,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Shared-room delegation (B6): the delegation board, task
@@ -255,7 +266,13 @@ BASELINE_LINES = {
     # schemas. The contract itself lives in
     # docs/openapi-morning.yaml (521 lines) so the main spec stays
     # under the 2000-line hard cap. Resumes from 1825.
-    "docs/openapi-pwa.yaml": 1825,
+    # P-09 (live view + takeover, 20 Nov 2026): +24 lines — the
+    # `live-view` tag (2), $ref stubs for 4 live-view paths + 7
+    # live-view schemas (contract split out to
+    # docs/openapi-live-view.yaml, same split precedent), and
+    # "live" in the Bootstrap screen enum. Main spec 1849, still
+    # under the 2000-line hard cap. Resumes from 1849.
+    "docs/openapi-pwa.yaml": 1849,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:

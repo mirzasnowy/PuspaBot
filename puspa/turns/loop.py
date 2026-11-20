@@ -49,6 +49,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from psycopg import Error as PsycopgError
+
 from puspa.observability import metrics as observability_metrics
 from puspa.observability import tracing as observability_tracing
 from puspa.router.fallback import AllTiersFailed, ProviderFailure
@@ -167,6 +169,13 @@ class TurnLoop:
     telling it to show the conflict to the user instead. The gate
     runs after the dial on purpose: even at ``do_silently`` a
     conflicted action is surfaced, never run silently.
+    ``takeover_hold`` is an optional P-09 callable ``agent_id ->
+    bool`` (pass a bound
+    :meth:`puspa.pwa.live_view.TakeoverStore.is_held`): when it
+    reports the agent held, the turn ends as ``interrupted``
+    before the next model call and no further tool call runs.
+    A hold check that fails fails open, like the advisor and
+    the dial: a broken signal must never block the turn.
     """
 
     def __init__(
@@ -188,6 +197,7 @@ class TurnLoop:
         autonomy_dial=None,
         dial_area_for_tool=None,
         conflict_gate=None,
+        takeover_hold=None,
     ) -> None:
         self.config = config or TurnConfig()
         self.model_call = model_call
@@ -204,6 +214,7 @@ class TurnLoop:
         self.autonomy_dial = autonomy_dial
         self.dial_area_for_tool = dict(dial_area_for_tool) if dial_area_for_tool else {}
         self.conflict_gate = conflict_gate
+        self.takeover_hold = takeover_hold
         self._refusal_message = ""
         self._event: list[dict] = []
         self.sink = sink or (
@@ -443,6 +454,21 @@ class TurnLoop:
         while True:
             checkpoint = take_checkpoint(history)
             try:
+                self._check_takeover_hold(agent_id)
+            except TurnInterrupted as exc:
+                return self._finish_interrupted(
+                    checkpoint,
+                    iteration_budget,
+                    repairs,
+                    notes,
+                    attempts,
+                    hops,
+                    cost_rp,
+                    agent_id,
+                    task_id,
+                    reason=str(exc),
+                )
+            try:
                 prepared = prepare_iteration(
                     history, budget=iteration_budget, interrupt_event=event
                 )
@@ -586,9 +612,26 @@ class TurnLoop:
                     dial_decisions=dial_decisions,
                     conflict_decisions=conflict_decisions,
                 )
-            history, turn_intent, turn_dial, turn_conflict = self._run_tool_calls(
-                history, reply, agent_id=agent_id, task_id=task_id, tool_call=tool_call
-            )
+            try:
+                history, turn_intent, turn_dial, turn_conflict = self._run_tool_calls(
+                    history, reply, agent_id=agent_id, task_id=task_id, tool_call=tool_call
+                )
+            except TurnInterrupted as exc:
+                # A takeover hold landed mid-turn: no further tool
+                # call ran (the check inside _run_tool_calls fires
+                # before each dispatch), and the turn ends here.
+                return self._finish_interrupted(
+                    checkpoint,
+                    iteration_budget,
+                    repairs,
+                    notes,
+                    attempts,
+                    hops,
+                    cost_rp,
+                    agent_id,
+                    task_id,
+                    reason=str(exc),
+                )
             intent_decisions.extend(turn_intent)
             dial_decisions.extend(turn_dial)
             conflict_decisions.extend(turn_conflict)
@@ -768,6 +811,12 @@ class TurnLoop:
                         )
                         continue
             if registry is not None:
+                # P-09: a takeover hold stops the turn before the
+                # next tool call runs — never after it started.
+                # (Intercepted tools above are internal state ops,
+                # not user-facing actions, so the hold does not
+                # block them, like the dial and the conflict gate.)
+                self._check_takeover_hold(agent_id)
                 # The conflict gate (K13): last check before the call runs, after the dial.
                 if self.conflict_gate is not None:
                     conflict_decision, event, message = apply_conflict_gate(
@@ -856,6 +905,29 @@ class TurnLoop:
         except Exception:
             return None
 
+    def _check_takeover_hold(self, agent_id: str) -> None:
+        """Raise :class:`TurnInterrupted` when the agent is held (P-09).
+
+        Called before every model call and every registry tool
+        call. No hold callable wired in means no hold: the loop
+        behaves exactly as before. A hold check that fails fails
+        open (the narrowed failure modes are a database error
+        from the store and a bad agent id or callable) — a broken
+        signal must never block the turn, like the advisor and
+        the dial above.
+        """
+        if self.takeover_hold is None:
+            return
+        try:
+            held = bool(self.takeover_hold(agent_id))
+        except (AttributeError, TypeError, ValueError, OSError, PsycopgError):
+            return
+        if held:
+            raise TurnInterrupted(
+                f"turn held: agent {agent_id!r} was taken over by its user; "
+                "autonomous work is paused until the takeover is released"
+            )
+
     # -- finishing -------------------------------------------------------
 
     def _record(self, event_type: str, content: dict) -> None:
@@ -917,13 +989,24 @@ class TurnLoop:
         cost_rp,
         agent_id,
         task_id,
+        reason: str | None = None,
     ) -> TurnResult:
         restored = restore_checkpoint(checkpoint)
         note = interruption_note()
-        self._record(
-            "turn_interrupted",
-            {"agent_id": agent_id, "task_id": task_id, "iterations_used": budget.used},
-        )
+        event_content: dict = {
+            "agent_id": agent_id,
+            "task_id": task_id,
+            "iterations_used": budget.used,
+        }
+        result_notes = [*notes, recovery_note("interrupted by the user")]
+        if reason is not None:
+            # A takeover hold, not a user interrupt: the message
+            # says so, and the sink event carries the reason so
+            # the live view can tell the two apart.
+            note = reason
+            event_content["reason"] = reason
+            result_notes = [*notes, recovery_note(reason)]
+        self._record("turn_interrupted", event_content)
         return TurnResult(
             status=TURN_INTERRUPTED,
             text="",
@@ -935,7 +1018,7 @@ class TurnLoop:
             attempts=attempts,
             hops=hops,
             repairs=repairs,
-            notes=[*notes, recovery_note("interrupted by the user")],
+            notes=result_notes,
         )
 
     def _finish_budget(

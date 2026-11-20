@@ -288,8 +288,8 @@ def test_hash_inputs_unchanged_pinned_vector():
     assert hashed == HASH_PIN
 
 
-def test_event_types_still_closed_at_31():
-    assert len(EVENT_TYPES) == 31
+def test_event_types_still_closed_at_33():
+    assert len(EVENT_TYPES) == 33
 
 
 # -- database: ledger ----------------------------------------------------

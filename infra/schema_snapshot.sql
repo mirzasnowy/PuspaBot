@@ -19,18 +19,11 @@
 -- truth; this file is only the comparison target.
 --
 --
--- PostgreSQL database dump
 --
 -- PostgreSQL database dump
 --
 
-\restrict h9qUhleswHjHBhgmGfFNCddu9JuqwMaUKwlwsg50kCrbStfE2oCY20rec5ZfKmM
-
---
--- PostgreSQL database dump
---
-
-\restrict 08RSOKFLqDPMddy0sffqJiZ6ALpkpwxZVhPMvkzcpx7eUq9SSc1vG7RqDweRfBR
+\restrict FalJfmJRVvSpEye4Btm6eHSnvT3XJai3nKx59lNCmhe5GsynegJP2DXo1hO4Ef0
 
 -- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -741,8 +734,7 @@ CREATE TABLE public.events (
     previous_hash text NOT NULL,
     hash text NOT NULL,
     valid_at timestamp with time zone,
-    CONSTRAINT event_jenis_check CHECK ((type = ANY (ARRAY['task_created'::text, 'plan_created'::text, 'subagent_created'::text, 'handoff_proposed'::text, 'handoff_accepted'::text, 'handoff_handed_over'::text, 'handoff_rejected'::text, 'handoff_expired'::text, 'heartbeat'::text, 'tool_called'::text, 'tool_completed'::text, 'evidence_recorded'::text, 'verification_completed'::text, 'approval_requested'::text, 'approval_granted'::text, 'approval_rejected'::text, 'user_message'::text, 'agent_message'::text, 'budget_exhausted'::text, 'task_completed'::text, 'task_failed'::text, 'task_stopped'::text, 'workflow_proposed'::text, 'workflow_activated'::text, 'workflow_paused'::text, 'trigger_fired'::text, 'trigger_missed'::text, 'module_proposed'::text, 'module_activated'::text, 'false_report'::text, 'data_consent'::text]))),
-    CONSTRAINT events_type_check CHECK ((type = ANY (ARRAY['task_created'::text, 'plan_created'::text, 'subagent_created'::text, 'handoff_proposed'::text, 'handoff_accepted'::text, 'handoff_handed_over'::text, 'handoff_rejected'::text, 'handoff_expired'::text, 'heartbeat'::text, 'tool_called'::text, 'tool_completed'::text, 'evidence_recorded'::text, 'verification_completed'::text, 'approval_requested'::text, 'approval_granted'::text, 'approval_rejected'::text, 'user_message'::text, 'agent_message'::text, 'budget_exhausted'::text, 'task_completed'::text, 'task_failed'::text, 'task_stopped'::text, 'workflow_proposed'::text, 'workflow_activated'::text, 'workflow_paused'::text, 'trigger_fired'::text, 'trigger_missed'::text, 'module_proposed'::text, 'module_activated'::text, 'false_report'::text, 'data_consent'::text])))
+    CONSTRAINT event_jenis_check CHECK ((type = ANY (ARRAY['task_created'::text, 'plan_created'::text, 'subagent_created'::text, 'handoff_proposed'::text, 'handoff_accepted'::text, 'handoff_handed_over'::text, 'handoff_rejected'::text, 'handoff_expired'::text, 'heartbeat'::text, 'tool_called'::text, 'tool_completed'::text, 'evidence_recorded'::text, 'verification_completed'::text, 'approval_requested'::text, 'approval_granted'::text, 'approval_rejected'::text, 'user_message'::text, 'agent_message'::text, 'budget_exhausted'::text, 'task_completed'::text, 'task_failed'::text, 'task_stopped'::text, 'workflow_proposed'::text, 'workflow_activated'::text, 'workflow_paused'::text, 'trigger_fired'::text, 'trigger_missed'::text, 'module_proposed'::text, 'module_activated'::text, 'false_report'::text, 'data_consent'::text, 'takeover_started'::text, 'takeover_released'::text])))
 );
 
 
@@ -1767,6 +1759,21 @@ CREATE TABLE public.system_heartbeats (
 
 
 ALTER TABLE public.system_heartbeats OWNER TO root;
+
+--
+-- Name: takeover_holds; Type: TABLE; Schema: public; Owner: root
+--
+
+CREATE TABLE public.takeover_holds (
+    agent_id text NOT NULL,
+    held_by_user_id text NOT NULL,
+    reason text DEFAULT ''::text NOT NULL,
+    task_id text,
+    held_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.takeover_holds OWNER TO root;
 
 --
 -- Name: tasks; Type: TABLE; Schema: public; Owner: root
@@ -2911,6 +2918,14 @@ ALTER TABLE ONLY public.system_heartbeats
 
 
 --
+-- Name: takeover_holds takeover_holds_pkey; Type: CONSTRAINT; Schema: public; Owner: root
+--
+
+ALTER TABLE ONLY public.takeover_holds
+    ADD CONSTRAINT takeover_holds_pkey PRIMARY KEY (agent_id);
+
+
+--
 -- Name: tasks tasks_pkey; Type: CONSTRAINT; Schema: public; Owner: root
 --
 
@@ -3645,6 +3660,13 @@ CREATE INDEX idx_split_shares_split_id ON public.split_shares USING btree (split
 --
 
 CREATE INDEX idx_summary_user ON public.summaries USING btree (user_id, created_at DESC);
+
+
+--
+-- Name: idx_takeover_holds_user; Type: INDEX; Schema: public; Owner: root
+--
+
+CREATE INDEX idx_takeover_holds_user ON public.takeover_holds USING btree (held_by_user_id);
 
 
 --
@@ -6444,5 +6466,5 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.workspace_moves TO puspa_app;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 08RSOKFLqDPMddy0sffqJiZ6ALpkpwxZVhPMvkzcpx7eUq9SSc1vG7RqDweRfBR
+\unrestrict FalJfmJRVvSpEye4Btm6eHSnvT3XJai3nKx59lNCmhe5GsynegJP2DXo1hO4Ef0
 
