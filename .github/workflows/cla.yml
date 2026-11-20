@@ -1,0 +1,126 @@
+# CLA check (GitHub issue #28).
+#
+# On every pull request — and on every new comment, so a signing
+# comment posted after the PR opened is picked up — this workflow
+# checks whether the PR author signed the Puspa CLA (CLA.md) by
+# posting the agreement sentence as a comment on the PR. The check
+# itself is scripts/cla_check.py (standard library only, no install
+# needed); the workflow only fetches the PR comments and applies the
+# label + guidance comment.
+#
+# Signing mechanism (the only one; see CONTRIBUTING.md): the PR
+# author posts this sentence as a comment on their PR:
+#   I have read the Puspa Contributor License Agreement (CLA.md) and I agree to its terms.
+# Maintainers and bot accounts never need to sign.
+#
+# Safety: the trigger is pull_request_target, which runs the workflow
+# from the BASE branch, so code from the PR is never executed — a
+# hostile PR cannot change what the check does. The checkout below
+# takes the base ref on purpose; do not "fix" it to check out the PR
+# head. The issue_comment trigger is filtered to comments on pull
+# requests (a plain issue comment has no .pull_request field).
+#
+# The workflow needs no GitHub App and no hosted CLA service: it
+# runs entirely inside this repo on the built-in GITHUB_TOKEN. The
+# `cla: missing` label is created by the workflow itself when it
+# first needs it, so no manual setup is required.
+#
+# Honest limit: this workflow has never run on GitHub yet (no CI has
+# ever run in this repo — checks so far are local only). Its first
+# real run happens on GitHub; until then the YAML is validated, the
+# checker is unit-tested (tests/test_cla_check.py), and every `gh`
+# command below is checked against the GitHub CLI as installed on
+# the ubuntu-24.04 runner image. After the first green run on a real
+# PR, consider making this a required status check (branch
+# protection is a later step for the repo, not part of this item).
+
+name: CLA check
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  cla:
+    name: CLA signature check
+    # Plain issue comments have no pull_request field; only run for
+    # pull requests (every pull_request_target event is one already).
+    if: github.event_name == 'pull_request_target' || github.event.issue.pull_request
+    runs-on: ubuntu-24.04
+    steps:
+      # Base ref on purpose (see the header comment): never check out
+      # the PR head under pull_request_target.
+      - uses: actions/checkout@v4
+
+      - name: Resolve the pull request number and author
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request_target" ]; then
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+          else
+            PR_NUMBER="${{ github.event.issue.number }}"
+            PR_AUTHOR=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER" --jq '.user.login')
+          fi
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "author=$PR_AUTHOR" >> "$GITHUB_OUTPUT"
+          echo "PR #$PR_NUMBER by @$PR_AUTHOR"
+
+      - name: Fetch the pull request comments
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # GitHub REST "list issue comments": the shape
+          # scripts/cla_check.py reads ([{"user": {"login": ...},
+          # "body": ...}, ...]). --paginate so a long thread is not
+          # cut off at the first page.
+          gh api "repos/${{ github.repository }}/issues/${{ steps.pr.outputs.number }}/comments" --paginate > comments.json
+
+      - name: Check the CLA signature
+        id: cla
+        run: |
+          python3 scripts/cla_check.py \
+            --pr-author "${{ steps.pr.outputs.author }}" \
+            --comments comments.json
+
+      # The two steps below run after the check step whether it
+      # passed or failed (a failed step skips plain followers, so
+      # each carries `if: always()` plus the check outcome). The job
+      # still fails when the signature is missing: a failed step
+      # fails the job, and these steps only label and comment.
+      - name: Signature found — remove the missing label
+        if: always() && steps.cla.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue edit "${{ steps.pr.outputs.number }}" --remove-label "cla: missing" || true
+
+      - name: Signature missing — label and guide
+        if: always() && steps.cla.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Create the label the first time it is needed (a new repo
+          # has no labels); the || true keeps the rerun green when
+          # it already exists.
+          gh label create "cla: missing" --color "d73a4a" \
+            --description "The PR author has not signed the CLA yet" || true
+          gh issue edit "${{ steps.pr.outputs.number }}" --add-label "cla: missing"
+          # Post the guidance comment once: skip when a comment
+          # carrying the hidden marker is already on the PR, so a
+          # re-run never spams the thread.
+          if ! gh api "repos/${{ github.repository }}/issues/${{ steps.pr.outputs.number }}/comments" --paginate \
+            --jq '.[].body | select(contains("<!-- puspa-cla-guidance -->"))' | grep -q .; then
+            gh pr comment "${{ steps.pr.outputs.number }}" --body-file .github/cla-guidance.md
+          fi
+          echo "CLA signature missing for @${{ steps.pr.outputs.author }} — see the guidance comment on the PR."
+          exit 1
