@@ -158,6 +158,62 @@ enforces its 24-hour token expiry; this layer only decides
 *whether* to ask. The tests prove both still hold: a tampered
 content hash voids the approval, and an expired token is refused.
 
+## Server-rendered approval cards (E-10, plan 6.2)
+
+`puspa/policy/approval_cards.py` renders what the user sees, from
+the structured tool arguments that will actually run — and nothing
+else. Every visible line is one argument field (who, how much,
+where to); the card carries the content hash of exactly those
+arguments, computed with the same canonical JSON the gate uses, so
+the hash on the card is the hash the gate enforces.
+`verify_card` re-renders from fresh arguments and checks both the
+hash and the lines, so a card whose text was edited after
+rendering fails even if its hash was copied along.
+
+A model narrative may be passed to the render call, but it is
+never rendered — only flagged as ignored. The card carries no
+trace of its wording. Missing required fields render as "Not
+provided" and mark the card incomplete (never invented); fields
+that look like secrets are withheld. Credential changes never get
+a card: they are never approvable.
+
+Seams: `ApprovalPolicy.render_card(tool_name, content, ...)`
+classifies the action and renders; `request_with_card(...)`
+returns `(gate_request, card)` for the same content the gate
+binds to. `DraftingService.request_send_approval` includes the
+rendered card in its `awaiting_approval` answer.
+
+## Narrowed "always" + beta ban (E-10, plan 6.3)
+
+An "always" answer used to bind only to the action kind. It can
+now be narrowed when recorded:
+
+- `recipient_pattern` / `domain_pattern` / `path_pattern` — globs
+  (`*` allowed) the action's target must match;
+- `max_nominal` — the highest amount the answer covers.
+
+Narrowing is fail-closed: a set pattern with no value on that
+axis never matches, and a missing nominal never passes a cap. An
+answer with no narrowing fields is unconstrained, as before. When
+a stored "always" answer exists but does not cover the action,
+the decision is "ask" and says so.
+
+In beta mode (`ApprovalStore(beta_mode=True)` /
+`ApprovalPolicy(beta_mode=True)`), "always" is disabled entirely
+for `pay` and `send_to_other`: recording one is refused, and an
+answer recorded before beta mode was switched on never applies.
+Other kinds are unaffected.
+
+## Approval fatigue (E-10, plan 6.3)
+
+`ApprovalFatigueTracker` (same module) measures the signal the
+plan names: the share of decisions made faster than a human could
+have read the card (under one second). The PWA records when a
+card is first shown (tasks screen) and when the user decides
+(`POST /api/persetujuan/{request_id}`); the numbers are served at
+`GET /api/approvals/fatigue`. The tracker only measures — it
+never blocks a decision, however fast.
+
 ## Honest limits
 
 - **Recognition gaps.** A button without a label, a keyboard
@@ -179,3 +235,13 @@ content hash voids the approval, and an expired token is refused.
 - **The gate is unchanged.** `puspa/policy/gate.py` was not
   modified; the taxonomy sits in front of it. A caller that goes
   straight to the gate bypasses the taxonomy.
+- **The PWA card component still accepts a `summary` field.**
+  Server-rendered cards never set it — lines + hash are the
+  source of truth — but an older payload carrying a narrative
+  summary would still render it. Removing that field from the
+  component is a frontend follow-up, not part of E-10.
+- **Fatigue timing starts at first render.** The clock starts
+  when the tasks screen first serves the card, not when the user
+  actually looks at it; a card left open and decided later
+  counts as read, and a decision with no recorded showing counts
+  as untimed rather than unread.
