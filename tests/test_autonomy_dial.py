@@ -59,6 +59,7 @@ def test_all_areas_start_at_propose_with_no_trust_assumed():
         "scheduling",
         "system",
         "accounts",
+        "shopping",
     }
     for area in AREAS:
         assert dial.score(area) == pytest.approx(INITIAL_SCORE)
@@ -147,23 +148,24 @@ def test_areas_move_independently():
 
 def test_serious_failure_in_irreversible_area_drops_to_zero_at_once():
     dial = AutonomyDial()
-    _climb(dial, "money", 24)
-    assert dial.stage("money") == STAGE_DO_SILENTLY
-    decision = dial.record_serious_failure("money", note="payment went to the wrong account")
-    assert dial.score("money") == 0.0
-    assert dial.stage("money") == STAGE_PROPOSE
+    _climb(dial, "messaging", 24)
+    assert dial.stage("messaging") == STAGE_DO_SILENTLY
+    decision = dial.record_serious_failure("messaging", note="message went to the wrong person")
+    assert dial.score("messaging") == 0.0
+    assert dial.stage("messaging") == STAGE_PROPOSE
     assert decision.stage == STAGE_PROPOSE
     assert decision.run is False
-    assert dial.state("money")["serious_failures"] == 1
+    assert dial.state("messaging")["serious_failures"] == 1
     # Other areas are untouched by the drop.
     assert dial.score("scheduling") == pytest.approx(INITIAL_SCORE)
 
 
 def test_serious_failure_drops_immediately_in_every_irreversible_area():
     dial = AutonomyDial()
-    # Accounts is irreversible too, but capped at propose, so it
-    # never climbs to do-silently — it is covered separately below.
-    for area in sorted(IRREVERSIBLE_AREAS - {"accounts"}):
+    # Accounts and money are irreversible too, but capped at
+    # propose, so they never climb to do-silently — they are
+    # covered separately below.
+    for area in sorted(IRREVERSIBLE_AREAS - {"accounts", "money"}):
         _climb(dial, area, 24)
         assert dial.stage(area) == STAGE_DO_SILENTLY
         dial.record_serious_failure(area)
@@ -174,6 +176,12 @@ def test_serious_failure_drops_immediately_in_every_irreversible_area():
     dial.record_serious_failure("accounts")
     assert dial.score("accounts") == 0.0
     assert dial.stage("accounts") == STAGE_PROPOSE
+    _climb(dial, "money", 24)
+    assert dial.score("money") == pytest.approx(0.59, abs=1e-9)
+    assert dial.stage("money") == STAGE_PROPOSE
+    dial.record_serious_failure("money")
+    assert dial.score("money") == 0.0
+    assert dial.stage("money") == STAGE_PROPOSE
 
 
 def test_serious_failure_in_reversible_area_drops_by_point_three_not_to_zero():
@@ -188,25 +196,25 @@ def test_serious_failure_in_reversible_area_drops_by_point_three_not_to_zero():
 
 def test_rebuilding_after_a_drop_takes_eighteen_correct_to_show():
     dial = AutonomyDial()
-    _climb(dial, "money", 24)
-    dial.record_serious_failure("money")
-    assert dial.score("money") == 0.0
-    _climb(dial, "money", 17)
-    assert dial.stage("money") == STAGE_PROPOSE
-    _climb(dial, "money", 1)
-    assert dial.score("money") == pytest.approx(0.6028, abs=1e-3)
-    assert dial.stage("money") == STAGE_DO_AND_SHOW
+    _climb(dial, "messaging", 24)
+    dial.record_serious_failure("messaging")
+    assert dial.score("messaging") == 0.0
+    _climb(dial, "messaging", 17)
+    assert dial.stage("messaging") == STAGE_PROPOSE
+    _climb(dial, "messaging", 1)
+    assert dial.score("messaging") == pytest.approx(0.6028, abs=1e-3)
+    assert dial.stage("messaging") == STAGE_DO_AND_SHOW
 
 
 def test_rebuilding_after_a_drop_takes_thirty_seven_correct_to_silent():
     dial = AutonomyDial()
-    _climb(dial, "money", 24)
-    dial.record_serious_failure("money")
-    _climb(dial, "money", 36)
-    assert dial.stage("money") == STAGE_DO_AND_SHOW
-    _climb(dial, "money", 1)
-    assert dial.score("money") == pytest.approx(0.8501, abs=1e-3)
-    assert dial.stage("money") == STAGE_DO_SILENTLY
+    _climb(dial, "messaging", 24)
+    dial.record_serious_failure("messaging")
+    _climb(dial, "messaging", 36)
+    assert dial.stage("messaging") == STAGE_DO_AND_SHOW
+    _climb(dial, "messaging", 1)
+    assert dial.score("messaging") == pytest.approx(0.8501, abs=1e-3)
+    assert dial.stage("messaging") == STAGE_DO_SILENTLY
 
 
 def test_accounts_area_never_leaves_propose():
@@ -217,6 +225,124 @@ def test_accounts_area_never_leaves_propose():
     assert dial.advise("accounts").run is False
     # The outcomes are still recorded, even though the stage never moves.
     assert dial.state("accounts")["correct"] == 24
+
+
+# ---------------------------------------------------------------------------
+# P-02: the money lock, the shopping area, ceilings
+# ---------------------------------------------------------------------------
+
+
+def test_money_area_never_leaves_propose():
+    """P-02: money is locked to Ask first, however much evidence accrues."""
+    dial = AutonomyDial()
+    _climb(dial, "money", 24)
+    assert dial.score("money") == pytest.approx(0.59, abs=1e-9)
+    assert dial.stage("money") == STAGE_PROPOSE
+    assert dial.advise("money").run is False
+    # The outcomes are still recorded, even though the stage never moves.
+    assert dial.state("money")["correct"] == 24
+    _climb(dial, "money", 100)
+    assert dial.score("money") == pytest.approx(0.59, abs=1e-9)
+    assert dial.stage("money") == STAGE_PROPOSE
+
+
+def test_money_ceiling_cannot_be_raised():
+    """P-02: no ceiling change can promote money above propose."""
+    dial = AutonomyDial()
+    with pytest.raises(ValueError, match="locked to ask first"):
+        dial.set_ceiling("money", STAGE_DO_AND_SHOW)
+    with pytest.raises(ValueError, match="locked to ask first"):
+        dial.set_ceiling("money", STAGE_DO_SILENTLY)
+    assert dial.set_ceiling("money", STAGE_PROPOSE).stage == STAGE_PROPOSE
+    assert dial.ceiling("money") == STAGE_PROPOSE
+
+
+def test_shopping_area_climbs_and_drops_like_other_areas():
+    """P-02: shopping is a real dial area with the same rise/fall rules."""
+    dial = AutonomyDial()
+    assert dial.stage("shopping") == STAGE_PROPOSE
+    _climb(dial, "shopping", 5)
+    assert dial.stage("shopping") == STAGE_DO_AND_SHOW
+    _climb(dial, "shopping", 19)
+    assert dial.stage("shopping") == STAGE_DO_SILENTLY
+    # Shopping is irreversible: a serious failure drops it to zero at once.
+    dial.record_serious_failure("shopping", note="ordered the wrong item")
+    assert dial.score("shopping") == 0.0
+    assert dial.stage("shopping") == STAGE_PROPOSE
+
+
+def test_shopping_tools_are_not_mapped_to_shopping():
+    """P-02: purchases stay money-gated; no tool consults shopping."""
+    assert area_for_tool("pay_bill") == "money"
+    assert area_for_tool("search_prices") is None
+
+
+def test_ceiling_holds_an_area_down_below_its_score_stage():
+    dial = AutonomyDial()
+    _climb(dial, "scheduling", 24)
+    assert dial.stage("scheduling") == STAGE_DO_SILENTLY
+    decision = dial.set_ceiling("scheduling", STAGE_DO_AND_SHOW)
+    assert decision.stage == STAGE_DO_AND_SHOW
+    assert decision.run is True
+    assert decision.show is True
+    assert decision.ceiling == STAGE_DO_AND_SHOW
+    assert dial.effective_stage("scheduling") == STAGE_DO_AND_SHOW
+    # The score underneath did not move: the ceiling only holds it down.
+    assert dial.score("scheduling") == pytest.approx(0.8540, abs=1e-3)
+    assert dial.stage("scheduling") == STAGE_DO_SILENTLY
+
+
+def test_ceiling_above_the_score_stage_changes_nothing_yet():
+    dial = AutonomyDial()
+    decision = dial.set_ceiling("scheduling", STAGE_DO_SILENTLY)
+    assert decision.stage == STAGE_PROPOSE
+    assert decision.run is False
+    assert decision.ceiling is None
+    _climb(dial, "scheduling", 24)
+    assert dial.advise("scheduling").stage == STAGE_DO_SILENTLY
+
+
+def test_clearing_a_ceiling_restores_the_score_stage():
+    dial = AutonomyDial()
+    _climb(dial, "scheduling", 5)
+    dial.set_ceiling("scheduling", STAGE_PROPOSE)
+    assert dial.advise("scheduling").stage == STAGE_PROPOSE
+    decision = dial.clear_ceiling("scheduling")
+    assert decision.stage == STAGE_DO_AND_SHOW
+    assert dial.ceiling("scheduling") is None
+
+
+def test_unknown_ceiling_and_unknown_area_raise():
+    dial = AutonomyDial()
+    with pytest.raises(ValueError, match="unknown dial stage"):
+        dial.set_ceiling("scheduling", "turbo")
+    with pytest.raises(ValueError, match="unknown dial area"):
+        dial.set_ceiling("teleportation", STAGE_PROPOSE)
+    with pytest.raises(ValueError, match="unknown dial area"):
+        dial.ceiling("teleportation")
+    with pytest.raises(ValueError, match="unknown dial area"):
+        dial.clear_ceiling("teleportation")
+
+
+def test_state_and_summary_carry_the_ceiling_and_effective_stage():
+    dial = AutonomyDial()
+    _climb(dial, "messaging", 24)
+    dial.set_ceiling("messaging", STAGE_DO_AND_SHOW)
+    state = dial.state("messaging")
+    assert state["stage"] == STAGE_DO_SILENTLY
+    assert state["effective_stage"] == STAGE_DO_AND_SHOW
+    assert state["ceiling"] == STAGE_DO_AND_SHOW
+    assert dial.summary()["areas"]["messaging"]["effective_stage"] == STAGE_DO_AND_SHOW
+
+
+def test_reset_area_keeps_the_ceiling():
+    dial = AutonomyDial()
+    _climb(dial, "scheduling", 24)
+    dial.set_ceiling("scheduling", STAGE_DO_AND_SHOW)
+    dial.reset_area("scheduling")
+    assert dial.score("scheduling") == pytest.approx(INITIAL_SCORE)
+    assert dial.ceiling("scheduling") == STAGE_DO_AND_SHOW
+    assert dial.advise("scheduling").stage == STAGE_PROPOSE
 
 
 # ---------------------------------------------------------------------------
@@ -252,9 +378,9 @@ def test_history_audits_moves_and_is_capped():
 
 def test_serious_failure_is_audited_in_history():
     dial = AutonomyDial()
-    _climb(dial, "money", 24)
-    dial.record_serious_failure("money", note="wrong recipient")
-    history = dial.history("money")
+    _climb(dial, "messaging", 24)
+    dial.record_serious_failure("messaging", note="wrong recipient")
+    history = dial.history("messaging")
     assert history[-1].event == "serious_failure"
     assert history[-1].score_before == pytest.approx(0.8540, abs=1e-3)
     assert history[-1].score_after == 0.0
@@ -275,12 +401,12 @@ def test_reset_area_returns_to_the_start():
 
 def test_summary_lists_every_area():
     dial = AutonomyDial()
-    _climb(dial, "money", 5)
+    _climb(dial, "messaging", 5)
     summary = dial.summary()
     assert set(summary["areas"]) == set(AREAS)
-    assert summary["areas"]["money"]["stage"] == STAGE_DO_AND_SHOW
-    assert summary["areas"]["money"]["score"] == pytest.approx(0.6131, abs=1e-3)
-    assert summary["areas"]["messaging"]["stage"] == STAGE_PROPOSE
+    assert summary["areas"]["messaging"]["stage"] == STAGE_DO_AND_SHOW
+    assert summary["areas"]["messaging"]["score"] == pytest.approx(0.6131, abs=1e-3)
+    assert summary["areas"]["money"]["stage"] == STAGE_PROPOSE
 
 
 # ---------------------------------------------------------------------------

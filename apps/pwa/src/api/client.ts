@@ -30,6 +30,13 @@ export type GatewayPolicy = components["schemas"]["GatewayPolicy"];
 export type GatewayDecision = components["schemas"]["GatewayDecision"];
 export type OperatorLogLine = components["schemas"]["OperatorLogLine"];
 export type ModelSettings = components["schemas"]["ModelSettings"];
+export type StopAllReport = components["schemas"]["StopAllReport"];
+export type DialState = components["schemas"]["DialState"];
+export type DialAreaState = components["schemas"]["DialAreaState"];
+export type DialSuggestion = components["schemas"]["DialSuggestion"];
+export type CeilingName = components["schemas"]["CeilingRequest"]["ceiling"];
+export type WeeklyReport = components["schemas"]["WeeklyReport"];
+export type WeeklyLinkedEvent = components["schemas"]["WeeklyLinkedEvent"];
 export type ModelSource = ModelSettings["source"];
 export type InsightsReport = components["schemas"]["InsightsReport"];
 export type TokenTotals = components["schemas"]["TokenTotals"];
@@ -174,6 +181,47 @@ export function createTask(
 /** Stop a task: stops its sub-agents and revokes their tokens. */
 export function stopTask(taskId: string, fetchFn: FetchFn = fetch): Promise<StopResult> {
   return postForm(`/api/tugas/${encodeURIComponent(taskId)}/hentikan`, {}, fetchFn);
+}
+
+/**
+ * Stop everything for the logged-in user (P-02): every agent
+ * they own plus every live subagent task. Returns the stop
+ * report, with the audit-trail link.
+ */
+export function stopAll(fetchFn: FetchFn = fetch): Promise<StopAllReport> {
+  return postJson<StopAllReport>("/api/stop-all", {}, fetchFn);
+}
+
+/** Read the autonomy dial state: five areas, ceilings, streaks, suggestions. */
+export function fetchAutonomyDial(fetchFn: FetchFn = fetch): Promise<DialState> {
+  return getJson<DialState>("/api/autonomy-dial", fetchFn);
+}
+
+/**
+ * Move one dial area's ceiling. Lowering always works; raising
+ * needs an active suggestion (10 accepted drafts in a row) and
+ * Money refuses any raise (403). Throws ApiError with the
+ * server's message otherwise (400 unknown area/ceiling, 409
+ * raise needs evidence).
+ */
+export function setDialCeiling(
+  area: string,
+  ceiling: CeilingName,
+  fetchFn: FetchFn = fetch,
+): Promise<DialAreaState> {
+  return postJson<DialAreaState>(
+    `/api/autonomy-dial/${encodeURIComponent(area)}/ceiling`,
+    { ceiling },
+    fetchFn,
+  );
+}
+
+/** Read the weekly report: tasks completed and corrected, cost, audit links. */
+export function fetchWeeklyReport(
+  days: number,
+  fetchFn: FetchFn = fetch,
+): Promise<WeeklyReport> {
+  return getJson<WeeklyReport>(`/api/weekly-report?days=${days}`, fetchFn);
 }
 
 /**

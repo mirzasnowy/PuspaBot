@@ -9,11 +9,15 @@ the lowest stage at once.
 The rules (also written in ``docs/autonomy-dial.md`` — the doc is
 the source of truth, this module is the enforcement):
 
-1. Areas. Six, taken from the action kinds the system already
+1. Areas. Seven, taken from the action kinds the system already
    recognises (the G4 taxonomy in ``puspa.policy.approvals`` plus
-   the scheduling tools the turn loop dispatches):
+   the scheduling tools the turn loop dispatches), plus shopping
+   (P-02, plan section 12.7):
 
    - ``money`` — payments, billing, purchases. Irreversible.
+     LOCKED (P-02): the score is capped at 0.59, so this area
+     never leaves ``propose`` — money always asks first, no
+     matter how much evidence accumulates.
    - ``messaging`` — sending, sharing, or posting to another
      person. Irreversible: a sent message cannot be unsent.
    - ``files`` — deleting or changing files and system state.
@@ -25,6 +29,15 @@ the source of truth, this module is the enforcement):
      the dial can never promote this area past ``propose``
      (the G4 rule that credential changes are never approved
      by an answer still stands on top).
+   - ``shopping`` — finding, comparing, and drafting a purchase
+     (price checks, comparisons, draft orders). Irreversible
+     as a draft-to-order step, but the payment itself is a
+     ``money`` action, so it still asks first under the money
+     lock: shopping autonomy never buys anything on its own.
+     No G4 kind maps to it, so the turn loop never consults
+     it for a tool call; it is fed by the P-02 control layer
+     from accepted shopping drafts (see
+     ``puspa.autonomy.controls``).
 
 2. Stages, from the dial score (0..1):
 
@@ -58,6 +71,10 @@ the source of truth, this module is the enforcement):
      the damage can be undone.
    - ``accounts`` is capped at 0.59, so correct outcomes there
      are recorded but the stage never leaves ``propose``.
+   - ``money`` is capped at 0.59 the same way (P-02, plan
+     section 12.7): money always asks first, never autonomous.
+     The cap lives in the score itself, so no caller — not the
+     turn loop, not a ceiling change — can promote it.
 
 4. Calibration source. The dial does NOT score predictions
    itself and is not a second calibration system. It aggregates
@@ -84,13 +101,25 @@ the source of truth, this module is the enforcement):
    seriously (the outcome watcher, a human report), never
    inferred from a plain tool error by this module.
 
-5. No ledger event type is used here, on purpose: the closed
+5. Ceilings (P-02). A ceiling is a user-set cap on one area,
+   stored on the dial (``set_ceiling``): the effective stage
+   an action may reach is the lower of the score stage and
+   the ceiling stage. A ceiling never raises the dial above
+   what the evidence score allows; it only holds it down.
+   The P-02 control layer (``puspa.autonomy.controls``) sets
+   every shown area's ceiling to ``propose`` at startup and
+   only raises it after evidence (ten accepted drafts in a
+   row); the dial itself only enforces ceilings, it does not
+   judge the evidence. A bare dial with no ceilings set
+   behaves exactly as before (K11).
+
+6. No ledger event type is used here, on purpose: the closed
    set of 31 ledger event types (revisi 7) has no "dial moved"
    type, and adding a 32nd is forbidden. Dial moves are audited
    in the dial's own per-area history (``history`` / ``summary``),
    the same pattern as the K10 interruption budget's spend log.
 
-6. Persistence, stated honestly: this dial is in-memory. A
+7. Persistence, stated honestly: this dial is in-memory. A
    restart resets every area to the 0.50 start, so a restart
    can only make the agent more cautious, never bolder. That
    is the safe direction for the first version (the same
@@ -115,10 +144,12 @@ __all__ = [
     "IRREVERSIBLE_AREAS",
     "KIND_TO_AREA",
     "MAX_HISTORY_PER_AREA",
+    "MONEY_MAX_SCORE",
     "PROMOTE_TO_SHOW",
     "PROMOTE_TO_SILENT",
     "RISE_FRACTION",
     "SERIOUS_REVERSIBLE_DROP",
+    "STAGES",
     "STAGE_DO_AND_SHOW",
     "STAGE_DO_SILENTLY",
     "STAGE_PROPOSE",
@@ -131,18 +162,19 @@ __all__ = [
     "dial_ask_payload",
 ]
 
-#: The six action areas. See the module docstring for what each
+#: The seven action areas. See the module docstring for what each
 #: covers and which are irreversible.
-AREAS = ("money", "messaging", "files", "scheduling", "system", "accounts")
+AREAS = ("money", "messaging", "files", "scheduling", "system", "accounts", "shopping")
 
 #: Areas whose effects cannot be undone by the agent. A serious
 #: failure here drops the dial to 0.0 at once.
-IRREVERSIBLE_AREAS = frozenset({"money", "messaging", "files", "accounts"})
+IRREVERSIBLE_AREAS = frozenset({"money", "messaging", "files", "accounts", "shopping"})
 
 #: Stages, in order of increasing autonomy.
 STAGE_PROPOSE = "propose"
 STAGE_DO_AND_SHOW = "do_and_show"
 STAGE_DO_SILENTLY = "do_silently"
+STAGES = (STAGE_PROPOSE, STAGE_DO_AND_SHOW, STAGE_DO_SILENTLY)
 
 #: Score every area starts at: propose, trust earned not assumed.
 INITIAL_SCORE = 0.50
@@ -164,6 +196,11 @@ SERIOUS_REVERSIBLE_DROP = 0.30
 
 #: Highest score the accounts area may reach: it never leaves propose.
 ACCOUNTS_MAX_SCORE = 0.59
+
+#: Highest score the money area may reach (P-02, plan section
+#: 12.7): money is locked to ask-first, so it never leaves
+#: propose either, no matter how much evidence accumulates.
+MONEY_MAX_SCORE = 0.59
 
 #: Dial history entries kept per area; older entries are dropped.
 MAX_HISTORY_PER_AREA = 100
@@ -228,8 +265,20 @@ def _stage_for(score: float) -> str:
 
 
 def _max_score(area: str) -> float:
-    """The highest score an area may reach (accounts is capped)."""
-    return ACCOUNTS_MAX_SCORE if area == "accounts" else 1.0
+    """The highest score an area may reach (money and accounts are capped)."""
+    if area == "accounts":
+        return ACCOUNTS_MAX_SCORE
+    if area == "money":
+        return MONEY_MAX_SCORE
+    return 1.0
+
+
+def _stage_index(stage: str) -> int:
+    """The position of a stage in the autonomy order (propose first)."""
+    try:
+        return STAGES.index(stage)
+    except ValueError:
+        raise ValueError(f"unknown dial stage: {stage!r}") from None
 
 
 @dataclass(frozen=True)
@@ -244,7 +293,9 @@ class DialDecision:
     so there is nothing to show, and at ``do_silently`` the
     action runs without surfacing it). ``score`` is the area's
     dial score at decision time; ``reason`` is one plain
-    sentence naming the deciding factor.
+    sentence naming the deciding factor. ``ceiling`` is the
+    user-set ceiling that limited this decision, or None when
+    no ceiling bound it (the score stage decided).
     """
 
     area: str
@@ -253,6 +304,7 @@ class DialDecision:
     show: bool
     score: float
     reason: str
+    ceiling: str | None = None
 
     def to_dict(self) -> dict:
         """JSON-safe dict of this decision."""
@@ -263,6 +315,7 @@ class DialDecision:
             "show": self.show,
             "score": round(self.score, 4),
             "reason": self.reason,
+            "ceiling": self.ceiling,
         }
 
 
@@ -356,6 +409,58 @@ class AutonomyDial:
         self._areas: dict[str, AreaState] = {
             area: AreaState(area=area, score=float(initial_score)) for area in AREAS
         }
+        # P-02 ceilings (area -> stage): a user-set cap on what an
+        # area may do, however high its score climbs. Absent means
+        # no ceiling: the score stage decides, as in K11.
+        self._ceilings: dict[str, str] = {}
+
+    # -- ceilings (P-02) ------------------------------------------------
+    def ceiling(self, area: str) -> str | None:
+        """The area's user-set ceiling stage, or None when unset."""
+        self._state(area)  # raises ValueError for an unknown area
+        return self._ceilings.get(area)
+
+    def set_ceiling(self, area: str, stage: str) -> DialDecision:
+        """Cap one area at ``stage`` (``propose`` / ``do_and_show`` /
+        ``do_silently``).
+
+        A ceiling only ever holds an area down: the effective
+        stage is the lower of the score stage and the ceiling,
+        so setting a ceiling above the score stage changes
+        nothing until the evidence catches up. Money refuses
+        any ceiling above ``propose`` (the P-02 lock: money
+        always asks first). Returns the decision the area
+        lands in under the new ceiling.
+        """
+        self._state(area)  # raises ValueError for an unknown area
+        _stage_index(stage)  # raises ValueError for an unknown stage
+        if area == "money" and stage != STAGE_PROPOSE:
+            raise ValueError("money is locked to ask first and cannot be raised above propose")
+        self._ceilings[area] = stage
+        return self.advise(area)
+
+    def clear_ceiling(self, area: str) -> DialDecision:
+        """Remove one area's ceiling: the score stage decides again.
+
+        Money keeps its score cap (it never leaves propose),
+        so clearing its ceiling changes nothing there.
+        Returns the decision the area lands in.
+        """
+        self._state(area)  # raises ValueError for an unknown area
+        self._ceilings.pop(area, None)
+        return self.advise(area)
+
+    def effective_stage(self, area: str) -> str:
+        """The stage an action in ``area`` may actually reach:
+        the lower of the score stage and the ceiling stage."""
+        state = self._state(area)
+        score_stage = state.stage
+        ceiling = self._ceilings.get(area)
+        if ceiling is None:
+            return score_stage
+        if _stage_index(ceiling) < _stage_index(score_stage):
+            return ceiling
+        return score_stage
 
     # -- reads ---------------------------------------------------------
     def _state(self, area: str) -> AreaState:
@@ -381,49 +486,68 @@ class AutonomyDial:
 
         ``propose`` means ask the user first (the action does not
         run). ``do_and_show`` means run it and show the effect.
-        ``do_silently`` means run it without surfacing it.
+        ``do_silently`` means run it without surfacing it. The
+        returned stage is the effective stage: the lower of the
+        score stage and the area's ceiling, when one is set.
         """
         state = self._state(area)
-        stage = state.stage
+        stage = self.effective_stage(area)
+        ceiling = self._ceilings.get(area)
+        limited = ceiling is not None and _stage_index(ceiling) < _stage_index(state.stage)
         if stage == STAGE_PROPOSE:
+            reason = (
+                f"{area} is at propose (score {state.score:.2f}, below "
+                f"{PROMOTE_TO_SHOW}): the action needs the user's go-ahead first"
+            )
+            if limited:
+                reason += f" (held at propose by the user's {ceiling} ceiling)"
             return DialDecision(
                 area=area,
                 stage=stage,
                 run=False,
                 show=False,
                 score=state.score,
-                reason=(
-                    f"{area} is at propose (score {state.score:.2f}, below "
-                    f"{PROMOTE_TO_SHOW}): the action needs the user's go-ahead first"
-                ),
+                reason=reason,
+                ceiling=ceiling if limited else None,
             )
         if stage == STAGE_DO_AND_SHOW:
+            reason = (
+                f"{area} is at do-and-show (score {state.score:.2f}): "
+                "the action runs and its effect is shown"
+            )
+            if limited:
+                reason += f" (held at do-and-show by the user's {ceiling} ceiling)"
             return DialDecision(
                 area=area,
                 stage=stage,
                 run=True,
                 show=True,
                 score=state.score,
-                reason=(
-                    f"{area} is at do-and-show (score {state.score:.2f}): "
-                    "the action runs and its effect is shown"
-                ),
+                reason=reason,
+                ceiling=ceiling if limited else None,
             )
+        reason = (
+            f"{area} is at do-silently (score {state.score:.2f}): "
+            "the action runs without surfacing it"
+        )
+        if limited:  # pragma: no cover - a ceiling below do-silently cannot bind here
+            reason += f" (held at do-silently by the user's {ceiling} ceiling)"
         return DialDecision(
             area=area,
             stage=stage,
             run=True,
             show=False,
             score=state.score,
-            reason=(
-                f"{area} is at do-silently (score {state.score:.2f}): "
-                "the action runs without surfacing it"
-            ),
+            reason=reason,
+            ceiling=ceiling if limited else None,
         )
 
     def state(self, area: str) -> dict:
         """One area's full state as a JSON-safe dict."""
-        return self._state(area).to_dict()
+        data = self._state(area).to_dict()
+        data["ceiling"] = self._ceilings.get(area)
+        data["effective_stage"] = self.effective_stage(area)
+        return data
 
     def history(self, area: str) -> list[DialRecord]:
         """The area's audit log: every dial move, oldest first.
@@ -435,7 +559,7 @@ class AutonomyDial:
     def summary(self) -> dict:
         """Every area's dial in numbers."""
         return {
-            "areas": {area: self._state(area).to_dict() for area in AREAS},
+            "areas": {area: self.state(area) for area in AREAS},
         }
 
     # -- writes --------------------------------------------------------
@@ -461,8 +585,8 @@ class AutonomyDial:
         as expected, False when it did not. A correct outcome
         closes 5% of the remaining gap to 1.0 (slow rise); a
         wrong outcome drops the score by 0.15 (fast fall). The
-        score is floored at 0.0 and capped per area (accounts
-        never passes 0.59). Returns the decision the area lands
+        score is floored at 0.0 and capped per area (money and
+        accounts never pass 0.59). Returns the decision the area lands
         in after the move.
         """
         state = self._state(area)
@@ -514,7 +638,9 @@ class AutonomyDial:
         Returns the decision the area lands in (always propose
         at the initial score). This is an operator action, for
         tests and for a human resetting trust after a review —
-        the agent itself never calls it on its own.
+        the agent itself never calls it on its own. The area's
+        ceiling is kept: resetting the evidence does not reset
+        the user's chosen cap.
         """
         self._state(area)  # raises ValueError for an unknown area
         self._areas[area] = AreaState(area=area, score=self.initial_score)

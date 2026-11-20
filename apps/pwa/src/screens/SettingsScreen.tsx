@@ -7,6 +7,7 @@ import {
   subscribePush,
   type ModelSettings,
 } from "../api/client";
+import { AutonomyDialPanel } from "../components/AutonomyDialPanel";
 import {
   DEFAULT_LOCAL_BASE_URL,
   DEFAULT_LOCAL_MODEL,
@@ -316,10 +317,12 @@ export function SettingsScreen() {
       <div className="card">
         <strong>Rekor Otonomi</strong>
         <p>
-          Di MVP semua aksi tetap T0 (tanya setiap kali). Rekor dikumpulkan; usulan naik ke T2
-          untuk aksi nol-risiko muncul setelah 10 persetujuan berturut-turut tanpa edit.
+          Rekor dikumpulkan dari persetujuan yang kamu beri; setelah 10 draf diterima
+          berturut-turut di satu area, panel dial di bawah menawarkan naik satu tingkat. Uang
+          tetap tanya dulu.
         </p>
       </div>
+      <AutonomyDialPanel />
     </div>
   );
 }

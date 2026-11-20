@@ -1,0 +1,359 @@
+# Stop-all, autonomy dial, and weekly report API contract (P-02, plan 12.7).
+#
+# Split out of docs/openapi-pwa.yaml on 20 Nov 2026 (P-02): the
+# controls contract (4 endpoints + 8 schemas) would have pushed
+# the main spec past the 2000-line hard cap (Wave 30 precedent:
+# rooms, graph, mockup, and payments split the same way). The
+# main spec references this file with $ref stubs; the generated
+# client is produced from the main spec with openapi-typescript,
+# which resolves external $refs. The Error schema stays in the
+# main spec and is referenced back from here.
+openapi: 3.0.3
+info:
+  title: Puspa stop-all, autonomy dial, and weekly report API
+  version: 1.0.0
+paths:
+  /api/stop-all:
+    post:
+      tags: [controls]
+      summary: Stop everything for the logged-in user
+      description: |
+        P-02: stops every agent the user owns (revoke-all, token
+        refresh proved dead, live subagents interrupted) and
+        every live subagent task in the PWA pool for those
+        agents. One `task_stopped` ledger event per agent is
+        recorded under one shared stop-all task id. It does not
+        touch the global kill switch (operator-only) and deletes
+        nothing.
+      responses:
+        "200":
+          description: Stop report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StopAllReport"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "500":
+          description: An agent could not be stopped
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/autonomy-dial:
+    get:
+      tags: [controls]
+      summary: Autonomy dial state for the logged-in user
+      description: |
+        P-02: the five dial areas (Money, Outgoing messages,
+        Delete, Schedule, Shopping) with their evidence scores,
+        ceilings, consecutive-accepted-draft streaks, and raise
+        suggestions. Money is locked to Ask first. A suggestion
+        appears only after 10 accepted drafts in a row.
+      responses:
+        "200":
+          description: Dial state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DialState"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/autonomy-dial/{area}/ceiling:
+    post:
+      tags: [controls]
+      summary: Move one dial area's ceiling
+      description: |
+        P-02: moves one area's ceiling to Ask first, Balanced,
+        or Autonomous. Lowering is always allowed. Raising moves
+        one step at a time and needs an active suggestion (10
+        accepted drafts in a row); Money refuses any raise.
+      parameters:
+        - name: area
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [money, messaging, files, scheduling, shopping]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CeilingRequest"
+      responses:
+        "200":
+          description: The area's state after the move
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DialAreaState"
+        "400":
+          description: Unknown area or ceiling
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: The area is locked (Money)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "409":
+          description: The raise needs evidence first
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/weekly-report:
+    get:
+      tags: [controls]
+      summary: Weekly report for the logged-in user
+      description: |
+        P-02: tasks completed, tasks corrected, and cost incurred
+        over the last N calendar days ending today (default 7,
+        allowed 1..90), with links to the audit log. Time and
+        money saved are null: no savings baseline is recorded
+        yet, so no savings figure is claimed.
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 7
+            minimum: 1
+            maximum: 90
+      responses:
+        "200":
+          description: Weekly report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeeklyReport"
+        "400":
+          description: days outside 1..90
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    StopAllAgentEntry:
+      type: object
+      description: What stopping one agent did (P-02 stop-all report entry).
+      required: [agent_id, interrupted_subagents, refresh_blocked, elapsed_seconds]
+      properties:
+        agent_id:
+          type: string
+        interrupted_subagents:
+          type: integer
+        refresh_blocked:
+          type: boolean
+        elapsed_seconds:
+          type: number
+    StopAllReport:
+      type: object
+      description: |
+        P-02: what one stop-all press did. `task_id` is the shared
+        id every per-agent `task_stopped` ledger event of this
+        press hangs off, so the press reads as one action in the
+        audit log.
+      required: [user_id, actor, reason, task_id, agents_stopped, subagents_stopped, pool_wired, lifecycle_wired, ledger_recorded, elapsed_seconds, stopped_at, audit_trail_url]
+      properties:
+        user_id:
+          type: string
+        actor:
+          type: string
+        reason:
+          type: string
+        task_id:
+          type: string
+        agents_stopped:
+          type: array
+          items:
+            $ref: "#/components/schemas/StopAllAgentEntry"
+        subagents_stopped:
+          type: integer
+        pool_wired:
+          type: boolean
+        lifecycle_wired:
+          type: boolean
+        ledger_recorded:
+          type: boolean
+        elapsed_seconds:
+          type: number
+        stopped_at:
+          type: string
+          format: date-time
+        audit_trail_url:
+          type: string
+    DialSuggestion:
+      type: object
+      description: |
+        P-02: an offer to raise one area's ceiling one step,
+        earned by 10 accepted drafts in a row. Absent (null)
+        when the area is locked, already Autonomous, or short
+        of evidence.
+      required: [area, from_ceiling, to_ceiling, threshold, streak, threshold_text]
+      properties:
+        area:
+          type: string
+        from_ceiling:
+          type: string
+          enum: [ask_first, balanced, autonomous]
+        to_ceiling:
+          type: string
+          enum: [ask_first, balanced, autonomous]
+        threshold:
+          type: integer
+        streak:
+          type: integer
+        threshold_text:
+          type: string
+    DialAreaState:
+      type: object
+      description: |
+        P-02: one dial area as the user sees it. `stage` is the
+        evidence score stage; `effective_stage` is what an
+        action may actually do (the lower of the score stage
+        and the ceiling). `ceiling` is Ask first, Balanced, or
+        Autonomous.
+      required: [area, label, locked, description, score, stage, effective_stage, ceiling, streak, threshold, threshold_text, suggestion]
+      properties:
+        area:
+          type: string
+          enum: [money, messaging, files, scheduling, shopping]
+        label:
+          type: string
+        locked:
+          type: boolean
+        description:
+          type: string
+        score:
+          type: number
+        stage:
+          type: string
+          enum: [propose, do_and_show, do_silently]
+        effective_stage:
+          type: string
+          enum: [propose, do_and_show, do_silently]
+        ceiling:
+          type: string
+          enum: [ask_first, balanced, autonomous]
+        streak:
+          type: integer
+        threshold:
+          type: integer
+        threshold_text:
+          type: string
+        suggestion:
+          allOf:
+            - $ref: "#/components/schemas/DialSuggestion"
+          nullable: true
+    DialState:
+      type: object
+      description: "P-02: the five dial areas with their raise threshold."
+      required: [areas, threshold, threshold_text]
+      properties:
+        areas:
+          type: array
+          items:
+            $ref: "#/components/schemas/DialAreaState"
+        threshold:
+          type: integer
+        threshold_text:
+          type: string
+    CeilingRequest:
+      type: object
+      required: [ceiling]
+      properties:
+        ceiling:
+          type: string
+          enum: [ask_first, balanced, autonomous]
+    WeeklyLinkedEvent:
+      type: object
+      description: "P-02: one counted event with its audit receipt link."
+      required: [event_id, type, task_id, created_at, receipt_url]
+      properties:
+        event_id:
+          type: string
+        type:
+          type: string
+        task_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        receipt_url:
+          type: string
+    WeeklyReport:
+      type: object
+      description: |
+        P-02: tasks completed, tasks corrected, and cost incurred
+        over the window, with audit links. `time_saved_minutes`
+        and `money_saved_idr` are null: no savings baseline is
+        recorded yet, so no savings figure is claimed (see
+        `savings_note`).
+      required: [window_days, since, until, tasks_completed, tasks_corrected, approvals_granted, approvals_rejected, tasks_stopped, tasks_failed, time_saved_minutes, money_saved_idr, savings_note, cost_idr, cost_label, audit_trail_url, linked_events]
+      properties:
+        window_days:
+          type: integer
+        since:
+          type: string
+          format: date-time
+        until:
+          type: string
+          format: date-time
+        tasks_completed:
+          type: integer
+        tasks_corrected:
+          type: integer
+        approvals_granted:
+          type: integer
+        approvals_rejected:
+          type: integer
+        tasks_stopped:
+          type: integer
+        tasks_failed:
+          type: integer
+        time_saved_minutes:
+          type: integer
+          nullable: true
+        money_saved_idr:
+          type: integer
+          nullable: true
+        savings_note:
+          type: string
+        cost_idr:
+          type: integer
+          nullable: true
+        cost_label:
+          type: string
+          nullable: true
+        audit_trail_url:
+          type: string
+        linked_events:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyLinkedEvent"

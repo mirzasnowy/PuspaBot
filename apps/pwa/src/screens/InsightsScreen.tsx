@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatRupiah } from "../api/client";
 import { HintBanner } from "../components/HintBanner";
+import { WeeklyReport } from "../components/WeeklyReport";
 import {
   fetchInsights,
   hasUsage,
@@ -249,6 +250,7 @@ export function InsightsScreen() {
           </div>
         </div>
       ) : null}
+      <WeeklyReport days={days} />
     </div>
   );
 }

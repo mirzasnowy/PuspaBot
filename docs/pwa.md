@@ -37,7 +37,13 @@ endpoints (chat, agents, tasks, approvals, connectors, push,
 onboarding time). Form posts stay form-encoded
 (`application/x-www-form-urlencoded`) exactly as the FastAPI app
 expects; JSON bodies are used only where the server reads
-`request.json()` (push subscription, onboarding time).
+`request.json()` (push subscription, onboarding time). Later
+contracts split out of the main spec once they earn their own
+file (Wave 30 precedent: rooms, graph, mockup, payments); the
+P-02 controls contract lives in `docs/openapi-controls.yaml`
+(stop-all, autonomy dial, weekly report) with `$ref` stubs in
+the main spec, and the generated client resolves the external
+refs.
 
 Client generation is real, not claimed:
 
@@ -190,6 +196,29 @@ did not touch `.gitignore`: outside the G1 file scope).
   200 with "Puspa", the chat page still contains a posted
   message (now via the bootstrap JSON), SSE/manifest/sw routes
   unchanged, no API route changed.
+
+## Stop-all, autonomy dial, weekly report (P-02, plan 12.7)
+
+- **Stop-all** (`POST /api/stop-all`): a red button in the header
+  (`apps/pwa/src/components/StopAllButton.tsx`, rendered by `Nav`,
+  so it is on every screen). Two taps — arm, then confirm — stop
+  everything for the logged-in user through the E-11 stop package
+  plus the PWA pool, and report what actually stopped with a link
+  to the audit trail. It never touches the global kill switch
+  (operator-only) and deletes nothing.
+- **Autonomy dial** (`GET /api/autonomy-dial`,
+  `POST /api/autonomy-dial/{area}/ceiling`): five areas on the
+  Settings screen (`AutonomyDialPanel`), three positions each (Ask
+  first / Balanced / Autonomous). A raise is offered only after
+  10 accepted drafts in a row, with the streak and the threshold
+  shown; Money is locked to Ask first. The dial itself is K11
+  (`puspa/autonomy/dial.py`); the user-facing rules live in
+  `puspa/autonomy/controls.py`. See `docs/autonomy-dial.md`.
+- **Weekly report** (`GET /api/weekly-report`): tasks completed,
+  tasks corrected, cost incurred, with audit receipt links, on
+  the Insights screen (`WeeklyReport`). Time and money saved are
+  shown as not measured: no savings baseline is recorded yet, so
+  no savings figure is claimed.
 
 ## Honest limits (not yet live / not yet verified)
 

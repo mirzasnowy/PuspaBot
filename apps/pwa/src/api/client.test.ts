@@ -11,13 +11,17 @@ import {
   fetchRoomBoard,
   fetchRooms,
   renameGraphNode,
+  fetchAutonomyDial,
   fetchOperatorStatus,
+  fetchWeeklyReport,
   formatRupiah,
   getJson,
   parseSseEvent,
   postJson,
   sendChat,
   setConnector,
+  setDialCeiling,
+  stopAll,
   stopTask,
 } from "./client";
 
@@ -346,5 +350,60 @@ describe("graph client (B18)", () => {
     await expect(
       fetchGraphNode("nope", fetchMock as unknown as typeof fetch),
     ).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("P-02 controls", () => {
+  it("stopAll posts to /api/stop-all and returns the report", async () => {
+    const fetchMock = mockFetch({
+      user_id: "user-1",
+      agents_stopped: [],
+      subagents_stopped: 0,
+      audit_trail_url: "/api/proof/audit-trail",
+    });
+    const result = await stopAll(fetchMock as unknown as typeof fetch);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/stop-all");
+    expect(init.method).toBe("POST");
+    expect(result.audit_trail_url).toBe("/api/proof/audit-trail");
+  });
+
+  it("fetchAutonomyDial reads /api/autonomy-dial", async () => {
+    const fetchMock = mockFetch({
+      areas: [],
+      threshold: 10,
+      threshold_text: "10 accepted drafts in a row",
+    });
+    const result = await fetchAutonomyDial(fetchMock as unknown as typeof fetch);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/autonomy-dial");
+    expect(result.threshold).toBe(10);
+  });
+
+  it("setDialCeiling posts the ceiling as JSON to the area path", async () => {
+    const fetchMock = mockFetch({ area: "messaging", ceiling: "balanced" });
+    const result = await setDialCeiling(
+      "messaging",
+      "balanced",
+      fetchMock as unknown as typeof fetch,
+    );
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/autonomy-dial/messaging/ceiling");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body)).ceiling).toBe("balanced");
+    expect(result.ceiling).toBe("balanced");
+  });
+
+  it("setDialCeiling throws ApiError with the server message on 409", async () => {
+    const fetchMock = mockFetch({ error: "needs 10 accepted drafts" }, 409);
+    await expect(
+      setDialCeiling("messaging", "balanced", fetchMock as unknown as typeof fetch),
+    ).rejects.toThrow("needs 10 accepted drafts");
+  });
+
+  it("fetchWeeklyReport reads /api/weekly-report for the given days", async () => {
+    const fetchMock = mockFetch({ window_days: 7, tasks_completed: 3 });
+    const result = await fetchWeeklyReport(7, fetchMock as unknown as typeof fetch);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/weekly-report?days=7");
+    expect(result.tasks_completed).toBe(3);
   });
 });
