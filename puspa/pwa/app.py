@@ -242,7 +242,11 @@ def create_app(
                 "handoffs": ctx.get("handoffs", []),
             }
             payload = (
-                json.dumps(bootstrap, ensure_ascii=False)
+                # default=str: bootstrap values carry datetimes (the
+                # memory screen's profile facts), which JSON needs as
+                # ISO strings; without it /memory crashes in the SPA
+                # path whenever a fact exists.
+                json.dumps(bootstrap, ensure_ascii=False, default=str)
                 .replace("<", "\\u003c")
                 .replace(">", "\\u003e")
                 .replace("&", "\\u0026")
@@ -343,11 +347,18 @@ def create_app(
                     app.state.fatigue_tracker.record_presented(item["request_id"], at=shown_at)
         elif screen == "memory":
             try:
-                from puspa.memory.profile import list_facts
+                from puspa.pwa.memory_api import MemoryReadService
 
-                ctx["profile"] = list_facts(user_id, dsn=app.state.dsn)
+                service = getattr(app.state, "memory_service", None) or MemoryReadService(
+                    dsn=app.state.dsn
+                )
+                ctx["profile"] = service.list_facts(user_id)["facts"]
+                ctx["memory_consent"] = service.consent_status(user_id)
+                ctx["guest_mode"] = service.is_guest(user_id)
             except Exception:
                 ctx["profile"] = []
+                ctx["memory_consent"] = {"status": "none"}
+                ctx["guest_mode"] = False
         elif screen == "connectors":
             try:
                 from puspa.runtime.agents import list_agents
@@ -866,6 +877,7 @@ def create_app(
         drafts_api,
         graph_api,
         insights_api,
+        memory_api,
         mockup_api,
         onboarding_api,
         payments_api,
@@ -874,7 +886,9 @@ def create_app(
     )
 
     app.state.graph_views = graph_api.GraphViewService(dsn=app.state.dsn)
+    app.state.memory_service = memory_api.MemoryReadService(dsn=app.state.dsn)
     graph_api.register_routes(app, need_user)
+    memory_api.register_routes(app, need_user)
     mockup_api.register_routes(app, need_user)
     insights_api.register_routes(app, need_user)
     onboarding_api.register_routes(app, need_user)

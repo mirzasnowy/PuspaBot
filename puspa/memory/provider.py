@@ -362,7 +362,7 @@ class DefaultPgVectorProvider(MemoryProvider):
         },
     }
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, guest_mode: bool = False):
         super().__init__(config=config)
         layer = self.config.get("default_layer") or "episodic"
         if layer not in LAYERS:
@@ -371,13 +371,41 @@ class DefaultPgVectorProvider(MemoryProvider):
             )
         self._default_layer = layer
         self._dsn = self.config.get("dsn")
+        # Guest mode (P-01): a turn that saves no memory. While on,
+        # ``store`` refuses every write and reports it, so the turn
+        # leaves no episode, fact, or procedure behind. Reads
+        # (``query``) are unaffected: a guest turn may still use
+        # what the user already stored, it just adds nothing.
+        self._guest_mode = bool(guest_mode)
+
+    @property
+    def guest_mode(self) -> bool:
+        """Whether this provider currently refuses memory writes."""
+        return self._guest_mode
+
+    def set_guest_mode(self, guest_mode: bool) -> None:
+        """Turn guest mode on or off for this provider instance."""
+        self._guest_mode = bool(guest_mode)
 
     # -- store ---------------------------------------------------------
 
     def store(self, user_id, record):
-        """Route one record to its layer; return the stored record."""
+        """Route one record to its layer; return the stored record.
+
+        In guest mode nothing is written: the return value carries
+        ``"stored": False`` and ``"guest_mode": True`` instead of a
+        stored record, so a caller can tell the turn was not saved.
+        """
         from . import episodic, procedural, profile
 
+        if self._guest_mode:
+            return {
+                "stored": False,
+                "guest_mode": True,
+                "user_id": str(user_id),
+                "content": record.get("content") if isinstance(record, dict) else None,
+                "layer": record.get("layer") if isinstance(record, dict) else None,
+            }
         if not isinstance(record, dict):
             raise ValueError("record must be a dict")
         content = record.get("content")
