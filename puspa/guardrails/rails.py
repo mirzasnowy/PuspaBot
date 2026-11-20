@@ -327,17 +327,20 @@ def topic_rail(
 
 #: Verbs that address the agent as an instruction.
 _IMPERATIVE_RE = re.compile(
-    r"(?:^|[.!?]\s+)(kirim|kirimkan|bayar|transfer|ungkapkan|tampilkan|berikan"
-    r"|hapus|send|pay|transfer|reveal|show|delete|print)\b"
+    r"(?:^|[.!?]\s+|(?:tolong|please)\s+)(kirim|kirimkan|bayar|transfer|ungkapkan|tampilkan|berikan"
+    r"|hapus|spill|bagikan|bocorkan|send|pay|transfer|reveal|show|delete|print)\b"
     r"|\b(kamu|anda|you)\s+(harus|wajib|must)\b",
     re.IGNORECASE,
 )
 
 #: A money or secret target: account number, URL, email, secret word.
+#: "kredensial" and "vault" are secret targets on their own: a
+#: request to show everything in the vault is a leak request even
+#: when it never says the word password.
 _TARGET_RE = re.compile(
     r"\b\d{9,}\b|https?://\S+|www\.\S+|[\w.+-]+@[\w-]+\.[\w.]+"
     r"|\b(password|kata\s?sandi|otp|token|api[_\s-]?key|uang|dana|rekening"
-    r"|bank\s+account|secret)\b",
+    r"|bank\s+account|secret|kredensial|vault)\b",
     re.IGNORECASE,
 )
 

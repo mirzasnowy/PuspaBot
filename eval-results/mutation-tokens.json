@@ -1,0 +1,11 @@
+{
+  "module": "puspa/policy/tokens.py",
+  "total": 10,
+  "killed": 10,
+  "survived": 0,
+  "timed_out": 0,
+  "errored": 0,
+  "score": 1.0,
+  "seconds": 37.13349362500003,
+  "survivors": []
+}

@@ -89,7 +89,9 @@ BASELINE_LINES = {
     # narrowing + tracker. Split candidate when it grows again:
     # the fatigue tracker into its own module, or the policy
     # store into a store module.
-    "puspa/policy/approvals.py": 1047,
+    # Wave 45 (E-16 follow-up): +4 lines for the beta ban on
+    # broad "always" share grants.
+    "puspa/policy/approvals.py": 1051,
     # Learning loop (E-15): experience recording, feedback,
     # quarantine, holdout evaluation, and skill activation in one
     # module. Crossed 1000 lines in Wave 43 (E-15): +~200 lines

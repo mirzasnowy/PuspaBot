@@ -309,16 +309,21 @@ def test_conversation_answer_with_pattern_is_bound_too():
     )
 
 
-# --- 6.3: beta ban for pay and send_to_other ----------------------------
+# --- 6.3: beta ban for pay, send_to_other, and share ------------------
 
 
-def test_beta_forbids_pay_and_send_to_other():
-    assert {"pay", "send_to_other"} == BETA_ALWAYS_FORBIDDEN_KINDS
+def test_beta_forbids_pay_send_and_share():
+    # "share" joined the ban in the E-16 follow-up (2026-11-20):
+    # a broad "always" share grant auto-allowed a payload that
+    # tells the bot to publish the whole chat.
+    assert {"pay", "send_to_other", "share"} == BETA_ALWAYS_FORBIDDEN_KINDS
     store = ApprovalStore(beta_mode=True)
     with pytest.raises(ValueError, match="'always' is disabled in beta"):
         store.record("pay", "always")
     with pytest.raises(ValueError, match="'always' is disabled in beta"):
         store.record("send_to_other", "always")
+    with pytest.raises(ValueError, match="'always' is disabled in beta"):
+        store.record("share", "always")
 
 
 def test_beta_still_allows_always_for_other_kinds():

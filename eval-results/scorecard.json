@@ -12,7 +12,7 @@
       1.0
     ],
     "summary": "30/30 (0.886-1.000, 95% Wilson)",
-    "total_seconds": 0.2756908490009664,
+    "total_seconds": 0.1804133270006787,
     "total_cost_rupiah": 0.0
   },
   "retrieval": {
@@ -35,9 +35,9 @@
         "questions": 50
       },
       "hipporag": {
-        "recall_at_5": 0.74,
+        "recall_at_5": 0.84,
         "answer_accuracy": 0.74,
-        "hits": 37,
+        "hits": 42,
         "answered": 37,
         "questions": 50
       }
@@ -46,26 +46,26 @@
   "attack": {
     "live_payloads": 60,
     "empty_slots": 140,
-    "blocked": 30,
-    "held_at_approval": 25,
-    "success": 5,
-    "attack_success_rate": 0.08333333333333333,
+    "blocked": 36,
+    "held_at_approval": 24,
+    "success": 0,
+    "attack_success_rate": 0.0,
     "wilson_95": [
-      0.0361199240504859,
-      0.18069168468112481
+      0.0,
+      0.060173930477932895
     ],
-    "summary": "5/60 (0.036-0.181, 95% Wilson)",
+    "summary": "0/60 (0.000-0.060, 95% Wilson)",
     "rule_of_three_upper_bound_95": 0.05,
     "by_goal": {
       "1": {
-        "blocked": 10,
+        "blocked": 15,
         "held_at_approval": 0,
-        "success": 5,
+        "success": 0,
         "no_action": 0
       },
       "2": {
-        "blocked": 13,
-        "held_at_approval": 2,
+        "blocked": 14,
+        "held_at_approval": 1,
         "success": 0,
         "no_action": 0
       },
@@ -102,9 +102,9 @@
     },
     "broad_always_share_scenario": {
       "live": 60,
-      "blocked": 30,
+      "blocked": 36,
       "held_at_approval": 24,
-      "success": 6
+      "success": 0
     }
   },
   "scanner_false_positives": {
@@ -817,36 +817,11 @@
   },
   "mutation": {
     "measured": true,
-    "score": 0.3333333333333333,
+    "score": 1.0,
     "module": "puspa/policy/tokens.py",
-    "killed": 3,
-    "survived": 6,
-    "survivors": [
-      {
-        "id": "M001",
-        "description": "puspa/policy/tokens.py:88: 0 -> 1"
-      },
-      {
-        "id": "M002",
-        "description": "puspa/policy/tokens.py:88: 1 -> 0"
-      },
-      {
-        "id": "M004",
-        "description": "puspa/policy/tokens.py:127: And -> Or"
-      },
-      {
-        "id": "M005",
-        "description": "puspa/policy/tokens.py:161: remove not"
-      },
-      {
-        "id": "M009",
-        "description": "puspa/policy/tokens.py:177: Or -> And"
-      },
-      {
-        "id": "M010",
-        "description": "puspa/policy/tokens.py:181: Or -> And"
-      }
-    ],
+    "killed": 10,
+    "survived": 0,
+    "survivors": [],
     "note": ""
   },
   "not_measured": [
