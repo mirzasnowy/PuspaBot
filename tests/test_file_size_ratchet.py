@@ -147,7 +147,11 @@ BASELINE_LINES = {
     # P-11 (visual approval overlay, 21 Nov 2026): +8 lines —
     # the approval_overlay_api import, the OverlayStore state,
     # and the overlay route registration. Resumes from 1133.
-    "puspa/pwa/app.py": 1133,
+    # P-12 (rich cards in Chat, 21 Nov 2026): +5 lines — the
+    # chat_cards_api import and the card route registration.
+    # No new screen: the cards render inside Chat. The ratchet
+    # resumes from 1138.
+    "puspa/pwa/app.py": 1138,
     # PWA typed API client: every screen's fetch wrapper plus
     # the generated-types aliases in one file. Crossed 1000
     # lines in P-10 (21 Nov 2026): the replay fetchers (tasks,
@@ -159,7 +163,11 @@ BASELINE_LINES = {
     # P-11 (visual approval overlay, 21 Nov 2026): +51 lines —
     # the overlay fetchers (list, approve, reject) and their
     # four type aliases. Resumes from 1084.
-    "apps/pwa/src/api/client.ts": 1084,
+    # P-12 (rich cards in Chat, 21 Nov 2026): +40 lines — the
+    # nine card type aliases and the three card fetchers (post
+    # a card, draft card, insights chart card). Resumes from
+    # 1124.
+    "apps/pwa/src/api/client.ts": 1124,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Shared-room delegation (B6): the delegation board, task
@@ -302,7 +310,13 @@ BASELINE_LINES = {
     # paths + 8 overlay schemas (contract split out to
     # docs/openapi-approval-overlay.yaml). Main spec 1889, still
     # under the 2000-line hard cap. Resumes from 1889.
-    "docs/openapi-pwa.yaml": 1889,
+    # P-12 (rich cards in Chat, 21 Nov 2026): +13 lines — the
+    # `chat-cards` tag (2), $ref stubs for 3 card paths + the
+    # ChatCard schema (2), and the optional `card` property on
+    # ChatMessage (3, contract split out to
+    # docs/openapi-chat-cards.yaml). Main spec 1902, still
+    # under the 2000-line hard cap. Resumes from 1902.
+    "docs/openapi-pwa.yaml": 1902,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:

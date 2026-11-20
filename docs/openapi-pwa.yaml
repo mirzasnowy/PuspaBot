@@ -44,6 +44,8 @@ tags:
     description: Visual approval overlay over the G4 gate (P-11, plan 12.10)
   - name: replay
     description: Replay timeline of a bot's steps + GIF export (P-10, plan 12.10)
+  - name: chat-cards
+    description: Rich cards in Chat (P-12, plan 12.10)
   - name: office
     description: Office screen and operator panels (G31 serve modes)
   - name: settings
@@ -122,6 +124,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/chat/cards:
+    $ref: './openapi-chat-cards.yaml#/paths/~1api~1chat~1cards'
+  /api/chat/cards/draft/{draft_id}:
+    $ref: './openapi-chat-cards.yaml#/paths/~1api~1chat~1cards~1draft~1{draft_id}'
+  /api/chat/cards/insights:
+    $ref: './openapi-chat-cards.yaml#/paths/~1api~1chat~1cards~1insights'
   /api/voice/upload:
     $ref: './openapi-voice.yaml#/paths/~1api~1voice~1upload'
   /api/voice/confirm:
@@ -1427,6 +1435,9 @@ components:
         created_at:
           type: number
           description: Unix timestamp (seconds)
+        card:
+          $ref: './openapi-chat-cards.yaml#/components/schemas/ChatCard'
+          description: Optional rich card (P-12) shown inside the chat message
     Agent:
       type: object
       required: [agent_id, name]
@@ -1509,6 +1520,8 @@ components:
       $ref: './openapi-approval-overlay.yaml#/components/schemas/ApprovalOverlay'
     ApprovalOverlayList:
       $ref: './openapi-approval-overlay.yaml#/components/schemas/ApprovalOverlayList'
+    ChatCard:
+      $ref: './openapi-chat-cards.yaml#/components/schemas/ChatCard'
     ProposeOverlayRequest:
       $ref: './openapi-approval-overlay.yaml#/components/schemas/ProposeOverlayRequest'
     OverlayDecisionRequest:

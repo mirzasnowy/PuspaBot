@@ -10,6 +10,7 @@ import {
 import { VoiceRecorder } from "../components/VoiceRecorder";
 import { ReceiptUpload } from "../components/ReceiptUpload";
 import { WorkStrip } from "../components/WorkStrip";
+import { ChatCard } from "../components/ChatCard";
 
 export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
   const [state, setState] = useState(() => initialChatState(bootstrap.messages ?? []));
@@ -33,11 +34,8 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [state.messages.length]);
 
-  async function onSend(event: React.FormEvent) {
-    event.preventDefault();
-    const text = draft.trim();
+  async function sendText(text: string) {
     if (!text || state.sending) return;
-    setDraft("");
     setState((prev) => ({
       ...appendMessage(prev, localEcho(text)),
       sending: true,
@@ -55,6 +53,14 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
     }
   }
 
+  async function onSend(event: React.FormEvent) {
+    event.preventDefault();
+    const text = draft.trim();
+    if (!text || state.sending) return;
+    setDraft("");
+    await sendText(text);
+  }
+
   return (
     <div>
       <h1>Chat</h1>
@@ -70,6 +76,9 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
           state.messages.map((m, i) => (
             <div key={`${m.created_at}-${i}`} className="card">
               <strong>{m.sender}</strong>: {m.text}
+              {m.card ? (
+                <ChatCard card={m.card} onPickOption={(option) => void sendText(option.label)} />
+              ) : null}
             </div>
           ))
         )}
