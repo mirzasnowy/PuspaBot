@@ -931,6 +931,200 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat/cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post a rich card into the chat
+         * @description P-12: validate one card payload (draft / options / chart
+         *     / map) and append it as a `puspa` message carrying the
+         *     card, so the Chat screen shows it in the thread. A bad
+         *     card is a 400: unknown kind, bad coordinates, an empty
+         *     draft body, fewer than 2 options, a negative chart
+         *     value.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ChatCardRequest"];
+                };
+            };
+            responses: {
+                /** @description The appended chat message, with its card */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatMessage"];
+                    };
+                };
+                /** @description Bad card payload */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/cards/draft/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Show a stored B13 draft as a draft card in chat
+         * @description P-12: build a draft card from the stored B13 draft and
+         *     append it as a `puspa` chat message. An email draft
+         *     carries a `mailto:` link (recipient + body); a message
+         *     draft is copy-only. The draft text is never edited
+         *     here: the card shows the draft as stored.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    draft_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The appended chat message, with its draft card */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatMessage"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown draft, or one that belongs to another user */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/cards/insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show the Insights report as a chart card in chat
+         * @description P-12: build a chart card from the logged-in user's G28
+         *     Insights report (`activity_per_day`: every day in the
+         *     window, including zero days, so the chart has no gaps)
+         *     and append it as a `puspa` chat message. The metric
+         *     defaults to cost, the number the Insights screen leads
+         *     with.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    days?: number;
+                    metric?: "turns" | "tokens" | "cost_idr";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The appended chat message, with its chart card */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatMessage"];
+                    };
+                };
+                /** @description Days outside 1..90, or an unknown metric */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/voice/upload": {
         parameters: {
             query?: never;
@@ -8219,6 +8413,8 @@ export interface components {
             text: string;
             /** @description Unix timestamp (seconds) */
             created_at: number;
+            /** @description Optional rich card (P-12) shown inside the chat message */
+            card?: components["schemas"]["ChatCard"];
         };
         Agent: {
             agent_id: string;
@@ -8553,6 +8749,14 @@ export interface components {
             pending: components["schemas"]["ApprovalOverlay"][];
             decided: components["schemas"]["ApprovalOverlay"][];
         };
+        /**
+         * @description One rich card, as carried on a chat message. The `kind`
+         *     field discriminates: `draft` (a draft email or message),
+         *     `options` (a question with tappable options), `chart`
+         *     (one metric per labelled point, drawn as bars), `map`
+         *     (OSM tiles with markers and a route).
+         */
+        ChatCard: components["schemas"]["DraftCard"] | components["schemas"]["OptionsCard"] | components["schemas"]["ChartCard"] | components["schemas"]["MapCard"];
         /** @description One action to propose for approval. */
         ProposeOverlayRequest: {
             /** @description The tool the bot is about to run. */
@@ -8861,6 +9065,101 @@ export interface components {
             type?: string;
             created_at?: number;
             summary?: string;
+        };
+        /**
+         * @description A draft email or message (B13 draft text): the body is
+         *     copyable, and an email draft with a recipient carries a
+         *     `mailto:` link that opens Mail with the body filled in.
+         *     No subject is ever guessed: the link carries one only
+         *     when the draft has one.
+         */
+        DraftCard: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "draft";
+            title: string;
+            body: string;
+            /** @enum {string} */
+            channel: "email" | "message";
+            draft_id?: string;
+            recipient?: string;
+            subject?: string;
+            /** @description mailto link (email channel with a recipient only) */
+            mailto?: string;
+        };
+        /** @description One tappable option on an options card. */
+        CardOption: {
+            id: string;
+            label: string;
+            detail?: string;
+        };
+        /**
+         * @description A question with 2..8 tappable options. Tapping one
+         *     sends its label as a chat message. A choice, not a
+         *     form: interactive components are P-14.
+         */
+        OptionsCard: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "options";
+            question: string;
+            options: components["schemas"]["CardOption"][];
+        };
+        /** @description One labelled bar on a chart card. */
+        ChartPoint: {
+            label: string;
+            value: number;
+        };
+        /**
+         * @description A small data chart: one metric per labelled point,
+         *     drawn as bars. The points come from the G28 Insights
+         *     report (`activity_per_day`); the metric is one of its
+         *     fields.
+         */
+        ChartCard: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "chart";
+            title: string;
+            /** @enum {string} */
+            metric: "turns" | "tokens" | "cost_idr";
+            points: components["schemas"]["ChartPoint"][];
+        };
+        /** @description One latitude/longitude position on a map card. */
+        MapPoint: {
+            lat: number;
+            lon: number;
+            label?: string;
+        };
+        /**
+         * @description A map with markers and a route, drawn client-side from
+         *     free OpenStreetMap tiles (tile.openstreetmap.org, no API
+         *     key). `zoom` is an OSM zoom level (0..19). At least one
+         *     marker or a route of 2+ points is required: a map with
+         *     nothing on it is a blank tile grid.
+         */
+        MapCard: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "map";
+            title: string;
+            center: components["schemas"]["MapPoint"];
+            zoom: number;
+            markers: components["schemas"]["MapPoint"][];
+            route: components["schemas"]["MapPoint"][];
+        };
+        /** @description Post one card into the chat (message text + card payload). */
+        ChatCardRequest: {
+            text: string;
+            card: components["schemas"]["ChatCard"];
         };
         /** @description P-05: one membership — which user, which role, since when. */
         RoomMember: {

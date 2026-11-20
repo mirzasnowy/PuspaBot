@@ -5,7 +5,19 @@
 <div id="strip-kerja" hx-get="/office" hx-trigger="every 5s" hx-select="#strip-kerja" hx-swap="outerHTML"></div>
 <div id="riwayat">
 {% for p in message %}
-<div class="kartu"><strong>{{ p.sender }}</strong>: {{ p.text }}</div>
+<div class="kartu"><strong>{{ p.sender }}</strong>: {{ p.text }}
+{% if p.card %}
+{% if p.card.kind == "draft" %}
+<div class="kartu"><strong>{{ p.card.title }}</strong><br><pre>{{ p.card.body }}</pre>{% if p.card.mailto %}<a href="{{ p.card.mailto }}">Buka di Mail</a>{% endif %}</div>
+{% elif p.card.kind == "options" %}
+<div class="kartu"><strong>{{ p.card.question }}</strong><br>{% for o in p.card.options %}{{ o.label }}{% if o.detail %} — {{ o.detail }}{% endif %}<br>{% endfor %}</div>
+{% elif p.card.kind == "chart" %}
+<div class="kartu"><strong>{{ p.card.title }}</strong><br>{% for pt in p.card.points %}{{ pt.label }}: {{ pt.value }}<br>{% endfor %}</div>
+{% elif p.card.kind == "map" %}
+<div class="kartu"><strong>{{ p.card.title }}</strong><br>Peta OpenStreetMap, zoom {{ p.card.zoom }}.<br>{% for mk in p.card.markers %}Marker: {{ mk.label or mk.lat }}, {{ mk.lon }}<br>{% endfor %}{% if p.card.route %}Rute: {{ p.card.route|length }} titik.{% endif %}</div>
+{% endif %}
+{% endif %}
+</div>
 {% else %}
 <p class="pesan-sub">Belum ada pesan. Sapa Puspa dulu.</p>
 {% endfor %}

@@ -79,6 +79,15 @@ export type GraphEdgeInput = components["schemas"]["GraphEdgeInput"];
 export type GraphEdgeChangeInput = components["schemas"]["GraphEdgeChangeInput"];
 export type GraphSearchResult = components["schemas"]["GraphSearchResult"];
 export type GraphSearchResponse = components["schemas"]["GraphSearchResponse"];
+export type ChatCard = components["schemas"]["ChatCard"];
+export type DraftCard = components["schemas"]["DraftCard"];
+export type OptionsCard = components["schemas"]["OptionsCard"];
+export type CardOption = components["schemas"]["CardOption"];
+export type ChartCard = components["schemas"]["ChartCard"];
+export type ChartPoint = components["schemas"]["ChartPoint"];
+export type MapCard = components["schemas"]["MapCard"];
+export type MapPoint = components["schemas"]["MapPoint"];
+export type ChatCardRequest = components["schemas"]["ChatCardRequest"];
 
 export type FetchFn = typeof fetch;
 
@@ -1081,4 +1090,35 @@ export function addMockupAsset(
   fetchFn: FetchFn = fetch,
 ): Promise<MockupDoc> {
   return postJson<MockupDoc>(`/api/mockups/${encodeURIComponent(id)}/assets`, body, fetchFn);
+}
+
+/**
+ * Rich cards in Chat (P-12): post one card payload into the
+ * chat (the server validates it and appends a `puspa` message
+ * carrying the card), or build a card from server-side data —
+ * a stored B13 draft, or the G28 Insights report as a chart.
+ */
+export function postChatCard(
+  body: ChatCardRequest,
+  fetchFn: FetchFn = fetch,
+): Promise<ChatMessage> {
+  return postJson<ChatMessage>("/api/chat/cards", body, fetchFn);
+}
+
+export function postDraftCard(
+  draftId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<ChatMessage> {
+  return postJson<ChatMessage>(`/api/chat/cards/draft/${encodeURIComponent(draftId)}`, {}, fetchFn);
+}
+
+export function fetchInsightsCard(
+  days = 7,
+  metric: "turns" | "tokens" | "cost_idr" = "cost_idr",
+  fetchFn: FetchFn = fetch,
+): Promise<ChatMessage> {
+  return getJson<ChatMessage>(
+    `/api/chat/cards/insights?days=${days}&metric=${metric}`,
+    fetchFn,
+  );
 }
