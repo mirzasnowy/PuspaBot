@@ -9,7 +9,9 @@ design history. The schema lives in migration 0015_mockup
 (next to the other migrations) and is applied the same way.
 
 Row-level security mirrors the other PWA tables: the
-``mockups_owner`` policy keys on ``app.user_id``.
+``mockups_owner`` policy keys on ``app.current_user_id``
+(repaired by migration 0021; migration 0015 pointed at the
+never-set ``app.user_id`` by mistake).
 """
 
 from __future__ import annotations

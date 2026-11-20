@@ -20,10 +20,11 @@
 --
 --
 --
+--
 -- PostgreSQL database dump
 --
 
-\restrict ZGqs7ynbvOZJF9sT56Up8z5dJGrQW5zBKZedSmfOe1VLWlMTHhAvc3f5U8FcvVg
+\restrict nhQdrbilkybOzwlNigkBh7fVwu64EIMLWRdA60PDXbmaWtjBr0hhdq76OJ8egFP
 
 -- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -5162,7 +5163,7 @@ ALTER TABLE public.mockups ENABLE ROW LEVEL SECURITY;
 -- Name: mockups mockups_owner; Type: POLICY; Schema: public; Owner: root
 --
 
-CREATE POLICY mockups_owner ON public.mockups USING ((user_id = current_setting('app.user_id'::text, true)));
+CREATE POLICY mockups_owner ON public.mockups USING ((user_id = current_setting('app.current_user_id'::text, true))) WITH CHECK ((user_id = current_setting('app.current_user_id'::text, true)));
 
 
 --
@@ -5999,6 +6000,13 @@ GRANT SELECT,INSERT ON TABLE public.meeting_minutes TO puspa_app;
 
 
 --
+-- Name: TABLE mockups; Type: ACL; Schema: public; Owner: root
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.mockups TO puspa_app;
+
+
+--
 -- Name: TABLE onboarding; Type: ACL; Schema: public; Owner: root
 --
 
@@ -6191,5 +6199,5 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.workspace_moves TO puspa_app;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ZGqs7ynbvOZJF9sT56Up8z5dJGrQW5zBKZedSmfOe1VLWlMTHhAvc3f5U8FcvVg
+\unrestrict nhQdrbilkybOzwlNigkBh7fVwu64EIMLWRdA60PDXbmaWtjBr0hhdq76OJ8egFP
 

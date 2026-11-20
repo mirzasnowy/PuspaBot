@@ -328,10 +328,10 @@ def _pg_dump(dsn: str) -> str:
 
 
 def test_migration_files_are_numbered_and_reversible():
-    """20 migrations, versions 0001-0020, each with up + down."""
+    """21 migrations, versions 0001-0021, each with up + down."""
     migrations = list_migrations()
-    assert [m.version for m in migrations] == [f"{n:04d}" for n in range(1, 21)]
-    assert len({m.name for m in migrations}) == 20
+    assert [m.version for m in migrations] == [f"{n:04d}" for n in range(1, 22)]
+    assert len({m.name for m in migrations}) == 21
     for migration in migrations:
         assert migration.up_sql, f"{migration.name}: empty up"
         assert migration.down_sql, f"{migration.name}: empty down"
@@ -340,15 +340,15 @@ def test_migration_files_are_numbered_and_reversible():
 
 def test_apply_all_to_empty_db_creates_every_table(scratch_dsn):
     applied = apply_migrations(scratch_dsn)
-    assert applied == [f"{n:04d}" for n in range(1, 21)]
+    assert applied == [f"{n:04d}" for n in range(1, 22)]
     assert _tables(scratch_dsn) == EXPECTED_TABLES
     with psycopg.connect(scratch_dsn) as conn:
         (count,) = conn.execute("SELECT count(*) FROM schema_migrations").fetchone()
-    assert count == 20
+    assert count == 21
 
 
 def test_apply_is_idempotent(scratch_dsn):
-    assert len(apply_migrations(scratch_dsn)) == 20
+    assert len(apply_migrations(scratch_dsn)) == 21
     assert apply_migrations(scratch_dsn) == []
     assert apply_migrations(scratch_dsn, target="0006") == []
 
@@ -371,7 +371,7 @@ def test_unknown_target_is_refused(scratch_dsn):
 
 def test_status_reports_pending_then_applied(scratch_dsn):
     before = migration_status(scratch_dsn)
-    assert len(before) == 20
+    assert len(before) == 21
     assert all(not row["applied"] for row in before)
     apply_migrations(scratch_dsn, target="0003")
     after = migration_status(scratch_dsn)
@@ -402,7 +402,7 @@ def test_rollback_round_trip_with_seeded_rows(scratch_dsn):
         conn.execute("INSERT INTO work_items (id) VALUES ('work-seed')")
         conn.commit()
     rolled_back = rollback_migrations(scratch_dsn, target="0019")
-    assert rolled_back == ["0020"]
+    assert rolled_back == ["0021", "0020"]
     tables = _tables(scratch_dsn)
     assert "token_revocations" not in tables
     assert "conflict_records" in tables
@@ -410,7 +410,7 @@ def test_rollback_round_trip_with_seeded_rows(scratch_dsn):
     with psycopg.connect(scratch_dsn) as conn:
         (kept,) = conn.execute("SELECT count(*) FROM work_items").fetchone()
     assert kept == 1
-    assert apply_migrations(scratch_dsn) == ["0020"]
+    assert apply_migrations(scratch_dsn) == ["0020", "0021"]
     with psycopg.connect(scratch_dsn) as conn:
         (revocations,) = conn.execute("SELECT count(*) FROM token_revocations").fetchone()
         (users,) = conn.execute("SELECT count(*) FROM users").fetchone()
@@ -445,7 +445,7 @@ def test_full_rollback_to_0001_and_back(scratch_dsn):
         )
         conn.commit()
     rolled_back = rollback_migrations(scratch_dsn, target="0001")
-    assert rolled_back == [f"{n:04d}" for n in range(20, 1, -1)]
+    assert rolled_back == [f"{n:04d}" for n in range(21, 1, -1)]
     tables = _tables(scratch_dsn)
     assert tables == {
         "agents",
@@ -464,7 +464,7 @@ def test_full_rollback_to_0001_and_back(scratch_dsn):
         (users,) = conn.execute("SELECT count(*) FROM users").fetchone()
     assert valid_at_columns == 0
     assert users == 1
-    assert apply_migrations(scratch_dsn) == [f"{n:04d}" for n in range(2, 21)]
+    assert apply_migrations(scratch_dsn) == [f"{n:04d}" for n in range(2, 22)]
     assert _tables(scratch_dsn) == EXPECTED_TABLES
     with psycopg.connect(scratch_dsn) as conn:
         (conflicts,) = conn.execute("SELECT count(*) FROM conflict_records").fetchone()
