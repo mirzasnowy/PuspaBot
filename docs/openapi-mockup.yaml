@@ -288,6 +288,11 @@ paths:
     post:
       tags: [mockup]
       summary: Add an image asset (data URI only) to a mockup
+      description: |
+        P-06: the upload writes a numbered `add_asset` op, so the
+        doc version bumps and the op log stays the single history.
+        Before P-06 the endpoint mutated the stored doc without an
+        op, and the next edit silently dropped the uploaded asset.
       parameters:
         - name: mockup_id
           in: path
@@ -480,7 +485,7 @@ components:
           type: integer
         type:
           type: string
-          enum: [add_node, remove_node, move_node, set_text, set_style, set_image, reorder, set_theme, set_title]
+          enum: [add_node, remove_node, move_node, set_text, set_style, set_image, reorder, set_theme, set_title, add_asset]
         node_id:
           type: string
         parent_id:

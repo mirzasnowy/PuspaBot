@@ -13,7 +13,8 @@ Routes (all require login, mounted by ``puspa.pwa.app``):
   ("besarkan harga, ganti warna jadi hijau") -> ops -> applied.
 - ``POST /api/mockups/{id}/undo`` / ``/redo`` — session undo/redo.
 - ``POST /api/mockups/{id}/assets`` — add a scanned image asset
-  (data URI only) to the workspace doc.
+  (data URI only) to the workspace doc, as a numbered ``add_asset``
+  op, so the upload is in the op log and the version bumps.
 - ``GET  /api/mockups/{id}/render.svg`` / ``/render.html`` — the
   deterministic render; HTML is served with the strict CSP.
 - ``GET  /api/mockups/{id}/export.png`` / ``/export.pdf``.
@@ -217,18 +218,29 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
         except Exception:
             return JSONResponse({"error": "body must be JSON"}, status_code=400)
         try:
-            store = _store(request)
-            doc = store.get(user_id, mockup_id)
             asset_id = str(body.get("asset_id", ""))
             if not asset_id:
                 return JSONResponse({"error": "asset_id is required"}, status_code=400)
-            doc.setdefault("assets", {})[asset_id] = {
-                "kind": "image",
-                "data_uri": str(body.get("data_uri", "")),
-                "name": str(body.get("name", asset_id)),
-            }
-            validate_doc(doc)
-            return store.save(user_id, doc)
+            # P-06: the upload is a numbered add_asset op, not a silent
+            # mutation. A silent write left the doc version unchanged,
+            # so the cached undo session kept the pre-upload doc and
+            # the next op overwrote the stored doc without the asset.
+            session = _session(request, user_id, mockup_id)
+            session.apply(
+                {
+                    "type": "add_asset",
+                    "payload": {
+                        "asset_id": asset_id,
+                        "asset": {
+                            "kind": "image",
+                            "data_uri": str(body.get("data_uri", "")),
+                            "name": str(body.get("name", asset_id)),
+                        },
+                    },
+                    "note": f"Added image asset {asset_id}.",
+                }
+            )
+            return _save_session(request, user_id, session)
         except KeyError as exc:
             return JSONResponse({"error": str(exc)}, status_code=404)
         except DesignError as exc:

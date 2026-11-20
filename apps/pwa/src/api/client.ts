@@ -934,3 +934,11 @@ export function undoMockup(id: string, fetchFn: FetchFn = fetch): Promise<Mockup
 export function redoMockup(id: string, fetchFn: FetchFn = fetch): Promise<MockupDoc> {
   return postJson<MockupDoc>(`/api/mockups/${encodeURIComponent(id)}/redo`, {}, fetchFn);
 }
+
+export function addMockupAsset(
+  id: string,
+  body: { asset_id: string; data_uri: string; name?: string },
+  fetchFn: FetchFn = fetch,
+): Promise<MockupDoc> {
+  return postJson<MockupDoc>(`/api/mockups/${encodeURIComponent(id)}/assets`, body, fetchFn);
+}

@@ -4,8 +4,10 @@
  *
  * The design doc is the single source of truth, so the editor
  * never keeps its own layout model: every drag, text edit, colour
- * change, and reorder is a numbered op on the same doc the server
- * stores, and the same op is POSTed to `/api/mockups/{id}/ops`.
+ * change, reorder, and image upload is a numbered op on the same
+ * doc the server stores, and the same op is POSTed to
+ * `/api/mockups/{id}/ops` (uploads go to `/api/mockups/{id}/assets`
+ * as an `add_asset` op).
  * Undo/redo here are whole-doc snapshots, exactly like the server
  * `DesignSession`; the op log itself is append-only and is never
  * rewritten by an undo.
@@ -27,6 +29,12 @@ export type MockupNodeType =
   | "form"
   | "table"
   | "chart";
+
+export interface MockupAsset {
+  kind: string;
+  data_uri: string;
+  name: string;
+}
 
 export interface MockupNode {
   id: string;
@@ -62,7 +70,8 @@ export interface MockupOp {
     | "set_image"
     | "reorder"
     | "set_theme"
-    | "set_title";
+    | "set_title"
+    | "add_asset";
   node_id?: string;
   parent_id?: string;
   payload?: Record<string, unknown>;
@@ -75,7 +84,7 @@ export interface MockupDoc {
   template: string;
   frame: { width: number; height: number };
   theme: MockupTheme;
-  assets: Record<string, { kind: string; data_uri: string; name: string }>;
+  assets: Record<string, MockupAsset>;
   nodes: MockupNode[];
   version: number;
   ops: MockupOp[];
@@ -142,6 +151,10 @@ export function applyOp(doc: MockupDoc, op: MockupOp): MockupDoc {
     const node = findNode(next.nodes, op.node_id);
     if (!node) throw new Error(`unknown node ${op.node_id}`);
     node.src = String(payload.asset_id ?? "");
+  } else if (op.type === "add_asset") {
+    const assetId = String(payload.asset_id ?? "");
+    if (!assetId) throw new Error("add_asset needs an asset_id");
+    next.assets[assetId] = payload.asset as MockupAsset;
   } else {
     throw new Error(`unsupported op ${op.type}`);
   }
