@@ -279,6 +279,41 @@ class Gate:
         )
         return request
 
+    def reject(self, request_id, user_id, reason="") -> ApprovalRequest:
+        """Reject a request: it can never execute afterwards.
+
+        Only the owning user may reject. A rejected request stays
+        rejected: :meth:`execute` refuses anything whose status is
+        not ``"approved"``, so a rejection is the cancellation —
+        the action is never run, and the request cannot be approved
+        later (its status is no longer ``"requested"``). The
+        rejection is logged as ``approval_rejected`` (P-11: the
+        visual overlay's reject path calls this when the store is
+        constructed with the turn loop's gate).
+        """
+        request = self._requests.get(request_id)
+        if request is None:
+            raise GateDenied(
+                render_server_line("error.unknown_request_id", request_id=repr(request_id))
+            )
+        if request.user_id != user_id:
+            raise GateDenied(render_server_line("error.only_owner_may_approve"))
+        if request.status != "requested":
+            raise GateDenied(
+                render_server_line("error.request_already_status", status=repr(request.status))
+            )
+        request.status = "rejected"
+        self._log(
+            "approval_rejected",
+            {
+                "request_id": request.request_id,
+                "user_id": user_id,
+                "kind": request.kind,
+                "reason": reason,
+            },
+        )
+        return request
+
     def execute(self, request_id, *, executor):
         """Jalankan aksi yang sudah disetujui, tepat sekali.
 

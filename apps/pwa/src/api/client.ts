@@ -45,6 +45,10 @@ export type TakeoverHold = components["schemas"]["TakeoverHold"];
 export type TakeoverReport = components["schemas"]["TakeoverReport"];
 export type TakeoverReleaseReport = components["schemas"]["TakeoverReleaseReport"];
 export type ReplayStep = components["schemas"]["ReplayStep"];
+export type ApprovalOverlay = components["schemas"]["ApprovalOverlay"];
+export type ApprovalOverlayList = components["schemas"]["ApprovalOverlayList"];
+export type TargetElement = components["schemas"]["TargetElement"];
+export type OverlayHighlight = components["schemas"]["OverlayHighlight"];
 export type ReplayTimeline = components["schemas"]["ReplayTimeline"];
 export type ReplayTaskSummary = components["schemas"]["ReplayTaskSummary"];
 export type ReceiptUpload = components["schemas"]["ReceiptUpload"];
@@ -346,7 +350,54 @@ export function releaseTakeover(
  * Replay timeline (P-10): list the agent's tasks that have ledger
  * events, newest first — the picker the replay screen plays from.
  */
+/**
+ * Read the approval overlays for one agent: pending actions
+ * first, then decided ones, each with its target element and
+ * its highlight against the current live frame (P-11).
+ */
+export function fetchApprovalOverlays(
+  agentId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<ApprovalOverlayList> {
+  return getJson<ApprovalOverlayList>(
+    `/api/live-view/${encodeURIComponent(agentId)}/approvals`,
+    fetchFn,
+  );
+}
+
+/** Approve one pending overlay: that one action may run (P-11). */
+export function approveOverlay(
+  agentId: string,
+  requestId: string,
+  reason: string | undefined,
+  fetchFn: FetchFn = fetch,
+): Promise<ApprovalOverlay> {
+  return postJson<ApprovalOverlay>(
+    `/api/live-view/${encodeURIComponent(agentId)}/approvals/${encodeURIComponent(requestId)}/approve`,
+    { reason: reason ?? "" },
+    fetchFn,
+  );
+}
+
+/**
+ * Reject one pending overlay: that one action is cancelled and
+ * the rejection is recorded in the ledger (P-11).
+ */
+export function rejectOverlay(
+  agentId: string,
+  requestId: string,
+  reason: string | undefined,
+  fetchFn: FetchFn = fetch,
+): Promise<ApprovalOverlay> {
+  return postJson<ApprovalOverlay>(
+    `/api/live-view/${encodeURIComponent(agentId)}/approvals/${encodeURIComponent(requestId)}/reject`,
+    { reason: reason ?? "" },
+    fetchFn,
+  );
+}
+
 export function fetchReplayTasks(
+/** Read the autonomy dial state: five areas, ceilings, streaks, suggestions. */
   agentId: string,
   fetchFn: FetchFn = fetch,
 ): Promise<ReplayTaskSummary[]> {

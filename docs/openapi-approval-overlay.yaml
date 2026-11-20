@@ -1,0 +1,440 @@
+# Visual approval overlay API contract (P-11, plan section 12.10).
+#
+# Split out of docs/openapi-pwa.yaml on 21 Nov 2026 (P-11): the
+# overlay contract (4 endpoints + 8 schemas) would have pushed
+# the main spec past the 2000-line hard cap (Wave 30 precedent:
+# rooms, graph, mockup, payments, controls, voice, receipts,
+# and live-view split the same way). The main spec references
+# this file with $ref stubs; the generated client is produced
+# from the main spec with openapi-typescript, which resolves
+# external $refs. The Error schema stays in the main spec and
+# is referenced back from here.
+#
+# Honest scope, in the contract: the overlay is a visual layer
+# over the G4 approval gate — it highlights the target element
+# of a pending action in the live view and records the per-
+# action approve/reject decision. The highlight is a pointer
+# into the event-based live frame (last tool call, open task,
+# or matching approval_requested ledger event), never a pixel
+# position: no screenshot exists to point at, and `screenshot`
+# stays null in the frame. A rejection cancels the action (when
+# the store is constructed with the turn loop's gate the gate
+# request is marked rejected, so it can never execute) and is
+# recorded in the ledger as `approval_rejected`.
+openapi: 3.0.3
+info:
+  title: Puspa visual approval overlay API
+  version: 1.0.0
+paths:
+  /api/live-view/{agent_id}/approvals:
+    get:
+      tags: [approval-overlay]
+      summary: Pending + decided overlays for one agent
+      description: |
+        P-11: the approval overlays for one of the logged-in
+        user's agents — pending actions first, then decided
+        ones. Each overlay carries its target element and its
+        highlight resolved against the agent's current live
+        frame, so the screen knows which frame row to mark.
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Overlays for the agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalOverlayList"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: The agent does not belong to this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    post:
+      tags: [approval-overlay]
+      summary: Propose one action for approval
+      description: |
+        P-11: builds the overlay for one action the bot is
+        about to take — its target element (the button to click
+        or the tool to run) and its server-rendered card — and
+        records `approval_requested` in the ledger. A
+        credential change is refused (400): it can never be
+        approved, so there is nothing honest to show. A
+        duplicate pending request id is refused (409).
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProposeOverlayRequest"
+      responses:
+        "200":
+          description: The proposed overlay
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalOverlay"
+        "400":
+          description: Bad body, or a credential change
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: The agent does not belong to this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "409":
+          description: The request id is already pending or decided
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/live-view/{agent_id}/approvals/{request_id}/approve:
+    post:
+      tags: [approval-overlay]
+      summary: Approve one pending overlay
+      description: |
+        P-11: approves that one action — records
+        `approval_granted` in the ledger. When the store is
+        constructed with the turn loop's gate, the gate request
+        is approved there too, so the action may run.
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OverlayDecisionRequest"
+      responses:
+        "200":
+          description: The decided overlay
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalOverlay"
+        "400":
+          description: The decision body is not a JSON object
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: The agent does not belong to this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown approval request
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "409":
+          description: The request was already decided
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/live-view/{agent_id}/approvals/{request_id}/reject:
+    post:
+      tags: [approval-overlay]
+      summary: Reject one pending overlay
+      description: |
+        P-11: rejects that one action — cancels it and records
+        `approval_rejected` in the ledger with the reason. When
+        the store is constructed with the turn loop's gate the
+        gate request is marked rejected, so the action can never
+        execute afterwards.
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OverlayDecisionRequest"
+      responses:
+        "200":
+          description: The decided overlay
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalOverlay"
+        "400":
+          description: The decision body is not a JSON object
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: The agent does not belong to this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown approval request
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "409":
+          description: The request was already decided
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    ApprovalCardLine:
+      type: object
+      description: One visible line of a server-rendered approval card.
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+      required: [label, value]
+    TargetElement:
+      type: object
+      description: |
+        The element the bot is about to act on. `element_kind`
+        is `button` when the action names the button the bot is
+        about to click, else `tool` (the tool it is about to
+        run). `label` is the button label or the tool name;
+        `target` is the short human label of what the action
+        touches (recipient, domain, path — from the structured
+        arguments, never from a model narrative); `detail` is
+        the server-rendered card lines.
+      properties:
+        element_kind:
+          type: string
+          enum: [button, tool]
+        label:
+          type: string
+        tool_name:
+          type: string
+        target:
+          type: string
+        detail:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApprovalCardLine"
+        content_hash:
+          type: string
+      required: [element_kind, label, tool_name, target, detail, content_hash]
+    ApprovalOverlayCard:
+      type: object
+      description: |
+        The server-rendered approval card for one action: every
+        visible line comes from the structured arguments that
+        will actually run. `content_hash` is the hash the gate
+        binds the approval to.
+      properties:
+        request_id:
+          type: string
+        kind:
+          type: string
+          nullable: true
+        tool_name:
+          type: string
+        title:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApprovalCardLine"
+        content_hash:
+          type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        complete:
+          type: boolean
+        narrative_ignored:
+          type: boolean
+      required: [request_id, kind, tool_name, title, lines, content_hash, warnings, complete, narrative_ignored]
+    OverlayHighlight:
+      type: object
+      description: |
+        Where the target element is highlighted in the live
+        frame. `frame_ref` names the frame element: `last_tool`
+        (the frame's last tool call is this action's tool),
+        `current_task` (the action's task is the frame's open
+        task), `event` (the matching `approval_requested`
+        ledger event is in the frame — `event_id` names it), or
+        `none` (the target is not visible in the current frame
+        yet). There is no pixel position: no screenshot exists
+        to point at.
+      properties:
+        frame_ref:
+          type: string
+          enum: [last_tool, current_task, event, none]
+        event_id:
+          type: string
+          nullable: true
+        note:
+          type: string
+      required: [frame_ref, event_id, note]
+    ApprovalOverlay:
+      type: object
+      description: |
+        One pending (or decided) action, shown as an overlay on
+        the live view. `status` is `pending`, `approved`, or
+        `rejected`. `gate_rejected` is true when the rejection
+        also marked the gate request rejected, so the action can
+        never execute. `highlight` is null when no live frame
+        was available at read time.
+      properties:
+        request_id:
+          type: string
+        agent_id:
+          type: string
+        task_id:
+          type: string
+          nullable: true
+        kind:
+          type: string
+          nullable: true
+        tool_name:
+          type: string
+        button_label:
+          type: string
+          nullable: true
+        target_element:
+          $ref: "#/components/schemas/TargetElement"
+        card:
+          $ref: "#/components/schemas/ApprovalOverlayCard"
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        created_at:
+          type: string
+          format: date-time
+        decided_at:
+          type: string
+          format: date-time
+          nullable: true
+        decided_by:
+          type: string
+          nullable: true
+        decision_reason:
+          type: string
+        gate_rejected:
+          type: boolean
+        proposed_ledger_event_id:
+          type: string
+          nullable: true
+        decided_ledger_event_id:
+          type: string
+          nullable: true
+        highlight:
+          allOf:
+            - $ref: "#/components/schemas/OverlayHighlight"
+          nullable: true
+      required: [request_id, agent_id, task_id, kind, tool_name, button_label, target_element, card, status, created_at, decided_at, decided_by, decision_reason, gate_rejected, proposed_ledger_event_id, decided_ledger_event_id, highlight]
+    ApprovalOverlayList:
+      type: object
+      description: Pending + decided overlays for one agent.
+      properties:
+        agent_id:
+          type: string
+        pending:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApprovalOverlay"
+        decided:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApprovalOverlay"
+      required: [agent_id, pending, decided]
+    ProposeOverlayRequest:
+      type: object
+      description: One action to propose for approval.
+      properties:
+        tool_name:
+          type: string
+          description: The tool the bot is about to run.
+        content:
+          type: object
+          additionalProperties: true
+          description: The structured arguments that will run.
+        button_label:
+          type: string
+          description: The button label the bot is about to click, when it names one.
+        page_text:
+          type: string
+          description: Page text, used only for payment recognition.
+        task_id:
+          type: string
+          description: The task the action belongs to, when known.
+        request_id:
+          type: string
+          description: Idempotency key; generated when omitted.
+      required: [tool_name, content]
+    OverlayDecisionRequest:
+      type: object
+      description: The reason for an approve/reject decision, when given.
+      properties:
+        reason:
+          type: string
+      required: []

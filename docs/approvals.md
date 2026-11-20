@@ -232,9 +232,19 @@ never blocks a decision, however fast.
 - **No persistence of the check-in flag.** Whether a task came from
   check-in is passed per call (`from_checkin`); nothing records
   which tasks are check-in tasks.
-- **The gate is unchanged.** `puspa/policy/gate.py` was not
-  modified; the taxonomy sits in front of it. A caller that goes
-  straight to the gate bypasses the taxonomy.
+- **The gate is unchanged, except for `Gate.reject` (P-11).**
+  `puspa/policy/gate.py` was not modified by the taxonomy; the
+  taxonomy sits in front of it. P-11 added one method, `reject`,
+  as the complement of `approve`: a rejected request can never
+  execute or be approved later. A caller that goes straight to
+  the gate bypasses the taxonomy.
+- **Visual overlay (P-11).** The overlay over this gate lives in
+  `puspa/pwa/approval_overlay.py` (see
+  `docs/approval-overlay.md`): it highlights the target element
+  in the event-based live frame and records the per-action
+  decision. It has no screenshot to point at — the highlight is
+  a pointer into the frame, never a pixel position — and its
+  store is in-memory like the gate's requests.
 - **The PWA card component still accepts a `summary` field.**
   Server-rendered cards never set it — lines + hash are the
   source of truth — but an older payload carrying a narrative

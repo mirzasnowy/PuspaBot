@@ -144,7 +144,10 @@ BASELINE_LINES = {
     # "replay" screen in SCREENS, its agents context (same
     # narrowed except as live), and the replay route
     # registration. Resumes from 1125.
-    "puspa/pwa/app.py": 1125,
+    # P-11 (visual approval overlay, 21 Nov 2026): +8 lines —
+    # the approval_overlay_api import, the OverlayStore state,
+    # and the overlay route registration. Resumes from 1133.
+    "puspa/pwa/app.py": 1133,
     # PWA typed API client: every screen's fetch wrapper plus
     # the generated-types aliases in one file. Crossed 1000
     # lines in P-10 (21 Nov 2026): the replay fetchers (tasks,
@@ -153,7 +156,10 @@ BASELINE_LINES = {
     # candidate when it grows again: one fetch module per
     # feature area (live/replay, rooms, morning), keeping the
     # type aliases in client.ts. The ratchet resumes from 1033.
-    "apps/pwa/src/api/client.ts": 1033,
+    # P-11 (visual approval overlay, 21 Nov 2026): +51 lines —
+    # the overlay fetchers (list, approve, reject) and their
+    # four type aliases. Resumes from 1084.
+    "apps/pwa/src/api/client.ts": 1084,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Shared-room delegation (B6): the delegation board, task
@@ -291,7 +297,12 @@ BASELINE_LINES = {
     # same split precedent), and "replay" in the Bootstrap
     # screen enum. Main spec 1865, still under the 2000-line
     # hard cap. Resumes from 1865.
-    "docs/openapi-pwa.yaml": 1865,
+    # P-11 (visual approval overlay, 21 Nov 2026): +24 lines —
+    # the `approval-overlay` tag (2), $ref stubs for 3 overlay
+    # paths + 8 overlay schemas (contract split out to
+    # docs/openapi-approval-overlay.yaml). Main spec 1889, still
+    # under the 2000-line hard cap. Resumes from 1889.
+    "docs/openapi-pwa.yaml": 1889,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:

@@ -2936,6 +2936,329 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/live-view/{agent_id}/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pending + decided overlays for one agent
+         * @description P-11: the approval overlays for one of the logged-in
+         *     user's agents — pending actions first, then decided
+         *     ones. Each overlay carries its target element and its
+         *     highlight resolved against the agent's current live
+         *     frame, so the screen knows which frame row to mark.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    agent_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Overlays for the agent */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApprovalOverlayList"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The agent does not belong to this user */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Propose one action for approval
+         * @description P-11: builds the overlay for one action the bot is
+         *     about to take — its target element (the button to click
+         *     or the tool to run) and its server-rendered card — and
+         *     records `approval_requested` in the ledger. A
+         *     credential change is refused (400): it can never be
+         *     approved, so there is nothing honest to show. A
+         *     duplicate pending request id is refused (409).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    agent_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ProposeOverlayRequest"];
+                };
+            };
+            responses: {
+                /** @description The proposed overlay */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApprovalOverlay"];
+                    };
+                };
+                /** @description Bad body, or a credential change */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The agent does not belong to this user */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The request id is already pending or decided */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live-view/{agent_id}/approvals/{request_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve one pending overlay
+         * @description P-11: approves that one action — records
+         *     `approval_granted` in the ledger. When the store is
+         *     constructed with the turn loop's gate, the gate request
+         *     is approved there too, so the action may run.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    agent_id: string;
+                    request_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["OverlayDecisionRequest"];
+                };
+            };
+            responses: {
+                /** @description The decided overlay */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApprovalOverlay"];
+                    };
+                };
+                /** @description The decision body is not a JSON object */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The agent does not belong to this user */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown approval request */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The request was already decided */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live-view/{agent_id}/approvals/{request_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject one pending overlay
+         * @description P-11: rejects that one action — cancels it and records
+         *     `approval_rejected` in the ledger with the reason. When
+         *     the store is constructed with the turn loop's gate the
+         *     gate request is marked rejected, so the action can never
+         *     execute afterwards.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    agent_id: string;
+                    request_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["OverlayDecisionRequest"];
+                };
+            };
+            responses: {
+                /** @description The decided overlay */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApprovalOverlay"];
+                    };
+                };
+                /** @description The decision body is not a JSON object */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The agent does not belong to this user */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown approval request */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The request was already decided */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/replay/{agent_id}/tasks": {
         parameters: {
             query?: never;
@@ -8135,6 +8458,121 @@ export interface components {
             reason?: string;
             ledger_event_id: string;
             audit_trail_url: string;
+        };
+        /** @description One visible line of a server-rendered approval card. */
+        ApprovalCardLine: {
+            label: string;
+            value: string;
+        };
+        /**
+         * @description The element the bot is about to act on. `element_kind`
+         *     is `button` when the action names the button the bot is
+         *     about to click, else `tool` (the tool it is about to
+         *     run). `label` is the button label or the tool name;
+         *     `target` is the short human label of what the action
+         *     touches (recipient, domain, path — from the structured
+         *     arguments, never from a model narrative); `detail` is
+         *     the server-rendered card lines.
+         */
+        TargetElement: {
+            /** @enum {string} */
+            element_kind: "button" | "tool";
+            label: string;
+            tool_name: string;
+            target: string;
+            detail: components["schemas"]["ApprovalCardLine"][];
+            content_hash: string;
+        };
+        /**
+         * @description The server-rendered approval card for one action: every
+         *     visible line comes from the structured arguments that
+         *     will actually run. `content_hash` is the hash the gate
+         *     binds the approval to.
+         */
+        ApprovalOverlayCard: {
+            request_id: string;
+            kind: string | null;
+            tool_name: string;
+            title: string;
+            lines: components["schemas"]["ApprovalCardLine"][];
+            content_hash: string;
+            warnings: string[];
+            complete: boolean;
+            narrative_ignored: boolean;
+        };
+        /**
+         * @description Where the target element is highlighted in the live
+         *     frame. `frame_ref` names the frame element: `last_tool`
+         *     (the frame's last tool call is this action's tool),
+         *     `current_task` (the action's task is the frame's open
+         *     task), `event` (the matching `approval_requested`
+         *     ledger event is in the frame — `event_id` names it), or
+         *     `none` (the target is not visible in the current frame
+         *     yet). There is no pixel position: no screenshot exists
+         *     to point at.
+         */
+        OverlayHighlight: {
+            /** @enum {string} */
+            frame_ref: "last_tool" | "current_task" | "event" | "none";
+            event_id: string | null;
+            note: string;
+        };
+        /**
+         * @description One pending (or decided) action, shown as an overlay on
+         *     the live view. `status` is `pending`, `approved`, or
+         *     `rejected`. `gate_rejected` is true when the rejection
+         *     also marked the gate request rejected, so the action can
+         *     never execute. `highlight` is null when no live frame
+         *     was available at read time.
+         */
+        ApprovalOverlay: {
+            request_id: string;
+            agent_id: string;
+            task_id: string | null;
+            kind: string | null;
+            tool_name: string;
+            button_label: string | null;
+            target_element: components["schemas"]["TargetElement"];
+            card: components["schemas"]["ApprovalOverlayCard"];
+            /** @enum {string} */
+            status: "pending" | "approved" | "rejected";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            decided_at: string | null;
+            decided_by: string | null;
+            decision_reason: string;
+            gate_rejected: boolean;
+            proposed_ledger_event_id: string | null;
+            decided_ledger_event_id: string | null;
+            highlight: components["schemas"]["OverlayHighlight"] | null;
+        };
+        /** @description Pending + decided overlays for one agent. */
+        ApprovalOverlayList: {
+            agent_id: string;
+            pending: components["schemas"]["ApprovalOverlay"][];
+            decided: components["schemas"]["ApprovalOverlay"][];
+        };
+        /** @description One action to propose for approval. */
+        ProposeOverlayRequest: {
+            /** @description The tool the bot is about to run. */
+            tool_name: string;
+            /** @description The structured arguments that will run. */
+            content: {
+                [key: string]: unknown;
+            };
+            /** @description The button label the bot is about to click, when it names one. */
+            button_label?: string;
+            /** @description Page text, used only for payment recognition. */
+            page_text?: string;
+            /** @description The task the action belongs to, when known. */
+            task_id?: string;
+            /** @description Idempotency key; generated when omitted. */
+            request_id?: string;
+        };
+        /** @description The reason for an approve/reject decision, when given. */
+        OverlayDecisionRequest: {
+            reason?: string;
         };
         /** @description One task that can be replayed, from the task picker. */
         ReplayTaskSummary: {

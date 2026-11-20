@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   ApiError,
+  approveOverlay,
   confirmVoice,
   createTask,
   decideApproval,
@@ -8,6 +9,7 @@ import {
   changeGraphEdge,
   deleteGraphEdge,
   discardVoice,
+  fetchApprovalOverlays,
   fetchGraphNode,
   fetchGraphPage,
   fetchReplay,
@@ -16,6 +18,7 @@ import {
   fetchRoomBoard,
   fetchRooms,
   renameGraphNode,
+  rejectOverlay,
   releaseTakeover,
   replayGifUrl,
   takeoverAgent,
@@ -520,6 +523,52 @@ describe("P-09 live view", () => {
     expect(url).toBe("/api/live-view/puspa-1/release");
     expect(init.method).toBe("POST");
     expect(result.status).toBe("released");
+  });
+});
+
+describe("P-11 approval overlay", () => {
+  it("fetchApprovalOverlays reads /api/live-view/{agent_id}/approvals", async () => {
+    const fetchMock = mockFetch({ agent_id: "puspa-1", pending: [], decided: [] });
+    const result = await fetchApprovalOverlays("puspa-1", fetchMock as unknown as typeof fetch);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/live-view/puspa-1/approvals");
+    expect(result.pending).toEqual([]);
+  });
+
+  it("approveOverlay posts the reason to the approve path", async () => {
+    const fetchMock = mockFetch({ request_id: "req-1", status: "approved" });
+    const result = await approveOverlay(
+      "puspa-1",
+      "req-1",
+      "oke",
+      fetchMock as unknown as typeof fetch,
+    );
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/live-view/puspa-1/approvals/req-1/approve");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body)).reason).toBe("oke");
+    expect(result.status).toBe("approved");
+  });
+
+  it("rejectOverlay posts the reason to the reject path", async () => {
+    const fetchMock = mockFetch({ request_id: "req-1", status: "rejected" });
+    const result = await rejectOverlay(
+      "puspa-1",
+      "req-1",
+      "jangan dulu",
+      fetchMock as unknown as typeof fetch,
+    );
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/live-view/puspa-1/approvals/req-1/reject");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body)).reason).toBe("jangan dulu");
+    expect(result.status).toBe("rejected");
+  });
+
+  it("approveOverlay throws ApiError with the server message on 409", async () => {
+    const fetchMock = mockFetch({ error: "already decided" }, 409);
+    await expect(
+      approveOverlay("puspa-1", "req-1", undefined, fetchMock as unknown as typeof fetch),
+    ).rejects.toThrow("already decided");
   });
 });
 
