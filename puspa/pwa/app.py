@@ -78,6 +78,13 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None, draft_sender=N
     app.state.chat = chat_state
     app.state.event = []
     app.state.approval = {}
+    # E-10: approval-fatigue signal (plan 6.3). The tracker records
+    # when a card is first shown (tasks screen) and when the user
+    # decides (api_approval below); the unread rate is served at
+    # GET /api/approvals/fatigue. It only measures, never blocks.
+    from puspa.policy.approval_cards import ApprovalFatigueTracker
+
+    app.state.fatigue_tracker = ApprovalFatigueTracker()
     app.state.time_onboarding = []
     # B13: delivery channel for approved draft sends. Unset by
     # default: until a channel (Telegram / WhatsApp / email) is
@@ -273,6 +280,14 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None, draft_sender=N
             ]
         elif screen == "tasks":
             ctx["approval"] = list(app.state.approval.values())
+            # E-10: first showing of each card starts the fatigue
+            # clock. The timestamp is stamped on the item (so a
+            # decision without a live tracker still has it) and
+            # recorded in the tracker.
+            for item in ctx["approval"]:
+                if isinstance(item, dict) and item.get("request_id"):
+                    shown_at = item.setdefault("presented_at", time.time())
+                    app.state.fatigue_tracker.record_presented(item["request_id"], at=shown_at)
         elif screen == "memory":
             try:
                 from puspa.memory.profile import list_facts
@@ -576,6 +591,15 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None, draft_sender=N
                 {"error": render_server_line("error.unknown_request")}, status_code=404
             )
         item["status"] = "approved" if approve == "ya" else "rejected"
+        # E-10: record the decision latency for the fatigue signal.
+        # The presentation time comes from the item when the card
+        # was shown (tasks screen); without it the decision is
+        # counted but cannot be judged unread.
+        app.state.fatigue_tracker.record_decision(
+            request_id,
+            approved=(approve == "ya"),
+            presented_at=item.get("presented_at"),
+        )
         app.state.event.append(
             {
                 "type": "approval_granted" if approve == "ya" else "approval_rejected",
@@ -586,6 +610,20 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None, draft_sender=N
             }
         )
         return {"ok": True, "status": item["status"]}
+
+    @app.get("/api/approvals/fatigue")
+    async def api_approval_fatigue(request: Request):
+        """E-10: approval-fatigue numbers (plan 6.3).
+
+        Share of decisions made faster than a human could read
+        the card (under one second). Measurement only.
+        """
+        user_id = need_user(request)
+        if user_id is None:
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
+        return app.state.fatigue_tracker.stats()
 
     @app.post("/api/konektor/{konektor}")
     async def api_connector(

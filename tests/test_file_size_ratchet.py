@@ -82,6 +82,14 @@ BASELINE_LINES = {
     # the inferrer (GoalInferrer + KeywordGoalInferrer) into a
     # goal_inference module, or the store into its own module.
     "puspa/world/agents.py": 1047,
+    # Approval policy + store (E-10): the taxonomy, the narrowed
+    # "always" bindings (target pattern + nominal cap, beta ban for
+    # pay/send_to_other), and the fatigue tracker in one module.
+    # Crossed 1000 lines in Wave 40 (E-10): +~240 lines for the
+    # narrowing + tracker. Split candidate when it grows again:
+    # the fatigue tracker into its own module, or the policy
+    # store into a store module.
+    "puspa/policy/approvals.py": 1047,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Shared-room delegation (B6): the delegation board, task
