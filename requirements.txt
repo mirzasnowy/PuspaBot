@@ -87,3 +87,12 @@ psutil==7.2.2
 # Development tools (ruff, mypy, types-PyYAML) live in requirements-dev.txt,
 # not here, so the CI lint lanes stay fast (they do not install torch).
 # The typecheck lane installs both files. See pyproject.toml.
+
+# Hash-pinned copy (E-12, plan 6.7): requirements-hashed.txt is this
+# file resolved by uv with a sha256 for every wheel, so installs can
+# be verified with pip --require-hashes. Regenerate it after any
+# change here (and check the CI supply-chain lane stays green):
+#   uv pip compile requirements.txt --python-version 3.12 --generate-hashes -o requirements-hashed.txt
+# Note the resolved tree is a fresh resolution, not a snapshot of the
+# dev venv: it picks starlette 1.10.0 (resolving the documented
+# 0.46.2 conflict above) where the venv still has 0.46.2 installed.

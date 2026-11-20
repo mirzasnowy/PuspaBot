@@ -52,6 +52,7 @@ class PuspaSkillsLoader(SkillsLoader):
         disabled_skills=None,
         transparency_log=None,
         expected_identity=None,
+        revocation_list=None,
     ) -> None:
         super().__init__(
             workspace,
@@ -61,6 +62,10 @@ class PuspaSkillsLoader(SkillsLoader):
         self._puspa_public_key = public_key
         self._transparency_log = transparency_log
         self._expected_identity = expected_identity
+        # Plan 6.7: an already-verified SkillRevocationList. When set, a
+        # skill whose signing key or manifest digest is on the list
+        # is refused at load time, even with a valid signature.
+        self._revocation_list = revocation_list
 
     def _resolve_entry(self, name: str) -> dict | None:
         """Entri skill (``{name, path, source}``) untuk nama/alias ini."""
@@ -82,6 +87,7 @@ class PuspaSkillsLoader(SkillsLoader):
                 self._puspa_public_key,
                 self._transparency_log,
                 self._expected_identity,
+                revocation_list=self._revocation_list,
             ):
                 return None
         return super()._load_skill(name, for_context=for_context)
