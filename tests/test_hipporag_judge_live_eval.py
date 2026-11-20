@@ -327,6 +327,7 @@ def test_deterministic_baseline_recalls_are_as_measured():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.live
 @live_only
 def test_live_judge_keeps_the_fraud_triples_on_query_1():
     meter = Meter()
@@ -352,6 +353,7 @@ def test_live_judge_keeps_the_fraud_triples_on_query_1():
     assert meter.mean_latency < 60.0
 
 
+@pytest.mark.live
 @live_only
 def test_live_judge_chain_graph_agreement_with_the_stub():
     meter = Meter()
@@ -372,6 +374,7 @@ def test_live_judge_chain_graph_agreement_with_the_stub():
     assert "p5" in {r["passage_id"] for r in results}
 
 
+@pytest.mark.live
 @live_only
 def test_live_judge_eval_recalls_cost_and_latency():
     meter = Meter()

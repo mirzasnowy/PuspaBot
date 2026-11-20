@@ -97,6 +97,7 @@ def test_run_validates_input_without_touching_docker():
 # --- Docker tersedia: eksekusi nyata di container ----------------------------
 
 
+@pytest.mark.live
 def test_run_print_ok_in_container():
     sandbox = Sandbox()
     if not sandbox.check_available():
@@ -108,6 +109,7 @@ def test_run_print_ok_in_container():
     assert result["timed_out"] is False
 
 
+@pytest.mark.live
 def test_failed_run_code_still_returns_result_not_unavailable():
     sandbox = Sandbox()
     if not sandbox.check_available():
@@ -118,6 +120,7 @@ def test_failed_run_code_still_returns_result_not_unavailable():
     assert "RuntimeError" in result["stderr"]
 
 
+@pytest.mark.live
 def test_run_network_to_domain_outside_allowlist_rejected():
     sandbox = Sandbox()
     if not sandbox.check_available():
@@ -132,6 +135,7 @@ def test_run_network_to_domain_outside_allowlist_rejected():
     assert "jaringan-lolos" not in result["stdout"]
 
 
+@pytest.mark.live
 def test_run_cannot_write_to_host():
     sandbox = Sandbox()
     if not sandbox.check_available():

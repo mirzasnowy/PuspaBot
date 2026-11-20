@@ -187,6 +187,7 @@ def test_in_memory_provider_round_trip():
 # --- pgvector provider round trip (Postgres) ---------------------------
 
 
+@pytest.mark.integration
 def test_pgvector_provider_round_trip():
     """Default provider stores + queries a real episode on Postgres.
 

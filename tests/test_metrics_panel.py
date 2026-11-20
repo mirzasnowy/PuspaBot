@@ -1,5 +1,7 @@
 """Tes metrik alur (§3.8) + panel Alur di PWA."""
 
+import pytest
+
 from puspa.workflow.composer import card_step
 from puspa.workflow.metrics import workflow_metrics
 from puspa.workflow.panel import card_step_html, panel_workflow_html, result_run_html
@@ -7,6 +9,7 @@ from puspa.workflow.runner import activate_workflow, dry_run, run_workflow
 from puspa.workflow.templates import create_from_template
 
 
+@pytest.mark.integration
 def test_metric_workflow_start_pending():
     m = workflow_metrics()
     assert m["users_with_active_workflow"] == 0

@@ -3,21 +3,58 @@
 How a claim of "tested" is earned in this repo. A claim that cannot be
 checked against this document is not a verification, it is an opinion.
 
-## The SOLO rule
+## Parallel runs: one database per worker (E-17)
 
-The full test suite runs **SOLO**: one `pytest` process, no parallel
-runner (`-n` / `xdist`), because the tests share one Postgres database
-(`puspa_test`). Two suite runs at the same time step on each other's
-data. Parallel workers run **only their own test file(s)**; nobody runs
-the full suite while another worker's suite is running.
+The full test suite runs on 4 pytest-xdist workers, each with its
+own Postgres database cloned from a migrated template
+(`tests/worker_db.py`, plan section 9.1). The template is built
+once from the migrations and rebuilt automatically when a
+migration changes; each worker clones it with
+`CREATE DATABASE ... TEMPLATE` and drops its clone at session
+end. No two workers ever share a database, so isolation is total
+by construction — the old SOLO-only rule is gone.
 
 ```sh
-python -m pytest            # full suite, SOLO, from the repo root
+python -m pytest -n 4 -m "not live" --dist loadfile   # full suite, 4 workers
+python scripts/pr_lane.py --base <sha> --head <sha>    # PR lane: affected tests only
+python -m pytest -m unit                               # unit tests only, no Postgres
+python -m pytest -m live                               # live tests only (nightly lane)
 ```
+
+The base database name comes from `PUSPA_TEST_DSN` (default
+`puspa_test`, `puspa_test_w1` / `puspa_test_w2` in the two
+worktrees), so the two-worktree mode composes: each worktree's
+workers get their own `puspa_test_w1_<run>_gw*` databases. A
+SOLO run (no `-n`) still uses the base database directly,
+exactly as before. Worker databases use
+`synchronous_commit = off` (throwaway test data); `fsync` is
+cluster-wide and cannot be turned off per database — a fully
+tmpfs cluster with `fsync` off is opt-in via
+`scripts/test_postgres_tmpfs.sh`, which starts a throwaway
+Postgres on /dev/shm for timing runs.
 
 Never use `pkill` with a broad pattern (for example `pkill -f pytest`):
 it kills other workers' suite runs. Kill only a process you started
 yourself, by its exact PID.
+
+## Test markers (E-17)
+
+Every test carries exactly one of three markers, assigned in
+`tests/conftest.py` from the test's fixture closure (a test that
+needs Postgres requests `test_dsn`, directly or through another
+fixture, or runs under a module-level autouse schema fixture):
+
+- `unit` — no database, no network. Runs with no Postgres at
+  all (`pytest -m unit` needs no database server).
+- `integration` — needs the Postgres test database. Tests that
+  reach Postgres without any fixture — a library call that reads
+  `PUSPA_TEST_DSN` from the environment, like the session
+  single-writer lock — carry an explicit `integration` marker in
+  their file instead, because the fixture closure cannot see them.
+- `live` — needs a real external service (a Docker daemon, a
+  Chromium binary, a live model key). Marked explicitly in the
+  test files; runs in the nightly lane
+  (`.github/workflows/nightly-smoke.yml`), never in a PR lane.
 
 ## Isolated fixtures, never the live app
 
@@ -59,6 +96,24 @@ fixtures. Postgres does not survive a VM replacement here: if
 postgresql-16 postgresql-16-pgvector`) and run the setup again. The
 default DSN is `dbname=puspa_test user=root host=/var/run/postgresql`;
 override it with `PUSPA_TEST_DSN`.
+
+For a parallel run, build the template explicitly instead of
+migrating the base database (the workers clone the template;
+the base database itself is never used under `-n`):
+
+```sh
+python scripts/setup_test_db.py [--prune-stale]
+```
+
+`--prune-stale` drops worker databases left behind by crashed
+runs (only ones older than 2 hours with no live connections
+are dropped).
+
+Known limit: the backup/restore tests shell out to `pg_dump` /
+`pg_restore` against the default socket
+(`/var/run/postgresql`), so they fail on a throwaway cluster
+with a different socket (the tmpfs cluster, a custom port);
+run them against the shared cluster instead.
 
 ## How to claim "tested"
 

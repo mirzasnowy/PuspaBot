@@ -8,6 +8,8 @@ fixtures) so the file also runs with --noconftest.
 import os
 import uuid
 
+import pytest
+
 from puspa.scheduler.receipts import (
     DEFAULT_DSN,
     InMemoryReceiptStore,
@@ -56,6 +58,7 @@ def test_different_keys_are_independent():
 # --- postgres ---------------------------------------------------------------
 
 
+@pytest.mark.integration
 def test_postgres_receipt_duplicate_is_rejected():
     ensure_receipts_schema(DSN)
     store = PostgresReceiptStore(DSN)
@@ -66,6 +69,7 @@ def test_postgres_receipt_duplicate_is_rejected():
     assert store.receipt(key) == {"kind": "webhook"}
 
 
+@pytest.mark.integration
 def test_postgres_process_once_runs_handler_only_once():
     store = PostgresReceiptStore(DSN)
     calls = []

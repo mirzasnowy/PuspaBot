@@ -11,12 +11,17 @@
 #   changes  — detect-changes: which areas the push/PR touched
 #              (python code/deps/workflow vs docs). Every other lane
 #              waits for it.
-#   test     — the full suite, SOLO (one pytest process, no parallel
-#              runner), against Postgres 16 + pgvector (pinned image
-#              pgvector/pgvector:0.6.0-pg16, the version the committed
-#              schema snapshot was dumped against), with the test
-#              database created by the migration runner
-#              (`python -m puspa.migrations up`, E-08).
+#   test     — the full suite on 4 xdist workers (E-17, plan 9.1),
+#              each with its own database cloned from a migrated
+#              template (tests/worker_db.py), excluding the live
+#              tests (``-m "not live"``). The live tests run in the
+#              sandbox lane instead. Target: under 10 minutes.
+#   pr-lane  — pull requests only: the affected tests only (E-17),
+#              computed from Puspa's own import graph
+#              (scripts/affected.py + scripts/pr_lane.py), on the
+#              same 4-worker setup as the test lane. Target: under
+#              8 minutes. A change that shapes every test (conftest,
+#              migrations, CI config) runs the full suite instead.
 #   sandbox  — the live container + Chromium tests that can never run
 #              on the dev VM (its kernel rejects container namespaces):
 #              the 4 live tests in tests/test_sandbox.py, the Docker
@@ -133,7 +138,7 @@ jobs:
           echo "$FILES"
 
   test:
-    name: Full suite (SOLO)
+    name: Full suite (4 workers, per-worker DBs)
     needs: changes
     if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-24.04
@@ -165,7 +170,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: python -m pip install -r requirements.txt
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Install psql client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client-16
@@ -175,20 +180,77 @@ jobs:
           PGPASSWORD: puspa-ci-test
         run: |
           # The suite connects as role root over TCP; create that role
-          # and the test database as the service superuser, then apply
-          # the schema with the migration runner (E-08: the old
-          # infra/schema_core.sql setup script is gone; the runner is
-          # the only schema path now).
-          psql "host=localhost user=postgres dbname=postgres" -c "CREATE ROLE root LOGIN SUPERUSER;" -c "CREATE DATABASE puspa_test OWNER root;"
-          # The suite connects as role root over TCP; give that role the
-          # same throwaway password as the service superuser. Local runs
-          # use peer auth instead and need no password (see
+          # as the service superuser, then build the migrated template
+          # database the 4 workers clone from (E-17: the old
+          # `python -m puspa.migrations up` against puspa_test is
+          # gone; the template is the only schema path now, and each
+          # worker gets its own database from it).
+          psql "host=localhost user=postgres dbname=postgres" -c "CREATE ROLE root LOGIN SUPERUSER;"
+          # The suite connects as role root over TCP, so give that role
+          # the same throwaway password as the service superuser. Local
+          # runs use peer auth instead and need no password (see
           # docs/verification.md).
           psql "host=localhost user=postgres dbname=postgres" -c "ALTER ROLE root WITH PASSWORD 'puspa-ci-test';"
-          python -m puspa.migrations up
+          python scripts/setup_test_db.py
 
-      - name: Run the full suite (SOLO, no parallel runner)
-        run: python -m pytest
+      - name: Run the full suite (4 workers, per-worker DBs, no live tests)
+        run: python -m pytest -n 4 -m "not live" --dist loadfile
+
+  pr-lane:
+    name: PR lane (affected tests only)
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: pgvector/pgvector:0.6.0-pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: puspa-ci-test
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready -U postgres
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PUSPA_TEST_DSN: dbname=puspa_test user=root password=puspa-ci-test host=localhost port=5432
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client-16
+
+      - name: Set up test database
+        env:
+          PGPASSWORD: puspa-ci-test
+        run: |
+          # Same setup as the test lane: role root, then the
+          # migrated template the workers clone from (E-17).
+          psql "host=localhost user=postgres dbname=postgres" -c "CREATE ROLE root LOGIN SUPERUSER;"
+          psql "host=localhost user=postgres dbname=postgres" -c "ALTER ROLE root WITH PASSWORD 'puspa-ci-test';"
+          python scripts/setup_test_db.py
+
+      - name: Run the PR lane (affected tests, 4 workers)
+        run: |
+          # The base commit needs fetching: checkout only has the
+          # last 2 commits (same pattern as the changes job).
+          BASE="${{ github.event.pull_request.base.sha }}"
+          git fetch --depth 1 origin "$BASE" 2>/dev/null || true
+          python scripts/pr_lane.py --base "$BASE" --head "${{ github.sha }}"
 
   sandbox:
     name: Sandbox + Chromium (live containers)
@@ -497,13 +559,13 @@ jobs:
   # failure or a cancellation fails the gate.
   all-checks-pass:
     name: All checks pass
-    needs: [changes, test, sandbox, checks, supply-chain, lint, format, typecheck]
+    needs: [changes, test, pr-lane, sandbox, checks, supply-chain, lint, format, typecheck]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Verify every lane passed
         run: |
-          for result in "${{ needs.changes.result }}" "${{ needs.test.result }}" "${{ needs.sandbox.result }}" "${{ needs.checks.result }}" "${{ needs.supply-chain.result }}" "${{ needs.lint.result }}" "${{ needs.format.result }}" "${{ needs.typecheck.result }}"; do
+          for result in "${{ needs.changes.result }}" "${{ needs.test.result }}" "${{ needs.pr-lane.result }}" "${{ needs.sandbox.result }}" "${{ needs.checks.result }}" "${{ needs.supply-chain.result }}" "${{ needs.lint.result }}" "${{ needs.format.result }}" "${{ needs.typecheck.result }}"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               echo "a lane failed or was cancelled: $result"
               exit 1

@@ -10,6 +10,7 @@ import time
 from datetime import UTC, datetime, timedelta
 
 import psycopg
+import pytest
 
 from puspa.scheduler.claim import (
     DEFAULT_DSN,
@@ -25,6 +26,12 @@ from puspa.scheduler.claim import (
 DSN = os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
 
 NOW = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
+
+
+# The claim queue lives in Postgres: puspa.scheduler.claim
+# reads PUSPA_TEST_DSN when no DSN is passed, so every test
+# that enqueues or claims needs the database (E-17).
+pytestmark = pytest.mark.integration
 
 
 def _cleanup(item_ids):
