@@ -41,21 +41,32 @@ label, a keyboard shortcut, or a tool whose name hides its verb
 (fail-closed to asking), and a payment tool named without any of the
 listed signals is missed until the auto-review or the human catches
 it.
+- (E-10, plan 6.3) An "always" answer can now be narrowed to a
+  target pattern (recipient, domain, path glob) and a nominal cap,
+  so it only ever applies to the same kind of action it was
+  granted for. In beta mode, "always" is disabled entirely for
+  ``pay`` and ``send_to_other``.
+- (E-10, plan 6.2) What the user sees is rendered server-side from
+  the structured arguments by ``puspa.policy.approval_cards``;
+  this module's :meth:`ApprovalPolicy.render_card` is the seam.
 """
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import time
 import uuid
 from dataclasses import dataclass, field
 
+from .approval_cards import render_approval_card
 from .gate import Gate, GateDenied
 
 __all__ = [
     "ACTION_KINDS",
     "ANSWER_TTL_SECONDS",
     "ASKING_GUIDANCE_MARKER",
+    "BETA_ALWAYS_FORBIDDEN_KINDS",
     "DESTRUCTIVE_MARKER",
     "GATE_KIND_FOR_ACTION",
     "ApprovalAnswer",
@@ -115,6 +126,52 @@ ANSWER_SCOPES = frozenset({"once", "conversation", "always"})
 
 #: Answer lifetime in seconds (24 hours).
 ANSWER_TTL_SECONDS = 24 * 3600
+
+#: Kinds for which "always" is disabled entirely in beta (plan
+#: 6.3): a standing yes to moving money, or to messaging someone
+#: else, is exactly the approval fatigue the beta must not
+#: create. Enforced by ``ApprovalStore`` and ``ApprovalPolicy``
+#: when ``beta_mode`` is on.
+BETA_ALWAYS_FORBIDDEN_KINDS = frozenset({"pay", "send_to_other"})
+
+#: Argument keys read for each "always" narrowing axis.
+_RECIPIENT_KEYS = ("recipient", "recipient_name", "recipient_account", "payee", "to", "target")
+_DOMAIN_KEYS = ("domain", "host", "site")
+_PATH_KEYS = ("path", "url", "target")
+_NOMINAL_KEYS = ("nominal", "amount", "amount_rupiah")
+
+
+def _glob_matches(pattern: str, value: str) -> bool:
+    """Case-insensitive glob match (``*`` wildcards allowed)."""
+    return fnmatch.fnmatchcase(value.lower(), pattern.lower())
+
+
+def _target_values(content: dict | None) -> dict[str, list[str]]:
+    """Candidate values per narrowing axis, from structured args."""
+    content = content or {}
+    values: dict[str, list[str]] = {"recipient": [], "domain": [], "path": []}
+    for keys, axis in (
+        (_RECIPIENT_KEYS, "recipient"),
+        (_DOMAIN_KEYS, "domain"),
+        (_PATH_KEYS, "path"),
+    ):
+        for key in keys:
+            value = content.get(key)
+            if isinstance(value, str) and value.strip():
+                values[axis].append(value.strip())
+    return values
+
+
+def _nominal_of(content: dict | None) -> int | float | None:
+    """Nominal amount from structured args, or None when absent."""
+    for key in _NOMINAL_KEYS:
+        value = (content or {}).get(key)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            return value
+    return None
+
 
 #: Rule owners. ``conversation`` is a rule allowed for this
 #: conversation only; ``admin`` is a rule an admin set for everyone.
@@ -386,7 +443,16 @@ def _answer_hash(content: dict | None) -> str:
 
 @dataclass
 class ApprovalAnswer:
-    """One tiered answer from the user."""
+    """One tiered answer from the user.
+
+    An "always" answer may be narrowed (E-10, plan 6.3): the
+    ``*_pattern`` fields are globs the action's target must match
+    (recipient, domain, path), and ``max_nominal`` is the highest
+    amount the answer covers. An answer with no narrowing fields
+    is unconstrained, as before. Narrowing is fail-closed: when a
+    pattern is set and the action carries no value on that axis,
+    the answer does not apply.
+    """
 
     kind: str
     scope: str  # "once" | "conversation" | "always"
@@ -395,14 +461,57 @@ class ApprovalAnswer:
     content_hash: str = ""
     granted_at: float = field(default_factory=time.time)
     granted_by: str = "user"
+    recipient_pattern: str | None = None
+    domain_pattern: str | None = None
+    path_pattern: str | None = None
+    max_nominal: int | float | None = None
 
     def expired(self, now: float | None = None) -> bool:
         """All answers expire 24 hours after they were granted."""
         now = time.time() if now is None else now
         return now - self.granted_at >= ANSWER_TTL_SECONDS
 
+    def _narrowing_matches(self, content: dict | None) -> bool:
+        """True when the action fits this answer's narrowing.
+
+        Unconstrained answers match everything. A set pattern
+        needs a matching value on its axis; a set cap needs a
+        nominal at or under it. No value on an axis the answer
+        narrows means no match.
+        """
+        if (
+            self.recipient_pattern is None
+            and self.domain_pattern is None
+            and self.path_pattern is None
+            and self.max_nominal is None
+        ):
+            return True
+        if content is None:
+            return False
+        values = _target_values(content)
+        for pattern, axis in (
+            (self.recipient_pattern, "recipient"),
+            (self.domain_pattern, "domain"),
+            (self.path_pattern, "path"),
+        ):
+            if pattern is not None and not any(
+                _glob_matches(pattern, value) for value in values[axis]
+            ):
+                return False
+        if self.max_nominal is not None:
+            nominal = _nominal_of(content)
+            if nominal is None or nominal > self.max_nominal:
+                return False
+        return True
+
     def usable_for(
-        self, *, conversation_id: str | None, content_hash: str = "", now: float | None = None
+        self,
+        *,
+        conversation_id: str | None,
+        content_hash: str = "",
+        content: dict | None = None,
+        beta_mode: bool = False,
+        now: float | None = None,
     ) -> bool:
         """True when this answer covers this action right now."""
         if self.expired(now):
@@ -411,8 +520,18 @@ class ApprovalAnswer:
             # "Allow once" covers exactly the approved content.
             return bool(content_hash) and content_hash == self.content_hash
         if self.scope == "conversation":
-            return conversation_id is not None and conversation_id == self.conversation_id
-        return self.scope == "always"
+            return (
+                conversation_id is not None
+                and conversation_id == self.conversation_id
+                and self._narrowing_matches(content)
+            )
+        if self.scope == "always":
+            # Beta: "always" never applies to pay / send_to_other,
+            # even to an answer recorded before beta mode was on.
+            if beta_mode and self.kind in BETA_ALWAYS_FORBIDDEN_KINDS:
+                return False
+            return self._narrowing_matches(content)
+        return False
 
 
 class ApprovalStore:
@@ -420,10 +539,13 @@ class ApprovalStore:
 
     Answers are keyed by kind; lookup prefers the narrowest usable
     answer ("once" for this exact content, then "conversation",
-    then "always"). Expired answers never apply.
+    then "always"). Expired answers never apply. With
+    ``beta_mode`` on, recording an "always" answer for ``pay`` or
+    ``send_to_other`` is refused, and a stored one never applies.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, beta_mode: bool = False) -> None:
+        self.beta_mode = beta_mode
         self._answers: list[ApprovalAnswer] = []
         self._consumed: set[str] = set()
 
@@ -436,6 +558,10 @@ class ApprovalStore:
         content: dict | None = None,
         granted_by: str = "user",
         granted_at: float | None = None,
+        recipient_pattern: str | None = None,
+        domain_pattern: str | None = None,
+        path_pattern: str | None = None,
+        max_nominal: int | float | None = None,
     ) -> ApprovalAnswer:
         if kind not in ACTION_KINDS:
             raise ValueError(f"unknown action kind: {kind!r}")
@@ -443,6 +569,16 @@ class ApprovalStore:
             raise ValueError(f"unknown answer scope: {scope!r}")
         if scope == "conversation" and not conversation_id:
             raise ValueError("a conversation answer needs a conversation_id")
+        if scope == "always" and self.beta_mode and kind in BETA_ALWAYS_FORBIDDEN_KINDS:
+            raise ValueError(
+                f"'always' is disabled in beta for {kind!r}: the user is asked every time"
+            )
+        if max_nominal is not None and (
+            isinstance(max_nominal, bool)
+            or not isinstance(max_nominal, (int, float))
+            or max_nominal < 0
+        ):
+            raise ValueError("max_nominal must be a non-negative number")
         answer = ApprovalAnswer(
             kind=kind,
             scope=scope,
@@ -450,6 +586,10 @@ class ApprovalStore:
             content_hash=_answer_hash(content),
             granted_at=time.time() if granted_at is None else granted_at,
             granted_by=granted_by,
+            recipient_pattern=recipient_pattern,
+            domain_pattern=domain_pattern,
+            path_pattern=path_pattern,
+            max_nominal=max_nominal,
         )
         self._answers.append(answer)
         return answer
@@ -469,13 +609,33 @@ class ApprovalStore:
             for a in self._answers
             if a.kind == kind
             and a.answer_id not in self._consumed
-            and a.usable_for(conversation_id=conversation_id, content_hash=content_hash, now=now)
+            and a.usable_for(
+                conversation_id=conversation_id,
+                content_hash=content_hash,
+                content=content,
+                beta_mode=self.beta_mode,
+                now=now,
+            )
         ]
         for scope in ("once", "conversation", "always"):
             for answer in candidates:
                 if answer.scope == scope:
                     return answer
         return None
+
+    def has_narrowed_always(self, kind: str, *, now: float | None = None) -> bool:
+        """True when a live "always" answer exists for the kind.
+
+        Used to explain an "ask": the answer exists, but it does
+        not cover this target or amount.
+        """
+        return any(
+            a.kind == kind
+            and a.scope == "always"
+            and a.answer_id not in self._consumed
+            and not a.expired(now)
+            for a in self._answers
+        )
 
     def consume(self, answer_id: str) -> bool:
         """Mark a "once" answer used. Returns False when unknown."""
@@ -533,7 +693,10 @@ class ApprovalPolicy:
     4. Extra vigilant switch on -> ask.
     5. Task from check-in -> ask before every change.
     6. Auto-review findings -> ask.
-    7. A usable tiered answer -> allow.
+    7. A usable tiered answer -> allow. An "always" answer only
+       applies when its narrowing (target pattern, nominal cap)
+       covers this action; in beta mode it never applies to
+       ``pay`` or ``send_to_other``.
     8. Otherwise -> ask (these kinds always ask by default).
     """
 
@@ -545,8 +708,12 @@ class ApprovalPolicy:
         extra_vigilant: bool = False,
         gate: Gate | None = None,
         log=None,
+        beta_mode: bool = False,
     ) -> None:
-        self.store = store or ApprovalStore()
+        self.store = store or ApprovalStore(beta_mode=beta_mode)
+        # The store owns the beta flag: a store passed in keeps
+        # its own mode, so a beta store stays beta in any policy.
+        self.beta_mode = self.store.beta_mode
         self._rules: list[ApprovalRule] = list(rules or [])
         self.extra_vigilant = extra_vigilant
         self.gate = gate
@@ -653,6 +820,15 @@ class ApprovalPolicy:
                 reason=f"tiered answer applies: {answer.scope}",
                 answer_scope=answer.scope,
             )
+        if self.store.has_narrowed_always(kind, now=now):
+            return ApprovalDecision(
+                outcome="ask",
+                kind=kind,
+                reason=(
+                    f"stored 'always' answer for {kind} does not cover this target or amount; ask"
+                ),
+                findings=tuple(findings),
+            )
         return ApprovalDecision(
             outcome="ask",
             kind=kind,
@@ -668,10 +844,54 @@ class ApprovalPolicy:
         *,
         conversation_id: str | None = None,
         content: dict | None = None,
+        recipient_pattern: str | None = None,
+        domain_pattern: str | None = None,
+        path_pattern: str | None = None,
+        max_nominal: int | float | None = None,
     ) -> ApprovalAnswer:
         """Store a tiered answer ("once" / "conversation" /
-        "always"). A "once" answer is bound to the exact content."""
-        return self.store.record(kind, scope, conversation_id=conversation_id, content=content)
+        "always"). A "once" answer is bound to the exact content;
+        an "always" answer may be narrowed to a target pattern
+        and a nominal cap. In beta mode, "always" for ``pay`` or
+        ``send_to_other`` is refused."""
+        return self.store.record(
+            kind,
+            scope,
+            conversation_id=conversation_id,
+            content=content,
+            recipient_pattern=recipient_pattern,
+            domain_pattern=domain_pattern,
+            path_pattern=path_pattern,
+            max_nominal=max_nominal,
+        )
+
+    # -- server-rendered card -------------------------------------------
+    def render_card(
+        self,
+        *,
+        tool_name: str,
+        content: dict,
+        request_id: str = "",
+        narrative: str | None = None,
+        button_label: str | None = None,
+        page_text: str | None = None,
+    ):
+        """Render the approval card for one action, server-side.
+
+        The kind comes from the tool name (same recognition as
+        :meth:`decide`); every visible line comes from the
+        structured ``content``. A model narrative, when supplied,
+        is ignored and flagged — it never reaches the card. See
+        ``puspa.policy.approval_cards``.
+        """
+        classification = classify_action(tool_name, button_label=button_label, page_text=page_text)
+        return render_approval_card(
+            kind=classification.kind or "unknown",
+            tool_name=tool_name,
+            content=content,
+            request_id=request_id,
+            narrative=narrative,
+        )
 
     # -- gate wiring ----------------------------------------------------
     def request(
@@ -733,6 +953,49 @@ class ApprovalPolicy:
                 self.store.consume(answer.answer_id)
             self.gate.approve(request.request_id, user_id)
         return request
+
+    def request_with_card(
+        self,
+        *,
+        user_id: str,
+        agent_id: str,
+        token,
+        tool_name: str,
+        content: dict,
+        button_label: str | None = None,
+        page_text: str | None = None,
+        conversation_id: str | None = None,
+        from_checkin: bool = False,
+        narrative: str | None = None,
+    ):
+        """Like :meth:`request`, plus the server-rendered card.
+
+        Returns ``(gate_request, card)``. The card is rendered
+        from the same structured ``content`` the gate binds to,
+        with the gate request's id, so the screen shows exactly
+        what the approval covers. The narrative, when supplied,
+        is ignored and flagged on the card.
+        """
+        request = self.request(
+            user_id=user_id,
+            agent_id=agent_id,
+            token=token,
+            tool_name=tool_name,
+            content=content,
+            button_label=button_label,
+            page_text=page_text,
+            conversation_id=conversation_id,
+            from_checkin=from_checkin,
+        )
+        card = self.render_card(
+            tool_name=tool_name,
+            content=content,
+            request_id=request.request_id,
+            narrative=narrative,
+            button_label=button_label,
+            page_text=page_text,
+        )
+        return request, card
 
 
 # -- anti-double-approval -----------------------------------------------

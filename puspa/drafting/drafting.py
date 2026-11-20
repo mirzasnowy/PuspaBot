@@ -49,6 +49,7 @@ from puspa.accounts.users import resolve_dsn
 from puspa.evidence.outcomes import write_outcome
 from puspa.ledger import Ledger
 from puspa.memory import facts as facts_module
+from puspa.policy.approval_cards import render_approval_card
 
 from .errors import (
     DraftNotApprovedError,
@@ -628,6 +629,16 @@ class DraftingService:
         :meth:`approve_draft`. Nothing here ever sends.
         """
         draft = self.get_draft(draft_id, user_id=user_id)
+        # E-10: the awaiting-approval answer carries a
+        # server-rendered card, built from the structured draft
+        # arguments (recipient, channel, text) — never from a
+        # model narrative — so the screen shows what will run.
+        card_content = {
+            "recipient": draft.recipient,
+            "channel": draft.channel,
+            "text": draft.text,
+            "kind": draft.kind,
+        }
         if self.policy is not None:
             decision = self.policy.decide(
                 tool_name="draft.send",
@@ -639,11 +650,20 @@ class DraftingService:
                     draft_id, user_id=user_id, ledger=ledger, agent_id=agent_id
                 )
                 return {"status": "approved", "approval": approval.to_dict()}
+            card = self.policy.render_card(tool_name="draft.send", content=card_content)
             return {
                 "status": "awaiting_approval",
                 "reason": decision.reason,
+                "card": card.to_dict(),
             }
-        return {"status": "awaiting_approval", "reason": "send_to_other always asks"}
+        card = render_approval_card(
+            kind="send_to_other", tool_name="draft.send", content=card_content
+        )
+        return {
+            "status": "awaiting_approval",
+            "reason": "send_to_other always asks",
+            "card": card.to_dict(),
+        }
 
     # -- sending ------------------------------------------------------
     def send_draft(self, draft_id: str, *, user_id: str, approval_id: str, sender=None) -> dict:
