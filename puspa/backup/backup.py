@@ -1,15 +1,18 @@
-"""Cadangan terenkripsi + uji restore (definisi 2.17, C126, gerbang 15).
+"""Encrypted backup + restore test (Gate 15, partial).
 
-- Dump Postgres (`pg_dump` format custom) -> enkripsi Fernet ->
-  simpan di direktori DI LUAR database (di VM ini:
-  `build/fase-1/backups/`; di VPS nanti: penyimpanan di luar VPS).
-- Retensi 14 hari (angka awal); cadangan lebih tua dihapus otomatis.
-- Uji restore ke DB bersih: `restore_backup` + verifikasi jumlah baris
-  + rantai hash Buku Kerja. Uji restore pertama DIJALANKAN Fase 1
-  (lihat STATUS_FASE1.md); lalu tiap 2 minggu.
-- Blob (tangkapan layar) TIDAK dicadangkan (TTL 30 hari, revisi 7).
-- Kunci cadangan hanya dari env `PUSPA_BACKUP_KEY` (base64 urlsafe,
-  32 byte) — tidak ada kunci default, tidak disimpan di database.
+- Dump Postgres (``pg_dump`` custom format) -> Fernet encryption ->
+  store in a directory OUTSIDE the database (off-VPS object storage
+  in production; see ``docs/backup-restore-runbook.md``).
+- 14-day retention (initial value); older backups are pruned
+  automatically.
+- Restore test to a clean database: ``restore_backup`` + row-count
+  verification + ledger hash-chain verification. The first restore
+  test ran during Phase 1; the monthly timed drill lives in
+  ``puspa/backup/drill.py`` (E-09).
+- Blobs (screenshots) are NOT backed up (30-day TTL, revision 7).
+- The backup key comes only from env ``PUSPA_BACKUP_KEY`` (base64
+  urlsafe, 32 bytes). There is no default key and it is never stored
+  in the database.
 """
 
 from __future__ import annotations
@@ -33,19 +36,19 @@ BACKUP_SUFFIX = ".dump.enc"
 
 
 class BackupError(Exception):
-    """Cadangan/restore gagal."""
+    """Backup/restore failed."""
 
 
 def _backup_key():
     raw = os.environ.get("PUSPA_BACKUP_KEY")
     if not raw:
-        raise BackupError("PUSPA_BACKUP_KEY tidak diset; cadangan menolak jalan tanpa kunci")
+        raise BackupError("PUSPA_BACKUP_KEY is not set; backup refuses to run without a key")
     try:
         key = base64.urlsafe_b64decode(raw.encode())
     except Exception as exc:
-        raise BackupError("PUSPA_BACKUP_KEY bukan base64 urlsafe yang valid") from exc
+        raise BackupError("PUSPA_BACKUP_KEY is not valid urlsafe base64") from exc
     if len(key) != 32:
-        raise BackupError("PUSPA_BACKUP_KEY harus 32 byte")
+        raise BackupError("PUSPA_BACKUP_KEY must be 32 bytes")
     return raw.encode()
 
 
@@ -54,7 +57,7 @@ def _fernet():
 
 
 def _dsn_parts(dsn):
-    """Pecah DSN `dbname=X user=Y host=Z` menjadi dict (tanpa password)."""
+    """Split a `dbname=X user=Y host=Z` DSN into a dict (no password)."""
     parts = {}
     for token in (dsn or "").split():
         if "=" in token:
@@ -68,8 +71,8 @@ def _pg_env(dsn):
     env = dict(os.environ)
     if parts.get("host"):
         env["PGHOST"] = parts["host"]
-    if parts.get("users"):
-        env["PGUSER"] = parts["users"]
+    if parts.get("user"):
+        env["PGUSER"] = parts["user"]
     if parts.get("port"):
         env["PGPORT"] = parts["port"]
     return env
@@ -80,7 +83,7 @@ def _db_name(dsn):
 
 
 def create_backup(dsn=None, backup_dir=None, pg_dump_cmd="pg_dump", now=None):
-    """Buat cadangan terenkripsi. Kembalikan dict {path, manifest, ...}."""
+    """Create an encrypted backup. Return dict {path, manifest, ...}."""
     dsn = resolve_dsn(dsn)
     backup_dir = Path(backup_dir or Path(__file__).resolve().parent.parent.parent / "backups")
     backup_dir.mkdir(parents=True, exist_ok=True)
@@ -100,7 +103,7 @@ def create_backup(dsn=None, backup_dir=None, pg_dump_cmd="pg_dump", now=None):
             timeout=300,
         )
         if proc.returncode != 0:
-            raise BackupError(f"pg_dump gagal: {proc.stderr.strip()[:500]}")
+            raise BackupError(f"pg_dump failed: {proc.stderr.strip()[:500]}")
         plaintext = Path(tmp_path).read_bytes()
         ciphertext = _fernet().encrypt(plaintext)
         path.write_bytes(ciphertext)
@@ -122,7 +125,7 @@ def create_backup(dsn=None, backup_dir=None, pg_dump_cmd="pg_dump", now=None):
 
 
 def list_backups(backup_dir=None):
-    """Daftar cadangan (terbaru dulu) beserta manifestnya."""
+    """List backups (newest first) with their manifests."""
     backup_dir = Path(backup_dir or Path(__file__).resolve().parent.parent.parent / "backups")
     out = []
     if not backup_dir.exists():
@@ -139,7 +142,7 @@ def list_backups(backup_dir=None):
 
 
 def prune_backups(backup_dir=None, retention_days=RETENTION_DAYS, now=None):
-    """Hapus cadangan lebih tua dari retensi. Kembalikan nama yang dihapus."""
+    """Delete backups older than the retention window. Return deleted names."""
     backup_dir = Path(backup_dir or Path(__file__).resolve().parent.parent.parent / "backups")
     now = now or datetime.now(UTC)
     cutoff = now - timedelta(days=retention_days)
@@ -161,10 +164,11 @@ def prune_backups(backup_dir=None, retention_days=RETENTION_DAYS, now=None):
 
 
 def restore_backup(backup_path, target_dsn, pg_restore_cmd="pg_restore"):
-    """Restore cadangan ke database target (harus sudah ada + kosong).
+    """Restore a backup into the target database (must exist and be empty).
 
-    Kembalikan dict {database, tabel}. Pemanggil bertanggung jawab
-    membuat DB target kosong dulu (uji restore memakai DB bersih).
+    Return dict {database, table}. The caller is responsible for
+    creating the empty target database first (the restore test uses a
+    clean database).
     """
     target_dsn = resolve_dsn(target_dsn)
     plaintext = _fernet().decrypt(Path(backup_path).read_bytes())
@@ -181,7 +185,7 @@ def restore_backup(backup_path, target_dsn, pg_restore_cmd="pg_restore"):
             timeout=300,
         )
         if proc.returncode != 0:
-            raise BackupError(f"pg_restore gagal: {proc.stderr.strip()[:500]}")
+            raise BackupError(f"pg_restore failed: {proc.stderr.strip()[:500]}")
     finally:
         Path(tmp_path).unlink(missing_ok=True)
     import psycopg
@@ -195,7 +199,7 @@ def restore_backup(backup_path, target_dsn, pg_restore_cmd="pg_restore"):
 
 
 def verify_restored_counts(target_dsn, tables):
-    """Hitung baris tiap tabel di DB hasil restore (verifikasi isi)."""
+    """Count rows per table in the restored database (content check)."""
     import psycopg
 
     out = {}
