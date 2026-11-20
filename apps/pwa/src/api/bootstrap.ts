@@ -24,6 +24,7 @@ export type ScreenName =
   | "settings"
   | "office"
   | "live"
+  | "replay"
   | "insights"
   | "onboarding"
   | "mockup"
@@ -40,6 +41,7 @@ export const SCREENS: { name: ScreenName; path: string; label: string }[] = [
   { name: "settings", path: "/settings", label: "Pengaturan" },
   { name: "office", path: "/office", label: "Kantor" },
   { name: "live", path: "/live", label: "Live" },
+  { name: "replay", path: "/replay", label: "Replay" },
   { name: "insights", path: "/insights", label: "Insights" },
   { name: "onboarding", path: "/onboarding", label: "Onboarding" },
   { name: "mockup", path: "/mockup", label: "Mockup" },

@@ -1,0 +1,331 @@
+# Replay timeline API contract (P-10, plan section 12.10).
+#
+# Split out of docs/openapi-pwa.yaml on 21 Nov 2026 (P-10): the
+# replay contract (4 endpoints + 3 schemas) would have pushed
+# the main spec toward the 2000-line hard cap (Wave 30 precedent:
+# rooms, graph, mockup, payments, controls, voice, receipts,
+# morning, and live-view split the same way). The main spec
+# references this file with $ref stubs; the generated client is
+# produced from the main spec with openapi-typescript, which
+# resolves external $refs. The Error schema stays in the main
+# spec and is referenced back from here.
+#
+# Honest scope, in the contract: a replay plays a task's ledger
+# events back step by step — each step with its reason and
+# result, derived from the event itself — with scrubbing to any
+# step and a GIF export. The `screenshot` of every step stays
+# null: no backend can produce a real frame yet, and the GIF is
+# built from rendered frames drawn from the steps' own data
+# (step number, event type, tool, reason, result), not from a
+# desktop recording.
+openapi: 3.0.3
+info:
+  title: Puspa replay timeline API
+  version: 1.0.0
+paths:
+  /api/replay/{agent_id}/tasks:
+    get:
+      tags: [replay]
+      summary: Tasks of one agent that can be replayed
+      description: |
+        P-10: the agent's tasks that have ledger events, newest
+        first — step count, first and last event time, and the
+        status from the newest event. The screen replays from
+        this list.
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Replayable tasks, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReplayTaskSummary"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: The agent does not belong to this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/replay/{agent_id}/{task_id}:
+    get:
+      tags: [replay]
+      summary: Replay timeline for one task
+      description: |
+        P-10: every step of one task, oldest first — each step
+        with its reason, result, and hash-chain link — plus the
+        chain verification (`chain_ok` + `broken_event_ids`)
+        and the task status. `screenshot` is always null: no
+        backend can produce a real frame yet.
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Replay timeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplayTimeline"
+        "400":
+          description: The task has more steps than the replay limit
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: The agent does not belong to this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: The task has no recorded events
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/replay/{agent_id}/{task_id}/steps/{index}:
+    get:
+      tags: [replay]
+      summary: One step of a replay, by index
+      description: |
+        P-10: a single step (0-based) of the task's replay, for
+        scrubbing to an exact position — forward or back — without
+        re-fetching the whole timeline.
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: index
+          in: path
+          required: true
+          description: 0-based step index.
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: One replay step
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplayStep"
+        "400":
+          description: The task has more steps than the replay limit
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: The agent does not belong to this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown task, or the step index is out of range
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/replay/{agent_id}/{task_id}/export.gif:
+    get:
+      tags: [replay]
+      summary: Export a replay as an animated GIF
+      description: |
+        P-10: the whole timeline as an animated GIF, one rendered
+        frame per step (800 ms each, looping). The frames are
+        drawn from the steps' own data — step number, event type,
+        tool, reason, result — not from a desktop recording, and
+        each frame says so. The export is deterministic: the same
+        timeline always exports the same bytes.
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Animated GIF of the replay
+          content:
+            image/gif:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: The task has more steps than the replay limit
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: The agent does not belong to this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: The task has no recorded events
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    ReplayTaskSummary:
+      type: object
+      description: One task that can be replayed, from the task picker.
+      properties:
+        task_id:
+          type: string
+        event_count:
+          type: integer
+          description: How many steps the replay holds.
+        first_event_at:
+          type: string
+          format: date-time
+        last_event_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [running, completed, failed, stopped]
+      required: [task_id, event_count, first_event_at, last_event_at, status]
+    ReplayStep:
+      type: object
+      description: |
+        One step of a replay: one ledger event, played like a
+        frame. `reason` says why the step happened and `result`
+        what came of it (null when the step has no outcome yet);
+        both are derived from the stored event content only.
+        `screenshot` stays null until a backend that can produce
+        frames exists.
+      properties:
+        index:
+          type: integer
+          description: 0-based position in the timeline.
+        event_id:
+          type: string
+        type:
+          type: string
+        task_id:
+          type: string
+        agent_id:
+          type: string
+        subagent_id:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        tool:
+          type: string
+          nullable: true
+        reason:
+          type: string
+        result:
+          type: string
+          nullable: true
+        content:
+          type: object
+          additionalProperties: true
+          description: The event's payload (arbitrary JSON).
+        hash:
+          type: string
+        previous_hash:
+          type: string
+        screenshot:
+          type: string
+          nullable: true
+      required: [index, event_id, type, task_id, agent_id, created_at, tool, reason, result, content, hash, previous_hash, screenshot]
+    ReplayTimeline:
+      type: object
+      description: |
+        A whole task, replayable step by step. `status` is
+        `completed` / `failed` / `stopped` when the last event
+        ends the task, else `running`. `chain_ok` is false with
+        the broken event ids when the hash chain does not verify.
+      properties:
+        agent_id:
+          type: string
+        task_id:
+          type: string
+        step_count:
+          type: integer
+        status:
+          type: string
+          enum: [running, completed, failed, stopped]
+        chain_ok:
+          type: boolean
+        broken_event_ids:
+          type: array
+          items:
+            type: string
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        generated_at:
+          type: string
+          format: date-time
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReplayStep"
+      required: [agent_id, task_id, step_count, status, chain_ok, broken_event_ids, started_at, ended_at, generated_at, steps]
