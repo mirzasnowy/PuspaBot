@@ -13,3 +13,8 @@ types-PyYAML==6.0.12.20261113
 # mutmut mutation testing. Dev-only: only the eval tests use them.
 hypothesis==6.170.16
 mutmut==3.8.1
+# E-17 per-worker databases + PR lane (plan section 9.1): pytest-xdist
+# runs the suite on 4 workers, each with its own database cloned
+# from a migrated template (tests/worker_db.py). Dev-only: only the
+# test lanes use it.
+pytest-xdist==3.8.0

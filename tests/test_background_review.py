@@ -5,6 +5,8 @@ stub ``record_fact``. No live LLM, no database, no G7 facts
 module (the fail-soft default path is tested explicitly).
 """
 
+import pytest
+
 from puspa.memory.background_review import (
     TURN_TIMEOUT_SECONDS,
     ReviewHandle,
@@ -150,6 +152,7 @@ def test_review_default_record_fact_is_fail_soft_without_g7_module():
     assert result.errors
 
 
+@pytest.mark.integration
 def test_review_default_record_fact_writes_to_g7_store():
     """Default path end to end: review -> G7 record_fact -> Postgres.
 

@@ -165,6 +165,7 @@ def test_upsell_due_thresholds_and_snooze():
     assert due["snooze_until"] == (NOW + timedelta(days=10)).isoformat()
 
 
+@pytest.mark.integration
 def test_postgres_store_round_trip():
     import psycopg
 

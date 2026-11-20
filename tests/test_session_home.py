@@ -85,6 +85,7 @@ def test_live_home_refused_with_only_one_flag(monkeypatch):
     monkeypatch.delenv("PUSPA_ALLOW_LIVE_HOME", raising=False)
 
 
+@pytest.mark.integration
 def test_tmp_home_opens_fine(monkeypatch, tmp_path):
     monkeypatch.setenv(HOME_ENV_VAR, str(tmp_path))
     with open_persistence() as gateway:

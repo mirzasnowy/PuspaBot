@@ -5,6 +5,8 @@ DB, empty for a fresh user id)."""
 import uuid
 from datetime import UTC, datetime
 
+import pytest
+
 from puspa.memory import write_cycle
 from puspa.memory.facts import MemoryFactStore
 
@@ -56,6 +58,7 @@ def test_background_pass_gate_and_reflection():
     assert proposals[0]["key"] == "reliable_service"
 
 
+@pytest.mark.integration
 def test_nightly_tidy_expires_stale_facts():
     store = MemoryFactStore()
     user = _user()

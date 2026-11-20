@@ -11,11 +11,9 @@ lane (.github/workflows/ci.yml), which builds the sandbox image
 and runs the Docker variant on every PR.
 
 These tests use no Puspa database tables themselves (temp dirs
-and subprocesses only). Note: the shared ``tests/conftest.py``
-autouse fixture still creates the schemas and truncates tables
-in ``puspa_test`` for every test file in this directory,
-including this one; that fixture cannot be opted out of from
-here.
+and subprocesses only). They are classified ``unit`` by the
+shared ``tests/conftest.py`` marker split (E-17), so the autouse
+table-reset fixture skips the database for them entirely.
 """
 
 import pytest
@@ -36,7 +34,20 @@ DOCKER_SKIP_REASON = (
 )
 
 
-@pytest.fixture(params=sorted(BACKENDS))
+def _backend_params() -> list:
+    """One param per backend; the docker variant is a live test (E-17).
+
+    Only the docker param carries the ``live`` marker, so a PR lane
+    (``-m "not live"``) still runs the local-backend conformance
+    while the container runs move to the sandbox / nightly lane.
+    """
+    return [
+        pytest.param(name, marks=pytest.mark.live) if name == "docker" else name
+        for name in sorted(BACKENDS)
+    ]
+
+
+@pytest.fixture(params=_backend_params())
 def backend(request, tmp_path):
     """One instance of each registered backend, per test."""
     name = request.param
