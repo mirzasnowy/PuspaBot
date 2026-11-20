@@ -9,7 +9,7 @@
 
 from datetime import UTC, datetime
 
-from hypothesis import given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from puspa.ledger.ledger import compute_event_hash
@@ -41,7 +41,13 @@ def _payload(tools, budget, exp):
     }
 
 
-@settings(max_examples=50)
+# The too_slow health check is suppressed here: the strategies are
+# trivially cheap (a 4-element sampled list + 3 small ints), but under
+# -n 4 load on this 1.5-CPU VM the wall-clock generation time trips
+# the check (2 valid inputs after 1.09s in the Wave 47 re-run) — CPU
+# starvation, not strategy cost. The property is still checked over
+# 50 examples; only the generation-speed health check is off.
+@settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
 @given(
     tools=st.lists(_TOOLS, unique=True, min_size=0, max_size=4),
     budget=_BUDGET,

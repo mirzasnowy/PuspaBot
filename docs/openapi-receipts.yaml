@@ -1,0 +1,393 @@
+# Receipt photo API contract (plan 12.5).
+#
+# Split out of docs/openapi-pwa.yaml on 20 Nov 2026 (P-04 ratchet
+# fix): the receipt contract (5 endpoints + 4 schemas) would have
+# pushed the main spec past the 2000-line hard cap, so it earned
+# its own file, following the voice split of P-03. The main spec
+# references this file with $ref stubs; the generated client is
+# produced from the main spec with openapi-typescript, which
+# resolves external $refs. The Error and ChatMessage schemas stay
+# in the main spec and are referenced back from here.
+openapi: 3.0.3
+info:
+  title: Puspa receipt photo API
+  version: 1.0.0
+paths:
+  /api/receipts/upload:
+    post:
+      tags: [chat]
+      summary: Upload a receipt photo for OCR
+      description: |
+        Reads one receipt, shop note, bill, delivery slip, or menu
+        photo through the app's OCR seam and returns the parsed
+        expense as a draft for confirmation: nothing is recorded
+        until POST /api/receipts/confirm. The photo is stored in
+        the per-user share inbox under receipts/ — it is the
+        evidence for every number in the draft. 400 on a bad photo
+        (wrong type, empty, over 10 MiB, bytes that do not decode
+        as an image). 422 when the photo looks like an identity
+        card, family card, or official letter: refused with an
+        explanation, and nothing is stored.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo:
+                  type: string
+                  format: binary
+                  description: Photo of the receipt (jpeg, png, webp, heic, heif; at most 10 MiB)
+      responses:
+        "200":
+          description: Draft ready for confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptUpload"
+        "400":
+          description: Bad photo (wrong type, empty, over the size limit, not an image)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "422":
+          description: Identity or official document (refused, nothing stored)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptRejection"
+  /api/receipts/confirm:
+    post:
+      tags: [chat]
+      summary: Confirm a receipt draft and record the expense
+      description: |
+        Records the pending draft as an expense, every amount
+        carrying its evidence id, posts a summary to chat, and
+        drops the pending record. The caller may edit merchant,
+        total, expense_date, or lines first; an edited expense is
+        marked edited_by_user and keeps the photo evidence id.
+        404 for an unknown or foreign pending id; 400 for an
+        empty merchant or a non-positive total.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pending_id]
+              properties:
+                pending_id:
+                  type: string
+                merchant:
+                  type: string
+                  description: Edited merchant name (defaults to the parsed one)
+                total:
+                  type: integer
+                  description: Edited total in whole rupiah (defaults to the parsed one)
+                expense_date:
+                  type: string
+                  description: Edited date, YYYY-MM-DD (defaults to the parsed one)
+                lines:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/ReceiptLine"
+      responses:
+        "200":
+          description: Expense recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, expense]
+                properties:
+                  ok:
+                    type: boolean
+                  expense:
+                    $ref: "#/components/schemas/ReceiptExpense"
+        "400":
+          description: Empty merchant, non-positive total, or bad lines
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown receipt
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/receipts/discard:
+    post:
+      tags: [chat]
+      summary: Discard a pending receipt draft
+      description: |
+        Drops the pending draft without recording anything and
+        deletes the stored photo. 404 for an unknown or foreign
+        pending id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pending_id]
+              properties:
+                pending_id:
+                  type: string
+      responses:
+        "200":
+          description: Pending draft discarded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown receipt
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/receipts/expenses:
+    get:
+      tags: [chat]
+      summary: List the user's confirmed expenses
+      description: |
+        The user's recorded receipt expenses, each amount with its
+        evidence id. Unconfirmed drafts are not listed here.
+      responses:
+        "200":
+          description: Confirmed expenses
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, expenses]
+                properties:
+                  ok:
+                    type: boolean
+                  expenses:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ReceiptExpense"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/receipts/status:
+    get:
+      tags: [chat]
+      summary: Receipt OCR status (which engine, whether one is chosen)
+      description: |
+        Honest status. No OCR engine is chosen until the
+        total-receipt accuracy measurement on 20 real receipt
+        photos (plan 12.5) exists; until then engine_selected is
+        false and uploads are answered by the test-double OCR
+        engine.
+      responses:
+        "200":
+          description: Receipt OCR status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptStatus"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    ReceiptLine:
+      type: object
+      description: One parsed line item, with the evidence id for its amount (photo + OCR line).
+      required: [name, amount, evidence_id, line_index]
+      properties:
+        name:
+          type: string
+        amount:
+          type: integer
+          description: Whole rupiah
+        evidence_id:
+          type: string
+          description: receipt-<photo_id>-line-<n>
+        line_index:
+          type: integer
+          description: 0-based line of the OCR text the amount was read from
+    ReceiptDraft:
+      type: object
+      description: A receipt as the user will confirm it; every amount is backed by an evidence id.
+      required: [currency, lines, total_is_sum, held_amounts]
+      properties:
+        merchant:
+          type: string
+          nullable: true
+        expense_date:
+          type: string
+          nullable: true
+          description: YYYY-MM-DD when the parser found a date
+        currency:
+          type: string
+          description: Rp unless the text says otherwise
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReceiptLine"
+        total:
+          type: integer
+          nullable: true
+          description: Printed total, or the sum of the lines when no total line exists
+        total_evidence_id:
+          type: string
+          nullable: true
+          description: receipt-<photo_id>-total
+        total_is_sum:
+          type: boolean
+          description: True when the total is the sum of the lines, not a printed total
+        held_amounts:
+          type: integer
+          description: Amounts seen but held (no line to tie them to); never added to the total
+    ReceiptUpload:
+      type: object
+      description: One uploaded receipt photo, awaiting confirmation.
+      required: [ok, pending_id, photo_id, draft, engine, document_kind]
+      properties:
+        ok:
+          type: boolean
+        pending_id:
+          type: string
+          description: Confirm or discard this id via /api/receipts/confirm or /api/receipts/discard
+        photo_id:
+          type: string
+          description: Short id of the stored photo; evidence ids are built on it
+        photo_path:
+          type: string
+          nullable: true
+          description: Where the photo is stored in the per-user share inbox
+        draft:
+          $ref: "#/components/schemas/ReceiptDraft"
+        ocr_lines:
+          type: array
+          description: OCR lines with bounding boxes (fractions of the photo) when the engine reports them
+          items:
+            type: object
+            properties:
+              text:
+                type: string
+              box:
+                type: array
+                items:
+                  type: number
+                nullable: true
+              confidence:
+                type: number
+                nullable: true
+        engine:
+          type: string
+          description: OCR engine that read the photo (stub until an engine is chosen)
+        elapsed_seconds:
+          type: number
+          description: "Measured end-to-end time of this upload (plan bar: under 20 seconds)"
+        document_kind:
+          type: string
+          enum: [receipt, note, bill, menu, unknown, id_document, official_letter]
+        size_bytes:
+          type: integer
+        mime_type:
+          type: string
+    ReceiptExpense:
+      type: object
+      description: A confirmed receipt expense, every amount carrying its evidence id.
+      required: [expense_id, photo_id, merchant, currency, lines, total, edited_by_user]
+      properties:
+        expense_id:
+          type: string
+        photo_id:
+          type: string
+        photo_path:
+          type: string
+          nullable: true
+        merchant:
+          type: string
+        expense_date:
+          type: string
+          nullable: true
+        currency:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReceiptLine"
+        total:
+          type: integer
+        total_evidence_id:
+          type: string
+          nullable: true
+        edited_by_user:
+          type: boolean
+          description: True when the user edited any field before confirming
+        engine:
+          type: string
+        document_kind:
+          type: string
+        created_at:
+          type: number
+    ReceiptStatus:
+      type: object
+      description: Receipt OCR status; engine_selected stays false until the 20-photo accuracy measurement picks an engine.
+      required: [engine, engine_selected, selection, required_cases, max_photo_bytes]
+      properties:
+        engine:
+          type: string
+        engine_selected:
+          type: boolean
+        selection:
+          type: string
+          enum: [pending, done]
+        required_cases:
+          type: integer
+        max_photo_bytes:
+          type: integer
+        note:
+          type: string
+    ReceiptRejection:
+      type: object
+      description: "A refused upload: an identity or official document, never a receipt."
+      required: [ok, rejected, document_kind, reason]
+      properties:
+        ok:
+          type: boolean
+        rejected:
+          type: boolean
+        document_kind:
+          type: string
+          enum: [id_document, official_letter]
+        reason:
+          type: string

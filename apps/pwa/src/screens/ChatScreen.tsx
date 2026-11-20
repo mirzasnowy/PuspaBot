@@ -8,6 +8,7 @@ import {
   reconcileEcho,
 } from "../state/chat";
 import { VoiceRecorder } from "../components/VoiceRecorder";
+import { ReceiptUpload } from "../components/ReceiptUpload";
 import { WorkStrip } from "../components/WorkStrip";
 
 export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
@@ -88,6 +89,7 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
         </button>
       </form>
       <VoiceRecorder onSent={(message) => setState((prev) => appendMessage(prev, message))} />
+      <ReceiptUpload onRecorded={(message) => setState((prev) => appendMessage(prev, message))} />
       <p className="muted">
         Kirim foto untuk cek harga (fase 3). Angka bermakna punya tombol Bukti di panelnya.
       </p>

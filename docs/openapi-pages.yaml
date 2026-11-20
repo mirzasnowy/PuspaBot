@@ -1,0 +1,272 @@
+# PWA HTML page routes API contract (split 20 Nov 2026, P-04 ratchet
+# fix).
+#
+# Split out of docs/openapi-pwa.yaml: the merged P-04 spec reached 2002
+# lines, 2 over the 2000-line hard cap, so the 18 page routes (HTML
+# screens, auth redirects, manifest, service worker, health) earned
+# their own file, following the rooms/voice/controls/receipts split
+# precedent. The main spec references this file with $ref stubs; the
+# generated client is produced from the main spec with
+# openapi-typescript, which resolves external $refs. The Error,
+# Manifest, and HealthStatus schemas stay in the main spec and are
+# referenced back from here.
+openapi: 3.0.3
+info:
+  title: Puspa PWA page routes API
+  version: 1.0.0
+paths:
+  /:
+    get:
+      tags: [pages]
+      summary: Home (redirects to /chat)
+      responses:
+        "302":
+          description: Redirect to /chat
+  /masuk:
+    get:
+      tags: [pages]
+      summary: Login screen
+      description: Serves the SPA login screen; the Google flow starts at /auth/google.
+      responses:
+        "200":
+          description: Login screen (HTML)
+          content:
+            text/html:
+              schema:
+                type: string
+  /auth/google:
+    get:
+      tags: [pages]
+      summary: Start Google OAuth login
+      responses:
+        "302":
+          description: Redirect to Google
+        "503":
+          description: Google login not configured (PUSPA_GOOGLE_CLIENT_ID empty)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /auth/google/callback:
+    get:
+      tags: [pages]
+      summary: Google OAuth callback
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Callback acknowledgement (full login is completed in puspa.auth)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notes:
+                    type: string
+                  code_accepted:
+                    type: boolean
+  /chat:
+    get:
+      tags: [pages]
+      summary: Chat screen
+      responses:
+        "200":
+          description: Chat screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /tasks:
+    get:
+      tags: [pages]
+      summary: Tasks screen
+      responses:
+        "200":
+          description: Tasks screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /modules:
+    get:
+      tags: [pages]
+      summary: Modules screen
+      responses:
+        "200":
+          description: Modules screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /connectors:
+    get:
+      tags: [pages]
+      summary: Connectors screen
+      responses:
+        "200":
+          description: Connectors screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /memory:
+    get:
+      tags: [pages]
+      summary: Memory screen
+      responses:
+        "200":
+          description: Memory screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /settings:
+    get:
+      tags: [pages]
+      summary: Settings screen
+      responses:
+        "200":
+          description: Settings screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /office:
+    get:
+      tags: [pages]
+      summary: Office screen
+      responses:
+        "200":
+          description: Office screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /insights:
+    get:
+      tags: [pages]
+      summary: Insights screen
+      responses:
+        "200":
+          description: Insights screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /onboarding:
+    get:
+      tags: [pages]
+      summary: Onboarding screen
+      responses:
+        "200":
+          description: Onboarding screen (HTML, SPA shell with server bootstrap)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /sse:
+    get:
+      tags: [chat]
+      summary: Live event stream (Server-Sent Events)
+      description: |
+        Streams the office projection first, then a heartbeat event.
+        Events are `data: {...}\n\n` frames with `type` `office` or
+        `heartbeat`. Requires a logged-in session cookie.
+      responses:
+        "200":
+          description: Event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE frames; each data frame is an SseEvent
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /bukti/{evidence_id}:
+    get:
+      tags: [pages]
+      summary: Evidence panel
+      parameters:
+        - name: evidence_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Evidence panel (HTML)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to /masuk when not logged in
+  /manifest.json:
+    get:
+      tags: [pages]
+      summary: PWA manifest
+      responses:
+        "200":
+          description: Web app manifest
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Manifest"
+  /sw.js:
+    get:
+      tags: [pages]
+      summary: Service worker script
+      responses:
+        "200":
+          description: Service worker JavaScript
+          content:
+            application/javascript:
+              schema:
+                type: string
+  /health:
+    get:
+      tags: [pages]
+      summary: Health status including embedding degradation
+      description: |
+        E-14: public and login-free. Always 200 while the server is
+        up; the `status` field carries `ok` or `degraded`. The
+        `embedding` block is the startup embedding snapshot: in
+        production with only the hash stand-in available the status
+        is `degraded`, with the reason and the fallback alarm. A
+        monitor alerts on the field, not on the HTTP code.
+      responses:
+        "200":
+          description: Server is up; see the status field for degradation
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/HealthStatus"

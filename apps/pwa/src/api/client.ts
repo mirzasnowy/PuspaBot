@@ -39,6 +39,10 @@ export type DialSuggestion = components["schemas"]["DialSuggestion"];
 export type CeilingName = components["schemas"]["CeilingRequest"]["ceiling"];
 export type WeeklyReport = components["schemas"]["WeeklyReport"];
 export type WeeklyLinkedEvent = components["schemas"]["WeeklyLinkedEvent"];
+export type ReceiptUpload = components["schemas"]["ReceiptUpload"];
+export type ReceiptDraft = components["schemas"]["ReceiptDraft"];
+export type ReceiptExpense = components["schemas"]["ReceiptExpense"];
+export type ReceiptStatus = components["schemas"]["ReceiptStatus"];
 export type ModelSource = ModelSettings["source"];
 export type InsightsReport = components["schemas"]["InsightsReport"];
 export type TokenTotals = components["schemas"]["TokenTotals"];
@@ -228,6 +232,51 @@ export function discardVoice(
 /** Voice transcription status: which engine, whether one is chosen. */
 export function voiceStatus(fetchFn: FetchFn = fetch): Promise<VoiceStatus> {
   return getJson<VoiceStatus>("/api/voice/status", fetchFn);
+}
+
+/**
+ * Upload a receipt photo for OCR. Returns the parsed expense as a
+ * pending draft: the caller shows it for confirmation and only
+ * then calls `confirmReceipt`. The photo is kept as evidence.
+ */
+export function uploadReceipt(
+  photo: Blob,
+  fetchFn: FetchFn = fetch,
+): Promise<ReceiptUpload> {
+  const form = new FormData();
+  form.append("photo", photo, "receipt.jpg");
+  return postMultipart<ReceiptUpload>("/api/receipts/upload", form, fetchFn);
+}
+
+/**
+ * Confirm a pending receipt draft and record the expense.
+ * `edits` overrides the parsed merchant, total, date, or lines
+ * when the user corrected them first.
+ */
+export function confirmReceipt(
+  pendingId: string,
+  edits?: {
+    merchant?: string;
+    total?: number;
+    expense_date?: string;
+    lines?: ReceiptExpense["lines"];
+  },
+  fetchFn: FetchFn = fetch,
+): Promise<{ ok: boolean; expense: ReceiptExpense }> {
+  return postJson("/api/receipts/confirm", { pending_id: pendingId, ...edits }, fetchFn);
+}
+
+/** Discard a pending receipt draft (and delete the stored photo). */
+export function discardReceipt(
+  pendingId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ ok: boolean }> {
+  return postJson("/api/receipts/discard", { pending_id: pendingId }, fetchFn);
+}
+
+/** Receipt OCR status: which engine, whether one is chosen. */
+export function receiptStatus(fetchFn: FetchFn = fetch): Promise<ReceiptStatus> {
+  return getJson<ReceiptStatus>("/api/receipts/status", fetchFn);
 }
 
 /** Create and run a task synchronously. Returns the outcome. */
