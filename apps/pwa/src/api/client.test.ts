@@ -13,7 +13,10 @@ import {
   fetchRoomBoard,
   fetchRooms,
   renameGraphNode,
+  releaseTakeover,
+  takeoverAgent,
   fetchAutonomyDial,
+  fetchLiveFrame,
   fetchOperatorStatus,
   fetchWeeklyReport,
   formatRupiah,
@@ -474,5 +477,44 @@ describe("P-02 controls", () => {
     const result = await fetchWeeklyReport(7, fetchMock as unknown as typeof fetch);
     expect(fetchMock.mock.calls[0][0]).toBe("/api/weekly-report?days=7");
     expect(result.tasks_completed).toBe(3);
+  });
+});
+
+describe("P-09 live view", () => {
+  it("fetchLiveFrame reads /api/live-view/{agent_id}", async () => {
+    const fetchMock = mockFetch({ agent_id: "puspa-1", status: "working", events: [] });
+    const result = await fetchLiveFrame("puspa-1", fetchMock as unknown as typeof fetch);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/live-view/puspa-1");
+    expect(result.status).toBe("working");
+  });
+
+  it("takeoverAgent posts the reason to the takeover path", async () => {
+    const fetchMock = mockFetch({ agent_id: "puspa-1", status: "held" });
+    const result = await takeoverAgent(
+      "puspa-1",
+      "checking the bot",
+      fetchMock as unknown as typeof fetch,
+    );
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/live-view/puspa-1/takeover");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body)).reason).toBe("checking the bot");
+    expect(result.status).toBe("held");
+  });
+
+  it("takeoverAgent throws ApiError with the server message on 409", async () => {
+    const fetchMock = mockFetch({ error: "already held" }, 409);
+    await expect(
+      takeoverAgent("puspa-1", "x", fetchMock as unknown as typeof fetch),
+    ).rejects.toThrow("already held");
+  });
+
+  it("releaseTakeover posts to the release path", async () => {
+    const fetchMock = mockFetch({ agent_id: "puspa-1", status: "released" });
+    const result = await releaseTakeover("puspa-1", fetchMock as unknown as typeof fetch);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/live-view/puspa-1/release");
+    expect(init.method).toBe("POST");
+    expect(result.status).toBe("released");
   });
 });

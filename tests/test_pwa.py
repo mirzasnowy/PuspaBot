@@ -29,8 +29,13 @@ def test_eleven_screens_exist_and_200(client):
         assert "Puspa" in resp.text
 
 
-def test_no_twelfth_screen_exists():
-    assert len(SCREENS) == 11
+def test_twelve_screens_exist_including_live():
+    """The morning and live screens are the eleventh and twelfth.
+
+    The count is pinned on purpose: a thirteenth screen must be a
+    deliberate decision with its own ticket, not an accident.
+    """
+    assert len(SCREENS) == 12
     assert set(SCREENS) == {
         "chat",
         "tasks",
@@ -39,6 +44,7 @@ def test_no_twelfth_screen_exists():
         "memory",
         "settings",
         "office",
+        "live",
         "insights",
         "onboarding",
         "mockup",

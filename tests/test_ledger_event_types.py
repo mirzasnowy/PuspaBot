@@ -38,6 +38,15 @@ EVENT_TYPES_NEW = [
     "data_consent",
 ]
 
+#: 2 event_type ambil alih (P-09): takeover adalah event, bukan
+#: edit — ``takeover_started`` saat tombol ditekan, ``takeover_released``
+#: saat kendali dilepas. Ditambah lewat migrasi 0026 (CHECK
+#: diperluas), bukan lewat revisi 7.
+EVENT_TYPES_P09 = [
+    "takeover_started",
+    "takeover_released",
+]
+
 #: 22 event_type lama — harus tetap ada semua (tidak ada yang hilang/berubah).
 EVENT_TYPES_OLD = [
     "task_created",
@@ -65,6 +74,22 @@ EVENT_TYPES_OLD = [
 ]
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _takeover_migration():
+    """Apply migrations 0026-0027 (P-09 types in the DB CHECK).
+
+    The ``ledger`` fixture below applies only migration 0001,
+    whose CHECK lists the 31 revision-7 types. The two P-09
+    types only pass the DB CHECK once 0026 has landed — and
+    0027 drops the duplicate inline CHECK 0026 could not
+    reach — so this fixture applies both (idempotent; the test
+    database usually records them already).
+    """
+    from puspa.migrations import apply_migrations
+
+    apply_migrations(DSN, target="0027")
+
+
 @pytest.fixture(scope="session")
 def ledger():
     """Ledger + skema dibuat sekali per sesi tes (idempotent)."""
@@ -82,15 +107,18 @@ def task_id(ledger):
         conn.execute("DELETE FROM events WHERE task_id = %s", (tid,))
 
 
-def test_closed_set_of_31_event_types():
+def test_closed_set_of_33_event_types():
     assert len(EVENT_TYPES_OLD) == 22
     assert len(EVENT_TYPES_NEW) == 9
+    assert len(EVENT_TYPES_P09) == 2
     assert set(EVENT_TYPES_OLD).isdisjoint(EVENT_TYPES_NEW)
-    assert set(EVENT_TYPES_OLD) | set(EVENT_TYPES_NEW) == EVENT_TYPES
-    assert len(EVENT_TYPES) == 31
+    assert set(EVENT_TYPES_OLD).isdisjoint(EVENT_TYPES_P09)
+    assert set(EVENT_TYPES_NEW).isdisjoint(EVENT_TYPES_P09)
+    assert set(EVENT_TYPES_OLD) | set(EVENT_TYPES_NEW) | set(EVENT_TYPES_P09) == EVENT_TYPES
+    assert len(EVENT_TYPES) == 33
 
 
-@pytest.mark.parametrize("event_type", EVENT_TYPES_NEW)
+@pytest.mark.parametrize("event_type", EVENT_TYPES_NEW + EVENT_TYPES_P09)
 def test_append_new_event_type_and_read_back(ledger, task_id, event_type):
     ev = ledger.append_event(
         task_id=task_id, agent_id=AGEN, event_type=event_type, content={"type": event_type}
@@ -156,7 +184,7 @@ def test_event_type_unknown_rejected_python_and_db(ledger, task_id):
     assert ledger.events(task_id) == []
 
 
-@pytest.mark.parametrize("event_type", EVENT_TYPES_NEW)
+@pytest.mark.parametrize("event_type", EVENT_TYPES_NEW + EVENT_TYPES_P09)
 def test_check_db_accepts_new_event_type_direct_insert(ledger, task_id, event_type):
     # INSERT langsung via SQL (tanpa Ledger) dengan tiap event_type baru harus
     # lolos CHECK — membuktikan schema.sql, bukan hanya JENIS_KEJADIAN.

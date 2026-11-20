@@ -59,8 +59,9 @@ APP_ROLE = "puspa_app"
 #: DSN default (peer auth sebagai user OS, tanpa password).
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
-#: Himpunan event_type kejadian tertutup — 31 event_type (definisi 2.3 revisi 7:
-#: 22 event_type lama + 9 event_type baru alur/modul/pemicu/laporan/persetujuan).
+#: Himpunan event_type kejadian tertutup — 33 event_type (definisi 2.3 revisi 7:
+#: 22 event_type lama + 9 event_type baru alur/modul/pemicu/laporan/persetujuan,
+#: plus 2 event_type ambil alih dari P-09: takeover_started, takeover_released).
 EVENT_TYPES = frozenset(
     {
         "task_created",
@@ -94,6 +95,8 @@ EVENT_TYPES = frozenset(
         "module_activated",
         "false_report",
         "data_consent",
+        "takeover_started",
+        "takeover_released",
     }
 )
 
@@ -410,6 +413,28 @@ class Ledger:
                 "SELECT * FROM events WHERE created_at >= %s "
                 "ORDER BY created_at ASC, id ASC LIMIT %s",
                 (since, limit),
+            )
+            rows = cur.fetchall()
+        return [_row_to_event(row) for row in rows]
+
+    def events_for_agent(self, agent_id: str, *, limit: int = 100) -> list[dict]:
+        """Newest-first events of one agent, capped (P-09 live view).
+
+        The live view reads the agent's recent ledger events to
+        show what the bot is doing right now and to build the
+        replayable frame P-10 replays later. ``limit`` is the
+        number of newest events kept; the caller reverses them
+        into oldest-first order for display and replay.
+        """
+        if not isinstance(agent_id, str) or not agent_id:
+            raise LedgerError("agent_id harus string tak kosong")
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+            raise LedgerError("limit must be a positive integer")
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM events WHERE agent_id = %s "
+                "ORDER BY created_at DESC, id DESC LIMIT %s",
+                (agent_id, limit),
             )
             rows = cur.fetchall()
         return [_row_to_event(row) for row in rows]
