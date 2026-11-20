@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 __all__ = [
+    "GuestReadOnlyError",
     "InviteError",
     "LastOwnerError",
     "MoneyApprovalError",
@@ -37,6 +38,11 @@ class LastOwnerError(RoomError):
 
 class RoomFullError(RoomError):
     """The room already has the maximum number of members (beta-lite: 5)."""
+
+
+class GuestReadOnlyError(RoomError):
+    """A guest tried to write: guests read the room, they do not
+    write to it (plan section 12.1: Guest is read-only)."""
 
 
 class InviteError(RoomError):

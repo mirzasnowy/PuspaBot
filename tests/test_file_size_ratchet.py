@@ -120,7 +120,12 @@ BASELINE_LINES = {
     # P-04 (receipt photos, 20 Nov 2026): +19 lines — the
     # ocr_engine argument, the receipt pending/expense state, and
     # the receipt route registration. The ratchet resumes from 1028.
-    "puspa/pwa/app.py": 1028,
+    # P-05 (shared rooms lite, 20 Nov 2026): +36 lines — the room-activity frame on /sse plus the membership import and route registration. Resumes from 1064.
+    # P-05 fix (20 Nov 2026): +5 lines — the blind-except narrowing
+    # of the room-activity SSE frame (the psycopg import plus the
+    # narrowed handler with its failure-mode comment). The ratchet
+    # resumes from 1069.
+    "puspa/pwa/app.py": 1069,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Shared-room delegation (B6): the delegation board, task
@@ -240,13 +245,15 @@ BASELINE_LINES = {
     # the main spec keeps $ref stubs. Regenerated client types are
     # byte-identical before/after the split. The ratchet resumes
     # from 1783.
-    "docs/openapi-pwa.yaml": 1783,
+    # P-05 (shared rooms lite, 20 Nov 2026): +4 lines — the room_activity variant on SseEvent plus its $ref to the rooms file. The membership contract lives in docs/openapi-rooms-membership.yaml, not here. Resumes from 1787.
+    "docs/openapi-pwa.yaml": 1787,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:
     # splitting it again per feature would scatter one API
     # surface; the ratchet resumes from 1247.
-    "docs/openapi-rooms.yaml": 1247,
+    # P-05 (shared rooms lite, 20 Nov 2026): +94 lines — the create-room POST, $ref stubs for the membership paths/schemas, and the RoomActivity schema. The membership contract itself split out to docs/openapi-rooms-membership.yaml (913 lines) so this file stays under the cap. Resumes from 1341.
+    "docs/openapi-rooms.yaml": 1341,
     # Maturity phase status log: re-added 19 Nov 2026 at 1055
     # lines (regrown past the soft cap with the Waves 15-16
     # entries) and archived again the same day — Waves 9-13
