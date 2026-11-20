@@ -716,6 +716,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Health status including embedding degradation
+         * @description E-14: public and login-free. Always 200 while the server is
+         *     up; the `status` field carries `ok` or `degraded`. The
+         *     `embedding` block is the startup embedding snapshot: in
+         *     production with only the hash stand-in available the status
+         *     is `degraded`, with the reason and the fallback alarm. A
+         *     monitor alerts on the field, not on the HTTP code.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Server is up; see the status field for degradation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HealthStatus"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat": {
         parameters: {
             query?: never;
@@ -1235,6 +1279,268 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["InsightsReport"];
+                    };
+                };
+                /** @description days outside 1..90 */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stop-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop everything for the logged-in user
+         * @description P-02: stops every agent the user owns (revoke-all, token
+         *     refresh proved dead, live subagents interrupted) and
+         *     every live subagent task in the PWA pool for those
+         *     agents. One `task_stopped` ledger event per agent is
+         *     recorded under one shared stop-all task id. It does not
+         *     touch the global kill switch (operator-only) and deletes
+         *     nothing.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Stop report */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StopAllReport"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description An agent could not be stopped */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/autonomy-dial": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Autonomy dial state for the logged-in user
+         * @description P-02: the five dial areas (Money, Outgoing messages,
+         *     Delete, Schedule, Shopping) with their evidence scores,
+         *     ceilings, consecutive-accepted-draft streaks, and raise
+         *     suggestions. Money is locked to Ask first. A suggestion
+         *     appears only after 10 accepted drafts in a row.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Dial state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DialState"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/autonomy-dial/{area}/ceiling": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move one dial area's ceiling
+         * @description P-02: moves one area's ceiling to Ask first, Balanced,
+         *     or Autonomous. Lowering is always allowed. Raising moves
+         *     one step at a time and needs an active suggestion (10
+         *     accepted drafts in a row); Money refuses any raise.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    area: "money" | "messaging" | "files" | "scheduling" | "shopping";
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CeilingRequest"];
+                };
+            };
+            responses: {
+                /** @description The area's state after the move */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DialAreaState"];
+                    };
+                };
+                /** @description Unknown area or ceiling */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The area is locked (Money) */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The raise needs evidence first */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/weekly-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Weekly report for the logged-in user
+         * @description P-02: tasks completed, tasks corrected, and cost incurred
+         *     over the last N calendar days ending today (default 7,
+         *     allowed 1..90), with links to the audit log. Time and
+         *     money saved are null: no savings baseline is recorded
+         *     yet, so no savings figure is claimed.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    days?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Weekly report */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WeeklyReport"];
                     };
                 };
                 /** @description days outside 1..90 */
@@ -3803,6 +4109,437 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the user's prepared payments, oldest first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Prepared payments (every status) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreparedPaymentList"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Prepare a payment (verified recipient + amount + rail + evidence)
+         * @description B8 phase 1: the preparation starts as awaiting_approval
+         *     and becomes payable only after approval. Nothing here
+         *     executes a payment; the user pays in their own bank or
+         *     e-wallet app. The same idempotency key returns the same
+         *     preparation; the same key with different content is 400.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PreparePaymentRequest"];
+                };
+            };
+            responses: {
+                /** @description Prepared payment */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreparedPayment"];
+                    };
+                };
+                /** @description Bad input (unverified recipient, bad amount, unnamed rail, missing evidence, conflicting idempotency key) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/payments/payable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the preparations the user can see as payable (approved, unexpired) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Payable preparations */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreparedPaymentList"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/payments/{preparation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One prepared payment */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    preparation_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Prepared payment */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreparedPayment"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown preparation, or another user's */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/payments/{preparation_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a prepared payment so the user can see it as payable
+         * @description Approval never authorises execution, because there is no
+         *     executor. Only an awaiting-approval, unexpired preparation
+         *     can be approved.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    preparation_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Approved preparation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreparedPayment"];
+                    };
+                };
+                /** @description Expired or already decided */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/payments/{preparation_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a prepared payment */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    preparation_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Rejected preparation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreparedPayment"];
+                    };
+                };
+                /** @description Already decided */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/payments/{preparation_id}/mark-paid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record the user's assertion that they paid in their own app
+         * @description A user assertion, never an execution and never verified
+         *     by Puspa: phase 1 has no gateway to check against. Only
+         *     an approved, unexpired preparation can be marked.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    preparation_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        assertion?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Preparation marked paid by the user */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreparedPayment"];
+                    };
+                };
+                /** @description Not approved, or expired */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/payments/{preparation_id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Always refused (403) — phase 1 never executes
+         * @description The execution guard: every attempt is refused and
+         *     recorded to the ledger, even for a fully approved
+         *     preparation. There is no executor to call.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    preparation_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Execution refused */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/onboarding": {
         parameters: {
             query?: never;
@@ -4350,6 +5087,8 @@ export interface paths {
          *     live server state. In `hosted` mode `operator_panels` is false
          *     and the panel fields are null: the operator surface of a
          *     hosted deployment lives in the cloud backend, not here.
+         *     E-14: in `local` mode the payload also carries the embedding
+         *     snapshot and its operator banner (null when healthy).
          *     Requires a logged-in session cookie. Never returns pairing
          *     codes or session tokens.
          */
@@ -4917,6 +5656,84 @@ export interface components {
         GraphSearchResponse: {
             results: components["schemas"]["GraphSearchResult"][];
         };
+        PaymentRail: {
+            /** @description Rail id: qris, gopay, ovo, dana, virtual_account, bank_transfer */
+            rail_id: string;
+            display_name: string;
+            /** @description Rail kind: qris, e_wallet, virtual_account, bank_transfer */
+            kind: string;
+            bank?: string;
+        };
+        Recipient: {
+            name: string;
+            /** @description Account number, virtual account number, wallet id, or QRIS merchant id */
+            account_ref: string;
+            /** @description Always true — only a verified recipient can be prepared for payment */
+            verified: boolean;
+            /** @description What verified this recipient (a seller page, a bank-app screenshot, a bill) */
+            verified_by: string;
+        };
+        PreparePaymentRequest: {
+            recipient: components["schemas"]["Recipient"];
+            /** @description Positive integer Rupiah */
+            amount_rupiah: number;
+            /** @description A rail id or an everyday mention, e.g. "qris" or "bayar pake qris" */
+            rail: string;
+            /** @description At least one entry, each naming its kind; one entry must name the recipient */
+            evidence: {
+                kind: string;
+            }[];
+            idempotency_key?: string;
+            /** Format: date-time */
+            expires_at?: string;
+            /** Format: uuid */
+            room_id?: string;
+            task_id?: string;
+        };
+        PreparedPayment: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            user_id: string;
+            recipient: components["schemas"]["Recipient"];
+            amount_rupiah: number;
+            /** @description Integer Rupiah as Rp150.000 */
+            amount_display: string;
+            rail: components["schemas"]["PaymentRail"];
+            evidence: Record<string, never>[];
+            idempotency_key?: string | null;
+            /** @enum {string} */
+            status: "awaiting_approval" | "approved" | "rejected" | "expired" | "paid_by_user";
+            /** @description True only when approved and not expired */
+            payable: boolean;
+            /** Format: uuid */
+            room_id?: string | null;
+            task_id?: string;
+            outcome_id?: string | null;
+            approval_request_id?: string | null;
+            /** Format: uuid */
+            prepared_by?: string;
+            /** Format: date-time */
+            prepared_at?: string;
+            /** Format: date-time */
+            expires_at?: string;
+            /** Format: date-time */
+            approved_at?: string | null;
+            /** Format: uuid */
+            approved_by?: string | null;
+            /** Format: date-time */
+            paid_asserted_at?: string | null;
+            /** Format: uuid */
+            paid_asserted_by?: string | null;
+            paid_assertion?: string | null;
+            /** @description Plain-text summary (recipient + amount + rail + evidence + expiry + the notice that Puspa never pays) */
+            summary?: string;
+            /** @description Puspa never pays. Pay in your own bank or e-wallet app. */
+            pay_notice: string;
+        };
+        PreparedPaymentList: {
+            payments: components["schemas"]["PreparedPayment"][];
+        };
         /**
          * @description The user's own-model selection (G33). Carries no key
          *     material: `has_byok_key` only says whether a BYOK key
@@ -5111,6 +5928,121 @@ export interface components {
             revoked_tokens?: string[];
             seconds?: number;
         };
+        /** @description What stopping one agent did (P-02 stop-all report entry). */
+        StopAllAgentEntry: {
+            agent_id: string;
+            interrupted_subagents: number;
+            refresh_blocked: boolean;
+            elapsed_seconds: number;
+        };
+        /**
+         * @description P-02: what one stop-all press did. `task_id` is the shared
+         *     id every per-agent `task_stopped` ledger event of this
+         *     press hangs off, so the press reads as one action in the
+         *     audit log.
+         */
+        StopAllReport: {
+            user_id: string;
+            actor: string;
+            reason: string;
+            task_id: string;
+            agents_stopped: components["schemas"]["StopAllAgentEntry"][];
+            subagents_stopped: number;
+            pool_wired: boolean;
+            lifecycle_wired: boolean;
+            ledger_recorded: boolean;
+            elapsed_seconds: number;
+            /** Format: date-time */
+            stopped_at: string;
+            audit_trail_url: string;
+        };
+        /**
+         * @description P-02: an offer to raise one area's ceiling one step,
+         *     earned by 10 accepted drafts in a row. Absent (null)
+         *     when the area is locked, already Autonomous, or short
+         *     of evidence.
+         */
+        DialSuggestion: {
+            area: string;
+            /** @enum {string} */
+            from_ceiling: "ask_first" | "balanced" | "autonomous";
+            /** @enum {string} */
+            to_ceiling: "ask_first" | "balanced" | "autonomous";
+            threshold: number;
+            streak: number;
+            threshold_text: string;
+        };
+        /**
+         * @description P-02: one dial area as the user sees it. `stage` is the
+         *     evidence score stage; `effective_stage` is what an
+         *     action may actually do (the lower of the score stage
+         *     and the ceiling). `ceiling` is Ask first, Balanced, or
+         *     Autonomous.
+         */
+        DialAreaState: {
+            /** @enum {string} */
+            area: "money" | "messaging" | "files" | "scheduling" | "shopping";
+            label: string;
+            locked: boolean;
+            description: string;
+            score: number;
+            /** @enum {string} */
+            stage: "propose" | "do_and_show" | "do_silently";
+            /** @enum {string} */
+            effective_stage: "propose" | "do_and_show" | "do_silently";
+            /** @enum {string} */
+            ceiling: "ask_first" | "balanced" | "autonomous";
+            streak: number;
+            threshold: number;
+            threshold_text: string;
+            suggestion: components["schemas"]["DialSuggestion"] | null;
+        };
+        /** @description P-02: the five dial areas with their raise threshold. */
+        DialState: {
+            areas: components["schemas"]["DialAreaState"][];
+            threshold: number;
+            threshold_text: string;
+        };
+        CeilingRequest: {
+            /** @enum {string} */
+            ceiling: "ask_first" | "balanced" | "autonomous";
+        };
+        /** @description P-02: one counted event with its audit receipt link. */
+        WeeklyLinkedEvent: {
+            event_id: string;
+            type: string;
+            task_id: string;
+            /** Format: date-time */
+            created_at: string;
+            receipt_url: string;
+        };
+        /**
+         * @description P-02: tasks completed, tasks corrected, and cost incurred
+         *     over the window, with audit links. `time_saved_minutes`
+         *     and `money_saved_idr` are null: no savings baseline is
+         *     recorded yet, so no savings figure is claimed (see
+         *     `savings_note`).
+         */
+        WeeklyReport: {
+            window_days: number;
+            /** Format: date-time */
+            since: string;
+            /** Format: date-time */
+            until: string;
+            tasks_completed: number;
+            tasks_corrected: number;
+            approvals_granted: number;
+            approvals_rejected: number;
+            tasks_stopped: number;
+            tasks_failed: number;
+            time_saved_minutes: number | null;
+            money_saved_idr: number | null;
+            savings_note: string;
+            cost_idr: number | null;
+            cost_label: string | null;
+            audit_trail_url: string;
+            linked_events: components["schemas"]["WeeklyLinkedEvent"][];
+        };
         ApprovalRequest: {
             request_id: string;
             /** @description Action kind, e.g. spend, send, share */
@@ -5202,6 +6134,10 @@ export interface components {
          *     state; in `hosted` mode `operator_panels` is false and the
          *     panel fields are null. Pairing codes and session tokens are
          *     never included.
+         *     E-14: in `local` mode the payload also carries the embedding
+         *     snapshot (`embedding`) and its operator banner
+         *     (`embedding_banner`, null when healthy), so a degraded
+         *     embedding is visible on the operator surface.
          */
         OperatorStatus: {
             /** @enum {string} */
@@ -5211,6 +6147,42 @@ export interface components {
             pairing?: components["schemas"]["PairingStatus"];
             gateway?: components["schemas"]["GatewayStatus"];
             log?: components["schemas"]["OperatorLogLine"][];
+            embedding?: components["schemas"]["EmbeddingHealth"];
+            embedding_banner?: components["schemas"]["EmbeddingBanner"];
+        };
+        /**
+         * @description E-14: one snapshot of embedding health, built at startup. `status`
+         *     is `degraded` in production when only the hash stand-in is
+         *     available (or when a hash fallback happened); `alarm` is true
+         *     when a production fallback was seen or canary recall fell more
+         *     than 10 percent below its baseline.
+         */
+        EmbeddingHealth: {
+            embedder_id?: string;
+            dimension?: number;
+            /** @enum {string} */
+            status?: "healthy" | "degraded";
+            reason?: string;
+            fallback_count?: number;
+            environment?: string;
+            alarm?: boolean;
+            alarm_reasons?: string[];
+            canary?: Record<string, never> | null;
+        };
+        /** @description E-14 operator banner for a degraded embedding; null when healthy. */
+        EmbeddingBanner: {
+            /** @enum {string} */
+            level?: "warning";
+            title?: string;
+            detail?: string;
+        };
+        /** @description E-14 `GET /health` payload. Always 200 while the server is up; `status` carries ok / degraded. */
+        HealthStatus: {
+            /** @enum {string} */
+            status: "ok" | "degraded";
+            /** @enum {string} */
+            serve_mode?: "local" | "hosted";
+            embedding?: components["schemas"]["EmbeddingHealth"];
         };
         /** @description Live pairing-store snapshot (G31). No codes or tokens, only counts and session metadata. */
         PairingStatus: {

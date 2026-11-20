@@ -13,7 +13,7 @@ info:
     Form posts use `application/x-www-form-urlencoded`; JSON
     bodies are used only where the server reads `request.json()`
     (push subscription, onboarding time, model settings,
-    onboarding steps, hints).
+    onboarding steps, hints, autonomy-dial ceiling).
   license:
     name: License pending (Nero's decision)
 servers:
@@ -36,6 +36,8 @@ tags:
     description: Onboarding flow (4 steps) and one-time hints (G28)
   - name: insights
     description: Cost and token insights from the usage ledger (G28)
+  - name: controls
+    description: Stop-all, autonomy dial, and weekly report (P-02, plan 12.7)
   - name: office
     description: Office screen and operator panels (G31 serve modes)
   - name: settings
@@ -629,6 +631,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/stop-all:
+    $ref: './openapi-controls.yaml#/paths/~1api~1stop-all'
+  /api/autonomy-dial:
+    $ref: './openapi-controls.yaml#/paths/~1api~1autonomy-dial'
+  /api/autonomy-dial/{area}/ceiling:
+    $ref: './openapi-controls.yaml#/paths/~1api~1autonomy-dial~1{area}~1ceiling'
+  /api/weekly-report:
+    $ref: './openapi-controls.yaml#/paths/~1api~1weekly-report'
   /api/rooms:
     $ref: './openapi-rooms.yaml#/paths/~1api~1rooms'
   /api/rooms/{room_id}/tasks:
@@ -1574,6 +1584,22 @@ components:
             type: string
         seconds:
           type: number
+    StopAllAgentEntry:
+      $ref: './openapi-controls.yaml#/components/schemas/StopAllAgentEntry'
+    StopAllReport:
+      $ref: './openapi-controls.yaml#/components/schemas/StopAllReport'
+    DialSuggestion:
+      $ref: './openapi-controls.yaml#/components/schemas/DialSuggestion'
+    DialAreaState:
+      $ref: './openapi-controls.yaml#/components/schemas/DialAreaState'
+    DialState:
+      $ref: './openapi-controls.yaml#/components/schemas/DialState'
+    CeilingRequest:
+      $ref: './openapi-controls.yaml#/components/schemas/CeilingRequest'
+    WeeklyLinkedEvent:
+      $ref: './openapi-controls.yaml#/components/schemas/WeeklyLinkedEvent'
+    WeeklyReport:
+      $ref: './openapi-controls.yaml#/components/schemas/WeeklyReport'
     ApprovalRequest:
       type: object
       required: [request_id, status]

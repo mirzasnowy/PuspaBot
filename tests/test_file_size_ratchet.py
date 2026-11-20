@@ -202,7 +202,14 @@ BASELINE_LINES = {
     # plus the EmbeddingHealth, EmbeddingBanner and HealthStatus
     # schemas and the embedding fields on OperatorStatus. The
     # ratchet resumes from 1920.
-    "docs/openapi-pwa.yaml": 1920,
+    # P-02 (stop-all, autonomy dial, weekly report): +26 lines —
+    # the `controls` tag (2) plus $ref stubs in the main spec —
+    # 4 control paths + 8 control schemas (contract split out
+    # to docs/openapi-controls.yaml, 359 lines, Wave 30
+    # precedent: the inline contract would have pushed the main
+    # spec past the 2000-line hard cap).
+    # The ratchet resumes from 1946.
+    "docs/openapi-pwa.yaml": 1946,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:

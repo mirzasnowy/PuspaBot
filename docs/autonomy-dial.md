@@ -9,28 +9,38 @@ lowest stage at once.
 Implementation: `puspa/autonomy/dial.py` (`AutonomyDial`,
 `DialDecision`, `area_for_tool`, `dial_ask_payload`). The turn
 loop consults it in `puspa/turns/loop.py` (`TurnLoop`, parameter
-`autonomy_dial`). Tests: `tests/test_autonomy_dial.py`.
+`autonomy_dial`). The user-facing controls are P-02
+(`puspa/autonomy/controls.py`, `puspa/pwa/controls_api.py`,
+`puspa/pwa/stop_all.py`, `puspa/pwa/weekly_report.py`); see
+"User controls (P-02)" below. Tests: `tests/test_autonomy_dial.py`,
+`tests/test_autonomy_controls.py`, `tests/test_pwa_controls_api.py`.
 
 ## Areas
 
-Six areas, taken from the action kinds the system already
+Seven areas, taken from the action kinds the system already
 recognises (the G4 taxonomy in `puspa/policy/approvals.py` plus
-the scheduling tools the turn loop dispatches):
+the scheduling tools the turn loop dispatches), plus shopping
+(P-02, plan section 12.7):
 
 | Area | Covers | Reversible? |
 |---|---|---|
-| `money` | payments, billing, purchases | No |
+| `money` | payments, billing, purchases | No, and locked (see below) |
 | `messaging` | sending, sharing, or posting to another person | No — a sent message cannot be unsent |
 | `files` | deleting or changing files and system state | No — a delete cannot be undone by the agent |
 | `scheduling` | calendar events and reminders | Yes |
 | `system` | installing skills and changing settings | Yes |
 | `accounts` | credential changes | No, and capped (see below) |
+| `shopping` | finding, comparing, and drafting a purchase | No — a placed order moves money (but the payment itself is a `money` action, so it still asks first) |
 
 The tool-to-area mapping (`area_for_tool`) reads the G4 taxonomy
 first: `pay` maps to `money`; `send_to_other`, `share`, and `post`
 map to `messaging`; `delete` maps to `files`;
 `change_credentials` maps to `accounts`; `install` maps to
-`system`. A tool the taxonomy does not recognise falls back to
+`system`. No G4 kind maps to `shopping`: purchases stay
+`money`-gated through the `pay` kind, so the turn loop never
+consults the shopping area for a tool call; the P-02 control
+layer feeds it from accepted shopping drafts instead. A tool
+the taxonomy does not recognise falls back to
 scheduling verbs (`schedule`, `remind`, `calendar`). A tool that
 cannot be placed in any area is not gated by the dial — the loop
 fails open and the tool runs as before. A caller may override the
@@ -72,6 +82,67 @@ assumed.
   0.59, so correct outcomes there are recorded but the stage never
   leaves `propose`. Credential changes always ask a human (the G4
   rule stands on top); the dial can never promote them.
+- **`money` lock (P-02, plan 12.7)** — the money area is capped
+  at a score of 0.59 the same way, so it never leaves `propose`
+  either: money always asks first, never autonomous, no matter
+  how much evidence accumulates. The cap lives in the score
+  itself, so no caller — not the turn loop, not a ceiling
+  change — can promote it. `set_ceiling("money", ...)` above
+  `propose` is refused as well.
+
+## Ceilings and user controls (P-02, plan 12.7)
+
+A ceiling is a user-set cap on one area (`AutonomyDial.set_ceiling`):
+the effective stage an action may reach is the lower of the score
+stage and the ceiling stage. A ceiling never raises the dial above
+what the evidence score allows; it only holds it down. The PWA
+(`puspa/autonomy/controls.py`, `AutonomyControls`) shows five areas
+— Money, Outgoing messages, Delete, Schedule, Shopping — with three
+ceiling positions each (Ask first / Balanced / Autonomous, mapping
+to `propose` / `do_and_show` / `do_silently`), and sets every shown
+area's ceiling to Ask first at startup. `system` and `accounts` are
+not shown: accounts is already capped by the dial, and system has
+no user-facing dial in this version.
+
+A ceiling rises one step at a time and only after evidence: the
+area's streak of consecutive accepted drafts (an approval the user
+granted in that area, counted from ledger approval events plus the
+drafts store) must reach 10, and the suggestion is visible in the
+dial state with the threshold in plain words ("10 accepted drafts
+in a row"). Lowering a ceiling is always allowed. Money refuses
+any raise. A raise without an active suggestion is refused
+(`CeilingRefusedError`, reason `needs_evidence`); a raise of a
+locked area is refused with reason `locked`.
+
+The evidence sources and their limits are documented in
+`puspa/autonomy/controls.py`: a rejection whose kind cannot be
+resolved breaks every area's streak (an unattributed correction
+must not leave a "10 in a row" claim standing), `false_report`
+breaks every streak, and a draft the user revised instead of
+accepting resets the messaging streak. Draft approvals in the
+PWA draft flow write no ledger event, so the drafts source exists
+because without it the messaging streak would never move for the
+flow users actually use.
+
+## Stop-all and the weekly report (P-02)
+
+- **Stop-all** (`POST /api/stop-all`, `puspa/pwa/stop_all.py`):
+  the red button in the PWA header, on every screen. One press
+  stops every agent the user owns through the E-11 stop package
+  (`puspa.policy.stop_agent`: revoke-all, token refresh proved
+  dead, live subagents interrupted) plus every live subagent task
+  in the PWA pool for those agents, and records one `task_stopped`
+  ledger event per agent under a single shared stop-all task id.
+  It does not touch the global kill switch (operator-only, all
+  users) and deletes nothing. The report carries the measured
+  elapsed time (target under 5 seconds, plan 6.6) and the audit
+  trail link.
+- **Weekly report** (`GET /api/weekly-report`, `puspa/pwa/weekly_report.py`):
+  tasks completed, tasks corrected (rejected approvals plus false
+  reports), approvals, cost incurred, and links to the audit log
+  (the trail plus one receipt per counted event). Time and money
+  saved are null with a written reason: no savings baseline is
+  recorded yet, so no savings figure is claimed.
 
 ## Calibration source
 
@@ -129,9 +200,11 @@ the call. Without a dial the loop behaves exactly as before.
   budget's spend log.
 - **In-memory.** A restart resets every area to the 0.50 start, so
   a restart can only make the agent more cautious, never bolder.
-  Persisting the per-area scores (a Postgres table + migration,
-  the K3/K4/K5 pattern) is the follow-up when the dial needs to
-  survive restarts.
+  Ceilings are in-memory too: a restart returns every shown area
+  to Ask first, which is the safe direction. Persisting the
+  per-area scores (a Postgres table + migration, the K3/K4/K5
+  pattern) is the follow-up when the dial needs to survive
+  restarts.
 - **Execution success is a proxy, not prediction accuracy.** The
   turn loop feeds the dial with tool-execution outcomes (the tool
   ran, or it errored). That says the action did what was asked,

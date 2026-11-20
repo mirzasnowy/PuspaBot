@@ -144,3 +144,31 @@ class SubagentPool:
             "tokens_revoked": revoked,
             "seconds": round(time.monotonic() - start, 3),
         }
+
+    def stop_all_for_agent(self, agent_id: str) -> dict:
+        """Stop every live subagent of one agent (P-02 stop-all).
+
+        Active and queued subagents of the agent are stopped
+        and their task tokens revoked, one task at a time.
+        Returns {"stopped": n, "tasks": [...], "tokens_revoked":
+        [...], "seconds": x}, the same shape as
+        :meth:`stop_task` but across the agent's tasks.
+        """
+        start = time.monotonic()
+        stopped_subagents = [s for s in self._active.values() if s.agent_id == agent_id]
+        stopped_subagents += [s for s in self._queued if s.agent_id == agent_id]
+        task_ids = sorted({sub.task_id for sub in stopped_subagents})
+        for sub in stopped_subagents:
+            sub.status = "stopped"
+            self._active.pop(sub.subagent_id, None)
+            if sub in self._queued:
+                self._queued.remove(sub)
+        revoked: list[str] = []
+        for task_id in task_ids:
+            revoked.extend(revoke_all_for_task(task_id))
+        return {
+            "stopped": len(stopped_subagents),
+            "tasks": task_ids,
+            "tokens_revoked": revoked,
+            "seconds": round(time.monotonic() - start, 3),
+        }

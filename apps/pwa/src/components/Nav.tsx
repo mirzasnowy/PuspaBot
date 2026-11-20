@@ -1,4 +1,5 @@
 import { SCREENS, type ScreenName } from "../api/bootstrap";
+import { StopAllButton } from "./StopAllButton";
 
 export function Nav({ current }: { current: ScreenName }) {
   return (
@@ -9,6 +10,7 @@ export function Nav({ current }: { current: ScreenName }) {
           {s.label}
         </a>
       ))}
+      <StopAllButton />
     </header>
   );
 }
