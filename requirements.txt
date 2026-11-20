@@ -23,7 +23,7 @@ pytest==9.2.0
 # nanobot dependencies (needed by the puspa.chassis package + integration tests):
 pydantic==2.14.3
 pydantic-settings==2.16.3
-loguru==0.7.3
+loguru==0.8.0
 pyyaml==6.0.3
 json_repair==0.64.9
 tiktoken==0.14.0
