@@ -1,0 +1,124 @@
+# Monthly nanobot bump bot (E-19, plan section 9.4).
+#
+# On the 1st of each month (and on manual dispatch) this workflow:
+#   1. runs the chassis contract lane against the CURRENT pin (a
+#      sanity check: the lane must be green before the pin moves);
+#   2. runs scripts/nanobot_bump.py --check against real upstream
+#      (latest commit on HKUDS/nanobot main + public advisories for
+#      the nanobot-ai package);
+#   3. when a bump is available, applies it (requirements.txt pin +
+#      puspa/chassis/pin.json) and opens a pull request to the new
+#      pin. A human merges the PR after the chassis contract lane
+#      passes on it — the bump PR never merges itself.
+#   4. when the fork rule fires (two or more security patches lag
+#      more than 30 days, or the wrapper needs monkeypatches in more
+#      than 5 places), opens an issue instead of a bump PR: the pin
+#      policy has stopped, and a human decides on the vendor subtree.
+#
+# Honest limit: this workflow has never run on GitHub yet, so no live
+# bump PR exists. The first real run happens on GitHub; until then the
+# pin stays at e767174 and this file is the bot, not a record of a bot
+# that already ran.
+
+name: Nanobot bump
+
+on:
+  schedule:
+    - cron: "0 3 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  bump:
+    name: Monthly nanobot bump
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: pgvector/pgvector:0.6.0-pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: <redacted>
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready -U postgres
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Throwaway password for the ephemeral CI test database only; the
+      # database is created fresh per run and destroyed with the runner.
+      PUSPA_TEST_DSN: dbname=puspa_test user=root password=<redacted> host=localhost port=5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client-16
+
+      - name: Set up test database
+        env:
+          PGPASSWORD: <redacted>
+        run: |
+          psql "host=localhost user=postgres dbname=postgres" -c "CREATE ROLE root LOGIN SUPERUSER;"
+          psql "host=localhost user=postgres dbname=postgres" -c "ALTER ROLE root WITH PASSWORD 'puspa-ci-test';"
+          python scripts/setup_test_db.py
+
+      - name: Chassis contract lane on the current pin
+        run: python scripts/run_chassis_contract.py -v
+
+      - name: Check upstream for a bump
+        id: check
+        # Exit codes from the bump script: 0 = pin current,
+        # 10 = bump available, 20 = fork rule fired, 1 = check failed.
+        run: |
+          set +e
+          python scripts/nanobot_bump.py --check > bump-report.json
+          CODE=$?
+          set -e
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          cat bump-report.json
+          if [ "$CODE" -eq 1 ]; then
+            echo "::error::bump check failed (see log)"
+            exit 1
+          fi
+
+      - name: Apply the bump
+        if: steps.check.outputs.code == '10'
+        run: python scripts/nanobot_bump.py --apply
+
+      - name: Open the bump pull request
+        if: steps.check.outputs.code == '10'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/nanobot-bump-${{ github.run_number }}
+          commit-message: "chore(chassis): bump nanobot pin"
+          title: "chore(chassis): bump nanobot pin"
+          body: |
+            Monthly nanobot bump (E-19). The chassis contract lane was
+            green on the current pin before this bump; it must also pass
+            on this PR before a human merges it.
+            See docs/nanobot-pin-process.md for the merge checklist.
+            Full bump report: see the workflow run log (bump-report.json).
+
+      - name: Open a fork-rule issue
+        if: steps.check.outputs.code == '20'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "Nanobot fork rule triggered" \
+            --body "The monthly bump check fired the fork rule (see the workflow run log, bump-report.json). Do not bump the pin again until a human decides on the vendor subtree in docs/nanobot-pin-process.md."

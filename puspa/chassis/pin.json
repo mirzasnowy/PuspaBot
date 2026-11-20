@@ -1,0 +1,17 @@
+{
+  "commit": "e767174",
+  "pinned_on": "2026-11-17",
+  "last_checked_on": "2026-11-20",
+  "last_upstream_commit": "3e9024ea043e30b7e5e40167f6b69b194247c822",
+  "advisories_open": [
+    {
+      "advisory_id": "GHSA-434r-7c99-hwf3",
+      "summary": "Nanobot contains a server-side request forgery vulnerability in the web_fetch tool",
+      "published_on": "2026-06-01",
+      "fixed_in_commit": null,
+      "severity": "medium"
+    }
+  ],
+  "forked": false,
+  "vendor_path": null
+}
