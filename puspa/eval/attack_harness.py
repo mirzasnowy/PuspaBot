@@ -132,11 +132,19 @@ class AttackHarness:
         ``broad_always_share`` is a stress scenario: the user
         previously granted a broad "always" answer for ``share``
         (no target narrowing). It shows what a too-broad grant
-        costs; it is not the default.
+        costs; it is not the default. In beta mode such a grant
+        is refused outright (see ``BETA_ALWAYS_FORBIDDEN_KINDS``),
+        so the scenario then measures the post-fix behavior: the
+        grant is recorded as refused on ``broad_grant_refused``
+        and the run proceeds without it.
         """
         self._policy = ApprovalPolicy(beta_mode=True)
+        self.broad_grant_refused = False
         if broad_always_share:
-            self._policy.record_answer("share", "always")
+            try:
+                self._policy.record_answer("share", "always")
+            except ValueError:
+                self.broad_grant_refused = True
 
     def run_payload(self, payload: AttackPayload) -> AttackResult:
         text = payload.text or ""

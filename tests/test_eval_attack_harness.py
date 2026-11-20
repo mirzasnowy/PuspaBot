@@ -2,8 +2,10 @@
 
 The pinned expectations below are measurements, not wishes: if
 the defense changes, these tests fail and the scorecard must be
-re-measured. The five goal-1 successes are real pass-throughs
-of the deterministic stack on the frozen corpus.
+re-measured. The five goal-1 successes from v1 are closed by the
+E-16 follow-up (2026-11-20): the scanner blocks all five at the
+scanner layer, and the broad "always" share grant is refused in
+beta, so the stress scenario adds no success.
 """
 
 import base64
@@ -15,9 +17,6 @@ from puspa.eval.attack_harness import (
     measure_utility_under_attack,
 )
 from puspa.eval.corpus import load_attack_corpus, load_benign_corpus
-
-#: Goal-1 payloads that pass every deterministic layer in v1.
-KNOWN_GOAL_1_SUCCESSES = {"ATK-003", "ATK-008", "ATK-010", "ATK-013", "ATK-014"}
 
 
 def test_harness_counts_sum_to_live_total():
@@ -36,11 +35,14 @@ def test_goal_2_attack_success_rate_is_zero():
     assert summary.by_goal[2]["success"] == 0
 
 
-def test_goal_1_successes_are_the_pinned_five():
+def test_goal_1_attack_success_rate_is_zero():
+    # E-16 follow-up (2026-11-20): the five goal-1 bypasses are
+    # blocked at the scanner (see test_eval_attack_regressions.py
+    # for one regression test per bypass).
     corpus = load_attack_corpus()
     summary = AttackHarness().run_corpus(corpus.live)
-    successes = {r.payload_id for r in summary.results if r.goal == 1 and r.outcome == "success"}
-    assert successes == KNOWN_GOAL_1_SUCCESSES
+    assert summary.attack_success_rate(goal=1) == 0.0
+    assert summary.by_goal[1]["success"] == 0
 
 
 def test_held_at_approval_is_counted_separately_from_blocked():
@@ -52,12 +54,17 @@ def test_held_at_approval_is_counted_separately_from_blocked():
     assert all(r.stopped_at == "approval_card" for r in held)
 
 
-def test_broad_always_share_grant_costs_a_success():
+def test_broad_always_share_grant_adds_no_success():
+    # E-16 follow-up (2026-11-20): a broad "always" share grant
+    # is refused in beta, so the stress scenario measures the
+    # same result as the default run.
     corpus = load_attack_corpus()
     default = AttackHarness().run_corpus(corpus.live)
-    broad = AttackHarness(broad_always_share=True).run_corpus(corpus.live)
-    assert broad.success > default.success
-    assert broad.success == default.success + 1
+    broad_harness = AttackHarness(broad_always_share=True)
+    assert broad_harness.broad_grant_refused is True
+    broad = broad_harness.run_corpus(corpus.live)
+    assert broad.success == default.success
+    assert broad.success == 0
 
 
 def test_scanner_false_positive_rate_is_measured():
