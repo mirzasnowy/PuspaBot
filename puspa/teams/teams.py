@@ -48,6 +48,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from puspa.accounts.users import resolve_dsn
+from puspa.feature_flags import FLAG_TEAMS, require_enabled
 
 from .errors import (
     LastOwnerError,
@@ -143,8 +144,14 @@ class TeamStore:
     def create_team(self, name: str, created_by_user_id: str) -> Team:
         """Create a team; the creator becomes its first (and only) owner.
 
+        Gated on the ``teams`` flag (E-21, plan 9.6): when the
+        flag is off, no team can be created, before any row is
+        written. Reads (``get_team``, ``list_teams_for_user``)
+        stay available.
+
         Raises ``ValueError`` for an empty name or a bad user id.
         """
+        require_enabled(FLAG_TEAMS)
         if not isinstance(name, str) or not name.strip():
             raise ValueError("team name must be a non-empty string")
         creator = _validate_uuid(created_by_user_id, "created_by_user_id")
@@ -239,9 +246,13 @@ class TeamStore:
         the same role is a no-op; with a different role it is a role
         change under the same owner-only rule.
 
+        Gated on the ``teams`` flag (E-21, plan 9.6): when the
+        flag is off, no member can be added to any team.
+
         Raises ``NotTeamOwnerError`` when ``added_by`` is not an owner,
         ``ValueError`` for an unknown role.
         """
+        require_enabled(FLAG_TEAMS)
         if role not in ROLES:
             raise ValueError(f"unknown role: {role!r}")
         team_id = _validate_uuid(team_id, "team_id")

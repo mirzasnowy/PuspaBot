@@ -1,0 +1,41 @@
+# Canary override for a Puspa release (E-21, plan 9.6).
+#
+# One container runs the new image beside the fleet; the fleet keeps
+# serving from the old image. Start it with:
+#
+#   PUSPA_IMAGE_TAG=puspa:<new-tag> docker compose \
+#     -f docker-compose.yml -f docker-compose.canary.yml up -d gateway-canary
+#
+# PUSPA_IMAGE_TAG is required and must be a pinned tag (a git sha or
+# a v release tag) — compose refuses to start when it is unset, so
+# a canary can never start from an unpinned image by accident. The
+# canary gets its own home volume (puspa-home-canary): it must never
+# share the fleet's state.db, because two writers against one home
+# are not refused at open (see docker-compose.yml). It serves real
+# turns for the operator account only — see
+# docs/feature-flags-canary.md for the watch table, the 24-hour bar,
+# and the promote / roll-back steps.
+#
+# Honest limits: this file has NOT been validated live — Docker
+# containers cannot run on the dev VM. The first live check must
+# happen on a VPS: start the canary, watch it, then promote or roll
+# it back exactly as the doc says.
+
+services:
+  gateway-canary:
+    image: ${PUSPA_IMAGE_TAG:?PUSPA_IMAGE_TAG must be a pinned tag, e.g. puspa:81016e3a}
+    container_name: puspa-gateway-canary
+    environment:
+      PUSPA_ROLE: gateway
+      PUSPA_SERVICE_MODE: service
+      PUSPA_DASHBOARD_PORT: 8002
+      PUSPA_HOME: /home/puspa
+    ports:
+      # Host loopback only. Never change this to 0.0.0.0 or a bare port.
+      - "127.0.0.1:8002:8001"
+    volumes:
+      - puspa-home-canary:/home/puspa
+    restart: "no"
+
+volumes:
+  puspa-home-canary:

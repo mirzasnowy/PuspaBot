@@ -60,6 +60,7 @@ from datetime import datetime
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from ..feature_flags import FeatureDisabledError
 from ..i18n.server_lines import render as render_server_line
 from ..ledger import Ledger
 from ..payments.models import render_prepared_payment
@@ -306,7 +307,12 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             )
             # Unreachable: execute_payment always raises.
             return JSONResponse({"error": "unreachable"}, status_code=500)  # pragma: no cover
-        except ExecutionRefused as exc:
+        except (ExecutionRefused, FeatureDisabledError) as exc:
+            # ExecutionRefused: the flag is on but there is no
+            # executor (the always-refuse design).
+            # FeatureDisabledError: the payment_execution flag is
+            # off (beta). Either way the answer is 403 and nothing
+            # moves.
             return JSONResponse({"error": str(exc)}, status_code=403)
 
     return app

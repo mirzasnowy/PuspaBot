@@ -16,7 +16,12 @@ payment move, because no code path exists that moves one.
 Raising a spending limit (``puspa.policy.spending``) changes
 nothing here; phase 2 (agent executes) is not ticketed and
 would need a gateway, credentials, and a new decision — see
-``docs/agent-payments.md``.
+``docs/agent-payments.md``. The ``payment_execution`` feature
+flag (E-21, plan 9.6) is a second layer on top: when it is off,
+:func:`execute_payment` raises ``FeatureDisabledError`` before
+the refusal is even recorded; when it is on, the refusal above
+still applies — the flag can never enable an execution, because
+no executor exists.
 
 Each preparation is approval-gated (G4) and ledger-recorded
 (B2): ``prepare_payment`` writes a ``payment_prepared``
@@ -46,6 +51,7 @@ from psycopg.rows import dict_row
 
 from puspa.accounts.users import resolve_dsn
 from puspa.evidence.outcomes import write_outcome
+from puspa.feature_flags import FLAG_PAYMENT_EXECUTION, require_enabled
 from puspa.ledger import Ledger
 from puspa.local_data.rails import PaymentRail
 from puspa.policy.approvals import auto_review, classify_action
@@ -631,17 +637,22 @@ class PreparationService:
     ) -> None:
         """Refuse an execution attempt — always.
 
-        There is no executor in this module, so there is nothing
-        to call: the attempt is recorded to the ledger as an
-        ``approval_rejected`` event with content kind
-        ``execution_refused`` (when a ledger is passed) and then
-        :class:`ExecutionRefused` is raised. Approval, expiry,
-        and the spending limit are all irrelevant here: even a
-        fully approved preparation cannot be executed. A
-        missing ``agent_id`` never turns a refusal into an
-        execution: the refusal is still raised, only the audit
-        trail is skipped.
+        Gated on the ``payment_execution`` flag first (E-21,
+        plan 9.6): when the flag is off, the attempt is refused
+        with :class:`FeatureDisabledError` before any ledger
+        write. When the flag is on, the attempt is still refused
+        with :class:`ExecutionRefused` — there is no executor in
+        this module, so there is nothing to call: the attempt is
+        recorded to the ledger as an ``approval_rejected`` event
+        with content kind ``execution_refused`` (when a ledger is
+        passed) and then :class:`ExecutionRefused` is raised.
+        Approval, expiry, and the spending limit are all
+        irrelevant here: even a fully approved preparation cannot
+        be executed. A missing ``agent_id`` never turns a refusal
+        into an execution: the refusal is still raised, only the
+        audit trail is skipped.
         """
+        require_enabled(FLAG_PAYMENT_EXECUTION)
         with contextlib.suppress(PaymentPreparationError):
             record_execution_refusal(
                 preparation_id, user_id=user_id, ledger=ledger, agent_id=agent_id, dsn=self.dsn

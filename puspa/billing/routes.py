@@ -31,6 +31,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from puspa.feature_flags import FLAG_PAYMENT_EXECUTION, is_enabled
+
 from . import entitlements as entitlement_mod
 from .client import BillingClient, new_idempotency_key, portal_link
 from .config import TEAM_EXTRA_SEAT_IDR_PER_MONTH, BillingConfig, default_config
@@ -236,6 +238,23 @@ def _license_post(deps: BillingDeps, payload: dict) -> dict:
 
 
 def _checkout(deps: BillingDeps, payload: dict) -> dict:
+    # Gated on the ``payment_execution`` flag (E-21, plan 9.6):
+    # a beta build cannot start a checkout — creating one moves
+    # money through the provider. Reads (catalog, quote,
+    # overview) stay available. This handler returns a plain
+    # dict, so a disabled flag is a 403 response, not an
+    # exception.
+    if not is_enabled(FLAG_PAYMENT_EXECUTION):
+        return {
+            "status": 403,
+            "body": {
+                "error": "feature_disabled",
+                "message": (
+                    "payment execution is disabled by the feature flag "
+                    "(PUSPA_FLAG_PAYMENT_EXECUTION); checkout is unavailable in beta"
+                ),
+            },
+        }
     try:
         amount = int(payload["amount_idr"])
         description = str(payload.get("description", "Puspa purchase"))

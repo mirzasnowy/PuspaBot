@@ -27,6 +27,7 @@ from typing import Any
 import psycopg
 from psycopg.rows import dict_row
 
+from puspa.feature_flags import FLAG_WORKFLOW, require_enabled
 from puspa.workflow import approvals
 from puspa.workflow.blocks import (
     BLOCKS,
@@ -70,7 +71,13 @@ def _record_ledger(task_id, agent_id, event_type, content, dsn=None):
 def create_workflow(
     *, user_id: str, agent_id: str, name: str, trigger: dict, step: list, dsn=None
 ) -> dict:
-    """Buat alur baru berstatus 'draf' + simpan versi 1."""
+    """Buat alur baru berstatus 'draf' + simpan versi 1.
+
+    Gated on the ``workflow`` flag (E-21, plan 9.6): when the
+    flag is off, no workflow can be created, before any row is
+    written.
+    """
+    require_enabled(FLAG_WORKFLOW)
     problems = validate_trigger(trigger) + validate_workflow(step)
     if problems:
         raise WorkflowError("; ".join(problems))
@@ -216,7 +223,11 @@ def activate_workflow(
     1. maks 5 alur aktif per pengguna;
     2. manifes izin turunan himpunan bagian dari izin user;
     3. uji kering sudah dijalankan dan sukses (hasil_kering wajib).
+
+    Gated on the ``workflow`` flag (E-21, plan 9.6): when the
+    flag is off, no workflow can be activated.
     """
+    require_enabled(FLAG_WORKFLOW)
     workflow = get_workflow(workflow_id, user_id=user_id, dsn=dsn)
     if workflow is None:
         raise WorkflowError("alur tidak ditemukan")
@@ -472,7 +483,14 @@ def run_workflow(
     tanya_user ({judul_langkah: jawaban}). Kembalikan:
     {sukses, jalan_id, status, langkah_hasil, biaya_rp, alasan,
      persetujuan_id (bila berhenti di persetujuan)}.
+
+    Gated on the ``workflow`` flag (E-21, plan 9.6) for real runs
+    (``mode="run"``): when the flag is off, a workflow cannot
+    execute. A dry run (``mode="dry"``) stays available — it only
+    simulates, and it is the safety check activation requires.
     """
+    if mode == "run":
+        require_enabled(FLAG_WORKFLOW)
     workflow = get_workflow(workflow_id, user_id=user_id, dsn=dsn)
     if workflow is None:
         raise WorkflowError("alur tidak ditemukan")
@@ -774,7 +792,12 @@ def run_workflow(
 def execute_approved_action(approval_id: str, *, user_id: str, context=None, dsn=None) -> dict:
     """Eksekusi aksi keluar SETELAH user menyetujui (persetujuan sudah
     'diberikan'). Isi aksi diambil dari antrean — bukan dari input
-    baru — jadi isi yang dieksekusi = isi yang disetujui."""
+    baru — jadi isi yang dieksekusi = isi yang disetujui.
+
+    Gated on the ``workflow`` flag (E-21, plan 9.6): when the
+    flag is off, no approved action executes.
+    """
+    require_enabled(FLAG_WORKFLOW)
     from puspa.workflow.approvals import get_approval
 
     row = get_approval(approval_id, user_id=user_id, dsn=dsn)
@@ -815,7 +838,12 @@ def tick_workflow(*, dsn=None, now: datetime | None = None, missed: bool = False
     jadwal berikutnya dari definisi pemicu alur sendiri
     (`triggers.pemicu_berikutnya`). Perbaikan +1 hari di penjadwal
     Fase 2 adalah tindak lanjut wrap-up (Fase 2 tidak diubah di sini).
+
+    Gated on the ``workflow`` flag (E-21, plan 9.6): when the
+    flag is off, the scheduler pass runs nothing — a disabled
+    workflow surface cannot fire on a schedule either.
     """
+    require_enabled(FLAG_WORKFLOW)
     from puspa.scheduler.scheduler import (
         list_due_triggers,
         run_missed,
