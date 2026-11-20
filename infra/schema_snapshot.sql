@@ -24,7 +24,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict nhQdrbilkybOzwlNigkBh7fVwu64EIMLWRdA60PDXbmaWtjBr0hhdq76OJ8egFP
+\restrict DyuAbAhNp3IAf8nHUmGi8mvZEhscZ1g1SzJUte9qtkqeX1S5IolkMZ0W9HEAzZp
 
 -- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -598,6 +598,75 @@ CREATE TABLE public.drafts (
 ALTER TABLE public.drafts OWNER TO root;
 
 --
+-- Name: embedding_canary_baselines; Type: TABLE; Schema: public; Owner: root
+--
+
+CREATE TABLE public.embedding_canary_baselines (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    embedder_id text NOT NULL,
+    dimension integer NOT NULL,
+    recall double precision NOT NULL,
+    question_count integer NOT NULL,
+    measured_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT embedding_canary_baselines_dimension_check CHECK ((dimension > 0)),
+    CONSTRAINT embedding_canary_baselines_question_count_check CHECK ((question_count > 0)),
+    CONSTRAINT embedding_canary_baselines_recall_check CHECK (((recall >= (0)::double precision) AND (recall <= (1)::double precision)))
+);
+
+
+ALTER TABLE public.embedding_canary_baselines OWNER TO root;
+
+--
+-- Name: embedding_reembed_jobs; Type: TABLE; Schema: public; Owner: root
+--
+
+CREATE TABLE public.embedding_reembed_jobs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    from_embedder_id text NOT NULL,
+    to_embedder_id text NOT NULL,
+    from_dimension integer NOT NULL,
+    to_dimension integer NOT NULL,
+    status text DEFAULT 'queued'::text NOT NULL,
+    total_rows integer DEFAULT 0 NOT NULL,
+    done_rows integer DEFAULT 0 NOT NULL,
+    current_tier integer DEFAULT 0 NOT NULL,
+    tiers jsonb DEFAULT '[]'::jsonb NOT NULL,
+    error text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT embedding_reembed_jobs_current_tier_check CHECK ((current_tier >= 0)),
+    CONSTRAINT embedding_reembed_jobs_done_rows_check CHECK ((done_rows >= 0)),
+    CONSTRAINT embedding_reembed_jobs_from_dimension_check CHECK ((from_dimension > 0)),
+    CONSTRAINT embedding_reembed_jobs_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'done'::text, 'failed'::text]))),
+    CONSTRAINT embedding_reembed_jobs_to_dimension_check CHECK ((to_dimension > 0)),
+    CONSTRAINT embedding_reembed_jobs_total_rows_check CHECK ((total_rows >= 0))
+);
+
+
+ALTER TABLE public.embedding_reembed_jobs OWNER TO root;
+
+--
+-- Name: embedding_state; Type: TABLE; Schema: public; Owner: root
+--
+
+CREATE TABLE public.embedding_state (
+    id integer DEFAULT 1 NOT NULL,
+    active_embedder_id text DEFAULT 'hash'::text NOT NULL,
+    active_dimension integer DEFAULT 384 NOT NULL,
+    status text DEFAULT 'healthy'::text NOT NULL,
+    fallback_count integer DEFAULT 0 NOT NULL,
+    reason text DEFAULT ''::text NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT embedding_state_active_dimension_check CHECK ((active_dimension > 0)),
+    CONSTRAINT embedding_state_fallback_count_check CHECK ((fallback_count >= 0)),
+    CONSTRAINT embedding_state_id_check CHECK ((id = 1)),
+    CONSTRAINT embedding_state_status_check CHECK ((status = ANY (ARRAY['healthy'::text, 'degraded'::text])))
+);
+
+
+ALTER TABLE public.embedding_state OWNER TO root;
+
+--
 -- Name: entitlements; Type: TABLE; Schema: public; Owner: root
 --
 
@@ -627,7 +696,10 @@ CREATE TABLE public.episodic (
     content text NOT NULL,
     embedding public.vector(384),
     event_id uuid,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    embedder_id text DEFAULT 'hash'::text NOT NULL,
+    dimension integer DEFAULT 384 NOT NULL,
+    CONSTRAINT episodic_dimension_positive CHECK ((dimension > 0))
 );
 
 
@@ -2187,6 +2259,38 @@ ALTER TABLE ONLY public.drafts
 
 
 --
+-- Name: embedding_canary_baselines embedding_canary_baselines_embedder_id_dimension_key; Type: CONSTRAINT; Schema: public; Owner: root
+--
+
+ALTER TABLE ONLY public.embedding_canary_baselines
+    ADD CONSTRAINT embedding_canary_baselines_embedder_id_dimension_key UNIQUE (embedder_id, dimension);
+
+
+--
+-- Name: embedding_canary_baselines embedding_canary_baselines_pkey; Type: CONSTRAINT; Schema: public; Owner: root
+--
+
+ALTER TABLE ONLY public.embedding_canary_baselines
+    ADD CONSTRAINT embedding_canary_baselines_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: embedding_reembed_jobs embedding_reembed_jobs_pkey; Type: CONSTRAINT; Schema: public; Owner: root
+--
+
+ALTER TABLE ONLY public.embedding_reembed_jobs
+    ADD CONSTRAINT embedding_reembed_jobs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: embedding_state embedding_state_pkey; Type: CONSTRAINT; Schema: public; Owner: root
+--
+
+ALTER TABLE ONLY public.embedding_state
+    ADD CONSTRAINT embedding_state_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: entitlements entitlements_machine_id_team_id_key; Type: CONSTRAINT; Schema: public; Owner: root
 --
 
@@ -3126,6 +3230,13 @@ CREATE INDEX idx_entitlements_team_id ON public.entitlements USING btree (team_i
 
 
 --
+-- Name: idx_episodic_embedder; Type: INDEX; Schema: public; Owner: root
+--
+
+CREATE INDEX idx_episodic_embedder ON public.episodic USING btree (embedder_id, dimension);
+
+
+--
 -- Name: idx_episodik_embedding; Type: INDEX; Schema: public; Owner: root
 --
 
@@ -3340,6 +3451,13 @@ CREATE INDEX idx_prosedur_user_service ON public.procedures USING btree (user_id
 --
 
 CREATE INDEX idx_push_user_id ON public.push_subscriptions USING btree (user_id);
+
+
+--
+-- Name: idx_reembed_jobs_status; Type: INDEX; Schema: public; Owner: root
+--
+
+CREATE INDEX idx_reembed_jobs_status ON public.embedding_reembed_jobs USING btree (status, created_at DESC);
 
 
 --
@@ -5958,6 +6076,27 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.drafts TO puspa_app;
 
 
 --
+-- Name: TABLE embedding_canary_baselines; Type: ACL; Schema: public; Owner: root
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.embedding_canary_baselines TO puspa_app;
+
+
+--
+-- Name: TABLE embedding_reembed_jobs; Type: ACL; Schema: public; Owner: root
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.embedding_reembed_jobs TO puspa_app;
+
+
+--
+-- Name: TABLE embedding_state; Type: ACL; Schema: public; Owner: root
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.embedding_state TO puspa_app;
+
+
+--
 -- Name: TABLE entitlements; Type: ACL; Schema: public; Owner: root
 --
 
@@ -6199,5 +6338,5 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.workspace_moves TO puspa_app;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict nhQdrbilkybOzwlNigkBh7fVwu64EIMLWRdA60PDXbmaWtjBr0hhdq76OJ8egFP
+\unrestrict DyuAbAhNp3IAf8nHUmGi8mvZEhscZ1g1SzJUte9qtkqeX1S5IolkMZ0W9HEAzZp
 

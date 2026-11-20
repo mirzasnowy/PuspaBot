@@ -79,9 +79,13 @@ class HashEmbedding:
     Each token maps to one dimension through SHA-256, then the
     vector is normalized. The same text always gives the same
     vector; texts sharing words have high cosine similarity.
+
+    ``embedder_id`` is the stable identity stored on every vector
+    row (E-14): rows from different embedders never mix in search.
     """
 
     name = "hash"
+    embedder_id = "hash"
     dim = EMBEDDING_DIM
 
     def embed(self, text: str) -> list[float]:
@@ -113,6 +117,10 @@ class FastEmbedEmbedding:
         self, model_name: str = DEFAULT_FASTEMBED_MODEL, model=None, cache_dir: str | None = None
     ):
         self.model_name = model_name
+        # Stable identity stored on every vector row (E-14): it
+        # names the model, so a model swap is visible as a new
+        # embedder instead of silently reusing old vectors.
+        self.embedder_id = f"fastembed:{model_name}"
         self._model = model
         self._cache_dir = cache_dir if cache_dir is not None else _default_fastembed_cache_dir()
 

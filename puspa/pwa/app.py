@@ -64,7 +64,15 @@ def _jinja(template_dir=None):
     return Environment(loader=FileSystemLoader(str(template_dir or TEMPLATE_DIR)), autoescape=True)
 
 
-def create_app(*, dsn=None, test_user_id=None, template_dir=None, draft_sender=None) -> FastAPI:
+def create_app(
+    *,
+    dsn=None,
+    test_user_id=None,
+    template_dir=None,
+    draft_sender=None,
+    embedder=None,
+    embedding_environment=None,
+) -> FastAPI:
     """Bangun aplikasi FastAPI PWA."""
     app = FastAPI(title="Puspa")
     jinja = _jinja(template_dir)
@@ -126,6 +134,50 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None, draft_sender=N
 
     app.state.gateway = Gateway.start(DEFAULT_POLICY_DATA, audit=_gateway_audit)
     # -- end G31 ---------------------------------------------------------
+
+    # -- E-14: embedding health at startup (plan 7.4) ------------------
+    # The startup embedder is decided once, without loading a model:
+    # the cheap probe says whether the real model cache is present,
+    # and only then is the real embedder constructed (its model
+    # still loads lazily on first use). In production with only the
+    # hash stand-in, the strict policy refuses to start here
+    # (EmbeddingStartupRefused propagates); the default degraded
+    # policy starts degraded instead, and the state is recorded in
+    # the ledger once so it is visible there too. A ledger failure
+    # never blocks serving the app (same pattern as the Puspa-agent
+    # ensure step in need_user below).
+    from puspa.memory.embeddings import FastEmbedEmbedding, HashEmbedding
+    from puspa.retrieval.embedding_health import (
+        detect_available_embedder_kind,
+        evaluate_startup,
+        record_degraded_to_ledger,
+    )
+
+    embedding_env = embedding_environment or os.environ.get("PUSPA_ENV", "development")
+    embedding_policy = os.environ.get("PUSPA_EMBEDDING_PRODUCTION_POLICY", "degraded")
+    fell_back = False
+    if embedder is None:
+        if detect_available_embedder_kind() == "fastembed":
+            embedder = FastEmbedEmbedding()
+        else:
+            embedder = HashEmbedding()
+            fell_back = True
+    embedding_health = evaluate_startup(
+        embedder,
+        environment=embedding_env,
+        production_policy=embedding_policy,
+        fell_back=fell_back,
+    )
+    app.state.embedding_health = embedding_health.to_dict()
+    app.state.embedding_status = embedding_health.status
+    if embedding_health.is_degraded:
+        try:
+            from puspa.ledger import Ledger
+
+            record_degraded_to_ledger(Ledger(app.state.dsn), embedding_health)
+        except Exception:
+            pass
+    # -- end E-14 --------------------------------------------------------
 
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -444,9 +496,23 @@ def create_app(*, dsn=None, test_user_id=None, template_dir=None, draft_sender=N
             gateway=app.state.gateway,
             decision_log=app.state.gateway_log,
             recent_events=app.state.event,
+            embedding=getattr(app.state, "embedding_health", None),
         )
 
     # -- end G31 ---------------------------------------------------------
+
+    # -- E-14: health endpoint (plan 7.4) --------------------------------
+    # Public and login-free (see puspa/hosting/service_allow.py):
+    # it reports whether the server is up and whether its embedding
+    # subsystem runs degraded. Always 200 while the server is up;
+    # the status field carries ok / degraded.
+    @app.get("/health")
+    def health_endpoint():
+        from puspa.pwa.health import build_health_payload
+
+        return build_health_payload(app.state.embedding_health, serve_mode=app.state.serve_mode)
+
+    # -- end E-14 --------------------------------------------------------
 
     # -- panel Bukti -----------------------------------------------------
     @app.get("/bukti/{evidence_id}", response_class=HTMLResponse)

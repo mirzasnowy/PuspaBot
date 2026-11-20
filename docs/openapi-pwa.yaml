@@ -278,6 +278,24 @@ paths:
             application/javascript:
               schema:
                 type: string
+  /health:
+    get:
+      tags: [pages]
+      summary: Health status including embedding degradation
+      description: |
+        E-14: public and login-free. Always 200 while the server is
+        up; the `status` field carries `ok` or `degraded`. The
+        `embedding` block is the startup embedding snapshot: in
+        production with only the hash stand-in available the status
+        is `degraded`, with the reason and the fallback alarm. A
+        monitor alerts on the field, not on the HTTP code.
+      responses:
+        "200":
+          description: Server is up; see the status field for degradation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
   /api/chat:
     post:
       tags: [chat]
@@ -1001,6 +1019,8 @@ paths:
         live server state. In `hosted` mode `operator_panels` is false
         and the panel fields are null: the operator surface of a
         hosted deployment lives in the cloud backend, not here.
+        E-14: in `local` mode the payload also carries the embedding
+        snapshot and its operator banner (null when healthy).
         Requires a logged-in session cookie. Never returns pairing
         codes or session tokens.
       responses:
@@ -1718,6 +1738,10 @@ components:
         state; in `hosted` mode `operator_panels` is false and the
         panel fields are null. Pairing codes and session tokens are
         never included.
+        E-14: in `local` mode the payload also carries the embedding
+        snapshot (`embedding`) and its operator banner
+        (`embedding_banner`, null when healthy), so a degraded
+        embedding is visible on the operator surface.
       required: [mode, operator_panels]
       properties:
         mode:
@@ -1734,6 +1758,65 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/OperatorLogLine"
+        embedding:
+          $ref: "#/components/schemas/EmbeddingHealth"
+        embedding_banner:
+          $ref: "#/components/schemas/EmbeddingBanner"
+    EmbeddingHealth:
+      type: object
+      description: |
+        E-14: one snapshot of embedding health, built at startup. `status`
+        is `degraded` in production when only the hash stand-in is
+        available (or when a hash fallback happened); `alarm` is true
+        when a production fallback was seen or canary recall fell more
+        than 10 percent below its baseline.
+      properties:
+        embedder_id:
+          type: string
+        dimension:
+          type: integer
+        status:
+          type: string
+          enum: [healthy, degraded]
+        reason:
+          type: string
+        fallback_count:
+          type: integer
+        environment:
+          type: string
+        alarm:
+          type: boolean
+        alarm_reasons:
+          type: array
+          items:
+            type: string
+        canary:
+          type: object
+          nullable: true
+    EmbeddingBanner:
+      type: object
+      description: E-14 operator banner for a degraded embedding; null when healthy.
+      properties:
+        level:
+          type: string
+          enum: [warning]
+        title:
+          type: string
+        detail:
+          type: string
+    HealthStatus:
+      type: object
+      description: E-14 `GET /health` payload. Always 200 while the server is up; `status` carries ok / degraded.
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        serve_mode:
+          type: string
+          enum: [local, hosted]
+        embedding:
+          $ref: "#/components/schemas/EmbeddingHealth"
     PairingStatus:
       type: object
       description: Live pairing-store snapshot (G31). No codes or tokens, only counts and session metadata.
