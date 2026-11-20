@@ -290,6 +290,9 @@ class SkillRepairer:
                 code=new_code,
                 name=f"{skill['name']}_repair{attempt}",
                 source_experience_ids=list(skill["source_experience_ids"]),
+                # A repair maintains an existing skill; it does
+                # not count toward the weekly new-skill cap.
+                is_repair=True,
             )
             internal = self.loop.skills[draft["id"]]
             internal["repaired_from"] = skill_id

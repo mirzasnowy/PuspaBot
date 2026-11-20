@@ -43,12 +43,16 @@ def _idle_runner(loop, **kwargs):
 
 def test_curriculum_runs_proposed_task_and_records_experience():
     loop = _gap_loop("compare laptop prices across stores")
-    runner = _idle_runner(loop)
+    # A real verifier corroborates the run, so the completion is
+    # verified and the gap is cleared (plan section 7.5: a bare
+    # "completed" from the runner alone never clears a gap).
+    runner = _idle_runner(loop, verifier=lambda result: (True, ""))
     outcome = runner.run_once()
     assert outcome["status"] == "completed"
     assert outcome["ran"] is True
     assert outcome["runs_today"] == 1
     assert outcome["cost_rp"] == 0
+    assert outcome["verified"] is True
     # Success is in the experience log and the gap is cleared, so
     # the same retry is not proposed again.
     assert any(
@@ -89,7 +93,10 @@ def test_verify_draft_proposal_runs_and_is_not_repeated_today():
     assert second["ran"] is False
 
 
-def test_failed_task_is_recorded_as_new_misprediction():
+def test_failed_task_is_quarantined_and_never_teaches():
+    # Plan section 7.5: a failed learning task is the runner's
+    # own unverified experience. It is quarantined for user
+    # review, never recorded as a misprediction of its own.
     loop = _gap_loop("compare laptop prices across stores")
     runner = _idle_runner(
         loop,
@@ -98,11 +105,18 @@ def test_failed_task_is_recorded_as_new_misprediction():
     outcome = runner.run_once()
     assert outcome["status"] == "failed"
     assert outcome["ran"] is True
+    # Nothing was learned from the failure: the correction, the
+    # gap, and the prediction are exactly as before the run.
     correction = loop.correction_for("compare laptop prices across stores")
-    assert correction["count"] == 2
-    assert "failed" in correction["observed"]
-    # The gap grows, so the curriculum can propose a retry later.
-    assert loop.gaps["compare laptop prices across stores"]["mispredictions"] == 2
+    assert correction["count"] == 1
+    assert correction["observed"] == "new answer"
+    assert loop.gaps["compare laptop prices across stores"]["mispredictions"] == 1
+    assert loop.predict("compare laptop prices across stores") == "new answer"
+    # The failure is stored, quarantined, for user review.
+    quarantined = loop.list_quarantined("compare laptop prices across stores")
+    assert len(quarantined) == 1
+    assert quarantined[0]["outcome"] == "failed"
+    assert quarantined[0]["quarantine_reasons"] == ["unverified"]
 
 
 # --- daily cap --------------------------------------------------------------
@@ -163,10 +177,17 @@ def test_cost_ceiling_is_enforced_per_task():
     assert runner.last_budget.rupiah_used == 1500
     assert runner.last_budget.rupiah_max == 2000
     assert "budget_exhausted" in [e["type"] for e in runner.events]
-    # The over-budget failure is recorded as a new misprediction.
+    # The over-budget failure is the runner's own unverified
+    # experience: quarantined, never taught. The correction, the
+    # gap, and the prediction are unchanged, and the failure
+    # reason (with the Rp2.000 ceiling) is in the held entry.
     correction = loop.correction_for("compare laptop prices across stores")
-    assert correction["count"] == 2
-    assert "2000" in correction["error"]
+    assert correction["count"] == 1
+    assert correction["observed"] == "new answer"
+    assert loop.gaps["compare laptop prices across stores"]["mispredictions"] == 1
+    quarantined = loop.list_quarantined("compare laptop prices across stores")
+    assert len(quarantined) == 1
+    assert "2000" in quarantined[0]["error"]
 
 
 def test_cost_ceiling_can_be_changed_per_runner():

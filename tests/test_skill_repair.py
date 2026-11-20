@@ -166,6 +166,9 @@ def test_repaired_skill_stays_inactive_until_approved():
     assert loop.find_reusable_skill("double") is None
     with pytest.raises(PermissionError):
         loop.activate_skill(repaired_id, user_id="user-1")
+    # The repaired skill passes its holdout (input 1 is fixed by
+    # the original code itself) and is submitted before approval.
+    loop.submit_for_approval(repaired_id, [{"args": [1], "expected": 2}])
     activated = loop.activate_skill(repaired_id, approved_by="user-1")
     assert activated["status"] == "active"
     assert loop.find_reusable_skill("double")["id"] == repaired_id
@@ -276,6 +279,7 @@ def test_repair_suspect_skills_after_misprediction():
     # tests pass, so the skill activates, then live use fails.
     skill = loop.draft_skill("double", code=lambda x: x * 2 if x < 10 else x)
     loop.verify_skill(skill["id"], _cases())
+    loop.submit_for_approval(skill["id"], [{"args": [5], "expected": 10}])
     loop.activate_skill(skill["id"], approved_by="user-1")
     assert loop.get_skill(skill["id"])["status"] == "active"
     loop.record_misprediction(
@@ -466,6 +470,7 @@ def test_repair_and_procedure_change_share_the_loop():
     loop = LearningLoop()
     skill = loop.draft_skill("double", code=lambda x: x * 2 if x < 10 else x)
     loop.verify_skill(skill["id"], _cases())
+    loop.submit_for_approval(skill["id"], [{"args": [5], "expected": 10}])
     loop.activate_skill(skill["id"], approved_by="user-1")
     loop.record_misprediction(
         {

@@ -62,6 +62,7 @@ def test_wrong_feedback_marks_active_skill_suspect():
     loop = LearningLoop()
     skill = loop.draft_skill("check_pln", code=lambda x: x)
     loop.verify_skill(skill["id"], [{"args": [1], "expected": 1}])
+    loop.submit_for_approval(skill["id"], [{"args": [5], "expected": 5}])
     loop.activate_skill(skill["id"], approved_by="user-1")
     assert loop.get_skill(skill["id"])["status"] == "active"
     loop.record_feedback("check_pln", "wrong", correction="bill 75000")

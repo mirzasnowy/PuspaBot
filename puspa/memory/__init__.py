@@ -2,6 +2,7 @@
 
 from . import (
     consolidate,
+    curriculum_guardrails,
     dream,
     episodic,
     facts,
@@ -33,6 +34,7 @@ __all__ = [
     "consolidate",
     "cosine_similarity",
     "create_schema",
+    "curriculum_guardrails",
     "dream",
     "episodic",
     "facts",
