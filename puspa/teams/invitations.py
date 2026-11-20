@@ -43,6 +43,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from puspa.accounts.users import resolve_dsn
+from puspa.feature_flags import FLAG_TEAMS, require_enabled
 
 from .errors import InvitationError, NotTeamOwnerError
 from .teams import ROLE_MEMBER, TeamStore, _validate_uuid
@@ -121,9 +122,13 @@ class InvitationStore:
         """Issue an invitation. Returns ``{"invitation_id", "token",
         "expires_at"}`` — the token is returned exactly once here.
 
+        Gated on the ``teams`` flag (E-21, plan 9.6): when the
+        flag is off, no invitation can be issued.
+
         Raises ``NotTeamOwnerError`` when the inviter is not a team
         owner, ``ValueError`` for an empty email or a bad TTL.
         """
+        require_enabled(FLAG_TEAMS)
         team_id = _validate_uuid(team_id, "team_id")
         inviter = _validate_uuid(inviter_user_id, "inviter_user_id")
         if not isinstance(invited_email, str) or not invited_email.strip():
@@ -203,7 +208,12 @@ class InvitationStore:
         or already-accepted token. An expired token is marked
         ``expired`` in the same transaction that rejects it, so it
         can never be accepted later.
+
+        Gated on the ``teams`` flag (E-21, plan 9.6): when the
+        flag is off, no invitation can be accepted — nobody new
+        can join a team.
         """
+        require_enabled(FLAG_TEAMS)
         user_id = _validate_uuid(user_id, "user_id")
         if not isinstance(token, str) or not token:
             raise InvitationError("invitation token unknown, expired, or revoked")

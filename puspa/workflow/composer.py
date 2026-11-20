@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 
+from puspa.feature_flags import FLAG_WORKFLOW, require_enabled
 from puspa.workflow.blocks import BLOCKS
 
 # Provider MVP (§4.2) + kata yang menunjukkannya di chat.
@@ -101,7 +102,11 @@ def compose_draft(user_text: str, *, user_id: str, dsn=None) -> dict:
     `permintaan_blok`: kemampuan diminta yang belum ada bloknya
     (dicatat ke tabel permintaan_blok Fase 3 + dijelaskan ke user).
     `pesan`: kalimat yang ditampilkan ke user (gagal terlihat).
+
+    Gated on the ``workflow`` flag (E-21, plan 9.6): when the
+    flag is off, no workflow draft can be composed.
     """
+    require_enabled(FLAG_WORKFLOW)
     text = (user_text or "").strip()
     low = text.lower()
     step: list[dict] = []

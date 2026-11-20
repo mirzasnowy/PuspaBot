@@ -37,6 +37,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
+from puspa.feature_flags import FLAG_MARKETPLACE, require_enabled
+
 from .errors import EntitlementError, MarketplaceError, TrustError
 from .manifest import (
     MAX_INDEX_BYTES,
@@ -150,12 +152,19 @@ class MarketplaceRegistry:
         """Import one skill folder. Lands DISABLED; only SKILL.md is
         taken in (other files are hashed, never executed).
 
+        Gated on the ``marketplace`` flag (E-21, plan 9.6): when
+        the flag is off, no skill folder can enter the registry at
+        all. Reads (``list_entries``, ``get_entry``) and rollback
+        stay available — off blocks new installs, never the
+        removal of what is already there.
+
         ``origin`` overrides the manifest's origin when given;
         otherwise the manifest's own origin (``builtin`` / ``user`` /
         ``library``) is kept. Raises :class:`ManifestError` when the
         folder or manifest is invalid, :class:`MarketplaceError`
         when a limit is hit.
         """
+        require_enabled(FLAG_MARKETPLACE)
         manifest, problems, frontmatter, _body = validate_skill_folder(folder_path, origin=origin)
         if problems:
             raise MarketplaceError("skill folder failed validation: " + "; ".join(problems))
@@ -195,11 +204,16 @@ class MarketplaceRegistry:
     def install(self, skill_id: str, *, user_id: str, explicit_approval: bool = False) -> dict:
         """Install (enable) a skill.
 
+        Gated on the ``marketplace`` flag (E-21, plan 9.6) before
+        any other check: when the flag is off, no skill can be
+        enabled, whatever its trust score or approval.
+
         Checks, in order: the skill is registered, the trust floor
         (or explicit user approval), the entitlement seam. The
         install — version, sha256, source, licence, price — is
         recorded in the store and in the audit trail.
         """
+        require_enabled(FLAG_MARKETPLACE)
         entry = self._entries.get(skill_id)
         if entry is None:
             raise MarketplaceError(f"skill {skill_id!r} is not in the registry")
