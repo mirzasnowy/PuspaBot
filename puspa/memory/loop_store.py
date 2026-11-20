@@ -11,7 +11,7 @@ is a separate module instead of an extension of the world store:
 the world model is one JSON snapshot row per (user, agent), while
 the loop keeps one row per correction in ``loop_corrections`` plus
 one row per correction-carrying experience in
-``loop_experiences`` (``infra/schema_learning_loop.sql``).
+``loop_experiences`` (migration 0007_learning_loop).
 
 What is stored: the correction table (latest correction per task,
 with its count and the experience ids that built it) and the
@@ -33,10 +33,11 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 
 import psycopg
 from psycopg.rows import dict_row
+
+from puspa.migrations import apply_migrations
 
 from .learning_loop import LearningLoop
 
@@ -54,16 +55,12 @@ def _to_json(value) -> str:
 
 
 def create_schema(dsn: str | None = None) -> None:
-    """Run `infra/schema_learning_loop.sql` (idempotent).
+    """Apply the learning-loop tables (migration 0007_learning_loop).
 
     Prerequisite: the Phase 0 schema (users, agents) already exists,
     because both tables reference them.
     """
-    sql = (
-        Path(__file__).resolve().parent.parent.parent / "infra" / "schema_learning_loop.sql"
-    ).read_text(encoding="utf-8")
-    with psycopg.connect(_resolve_dsn(dsn), autocommit=True) as conn:
-        conn.execute(sql)
+    apply_migrations(_resolve_dsn(dsn), target="0007")
 
 
 def serialize_loop(loop) -> dict:

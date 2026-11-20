@@ -133,11 +133,9 @@ uses existing event types (for example `evidence_recorded`).
 
 ## Persistence
 
-Table `causal_hypotheses`, one row per hypothesis (see
-`infra/schema_world.sql` for the fresh-install path and
-`infra/migrate_causal_ledger.sql` for the upgrade path — the
-two copies must stay identical; the migration is idempotent
-and additive). Hypotheses mutate in place (strength updates,
+Table `causal_hypotheses`, one row per hypothesis (migration
+`0006_world.sql` — the fresh-install and upgrade paths are the
+same migration now; it is idempotent and additive). Hypotheses mutate in place (strength updates,
 status changes), so saving upserts by id
 (`ON CONFLICT (id) DO UPDATE`); expired and contradicted rows
 are saved too, as history. Python side, in

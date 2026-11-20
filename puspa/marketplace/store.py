@@ -4,7 +4,7 @@ The marketplace keeps its own tables — install/rollback/audit notes
 live here, never as ledger events (the ledger has a closed set of
 31 event types and must not gain new ones for marketplace bookkeeping).
 
-Tables (all idempotent, ``CREATE TABLE IF NOT EXISTS``):
+Tables (created by migration 0014_marketplace):
 
 - ``marketplace_installs``: one row per (skill, user) install:
   current version, sha256, source, licence, price in credits,
@@ -16,8 +16,8 @@ Tables (all idempotent, ``CREATE TABLE IF NOT EXISTS``):
 
 ``MemoryStore`` is the same interface in memory and is what the
 tests use. ``PostgresStore`` is the same interface on Postgres.
-``create_schema(dsn)`` applies the SQL; it never touches any other
-schema.
+``create_schema(dsn)`` applies migration 0014_marketplace; it never
+touches any other schema.
 """
 
 from __future__ import annotations
@@ -26,6 +26,8 @@ import copy
 import json
 import os
 from datetime import UTC, datetime
+
+from puspa.migrations import apply_migrations
 
 __all__ = [
     "DEFAULT_DSN",
@@ -37,48 +39,6 @@ __all__ = [
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
-SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS marketplace_installs (
-    skill_id      TEXT NOT NULL,
-    user_id       TEXT NOT NULL,
-    version       TEXT NOT NULL,
-    sha256        TEXT NOT NULL,
-    source        TEXT NOT NULL,
-    license       TEXT NOT NULL DEFAULT '',
-    price_credits INTEGER NOT NULL DEFAULT 0,
-    status        TEXT NOT NULL DEFAULT 'disabled',
-    installed_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (skill_id, user_id)
-);
-
-CREATE TABLE IF NOT EXISTS marketplace_versions (
-    skill_id      TEXT NOT NULL,
-    user_id       TEXT NOT NULL,
-    version       TEXT NOT NULL,
-    sha256        TEXT NOT NULL,
-    source        TEXT NOT NULL,
-    license       TEXT NOT NULL DEFAULT '',
-    price_credits INTEGER NOT NULL DEFAULT 0,
-    manifest      JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (skill_id, user_id, version)
-);
-
-CREATE TABLE IF NOT EXISTS marketplace_audit (
-    id            BIGSERIAL PRIMARY KEY,
-    event         TEXT NOT NULL,
-    skill_id      TEXT NOT NULL,
-    user_id       TEXT NOT NULL,
-    sha256        TEXT NOT NULL DEFAULT '',
-    source        TEXT NOT NULL DEFAULT '',
-    license       TEXT NOT NULL DEFAULT '',
-    price_credits INTEGER NOT NULL DEFAULT 0,
-    detail        JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-"""
-
 
 def resolve_dsn(dsn=None):
     """Postgres DSN: argument, then env, then the local test default."""
@@ -86,11 +46,8 @@ def resolve_dsn(dsn=None):
 
 
 def create_schema(dsn=None):
-    """Apply the marketplace schema (idempotent)."""
-    import psycopg
-
-    with psycopg.connect(resolve_dsn(dsn), autocommit=True) as conn:
-        conn.execute(SCHEMA_SQL)
+    """Apply the marketplace tables (migration 0014_marketplace)."""
+    apply_migrations(resolve_dsn(dsn), target="0014")
 
 
 def _now_iso() -> str:

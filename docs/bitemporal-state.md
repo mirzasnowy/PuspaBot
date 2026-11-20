@@ -113,8 +113,7 @@ intervals).
 
 ### Durable storage
 
-Table `belief_versions` (`infra/schema_world.sql`,
-`infra/migrate_bitemporal.sql`): one row per belief version,
+Table `belief_versions` (migration `0006_world.sql`): one row per belief version,
 with the same two time pairs plus the same invariants enforced
 by the database (versions count 1..n per key, `valid_to >
 valid_from`, `known_to > known_from`, RLS like
@@ -215,20 +214,17 @@ Consequences, stated plainly:
 
 ## Migration
 
-`infra/migrate_bitemporal.sql` — idempotent and additive, safe
-to run repeatedly against an existing database, drops nothing:
-
-```sh
-psql "dbname=puspa_test" -f infra/migrate_bitemporal.sql
-# or from Python:
-#   puspa.world.store.apply_bitemporal_migration()
-```
+Migration `0006_world.sql` — idempotent and additive, safe
+to run repeatedly against an existing database, drops nothing
+(apply it with `python -m puspa.migrations up --target 0006`,
+or from Python with
+`puspa.world.store.apply_bitemporal_migration()`).
 
 It creates `belief_versions` when missing and adds
 `events.valid_at` (backfilled from `created_at`) when the
 ledger table exists. Fresh databases do not need it: the same
-objects come from `infra/schema_world.sql` and
-`puspa/ledger/schema.sql` via `create_schema()` /
+objects come from migration `0006_world.sql` (world) and
+`0001_core.sql` (ledger) via `create_schema()` /
 `Ledger.create_schema()`. `Ledger.append_event` also tolerates
 a database that predates the migration: the append still
 succeeds (without the column) and the event reads back with

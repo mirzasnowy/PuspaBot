@@ -27,7 +27,7 @@ ops, so undo, redo, and version history work on one log.
 - `puspa/mockup/render.py` — deterministic SVG / safe-HTML renderer.
 - `puspa/mockup/export.py` — PNG (Pillow) and PDF (stdlib writer).
 - `puspa/mockup/store.py` — Postgres persistence (`mockups` table,
-  `infra/schema_mockup.sql`).
+  migration `0015_mockup.sql`).
 - `puspa/pwa/mockup_api.py` — HTTP routes, mounted in `create_app`.
 - `apps/pwa/src/screens/MockupScreen.tsx` + `apps/pwa/src/state/mockup.ts`
   — the PWA editor screen and its client-side doc mirror.

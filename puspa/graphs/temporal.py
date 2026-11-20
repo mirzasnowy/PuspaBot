@@ -33,7 +33,7 @@ Mekanisme inti (bukan seam, semuanya memengaruhi hasil query):
 
 Batasan jujur: modul ini in-memory dan tidak menyentuh Postgres.
 Persistensi `valid_from` / `valid_until` pada `price_series` /
-`listing_links` butuh migrasi skema (`infra/schema_graphs.sql`)
+`listing_links` butuh migrasi skema (`migration 0004_graphs`)
 yang di luar scope worker ini; lihat laporan ke koordinator.
 """
 

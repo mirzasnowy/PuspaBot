@@ -68,7 +68,7 @@ keyword table). An LLM-backed inferrer is a documented seam only
 Pure Python (no database, no network, no LLM call). Durable
 storage lives in ``puspa.world.store`` (table
 ``agent_goal_models``) and in
-``infra/migrate_agent_goal_models.sql``.
+migration 0006_world.
 """
 
 from __future__ import annotations

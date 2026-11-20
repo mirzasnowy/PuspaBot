@@ -22,6 +22,8 @@ from datetime import UTC, datetime, timedelta
 
 import psycopg
 
+from puspa.migrations import apply_migrations
+
 __all__ = [
     "DEFAULT_DSN",
     "SCAN_LOCK_KEY",
@@ -74,27 +76,9 @@ class WorkItem:
 
 
 def ensure_work_items_schema(dsn: str | None = None) -> None:
-    """Create the ``work_items`` table if it does not exist."""
+    """Apply the ``work_items`` table (migration 0018_scheduler)."""
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    with psycopg.connect(dsn, autocommit=True) as conn:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS work_items ("
-            "  id TEXT PRIMARY KEY,"
-            "  payload JSONB NOT NULL DEFAULT '{}'::jsonb,"
-            "  status TEXT NOT NULL DEFAULT 'pending',"
-            "  attempts INTEGER NOT NULL DEFAULT 0,"
-            "  max_attempts INTEGER NOT NULL DEFAULT 3,"
-            "  lease_owner TEXT,"
-            "  lease_until TIMESTAMPTZ,"
-            "  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
-            "  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()"
-            ")"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_work_items_claimable"
-            " ON work_items (created_at)"
-            " WHERE status = 'pending'"
-        )
+    apply_migrations(dsn, target="0018")
 
 
 def enqueue_work_item(

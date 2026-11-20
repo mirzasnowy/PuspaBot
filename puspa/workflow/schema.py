@@ -1,14 +1,16 @@
-"""Skema Fase 4 (alur + modul kustom).
+"""Phase 4 schema (custom workflows + modules).
 
-Dipakai conftest tes: terapkan skema, lalu kosongkan tabel tiap tes.
+Used by the test conftest: apply the schema, then empty the tables
+per test.
 """
 
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import psycopg
+
+from puspa.migrations import apply_migrations
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 TABLES = (
@@ -28,13 +30,8 @@ def _connect(dsn=None):
 
 
 def create_schema(dsn=None) -> None:
-    sql = (
-        Path(__file__).resolve().parent.parent.parent / "infra" / "schema_workflow.sql"
-    ).read_text()
-    with _connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql)
-        conn.commit()
+    """Apply the workflow tables (migration 0005_workflow)."""
+    apply_migrations(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), target="0005")
 
 
 def reset_tables(dsn=None) -> None:

@@ -6,7 +6,7 @@ estimates more accurate. Each user's own data stays theirs:
 per-user visibility, never pooled.
 
 The implementation is `puspa.graphs.shared`, on the existing
-Postgres graph tables in `infra/schema_graphs.sql` (created by
+Postgres graph tables in migration `0004_graphs.sql` (created by
 `puspa.graphs.create_schema`). It reuses the B1 record types
 for its inputs and the B2 outcome records for its audit trail;
 it does not build a second graph store.

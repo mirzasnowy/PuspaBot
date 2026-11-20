@@ -5,7 +5,7 @@ whole design doc as JSONB (doc + numbered op log + design
 decisions). Assets and decisions therefore accumulate in the
 user's workspace simply by editing: every applied op is stored
 with the doc, and listing a user's mockups shows their whole
-design history. The schema lives in ``infra/schema_mockup.sql``
+design history. The schema lives in migration 0015_mockup
 (next to the other migrations) and is applied the same way.
 
 Row-level security mirrors the other PWA tables: the
@@ -21,6 +21,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from puspa.accounts.users import resolve_dsn
+from puspa.migrations import apply_migrations
 from puspa.mockup.doc import DesignError, DesignSession, validate_doc
 
 __all__ = ["MOCKUP_TABLES", "MockupStore", "create_schema", "reset_tables", "schema_path"]
@@ -29,16 +30,19 @@ MOCKUP_TABLES = ("mockups",)
 
 
 def schema_path() -> Path:
-    """Absolute path of ``infra/schema_mockup.sql``."""
-    return Path(__file__).resolve().parents[2] / "infra" / "schema_mockup.sql"
+    """Absolute path of migration 0015_mockup."""
+    return (
+        Path(__file__).resolve().parents[2]
+        / "puspa"
+        / "migrations"
+        / "versions"
+        / "0015_mockup.sql"
+    )
 
 
 def create_schema(dsn=None):
-    """Run ``infra/schema_mockup.sql``. Idempotent; safe per test run."""
-    sql = schema_path().read_text(encoding="utf-8")
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
-        conn.execute(sql)
-        conn.commit()
+    """Apply the mockup table (migration 0015_mockup). Idempotent; safe per test run."""
+    apply_migrations(resolve_dsn(dsn), target="0015")
 
 
 def reset_tables(dsn=None):

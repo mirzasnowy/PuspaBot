@@ -26,13 +26,13 @@ The boundary is structural, not a promise in a comment:
   ``user_id``.** Every private read filters on the requesting
   user; a record fetched with the wrong user id returns
   ``None``. The table also has a row-level-security policy
-  (see ``infra/schema_graphs.sql``) for connections as the
+  (see migration 0004_graphs) for connections as the
   ``puspa_app`` role; the application-level filter is the
   enforcement tests rely on, because test connections run as
   a superuser that bypasses row-level security.
 
 This module reuses the existing graph storage (Postgres tables
-in ``infra/schema_graphs.sql``, created by
+in migration 0004_graphs, created by
 ``puspa.graphs.create_schema``) and the existing B1 record
 types for its inputs; it does not build a second graph store.
 The fair-price math is pure (no database) so the improvement
@@ -54,44 +54,15 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from puspa.accounts.users import resolve_dsn
+from puspa.migrations import apply_migrations
 
 #: Shared tables this module owns. The canonical DDL lives in
-#: ``infra/schema_graphs.sql``; :func:`create_shared_schema`
-#: repeats it so the module works standalone.
+#: migration 0004_graphs (``puspa/migrations/versions/``).
 SHARED_TABLES = (
     "shared_seller_flags",
     "shared_price_observations",
     "shared_graph_private_records",
 )
-
-_SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS shared_seller_flags (
-    seller_key TEXT NOT NULL,
-    reporter_hash TEXT NOT NULL,
-    flag_reason TEXT NOT NULL DEFAULT '',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (seller_key, reporter_hash)
-);
-CREATE TABLE IF NOT EXISTS shared_price_observations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    product_key TEXT NOT NULL,
-    source TEXT NOT NULL,
-    price NUMERIC NOT NULL,
-    observer_hash TEXT NOT NULL,
-    observed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (product_key, source, observer_hash)
-);
-CREATE TABLE IF NOT EXISTS shared_graph_private_records (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    kind TEXT NOT NULL,
-    subject_key TEXT NOT NULL,
-    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_private_records_user
-    ON shared_graph_private_records(user_id, kind, created_at DESC);
-"""
 
 
 class SharedGraphError(ValueError):
@@ -103,10 +74,8 @@ def _connect(dsn=None):
 
 
 def create_shared_schema(dsn: str | None = None) -> None:
-    """Create the three shared-graph tables if they do not exist."""
-    with _connect(dsn) as conn:
-        conn.execute(_SCHEMA_SQL)
-        conn.commit()
+    """Apply the three shared-graph tables (migration 0004_graphs)."""
+    apply_migrations(resolve_dsn(dsn), target="0004")
 
 
 def normalize_seller_key(name: str) -> str:

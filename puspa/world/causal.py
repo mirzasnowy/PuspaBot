@@ -63,7 +63,7 @@ applies and where it does not:
 This module is pure Python (no database, no network, no LLM
 call). Durable storage lives in ``puspa.world.store`` (table
 ``causal_hypotheses``) and in
-``infra/migrate_causal_ledger.sql``. The read path is
+migration 0006_world. The read path is
 ``CausalLedger.expect``: "what do we expect if X under C?"
 returns the active hypotheses for a cause, strongest first.
 Expired hypotheses are never returned by the read path.

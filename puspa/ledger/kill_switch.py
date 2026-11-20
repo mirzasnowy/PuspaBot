@@ -1,7 +1,7 @@
 """Kill switch (K12): one flag that stops the agent, outside its reach.
 
 The flag is a single row in the ``kill_switch`` table (see
-``puspa/ledger/schema.sql``). The enforcement is in Postgres, not in a
+migration 0001_core). The enforcement is in Postgres, not in a
 promise:
 
 - The application role (``puspa_app`` — the only role the agent's
@@ -106,7 +106,7 @@ class KillSwitch:
         """Create the ledger schema (which includes the flag table).
 
         Operator step, not an agent step: it runs the full
-        ``schema.sql`` as the table owner.
+        migration 0001_core as the table owner.
         """
         # Lazy import: this module is imported by ``puspa.ledger``
         # at package import time, and ``ledger`` must not import

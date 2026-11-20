@@ -34,18 +34,11 @@ from dataclasses import dataclass
 import psycopg
 from psycopg.rows import dict_row
 
+from puspa.migrations import apply_migrations
+
 from ..billing.config import TASK_COST_CEILING_IDR
 from ..i18n.server_lines import render as render_server_line
 from ..memory.schema import resolve_dsn
-
-HINT_SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS onboarding_hint_seen (
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    flag TEXT NOT NULL,
-    seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (user_id, flag)
-);
-"""
 
 
 @dataclass(frozen=True)
@@ -170,10 +163,8 @@ def hint_triggered(hint: Hint, context: dict | None) -> bool:
 
 
 def create_schema(dsn=None) -> None:
-    """Create the ``onboarding_hint_seen`` table (idempotent)."""
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
-        conn.execute(HINT_SCHEMA_SQL)
-        conn.commit()
+    """Apply the ``onboarding_hint_seen`` table (migration 0017_onboarding_hints)."""
+    apply_migrations(resolve_dsn(dsn), target="0017")
 
 
 def _connect(dsn=None):

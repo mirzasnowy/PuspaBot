@@ -43,7 +43,7 @@ intent. It has three parts:
    same honest limit as the K10 budget and the K11 dial: a
    restart loses records that were never persisted). With a
    ``dsn`` it also writes every record to Postgres table
-   ``conflict_records`` (``infra/migrate_conflict_records.sql``),
+   ``conflict_records`` (migration 0019_conflicts),
    so the audit survives restarts; see
    :func:`create_schema`, :func:`load_conflicts`, and
    :func:`delete_conflicts`.
@@ -83,7 +83,8 @@ import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
+
+from puspa.migrations import apply_migrations
 
 __all__ = [
     "ATTENTION_PROACTIVE_MIN_OTHER_BENEFIT",
@@ -455,20 +456,12 @@ def _resolve_dsn(dsn: str | None) -> str:
 
 
 def create_schema(dsn: str | None = None) -> None:
-    """Create table ``conflict_records`` (idempotent).
+    """Apply the ``conflict_records`` table (migration 0019_conflicts).
 
-    Runs ``infra/migrate_conflict_records.sql``. Fresh
-    databases need this call (or the migration file) before
-    any record is persisted; the in-memory store works
-    without it.
+    Fresh databases need this call (or the migration) before any
+    record is persisted; the in-memory store works without it.
     """
-    import psycopg
-
-    sql = (
-        Path(__file__).resolve().parent.parent.parent / "infra" / "migrate_conflict_records.sql"
-    ).read_text(encoding="utf-8")
-    with psycopg.connect(_resolve_dsn(dsn), autocommit=True) as conn:
-        conn.execute(sql)
+    apply_migrations(_resolve_dsn(dsn), target="0019")
 
 
 def load_conflicts(
