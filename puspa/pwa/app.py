@@ -74,6 +74,7 @@ def create_app(
     embedder=None,
     embedding_environment=None,
     transcriber=None,
+    ocr_engine=None,
     share_inbox_dir=None,
 ) -> FastAPI:
     """Bangun aplikasi FastAPI PWA."""
@@ -112,6 +113,19 @@ def create_app(
     # Pending voice transcripts awaiting user confirmation (keyed by
     # pending id; unconfirmed transcripts are not messages).
     app.state.voice_pending = {}
+    # Receipt photos (plan section 12.5). The OCR seam
+    # (puspa.receipts) is injected here so tests can pass a test
+    # double; the default is the stub engine — no real OCR engine
+    # is chosen until the 20-photo accuracy measurement exists.
+    from puspa.receipts.ocr import resolve_ocr_engine
+
+    app.state.ocr_engine = ocr_engine or resolve_ocr_engine("stub")
+    # Pending receipt drafts awaiting user confirmation (keyed by
+    # pending id; unconfirmed drafts are not expenses).
+    app.state.receipt_pending = {}
+    # Confirmed expenses per user (in-memory; no expense table
+    # yet — see puspa.pwa.receipt_api).
+    app.state.receipt_expenses = {}
 
     # -- G31: serve modes (local operator vs hosted) ---------------------
     # One web codebase, two serve modes (decision locked by Nero, see
@@ -942,6 +956,11 @@ def create_app(
 
     share_api.register_routes(app, need_user, _render_shared_chat, share_inbox_dir=share_inbox_dir)
     voice_api.register_routes(app, need_user)
+    # Receipt photos (plan section 12.5): upload -> draft ->
+    # confirm-or-discard. Nothing is recorded from a photo alone.
+    from puspa.pwa import receipt_api
+
+    receipt_api.register_routes(app, need_user)
     # -- end G28 ---------------------------------------------------------
 
     @app.post("/api/onboarding/waktu")

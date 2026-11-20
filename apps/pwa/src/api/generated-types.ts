@@ -1196,6 +1196,350 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/receipts/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a receipt photo for OCR
+         * @description Reads one receipt, shop note, bill, delivery slip, or menu
+         *     photo through the app's OCR seam and returns the parsed
+         *     expense as a draft for confirmation: nothing is recorded
+         *     until POST /api/receipts/confirm. The photo is stored in
+         *     the per-user share inbox under receipts/ — it is the
+         *     evidence for every number in the draft. 400 on a bad photo
+         *     (wrong type, empty, over 10 MiB, bytes that do not decode
+         *     as an image). 422 when the photo looks like an identity
+         *     card, family card, or official letter: refused with an
+         *     explanation, and nothing is stored.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /**
+                         * Format: binary
+                         * @description Photo of the receipt (jpeg, png, webp, heic, heif; at most 10 MiB)
+                         */
+                        photo: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Draft ready for confirmation */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReceiptUpload"];
+                    };
+                };
+                /** @description Bad photo (wrong type, empty, over the size limit, not an image) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Identity or official document (refused, nothing stored) */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReceiptRejection"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/receipts/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm a receipt draft and record the expense
+         * @description Records the pending draft as an expense, every amount
+         *     carrying its evidence id, posts a summary to chat, and
+         *     drops the pending record. The caller may edit merchant,
+         *     total, expense_date, or lines first; an edited expense is
+         *     marked edited_by_user and keeps the photo evidence id.
+         *     404 for an unknown or foreign pending id; 400 for an
+         *     empty merchant or a non-positive total.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        pending_id: string;
+                        /** @description Edited merchant name (defaults to the parsed one) */
+                        merchant?: string;
+                        /** @description Edited total in whole rupiah (defaults to the parsed one) */
+                        total?: number;
+                        /** @description Edited date, YYYY-MM-DD (defaults to the parsed one) */
+                        expense_date?: string;
+                        lines?: components["schemas"]["ReceiptLine"][];
+                    };
+                };
+            };
+            responses: {
+                /** @description Expense recorded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok: boolean;
+                            expense: components["schemas"]["ReceiptExpense"];
+                        };
+                    };
+                };
+                /** @description Empty merchant, non-positive total, or bad lines */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown receipt */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/receipts/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard a pending receipt draft
+         * @description Drops the pending draft without recording anything and
+         *     deletes the stored photo. 404 for an unknown or foreign
+         *     pending id.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        pending_id: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Pending draft discarded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok: boolean;
+                        };
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unknown receipt */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/receipts/expenses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the user's confirmed expenses
+         * @description The user's recorded receipt expenses, each amount with its
+         *     evidence id. Unconfirmed drafts are not listed here.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Confirmed expenses */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok: boolean;
+                            expenses: components["schemas"]["ReceiptExpense"][];
+                        };
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/receipts/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Receipt OCR status (which engine, whether one is chosen)
+         * @description Honest status. No OCR engine is chosen until the
+         *     total-receipt accuracy measurement on 20 real receipt
+         *     photos (plan 12.5) exists; until then engine_selected is
+         *     false and uploads are answered by the test-double OCR
+         *     engine.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Receipt OCR status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReceiptStatus"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agen": {
         parameters: {
             query?: never;
@@ -5965,6 +6309,93 @@ export interface components {
             selection: "pending" | "done";
             required_recordings: number;
             note?: string;
+        };
+        /** @description One parsed line item, with the evidence id for its amount (photo + OCR line). */
+        ReceiptLine: {
+            name: string;
+            /** @description Whole rupiah */
+            amount: number;
+            /** @description receipt-<photo_id>-line-<n> */
+            evidence_id: string;
+            /** @description 0-based line of the OCR text the amount was read from */
+            line_index: number;
+        };
+        /** @description A receipt as the user will confirm it; every amount is backed by an evidence id. */
+        ReceiptDraft: {
+            merchant?: string | null;
+            /** @description YYYY-MM-DD when the parser found a date */
+            expense_date?: string | null;
+            /** @description Rp unless the text says otherwise */
+            currency: string;
+            lines: components["schemas"]["ReceiptLine"][];
+            /** @description Printed total, or the sum of the lines when no total line exists */
+            total?: number | null;
+            /** @description receipt-<photo_id>-total */
+            total_evidence_id?: string | null;
+            /** @description True when the total is the sum of the lines, not a printed total */
+            total_is_sum: boolean;
+            /** @description Amounts seen but held (no line to tie them to); never added to the total */
+            held_amounts: number;
+        };
+        /** @description One uploaded receipt photo, awaiting confirmation. */
+        ReceiptUpload: {
+            ok: boolean;
+            /** @description Confirm or discard this id via /api/receipts/confirm or /api/receipts/discard */
+            pending_id: string;
+            /** @description Short id of the stored photo; evidence ids are built on it */
+            photo_id: string;
+            /** @description Where the photo is stored in the per-user share inbox */
+            photo_path?: string | null;
+            draft: components["schemas"]["ReceiptDraft"];
+            /** @description OCR lines with bounding boxes (fractions of the photo) when the engine reports them */
+            ocr_lines?: {
+                text?: string;
+                box?: number[] | null;
+                confidence?: number | null;
+            }[];
+            /** @description OCR engine that read the photo (stub until an engine is chosen) */
+            engine: string;
+            /** @description Measured end-to-end time of this upload (plan bar: under 20 seconds) */
+            elapsed_seconds?: number;
+            /** @enum {string} */
+            document_kind: "receipt" | "note" | "bill" | "menu" | "unknown" | "id_document" | "official_letter";
+            size_bytes?: number;
+            mime_type?: string;
+        };
+        /** @description A confirmed receipt expense, every amount carrying its evidence id. */
+        ReceiptExpense: {
+            expense_id: string;
+            photo_id: string;
+            photo_path?: string | null;
+            merchant: string;
+            expense_date?: string | null;
+            currency: string;
+            lines: components["schemas"]["ReceiptLine"][];
+            total: number;
+            total_evidence_id?: string | null;
+            /** @description True when the user edited any field before confirming */
+            edited_by_user: boolean;
+            engine?: string;
+            document_kind?: string;
+            created_at?: number;
+        };
+        /** @description Receipt OCR status; engine_selected stays false until the 20-photo accuracy measurement picks an engine. */
+        ReceiptStatus: {
+            engine: string;
+            engine_selected: boolean;
+            /** @enum {string} */
+            selection: "pending" | "done";
+            required_cases: number;
+            max_photo_bytes: number;
+            note?: string;
+        };
+        /** @description A refused upload: an identity or official document, never a receipt. */
+        ReceiptRejection: {
+            ok: boolean;
+            rejected: boolean;
+            /** @enum {string} */
+            document_kind: "id_document" | "official_letter";
+            reason: string;
         };
         /**
          * @description B18: one knowledge-graph node. `sources` are the passage

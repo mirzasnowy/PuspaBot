@@ -44,262 +44,43 @@ tags:
     description: Own-model selection (G33)
 paths:
   /:
-    get:
-      tags: [pages]
-      summary: Home (redirects to /chat)
-      responses:
-        "302":
-          description: Redirect to /chat
+    $ref: './openapi-pages.yaml#/paths/~1'
   /masuk:
-    get:
-      tags: [pages]
-      summary: Login screen
-      description: Serves the SPA login screen; the Google flow starts at /auth/google.
-      responses:
-        "200":
-          description: Login screen (HTML)
-          content:
-            text/html:
-              schema:
-                type: string
+    $ref: './openapi-pages.yaml#/paths/~1masuk'
   /auth/google:
-    get:
-      tags: [pages]
-      summary: Start Google OAuth login
-      responses:
-        "302":
-          description: Redirect to Google
-        "503":
-          description: Google login not configured (PUSPA_GOOGLE_CLIENT_ID empty)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+    $ref: './openapi-pages.yaml#/paths/~1auth~1google'
   /auth/google/callback:
-    get:
-      tags: [pages]
-      summary: Google OAuth callback
-      parameters:
-        - name: code
-          in: query
-          schema:
-            type: string
-        - name: state
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Callback acknowledgement (full login is completed in puspa.auth)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  notes:
-                    type: string
-                  code_accepted:
-                    type: boolean
+    $ref: './openapi-pages.yaml#/paths/~1auth~1google~1callback'
   /chat:
-    get:
-      tags: [pages]
-      summary: Chat screen
-      responses:
-        "200":
-          description: Chat screen (HTML, SPA shell with server bootstrap)
-          content:
-            text/html:
-              schema:
-                type: string
-        "302":
-          description: Redirect to /masuk when not logged in
+    $ref: './openapi-pages.yaml#/paths/~1chat'
   /tasks:
-    get:
-      tags: [pages]
-      summary: Tasks screen
-      responses:
-        "200":
-          description: Tasks screen (HTML, SPA shell with server bootstrap)
-          content:
-            text/html:
-              schema:
-                type: string
-        "302":
-          description: Redirect to /masuk when not logged in
+    $ref: './openapi-pages.yaml#/paths/~1tasks'
   /modules:
-    get:
-      tags: [pages]
-      summary: Modules screen
-      responses:
-        "200":
-          description: Modules screen (HTML, SPA shell with server bootstrap)
-          content:
-            text/html:
-              schema:
-                type: string
-        "302":
-          description: Redirect to /masuk when not logged in
+    $ref: './openapi-pages.yaml#/paths/~1modules'
   /connectors:
-    get:
-      tags: [pages]
-      summary: Connectors screen
-      responses:
-        "200":
-          description: Connectors screen (HTML, SPA shell with server bootstrap)
-          content:
-            text/html:
-              schema:
-                type: string
-        "302":
-          description: Redirect to /masuk when not logged in
+    $ref: './openapi-pages.yaml#/paths/~1connectors'
   /memory:
-    get:
-      tags: [pages]
-      summary: Memory screen
-      responses:
-        "200":
-          description: Memory screen (HTML, SPA shell with server bootstrap)
-          content:
-            text/html:
-              schema:
-                type: string
-        "302":
-          description: Redirect to /masuk when not logged in
+    $ref: './openapi-pages.yaml#/paths/~1memory'
   /settings:
-    get:
-      tags: [pages]
-      summary: Settings screen
-      responses:
-        "200":
-          description: Settings screen (HTML, SPA shell with server bootstrap)
-          content:
-            text/html:
-              schema:
-                type: string
-        "302":
-          description: Redirect to /masuk when not logged in
+    $ref: './openapi-pages.yaml#/paths/~1settings'
   /office:
-    get:
-      tags: [pages]
-      summary: Office screen
-      responses:
-        "200":
-          description: Office screen (HTML, SPA shell with server bootstrap)
-          content:
-            text/html:
-              schema:
-                type: string
-        "302":
-          description: Redirect to /masuk when not logged in
+    $ref: './openapi-pages.yaml#/paths/~1office'
   /insights:
-    get:
-      tags: [pages]
-      summary: Insights screen
-      responses:
-        "200":
-          description: Insights screen (HTML, SPA shell with server bootstrap)
-          content:
-            text/html:
-              schema:
-                type: string
-        "302":
-          description: Redirect to /masuk when not logged in
+    $ref: './openapi-pages.yaml#/paths/~1insights'
   /onboarding:
-    get:
-      tags: [pages]
-      summary: Onboarding screen
-      responses:
-        "200":
-          description: Onboarding screen (HTML, SPA shell with server bootstrap)
-          content:
-            text/html:
-              schema:
-                type: string
-        "302":
-          description: Redirect to /masuk when not logged in
+    $ref: './openapi-pages.yaml#/paths/~1onboarding'
   /sse:
-    get:
-      tags: [chat]
-      summary: Live event stream (Server-Sent Events)
-      description: |
-        Streams the office projection first, then a heartbeat event.
-        Events are `data: {...}\n\n` frames with `type` `office` or
-        `heartbeat`. Requires a logged-in session cookie.
-      responses:
-        "200":
-          description: Event stream
-          content:
-            text/event-stream:
-              schema:
-                type: string
-                description: SSE frames; each data frame is an SseEvent
-        "401":
-          description: Not logged in
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+    $ref: './openapi-pages.yaml#/paths/~1sse'
   /bukti/{evidence_id}:
-    get:
-      tags: [pages]
-      summary: Evidence panel
-      parameters:
-        - name: evidence_id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Evidence panel (HTML)
-          content:
-            text/html:
-              schema:
-                type: string
-        "302":
-          description: Redirect to /masuk when not logged in
+    $ref: './openapi-pages.yaml#/paths/~1bukti~1{evidence_id}'
   /manifest.json:
-    get:
-      tags: [pages]
-      summary: PWA manifest
-      responses:
-        "200":
-          description: Web app manifest
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Manifest"
+    $ref: './openapi-pages.yaml#/paths/~1manifest.json'
   /sw.js:
-    get:
-      tags: [pages]
-      summary: Service worker script
-      responses:
-        "200":
-          description: Service worker JavaScript
-          content:
-            application/javascript:
-              schema:
-                type: string
+    $ref: './openapi-pages.yaml#/paths/~1sw.js'
   /share:
     $ref: './openapi-voice.yaml#/paths/~1share'
   /health:
-    get:
-      tags: [pages]
-      summary: Health status including embedding degradation
-      description: |
-        E-14: public and login-free. Always 200 while the server is
-        up; the `status` field carries `ok` or `degraded`. The
-        `embedding` block is the startup embedding snapshot: in
-        production with only the hash stand-in available the status
-        is `degraded`, with the reason and the fallback alarm. A
-        monitor alerts on the field, not on the HTTP code.
-      responses:
-        "200":
-          description: Server is up; see the status field for degradation
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HealthStatus"
+    $ref: './openapi-pages.yaml#/paths/~1health'
   /api/chat:
     post:
       tags: [chat]
@@ -343,6 +124,16 @@ paths:
     $ref: './openapi-voice.yaml#/paths/~1api~1voice~1discard'
   /api/voice/status:
     $ref: './openapi-voice.yaml#/paths/~1api~1voice~1status'
+  /api/receipts/upload:
+    $ref: './openapi-receipts.yaml#/paths/~1api~1receipts~1upload'
+  /api/receipts/confirm:
+    $ref: './openapi-receipts.yaml#/paths/~1api~1receipts~1confirm'
+  /api/receipts/discard:
+    $ref: './openapi-receipts.yaml#/paths/~1api~1receipts~1discard'
+  /api/receipts/expenses:
+    $ref: './openapi-receipts.yaml#/paths/~1api~1receipts~1expenses'
+  /api/receipts/status:
+    $ref: './openapi-receipts.yaml#/paths/~1api~1receipts~1status'
   /api/agen:
     post:
       tags: [agents]
@@ -1215,6 +1006,18 @@ components:
       $ref: './openapi-voice.yaml#/components/schemas/VoiceUpload'
     VoiceStatus:
       $ref: './openapi-voice.yaml#/components/schemas/VoiceStatus'
+    ReceiptLine:
+      $ref: './openapi-receipts.yaml#/components/schemas/ReceiptLine'
+    ReceiptDraft:
+      $ref: './openapi-receipts.yaml#/components/schemas/ReceiptDraft'
+    ReceiptUpload:
+      $ref: './openapi-receipts.yaml#/components/schemas/ReceiptUpload'
+    ReceiptExpense:
+      $ref: './openapi-receipts.yaml#/components/schemas/ReceiptExpense'
+    ReceiptStatus:
+      $ref: './openapi-receipts.yaml#/components/schemas/ReceiptStatus'
+    ReceiptRejection:
+      $ref: './openapi-receipts.yaml#/components/schemas/ReceiptRejection'
     GraphNode:
       $ref: './openapi-graph.yaml#/components/schemas/GraphNode'
     GraphEdge:
