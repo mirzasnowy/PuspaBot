@@ -96,6 +96,21 @@ itself is persisted through `puspa.memory.loop_store`
 (`loop_state` / `restore_loop_state` below): corrections plus
 the experiences that carry them survive a restart, while
 skills, manual edits, and feedback proposals stay session-only.
+
+Curriculum runner guardrails (plan section 7.5, see
+`puspa/memory/curriculum_guardrails.py`): an experience
+teaches only when it is verified or user-confirmed. A record
+marked unverified, or one carrying an orphan number, is
+quarantined by `record_misprediction` and never touches the
+correction table until a user releases it with
+`confirm_experience`; a user correction whose figure is an
+orphan number is held the same way by `record_feedback`. New
+learned skills are capped per ISO week
+(`max_new_skills_per_week`; repair drafts do not count), and
+a skill reaches the user only through `submit_for_approval`,
+which requires a passed holdout evaluation on cases that
+differ from the verification cases; `activate_skill` refuses
+a skill that was never submitted.
 """
 
 from __future__ import annotations
@@ -104,6 +119,11 @@ import hashlib
 import json
 import uuid
 
+from .curriculum_guardrails import (
+    WeeklySkillCap,
+    classify_experience,
+    find_orphan_numbers,
+)
 from .embeddings import HashEmbedding, cosine_similarity
 from .procedural import LEARNED_DRAFT_PREFIX
 
@@ -122,6 +142,17 @@ def _skill_id():
 def _content_hash(value):
     canon = json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(canon.encode("utf-8")).hexdigest()
+
+
+def _same_case_set(cases_a, cases_b):
+    """True when two case lists hold the same cases (order aside)."""
+
+    def canon(cases):
+        return sorted(
+            json.dumps(case, sort_keys=True, ensure_ascii=False, default=str) for case in cases
+        )
+
+    return canon(cases_a) == canon(cases_b)
 
 
 def _check_gate_approval(gate, request_id, user_id):
@@ -147,7 +178,9 @@ def _check_gate_approval(gate, request_id, user_id):
 class LearningLoop:
     """In-memory learning loop: experience, curriculum, skills."""
 
-    def __init__(self, embedder=None, procedure_store=None, causal_ledger=None):
+    def __init__(
+        self, embedder=None, procedure_store=None, causal_ledger=None, max_new_skills_per_week=None
+    ):
         self.embedder = embedder or HashEmbedding()
         self.procedure_store = procedure_store
         self.causal_ledger = causal_ledger
@@ -157,6 +190,11 @@ class LearningLoop:
         self.skills = {}
         self.manual_edits = {}
         self.feedback_proposals = []
+        self.approval_submissions = []
+        # Section 7.5 guardrail: at most this many newly learned
+        # skills per ISO week (repair drafts do not count).
+        self.weekly_skill_cap = WeeklySkillCap(max_new_skills_per_week)
+        self.max_new_skills_per_week = self.weekly_skill_cap.max_per_week
 
     # -- causal ledger: hypotheses learn from the same outcomes ---
 
@@ -219,7 +257,197 @@ class LearningLoop:
 
     # -- experience: mispredictions correct the model ------------
 
-    def record_misprediction(self, record, *, condition="", evidence_event_id=None):
+    def _teach_misprediction(
+        self,
+        task,
+        predicted,
+        observed,
+        error,
+        experience_id,
+        *,
+        condition="",
+        evidence_event_id=None,
+    ):
+        """Apply one misprediction as teaching (correction + gap).
+
+        Shared by ``record_misprediction`` and by
+        ``confirm_experience`` when a quarantined experience is
+        released: the causal ledger, the correction table, the
+        curriculum gap, and the suspect-marking of active skills
+        all happen here, and only here, so a quarantined entry
+        teaches exactly once, at release time.
+        """
+        self._causal_outcome(
+            task,
+            predicted=predicted,
+            observed=observed,
+            condition=condition,
+            links=self._causal_links(experience_id, evidence_event_id),
+        )
+        previous = self.corrections.get(task)
+        self.corrections[task] = {
+            "task": task,
+            "predicted": predicted,
+            "observed": observed,
+            "error": error,
+            "count": (previous["count"] if previous else 0) + 1,
+            "experience_ids": ((previous["experience_ids"] if previous else []) + [experience_id]),
+        }
+        gap = self.gaps.get(task, {"mispredictions": 0, "last_error": None})
+        gap["mispredictions"] += 1
+        gap["last_error"] = error
+        self.gaps[task] = gap
+        for skill in self.skills.values():
+            if skill["task"] == task and skill["status"] == "active":
+                skill["status"] = "suspect"
+        return dict(self.corrections[task])
+
+    # -- quarantine: unverified experience never teaches ----------
+
+    def record_experience(
+        self, entry, *, verification="world_observation", quarantine_reasons=None
+    ):
+        """Append one non-teaching experience to the log.
+
+        The entry is stored as-is (id, verification status, and
+        quarantine flag added) and never touches the correction
+        table, the gaps, or the skills: this is the path for
+        outcomes that are recorded but must not teach, such as
+        the curriculum runner's own runs. ``verification`` is
+        one of ``curriculum_guardrails.VERIFICATION_STATUSES``;
+        "quarantined" marks the entry quarantined with the
+        given reasons. Returns the stored entry.
+        """
+        stored = dict(entry)
+        stored["id"] = stored.get("id") or uuid.uuid4().hex
+        stored["verification"] = verification
+        stored["quarantined"] = verification == "quarantined"
+        stored["quarantine_reasons"] = list(quarantine_reasons or [])
+        self.experiences.append(stored)
+        return dict(stored)
+
+    def quarantine_experience(self, entry, *, reasons=None):
+        """Store one experience as quarantined (never teaches).
+
+        ``reasons`` names why it is held (see
+        ``curriculum_guardrails.QUARANTINE_REASONS``); when
+        omitted the reason is "unverified". The entry stays in
+        the experience log and is listed by
+        ``list_quarantined`` until a user releases it with
+        ``confirm_experience``. Returns the stored entry.
+        """
+        return self.record_experience(
+            entry, verification="quarantined", quarantine_reasons=list(reasons or ["unverified"])
+        )
+
+    def list_quarantined(self, task=None):
+        """Quarantined experiences awaiting user review, oldest first."""
+        entries = [e for e in self.experiences if e.get("quarantined")]
+        if task is not None:
+            entries = [e for e in entries if e.get("task") == str(task)]
+        return [dict(e) for e in entries]
+
+    def confirm_experience(self, experience_id, *, by=None):
+        """Release one quarantined experience so it teaches.
+
+        The user (``by``) vouches for the held outcome, so the
+        entry is replayed through the teaching path it was held
+        from: a misprediction-shaped entry applies its
+        correction and gap, a user-feedback correction is
+        applied to the prediction (unless a manual edit now
+        holds the task, in which case it stays a proposal), and
+        a completed curriculum entry clears the gap for its
+        task. The entry is marked "user_confirmed" and is no
+        longer quarantined. Raises KeyError for an unknown id
+        and ValueError when the entry is not quarantined.
+        Returns the released entry.
+        """
+        entry = next((e for e in self.experiences if e.get("id") == experience_id), None)
+        if entry is None:
+            raise KeyError(f"experience not found: {experience_id}")
+        if not entry.get("quarantined"):
+            raise ValueError("only a quarantined experience can be confirmed")
+        task = str(entry.get("task") or "")
+        entry["quarantined"] = False
+        entry["verification"] = "user_confirmed"
+        if by is not None:
+            entry["confirmed_by"] = by
+        if entry.get("kind") == "user_feedback" and entry.get("verdict") == "wrong":
+            correction = entry.get("observed")
+            if correction is not None and task and task not in self.manual_edits:
+                self._apply_feedback_correction(
+                    task,
+                    correction,
+                    entry["id"],
+                    source=entry.get("feedback_source", "user"),
+                )
+                self._confirm_proposal(entry["id"])
+            return dict(entry)
+        if entry.get("outcome") == "completed" and entry.get("kind") in (
+            "curriculum",
+            "curriculum_success",
+        ):
+            if task:
+                self.gaps.pop(task, None)
+            return dict(entry)
+        if task and "predicted" in entry and "observed" in entry:
+            self._teach_misprediction(
+                task,
+                entry.get("predicted"),
+                entry.get("observed"),
+                entry.get("error"),
+                entry["id"],
+            )
+        return dict(entry)
+
+    def _confirm_proposal(self, experience_id):
+        """Mark the feedback proposal for an experience confirmed."""
+        for proposal in self.feedback_proposals:
+            if proposal.get("experience_id") == experience_id:
+                proposal["status"] = "confirmed"
+
+    def _apply_feedback_correction(
+        self,
+        task,
+        correction,
+        experience_id,
+        *,
+        source="user",
+        condition="",
+        evidence_event_id=None,
+    ):
+        """Apply a user correction as teaching (no gap change).
+
+        The gap for a wrong answer is counted once, when the
+        feedback arrives, so a correction released later from
+        quarantine must not count it again. Used by
+        ``record_feedback`` and by ``confirm_experience``.
+        """
+        predicted = self.predict(task)
+        previous = self.corrections.get(task)
+        self.corrections[task] = {
+            "task": task,
+            "predicted": predicted,
+            "observed": correction,
+            "error": "user feedback: answer was wrong",
+            "count": (previous["count"] if previous else 0) + 1,
+            "experience_ids": ((previous["experience_ids"] if previous else []) + [experience_id]),
+            "source": FEEDBACK_SOURCE,
+            "feedback_source": source,
+        }
+        self._causal_observe(
+            task,
+            correction,
+            consistent=True,
+            condition=condition,
+            links=self._causal_links(experience_id, evidence_event_id),
+        )
+        for skill in self.skills.values():
+            if skill["task"] == task and skill["status"] == "active":
+                skill["status"] = "suspect"
+        return dict(self.corrections[task])
+
+    def record_misprediction(self, record, *, condition="", evidence_event_id=None, verified=None):
         """Record one prediction error as correcting experience.
 
         `record` must hold task, predicted, observed, error and
@@ -234,6 +462,18 @@ class LearningLoop:
         `condition` names the condition the causal claim holds
         under ("" when unknown); `evidence_event_id` links the
         real ledger event that recorded the outcome.
+
+        Section 7.5 guardrail: `verified` is True when an
+        independent check backs the outcome, False when the
+        caller knows it does not, and None (default) for a
+        world observation, which is trusted as before. A record
+        marked unverified, or one whose predicted or observed
+        text carries an orphan number (a meaningful figure with
+        no evidence), is quarantined instead of teaching: it is
+        stored with `quarantined` True, no correction is made,
+        no gap grows, and the return value reports the
+        quarantine (`{"quarantined": True, ...}`) instead of a
+        correction. Release it with `confirm_experience`.
         """
         if not isinstance(record, dict):
             raise ValueError("record must be a dict")
@@ -243,6 +483,30 @@ class LearningLoop:
         task = str(record["task"])
         if not task:
             raise ValueError("record task must be a non-empty string")
+        if verified is None:
+            context = record.get("context") or {}
+            verified = record.get("verified", context.get("verified"))
+        classification = classify_experience(
+            predicted=record["predicted"], observed=record["observed"], verified=verified
+        )
+        if classification["quarantined"]:
+            stored = self.quarantine_experience(
+                {
+                    "task": task,
+                    "predicted": record["predicted"],
+                    "observed": record["observed"],
+                    "error": record["error"],
+                    "context": record["context"],
+                },
+                reasons=classification["quarantine_reasons"],
+            )
+            return {
+                "task": task,
+                "quarantined": True,
+                "experience_id": stored["id"],
+                "verification": "quarantined",
+                "quarantine_reasons": list(stored["quarantine_reasons"]),
+            }
         experience = {
             "id": uuid.uuid4().hex,
             "task": task,
@@ -250,34 +514,20 @@ class LearningLoop:
             "observed": record["observed"],
             "error": record["error"],
             "context": record["context"],
+            "verification": classification["verification"],
+            "quarantined": False,
+            "quarantine_reasons": [],
         }
         self.experiences.append(experience)
-        self._causal_outcome(
+        return self._teach_misprediction(
             task,
-            predicted=record["predicted"],
-            observed=record["observed"],
+            record["predicted"],
+            record["observed"],
+            record["error"],
+            experience["id"],
             condition=condition,
-            links=self._causal_links(experience["id"], evidence_event_id),
+            evidence_event_id=evidence_event_id,
         )
-        previous = self.corrections.get(task)
-        self.corrections[task] = {
-            "task": task,
-            "predicted": record["predicted"],
-            "observed": record["observed"],
-            "error": record["error"],
-            "count": (previous["count"] if previous else 0) + 1,
-            "experience_ids": (
-                (previous["experience_ids"] if previous else []) + [experience["id"]]
-            ),
-        }
-        gap = self.gaps.get(task, {"mispredictions": 0, "last_error": None})
-        gap["mispredictions"] += 1
-        gap["last_error"] = record["error"]
-        self.gaps[task] = gap
-        for skill in self.skills.values():
-            if skill["task"] == task and skill["status"] == "active":
-                skill["status"] = "suspect"
-        return dict(self.corrections[task])
 
     def record_feedback(
         self, task, verdict, *, correction=None, source="user", condition="", evidence_event_id=None
@@ -379,26 +629,44 @@ class LearningLoop:
             result["conflicts_with_manual_edit"] = True
             result["proposal_id"] = proposal["id"]
             return result
-        previous = self.corrections.get(task)
-        self.corrections[task] = {
-            "task": task,
-            "predicted": predicted,
-            "observed": correction,
-            "error": "user feedback: answer was wrong",
-            "count": (previous["count"] if previous else 0) + 1,
-            "experience_ids": (
-                (previous["experience_ids"] if previous else []) + [experience["id"]]
-            ),
-            "source": FEEDBACK_SOURCE,
-            "feedback_source": source,
-        }
+        # Section 7.5 guardrail: a user correction whose figure
+        # is an orphan number (no evidence behind it) is held
+        # in quarantine instead of teaching. The "wrong" verdict
+        # itself is user-confirmed, so the gap and the suspect
+        # marking above stand; only the corrected figure is held
+        # until a user releases it with `confirm_experience`.
+        if find_orphan_numbers(str(correction)):
+            experience["quarantined"] = True
+            experience["verification"] = "quarantined"
+            experience["quarantine_reasons"] = ["orphan_numbers"]
+            proposal = {
+                "id": uuid.uuid4().hex,
+                "task": task,
+                "correction": correction,
+                "source": FEEDBACK_SOURCE,
+                "feedback_source": source,
+                "status": "quarantined",
+                "conflicts_with_manual_edit": False,
+                "quarantine_reasons": ["orphan_numbers"],
+                "experience_id": experience["id"],
+            }
+            self.feedback_proposals.append(proposal)
+            result["status"] = "quarantined"
+            result["correction"] = correction
+            result["quarantine_reasons"] = ["orphan_numbers"]
+            result["experience_id"] = experience["id"]
+            result["proposal_id"] = proposal["id"]
+            return result
+        correction = self._apply_feedback_correction(
+            task,
+            correction,
+            experience["id"],
+            source=source,
+            condition=condition,
+            evidence_event_id=evidence_event_id,
+        )
         result["status"] = "applied"
-        result["correction"] = dict(self.corrections[task])
-        # The correction was applied, so the causal claim for it
-        # is proposed. (In the manual-edit branch above it is
-        # deliberately NOT proposed: the held proposal must not
-        # leak back into predictions through the ledger.)
-        self._causal_observe(task, correction, consistent=True, condition=condition, links=links)
+        result["correction"] = correction
         return result
 
     def list_feedback_proposals(self, task=None):
@@ -478,23 +746,33 @@ class LearningLoop:
 
     # -- curriculum: propose the next task from observed gaps ----
 
-    def propose_next_task(self):
+    def propose_next_task(self, exclude=None):
         """Propose the next learning task, or None when nothing gaps.
 
         Priority: the task with the most mispredictions first
         (ties broken by task name, deterministic), as a retry
         with the corrected model; then the oldest unverified
-        draft skill, as a verification task.
+        draft skill, as a verification task. `exclude` is an
+        optional set of task names to skip (the curriculum
+        runner passes the tasks it already completed today, so
+        an unverified completion whose gap stays open does not
+        block the runner from moving on to the next gap).
         """
-        if self.gaps:
-            task = min(self.gaps.items(), key=lambda item: (-item[1]["mispredictions"], item[0]))[0]
+        excluded = {str(task) for task in (exclude or ())}
+        gaps = {task: gap for task, gap in self.gaps.items() if task not in excluded}
+        if gaps:
+            task = min(gaps.items(), key=lambda item: (-item[1]["mispredictions"], item[0]))[0]
             return {
                 "task": task,
                 "reason": "misprediction_gap",
-                "gap": dict(self.gaps[task]),
+                "gap": dict(gaps[task]),
                 "difficulty": "retry",
             }
-        drafts = [s for s in self.skills.values() if s["status"] == "draft"]
+        drafts = [
+            s
+            for s in self.skills.values()
+            if s["status"] == "draft" and f"verify_skill:{s['name']}" not in excluded
+        ]
         if drafts:
             skill = min(drafts, key=lambda s: s["created_order"])
             return {
@@ -527,6 +805,8 @@ class LearningLoop:
         verification=None,
         embedding_key=None,
         source_experience_ids=None,
+        is_repair=False,
+        now=None,
     ):
         """Draft a learned skill from a successful task.
 
@@ -536,12 +816,22 @@ class LearningLoop:
         caller verifies it through a sandbox executor. The
         embedding key indexes the skill for reuse: by default the
         embedding of the task description. Returns the skill dict.
+
+        Section 7.5 guardrail: at most
+        ``max_new_skills_per_week`` newly learned skills may be
+        drafted per ISO week (``now`` selects the week, for
+        tests); drafting past the cap raises ValueError. A
+        repair draft (``is_repair=True``, from
+        ``SkillRepairer``) maintains an existing skill and does
+        not count toward the cap.
         """
         task = str(task)
         if not task:
             raise ValueError("task must be a non-empty string")
         if code is None:
             raise ValueError("code is required for a learned skill")
+        if not is_repair:
+            self.weekly_skill_cap.record(now)
         skill_name = name or f"learned_{task}"
         key_text = embedding_key or f"{task}: {skill_name}"
         skill = {
@@ -555,6 +845,10 @@ class LearningLoop:
             "active": False,
             "verified": False,
             "verification": verification or {},
+            "holdout": {},
+            "holdout_passed": False,
+            "submitted_for_approval": False,
+            "is_repair": bool(is_repair),
             "source_experience_ids": list(source_experience_ids or []),
             "conflicts_with_manual_edit": task in self.manual_edits,
             "created_order": len(self.skills),
@@ -562,24 +856,23 @@ class LearningLoop:
         self.skills[skill["id"]] = skill
         return self._public_skill(skill)
 
-    def verify_skill(self, skill_id, test_cases, *, executor=None):
-        """Self-verification: run the skill against test cases.
+    def skills_drafted_this_week(self, now=None):
+        """Newly learned skills drafted in the week of ``now``."""
+        return self.weekly_skill_cap.drafted_this_week(now)
 
-        `test_cases` is a list of {"args": [...], "expected": ...}
-        (or {"kwargs": {...}, "expected": ...}). Callable code is
-        called directly; string code needs an `executor` callable
-        `executor(code, case)` (in production: the sandbox
-        runner) and stays unverified without one. Returns
-        {"passed", "failed", "verified", "details"} and records
-        the result on the skill. A skill is verified only when
-        every case passes.
+    def new_skills_remaining_this_week(self, now=None):
+        """New skills still draftable in the week of ``now``."""
+        return self.weekly_skill_cap.remaining_this_week(now)
+
+    @staticmethod
+    def _run_test_cases(code, test_cases, executor):
+        """Run ``code`` against cases; return (passed, failed, details).
+
+        Shared by ``verify_skill`` and ``evaluate_holdout`` so
+        both judge code the same way. Callable code is called
+        directly; string code needs an ``executor`` callable
+        ``executor(code, case)`` and fails closed without one.
         """
-        skill = self.skills.get(skill_id)
-        if skill is None:
-            raise KeyError(f"skill not found: {skill_id}")
-        if not test_cases:
-            raise ValueError("at least one test case is required")
-        code = skill["code"]
         passed, failed, details = 0, 0, []
         for case in test_cases:
             expected = case.get("expected")
@@ -600,6 +893,26 @@ class LearningLoop:
                 passed += 1
             else:
                 failed += 1
+        return passed, failed, details
+
+    def verify_skill(self, skill_id, test_cases, *, executor=None):
+        """Self-verification: run the skill against test cases.
+
+        `test_cases` is a list of {"args": [...], "expected": ...}
+        (or {"kwargs": {...}, "expected": ...}). Callable code is
+        called directly; string code needs an `executor` callable
+        `executor(code, case)` (in production: the sandbox
+        runner) and stays unverified without one. Returns
+        {"passed", "failed", "verified", "details"} and records
+        the result on the skill. A skill is verified only when
+        every case passes.
+        """
+        skill = self.skills.get(skill_id)
+        if skill is None:
+            raise KeyError(f"skill not found: {skill_id}")
+        if not test_cases:
+            raise ValueError("at least one test case is required")
+        passed, failed, details = self._run_test_cases(skill["code"], test_cases, executor)
         verified = failed == 0 and passed > 0
         skill["verified"] = verified
         skill["verification"] = {
@@ -615,6 +928,92 @@ class LearningLoop:
             "details": details,
         }
 
+    def evaluate_holdout(self, skill_id, holdout_cases, *, executor=None):
+        """Evaluate a drafted skill on a holdout set.
+
+        `holdout_cases` use the same shape as `verify_skill`
+        cases, but they must be a different set: a holdout that
+        repeats the verification cases is not a holdout, and
+        raises ValueError. Callable code is called directly;
+        string code needs an `executor` and stays unevaluated
+        without one. Returns {"passed", "failed", "verified",
+        "details"} and records the result on the skill as
+        `holdout` / `holdout_passed`. A skill passes its
+        holdout only when every case passes. This is the gate
+        before `submit_for_approval`: a skill that fails its
+        holdout can never be put to the user.
+        """
+        skill = self.skills.get(skill_id)
+        if skill is None:
+            raise KeyError(f"skill not found: {skill_id}")
+        if not holdout_cases:
+            raise ValueError("at least one holdout case is required")
+        stored_cases = [
+            detail.get("case")
+            for detail in (skill.get("verification") or {}).get("details", [])
+            if detail.get("case") is not None
+        ]
+        if stored_cases and _same_case_set(holdout_cases, stored_cases):
+            raise ValueError("holdout cases must differ from the verification cases")
+        passed, failed, details = self._run_test_cases(skill["code"], holdout_cases, executor)
+        verified = failed == 0 and passed > 0
+        skill["holdout"] = {
+            "passed": passed,
+            "failed": failed,
+            "details": details,
+        }
+        skill["holdout_passed"] = verified
+        return {
+            "skill_id": skill_id,
+            "passed": passed,
+            "failed": failed,
+            "verified": verified,
+            "details": details,
+        }
+
+    def submit_for_approval(self, skill_id, holdout_cases=None, *, executor=None):
+        """Submit a drafted skill for user approval.
+
+        The pre-approval gate (plan section 7.5): the skill
+        must be verified, and it must have passed a holdout
+        evaluation. When `holdout_cases` are given they are
+        evaluated first (see `evaluate_holdout`); otherwise a
+        previously recorded passing holdout is required.
+        Raises ValueError when the skill is rejected, conflicts
+        with a manual user edit, is unverified, or has not
+        passed its holdout. On success the skill is marked
+        `submitted_for_approval` and the submission record is
+        returned (and kept in `approval_submissions`).
+        """
+        skill = self.skills.get(skill_id)
+        if skill is None:
+            raise KeyError(f"skill not found: {skill_id}")
+        if skill["status"] == "rejected":
+            raise ValueError("a rejected skill cannot be submitted for approval")
+        if skill.get("conflicts_with_manual_edit"):
+            raise ValueError(
+                "skill conflicts with a manual user edit and cannot be submitted for approval"
+            )
+        if not skill.get("verified"):
+            raise ValueError("only a verified skill can be submitted for approval")
+        if holdout_cases is not None:
+            self.evaluate_holdout(skill_id, holdout_cases, executor=executor)
+        if not skill.get("holdout_passed"):
+            raise ValueError(
+                "skill has not passed holdout evaluation; "
+                "evaluate it on a holdout set before submitting it for approval"
+            )
+        skill["submitted_for_approval"] = True
+        submission = {
+            "skill_id": skill_id,
+            "skill_name": skill["name"],
+            "task": skill["task"],
+            "status": "submitted_for_approval",
+            "holdout": dict(skill["holdout"]),
+        }
+        self.approval_submissions.append(submission)
+        return dict(submission)
+
     def activate_skill(
         self, skill_id, *, user_id=None, gate=None, approval_request_id=None, approved_by=None
     ):
@@ -629,6 +1028,13 @@ class LearningLoop:
         Activation never touches a manual edit: a skill flagged
         `conflicts_with_manual_edit` stays a separate draft and
         is not activated over the user's version.
+
+        Section 7.5 guardrail: the skill must also have passed
+        a holdout evaluation and been submitted for approval
+        (see `submit_for_approval`) before it can be activated,
+        even when the user already approved it. The approval
+        check runs first, so a missing approval still raises
+        PermissionError exactly as before.
         """
         skill = self.skills.get(skill_id)
         if skill is None:
@@ -650,6 +1056,10 @@ class LearningLoop:
             approved = user_id is None or approved_by == user_id
         if not approved:
             raise PermissionError("learned skill needs user approval before activation")
+        if not skill.get("holdout_passed") or not skill.get("submitted_for_approval"):
+            raise ValueError(
+                "skill must pass holdout evaluation and be submitted for approval before activation"
+            )
         skill["status"] = "active"
         skill["active"] = True
         return self._public_skill(skill)
@@ -744,6 +1154,9 @@ class LearningLoop:
             "active": skill["active"],
             "verified": skill["verified"],
             "verification": skill["verification"],
+            "holdout": skill.get("holdout", {}),
+            "holdout_passed": skill.get("holdout_passed", False),
+            "submitted_for_approval": skill.get("submitted_for_approval", False),
             "source_experience_ids": list(skill["source_experience_ids"]),
             "conflicts_with_manual_edit": skill["conflicts_with_manual_edit"],
         }

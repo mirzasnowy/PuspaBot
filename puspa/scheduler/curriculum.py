@@ -18,6 +18,20 @@ Hard limits, all enforced in code:
   ``max_tasks_per_day`` parameter. The count lives on the runner, so
   the same runner instance must be reused across ticks for the cap
   to hold across ticks (see ``run_curriculum_tick``).
+- Daily caps per user and global (plan section 7.5, see
+  ``puspa/memory/curriculum_guardrails.py``): on top of the
+  per-task Rp2.000 ceiling, a shared ``DailyCaps`` ledger caps
+  learning work per user per day and globally per day, by task
+  count and by rupiah. The spend caps are enforced by
+  reservation (the day's spend so far plus the whole per-task
+  ceiling must still fit the cap), so recorded spend can never
+  pass a cap. Pass one ``DailyCaps`` instance to every runner
+  (``caps=...``) to enforce the caps across runner instances;
+  a runner without one builds its own ledger and enforces the
+  caps only for itself. A task blocked by a cap reports
+  ``user_daily_cap_reached``, ``user_daily_spend_reached``,
+  ``global_daily_cap_reached`` or ``global_daily_spend_reached``,
+  runs nothing, and consumes no daily run.
 - Cost ceiling: each learning task runs under its own
   ``BudgetTracker`` with ``rupiah_max`` equal to
   ``DEFAULT_COST_CEILING_RP_PER_TASK`` (Rp2.000, the same ceiling
@@ -40,19 +54,32 @@ Hard limits, all enforced in code:
   outcome, never executes the step, and never records it as a
   misprediction.
 
-How outcomes feed back into the loop:
+How outcomes feed back into the loop (plan section 7.5: the
+runner never learns from its own unverified experience):
 
-- Completed: an experience entry is appended to the loop experience
-  log, the gap that produced the task is cleared so the curriculum
-  does not propose the same retry again, and the task is marked
-  completed for the day on this runner.
-- Failed: the failure is recorded as a new misprediction through
-  ``record_misprediction`` (predicted value, observed failure,
-  error, context), so the gap grows and the curriculum can propose
-  a retry later, subject to the daily cap.
-- Pending approval: recorded as an experience entry with outcome
-  ``pending_approval`` and kept in runner history. The gap is left
-  alone and no misprediction is recorded.
+- Completed and verified: an experience entry is appended to
+  the loop experience log, the gap that produced the task is
+  cleared so the curriculum does not propose the same retry
+  again, and the task is marked completed for the day on this
+  runner. A run counts as verified only when it was
+  corroborated by an independent check: a real verifier
+  supplied to the runner passed the result (the trivial
+  default verifier never counts), or the loop's correction for
+  the task changed during the run because the world-model
+  scoring path inside ``TaskRunner`` recorded a new correction
+  for it. A bare "completed" from the runner's own say-so is
+  not verification.
+- Completed but unverified, failed, or pending approval: the
+  outcome is recorded as a quarantined experience
+  (``LearningLoop.quarantine_experience``): it is stored and
+  listed for review, but it never changes a prediction, never
+  grows a gap, and never clears one. A failed run in
+  particular is never recorded as a misprediction of its own:
+  the failure is the runner's own unverified experience, and
+  only a user releasing it with
+  ``LearningLoop.confirm_experience`` can let it teach. The
+  gap stays open, so the curriculum may propose a retry later,
+  subject to the daily caps.
 
 Execution goes through the existing ``Planner`` (bounded replans,
 at most 2) and ``TaskRunner`` (5 stage cycle). The plan comes from
@@ -83,9 +110,15 @@ events ``TaskRunner`` and ``Planner`` already emit (``plan_created``,
 
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime
 
+from puspa.memory.curriculum_guardrails import (
+    DEFAULT_MAX_SPEND_RP_GLOBAL_PER_DAY,
+    DEFAULT_MAX_SPEND_RP_PER_USER_PER_DAY,
+    DEFAULT_MAX_TASKS_GLOBAL_PER_DAY,
+    DEFAULT_MAX_TASKS_PER_USER_PER_DAY,
+    DailyCaps,
+)
 from puspa.memory.learning_loop import get_learning_loop
 from puspa.runtime.budget import CEILING_RP_PER_TASK, BudgetTracker
 from puspa.runtime.planner import Planner, decompose
@@ -110,6 +143,10 @@ RUN_STATUSES = (
     "pending_user",
     "busy",
     "daily_cap_reached",
+    "user_daily_cap_reached",
+    "user_daily_spend_reached",
+    "global_daily_cap_reached",
+    "global_daily_spend_reached",
     "budget_hold",
     "no_task",
     "already_completed",
@@ -166,6 +203,11 @@ class CurriculumRunner:
         world_model=None,
         learning_loop=None,
         budget_check=None,
+        caps=None,
+        max_tasks_per_user_per_day=None,
+        max_spend_rp_per_user_per_day=None,
+        max_tasks_global_per_day=None,
+        max_spend_rp_global_per_day=None,
     ):
         self.loop = loop if loop is not None else get_learning_loop()
         self._events: list[dict] = []
@@ -215,6 +257,37 @@ class CurriculumRunner:
         if budget_check is None:
             budget_check = default_task_budget_check()
         self.budget_check = budget_check
+        # Daily caps per user and global (plan section 7.5), on
+        # top of the per-runner daily cap and the per-task cost
+        # ceiling. A shared ``caps`` ledger is what makes the
+        # caps hold across runner instances: pass one instance
+        # to every runner. Without one, this runner builds its
+        # own ledger from the per-runner cap parameters (or the
+        # defaults) and enforces the caps only for itself.
+        if caps is None:
+            caps = DailyCaps(
+                max_tasks_per_user_per_day=(
+                    max_tasks_per_user_per_day
+                    if max_tasks_per_user_per_day is not None
+                    else DEFAULT_MAX_TASKS_PER_USER_PER_DAY
+                ),
+                max_spend_rp_per_user_per_day=(
+                    max_spend_rp_per_user_per_day
+                    if max_spend_rp_per_user_per_day is not None
+                    else DEFAULT_MAX_SPEND_RP_PER_USER_PER_DAY
+                ),
+                max_tasks_global_per_day=(
+                    max_tasks_global_per_day
+                    if max_tasks_global_per_day is not None
+                    else DEFAULT_MAX_TASKS_GLOBAL_PER_DAY
+                ),
+                max_spend_rp_global_per_day=(
+                    max_spend_rp_global_per_day
+                    if max_spend_rp_global_per_day is not None
+                    else DEFAULT_MAX_SPEND_RP_GLOBAL_PER_DAY
+                ),
+            )
+        self.caps = caps
         self._runs_by_day: dict[str, int] = {}
         self._completed_by_day: dict[str, set] = {}
         self.history: list[dict] = []
@@ -298,6 +371,32 @@ class CurriculumRunner:
 
         return wrapped
 
+    def _run_verified(self, task_id: str, task_name: str, correction_before) -> bool:
+        """Whether a completed run was corroborated independently.
+
+        Two channels count, and a bare "completed" counts for
+        neither: (1) a real verifier was supplied to this runner
+        and the verify stage passed for this task (the trivial
+        default verifier never counts, so ``self.verifier`` must
+        not be None); (2) the loop's correction for the task
+        changed during the run, which means the world-model
+        scoring path inside ``TaskRunner`` recorded a new
+        correction for it. Either channel makes the outcome
+        verified; both absent means the run is the runner's own
+        unverified experience.
+        """
+        if self.verifier is not None:
+            for event in self._events:
+                content = event.get("content") or {}
+                if (
+                    event.get("type") == "verification_completed"
+                    and content.get("task_id") == task_id
+                    and content.get("passed")
+                ):
+                    return True
+        correction_after = self.loop.correction_for(task_name)
+        return correction_after is not None and correction_after != correction_before
+
     def _record_experience(
         self,
         proposal: dict,
@@ -307,10 +406,18 @@ class CurriculumRunner:
         error=None,
         task_id=None,
         cost_rp: int = 0,
+        verified: bool = False,
     ) -> dict:
-        """Append one experience entry to the loop experience log."""
+        """Record one runner outcome in the loop experience log.
+
+        A verified outcome is stored as a verified experience.
+        Anything else is quarantined (plan section 7.5): it is
+        stored and listed for review, but it never changes a
+        prediction, never grows a gap, and never clears one.
+        Only a user releasing it with
+        ``LearningLoop.confirm_experience`` can let it teach.
+        """
         entry = {
-            "id": uuid.uuid4().hex,
             "task": str(proposal["task"]),
             "predicted": self.loop.predict(str(proposal["task"])),
             "observed": observed,
@@ -325,8 +432,9 @@ class CurriculumRunner:
             "kind": "curriculum_success" if outcome == "completed" else "curriculum",
             "outcome": outcome,
         }
-        self.loop.experiences.append(entry)
-        return entry
+        if verified:
+            return self.loop.record_experience(entry, verification="verified")
+        return self.loop.quarantine_experience(entry, reasons=["unverified"])
 
     def run_once(self, *, now: datetime | None = None) -> dict:
         """Run at most one proposed learning task, when idle.
@@ -365,8 +473,25 @@ class CurriculumRunner:
             }
             self.history.append(outcome)
             return outcome
-        proposal = self.loop.propose_next_task()
+        completed = self._completed_by_day.setdefault(day, set())
+        proposal = self.loop.propose_next_task(exclude=completed)
         if proposal is None:
+            unfiltered = self.loop.propose_next_task()
+            if unfiltered is not None:
+                # Everything left to propose was already completed
+                # today: report that instead of running it again.
+                outcome = {
+                    "status": "already_completed",
+                    "ran": False,
+                    "proposal": unfiltered,
+                    "task_id": None,
+                    "task_status": None,
+                    "cost_rp": 0,
+                    "runs_today": self.runs_today(day),
+                    "reason": "task already completed today",
+                }
+                self.history.append(outcome)
+                return outcome
             outcome = {
                 "status": "no_task",
                 "ran": False,
@@ -380,20 +505,6 @@ class CurriculumRunner:
             self.history.append(outcome)
             return outcome
         task_name = str(proposal["task"])
-        completed = self._completed_by_day.setdefault(day, set())
-        if task_name in completed:
-            outcome = {
-                "status": "already_completed",
-                "ran": False,
-                "proposal": proposal,
-                "task_id": None,
-                "task_status": None,
-                "cost_rp": 0,
-                "runs_today": self.runs_today(day),
-                "reason": "task already completed today",
-            }
-            self.history.append(outcome)
-            return outcome
         # Ledger budget gate: no remaining budget means the task
         # waits (a hold, not a failure) and consumes no daily run.
         if self.budget_check is not None:
@@ -414,6 +525,29 @@ class CurriculumRunner:
                 }
                 self.history.append(outcome)
                 return outcome
+
+        # Daily caps per user and global (plan section 7.5):
+        # a blocked task waits (a hold, not a failure) and
+        # consumes no daily run and no cap room.
+        cap = self.caps.check(self.user_id, day=day, cost_ceiling_rp=self.cost_ceiling_rp)
+        if not cap["allowed"]:
+            outcome = {
+                "status": cap["status"],
+                "ran": False,
+                "proposal": proposal,
+                "task_id": None,
+                "task_status": None,
+                "cost_rp": 0,
+                "runs_today": self.runs_today(day),
+                "reason": cap["reason"],
+            }
+            self.history.append(outcome)
+            return outcome
+
+        # Snapshot the loop's correction for the task: when it
+        # changes during the run, the world-model scoring path
+        # corroborated the outcome (see `_run_verified`).
+        correction_before = self.loop.correction_for(task_name)
 
         purpose = self._purpose_for(proposal)
         plan = self._plan_for(proposal, purpose)
@@ -437,6 +571,9 @@ class CurriculumRunner:
         self._runs_by_day[day] = self.runs_today(day) + 1
         result = planner.run(task)
         cost_rp = budget.rupiah_used
+        # The task ran, whatever its outcome: record its cost
+        # against the per-user and global daily caps.
+        self.caps.record(self.user_id, day=day, cost_rp=cost_rp)
         status = result.status
         outcome = {
             "status": status,
@@ -449,32 +586,36 @@ class CurriculumRunner:
             "reason": proposal.get("reason"),
         }
         if status == "completed":
+            verified = self._run_verified(result.task_id, task_name, correction_before)
+            outcome["verified"] = verified
             self._record_experience(
                 proposal,
                 outcome="completed",
                 observed="completed",
                 task_id=result.task_id,
                 cost_rp=cost_rp,
+                verified=verified,
             )
-            if proposal.get("reason") == "misprediction_gap":
+            # Only a verified completion clears the gap: an
+            # unverified run is the runner's own say-so, and the
+            # curriculum may propose the retry again later.
+            if verified and proposal.get("reason") == "misprediction_gap":
                 self.loop.gaps.pop(task_name, None)
             completed.add(task_name)
         elif status == "failed":
             reason = self._failure_reason(result.task_id, planner)
             outcome["reason"] = reason
-            self.loop.record_misprediction(
-                {
-                    "task": task_name,
-                    "predicted": self.loop.predict(task_name),
-                    "observed": f"failed: {reason}",
-                    "error": reason,
-                    "context": {
-                        "source": "curriculum_runner",
-                        "reason": proposal.get("reason"),
-                        "cost_rp": cost_rp,
-                        "task_id": result.task_id,
-                    },
-                }
+            # The failure is the runner's own unverified
+            # experience: quarantine it, never teach from it.
+            # The gap stays open, so the curriculum may propose
+            # a retry later, subject to the daily caps.
+            self._record_experience(
+                proposal,
+                outcome="failed",
+                observed=f"failed: {reason}",
+                error=reason,
+                task_id=result.task_id,
+                cost_rp=cost_rp,
             )
         elif status == "pending_approval":
             # Outbound step: stopped before execution, recorded only.
@@ -510,6 +651,11 @@ def run_curriculum_tick(
     world_model=None,
     learning_loop=None,
     budget_check=None,
+    caps=None,
+    max_tasks_per_user_per_day=None,
+    max_spend_rp_per_user_per_day=None,
+    max_tasks_global_per_day=None,
+    max_spend_rp_global_per_day=None,
     now: datetime | None = None,
 ) -> dict:
     """Run one curriculum step from a scheduler tick.
@@ -517,9 +663,12 @@ def run_curriculum_tick(
     Pass an existing ``runner`` to keep the daily cap and the
     completed set across ticks; when ``runner`` is None a fresh
     runner is built from the other arguments (its daily cap then
-    covers only this call). Any failure inside the runner is
-    reported as an ``error`` outcome, never raised, so a tick that
-    calls this helper cannot be broken by curriculum work.
+    covers only this call). Pass a shared ``caps`` ledger (or
+    the per-runner cap parameters) to enforce the per-user and
+    global daily caps for a fresh runner. Any failure inside
+    the runner is reported as an ``error`` outcome, never
+    raised, so a tick that calls this helper cannot be broken
+    by curriculum work.
     """
     try:
         if runner is None:
@@ -534,6 +683,11 @@ def run_curriculum_tick(
                 world_model=world_model,
                 learning_loop=learning_loop,
                 budget_check=budget_check,
+                caps=caps,
+                max_tasks_per_user_per_day=max_tasks_per_user_per_day,
+                max_spend_rp_per_user_per_day=max_spend_rp_per_user_per_day,
+                max_tasks_global_per_day=max_tasks_global_per_day,
+                max_spend_rp_global_per_day=max_spend_rp_global_per_day,
             )
         return runner.run_once(now=now)
     except Exception as exc:

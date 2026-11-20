@@ -63,6 +63,14 @@ def _verified_draft(loop, task="check_pln"):
     return skill
 
 
+def _submitted_draft(loop, task="check_pln"):
+    """A verified draft that passed holdout and was submitted for
+    approval (plan section 7.5: activation needs both)."""
+    skill = _verified_draft(loop, task=task)
+    loop.submit_for_approval(skill["id"], [{"args": [5], "expected": 5}])
+    return skill
+
+
 # --- seam: record_misprediction -----------------------------------------
 
 
@@ -197,7 +205,7 @@ def test_activate_with_real_gate_approval_then_reusable():
     """Behaviour change: a verified trial skill becomes active and
     reusable only after a real approved Gate request."""
     loop = LearningLoop()
-    skill = _verified_draft(loop)
+    skill = _submitted_draft(loop)
     assert loop.find_reusable_skill("check_pln") is None
     gate, request = _gate_approval(skill_id=skill["id"])
     activated = loop.activate_skill(
@@ -260,7 +268,7 @@ def test_activate_with_unapproved_gate_request_denied():
 
 def test_activate_with_explicit_user_approval():
     loop = LearningLoop()
-    skill = _verified_draft(loop)
+    skill = _submitted_draft(loop)
     activated = loop.activate_skill(skill["id"], user_id="user-1", approved_by="user-1")
     assert activated["status"] == "active"
 
@@ -279,7 +287,7 @@ def test_activate_unverified_or_rejected_skill_refused():
 
 def test_misprediction_marks_active_skill_suspect():
     loop = LearningLoop()
-    skill = _verified_draft(loop)
+    skill = _submitted_draft(loop)
     loop.activate_skill(skill["id"], approved_by="user-1")
     assert loop.get_skill(skill["id"])["status"] == "active"
     loop.record_misprediction(_record(task="check_pln"))

@@ -90,6 +90,13 @@ BASELINE_LINES = {
     # the fatigue tracker into its own module, or the policy
     # store into a store module.
     "puspa/policy/approvals.py": 1047,
+    # Learning loop (E-15): experience recording, feedback,
+    # quarantine, holdout evaluation, and skill activation in one
+    # module. Crossed 1000 lines in Wave 43 (E-15): +~200 lines
+    # for the guardrails (quarantine + holdout + weekly cap).
+    # Split candidate when it grows again: the quarantine store
+    # into its own module, or the holdout evaluation into one.
+    "puspa/memory/learning_loop.py": 1215,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Shared-room delegation (B6): the delegation board, task
