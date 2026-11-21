@@ -42,11 +42,13 @@ task-id parameter.
 
 from __future__ import annotations
 
+import psycopg
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from ..i18n.server_lines import render as render_server_line
 from ..ledger import Ledger
+from .artifacts import ArtifactError, ArtifactStore
 from .replay import (
     ReplayError,
     build_replay,
@@ -137,6 +139,11 @@ def export_gif(
 ) -> bytes:
     """The replay as an animated GIF (rendered frames).
 
+    The generated GIF is also recorded as an artifact of the
+    run (see :func:`_record_export_artifact`): the export is
+    the first real producer of artifacts, so the browser has
+    something genuine to show without a second storage path.
+
     Raises :class:`ReplayError` (403 not theirs, 404 unknown
     task, 400 too many steps).
     """
@@ -147,7 +154,35 @@ def export_gif(
         dsn=dsn,
         ledger=ledger if ledger is not None else Ledger(dsn),
     )
-    return export_replay_gif(timeline)
+    gif = export_replay_gif(timeline)
+    _record_export_artifact(user_id, agent_id, task_id, gif, dsn=dsn)
+    return gif
+
+
+def _record_export_artifact(
+    user_id: str, agent_id: str, task_id: str, gif: bytes, *, dsn=None
+) -> None:
+    """Record an exported replay GIF as an artifact of its run.
+
+    Best-effort on purpose: the download is the user's file
+    and must not fail because the optional artifact record
+    failed (for example, a database that has not applied
+    migration 0035 yet). Only the two error kinds a record
+    can raise are caught — a validation error and a database
+    error — never a bare except.
+    """
+    try:
+        ArtifactStore(dsn=dsn).record_artifact(
+            user_id=user_id,
+            agent_id=agent_id,
+            run_id=task_id,
+            name=f"replay-{task_id}.gif",
+            kind="gif",
+            media_type="image/gif",
+            content=gif,
+        )
+    except (ArtifactError, psycopg.Error):
+        return
 
 
 def register_routes(app: FastAPI, need_user) -> FastAPI:

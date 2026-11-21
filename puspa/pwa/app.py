@@ -1,4 +1,4 @@
-"""PWA Puspa — 14 layar (7 dari revisi 7, ditambah Insights dan
+"""PWA Puspa — 15 layar (7 dari revisi 7, ditambah Insights dan
 Onboarding oleh kerja kematangan G28).
 
 Stack (keputusan 1, diperbarui G1): FastAPI + TypeScript SPA
@@ -15,9 +15,10 @@ Catatan jujur soal jumlah layar: revisi 7 membatasi PWA pada 7
 layar, tetapi perintah kematangan Nero (kerjakan semua 28 celah
 G1-G28) mewajibkan halaman Insights (celah biaya/token) dan
 Onboarding pertama kali (G28). Batas 7 layar itu sudah tidak
-berlaku lagi setelah penambahan kematangan; total sekarang 14
+berlaku lagi setelah penambahan kematangan; total sekarang 15
 (termasuk Ruang, yang selama ini ada di SPA tapi tidak terdaftar
-di server sehingga /rooms 404).
+di server sehingga /rooms 404, dan Artefak, penampil artefak +
+log run dari riset CowAgent).
 
 Login: Google (keputusan 16, fondasi Fase 1 `puspa.auth`); sesi
 cookie httpOnly via `puspa.accounts.ports`. Di tes, `create_app`
@@ -61,6 +62,10 @@ SCREENS = (
     "live",
     # P-10: replay timeline of a bot's steps (plan section 12.10).
     "replay",
+    # Artifacts + run-logs browser (CowAgent research): the
+    # artifacts a run produced plus its ledger log, in one
+    # screen with two tabs.
+    "artifacts",
     "insights",
     "onboarding",
     "mockup",
@@ -443,9 +448,11 @@ def create_app(
                 ctx["agents"] = list_agents(user_id, dsn=app.state.dsn)
             except (psycopg.Error, ValueError, TypeError, AttributeError):
                 ctx["agents"] = []
-        elif screen == "replay":
+        elif screen in ("replay", "artifacts"):
             # P-10: the replay screen needs the same agent list
-            # to pick which bot's task to replay.
+            # to pick which bot's task to replay. The artifacts
+            # screen needs it too: one picker serves both its
+            # tabs (artifacts list + run-log list).
             try:
                 from puspa.runtime.agents import list_agents
 
@@ -1012,6 +1019,7 @@ def create_app(
     # needs no new bootstrap data for them.
     from puspa.pwa import (
         approval_overlay_api,
+        artifacts_api,
         chat_cards_api,
         chat_widgets_api,
         computer_api,
@@ -1084,6 +1092,9 @@ def create_app(
     chat_widgets_api.register_routes(app, need_user)
     # P-10: replay timeline + GIF export, same login resolver.
     replay_api.register_routes(app, need_user)
+    # Artifacts + run-logs browser: the artifacts list +
+    # download; the run-log half reuses the replay routes.
+    artifacts_api.register_routes(app, need_user)
     mockup_api.register_routes(app, need_user)
     insights_api.register_routes(app, need_user)
     onboarding_api.register_routes(app, need_user)

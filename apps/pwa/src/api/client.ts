@@ -96,6 +96,27 @@ export type TargetElement = components["schemas"]["TargetElement"];
 export type OverlayHighlight = components["schemas"]["OverlayHighlight"];
 export type ReplayTimeline = components["schemas"]["ReplayTimeline"];
 export type ReplayTaskSummary = components["schemas"]["ReplayTaskSummary"];
+/**
+ * One file a run produced, from the artifacts browser list.
+ * A local interface, not a generated type: `npm run generate`
+ * cannot run in this tree (the voice spec has an unquoted
+ * colon at openapi-voice.yaml:439 and the rooms spec file is
+ * absent, both pre-existing), so the generated client carries
+ * no ArtifactSummary yet. The shape mirrors the contract in
+ * docs/openapi-artifacts.yaml exactly; when generation works
+ * again this becomes `components["schemas"]["ArtifactSummary"]`
+ * like the replay types above.
+ */
+export interface ArtifactSummary {
+  artifact_id: string;
+  agent_id: string;
+  run_id: string | null;
+  name: string;
+  kind: "gif" | "markdown" | "text" | "json" | "image" | "file";
+  media_type: string;
+  size_bytes: number;
+  created_at: string;
+}
 export type ReceiptUpload = components["schemas"]["ReceiptUpload"];
 export type ReceiptDraft = components["schemas"]["ReceiptDraft"];
 export type ReceiptExpense = components["schemas"]["ReceiptExpense"];
@@ -584,6 +605,30 @@ export function fetchReplayStep(
  */
 export function replayGifUrl(agentId: string, taskId: string): string {
   return `/api/replay/${encodeURIComponent(agentId)}/${encodeURIComponent(taskId)}/export.gif`;
+}
+
+/**
+ * Artifacts browser: list one agent's produced files, newest
+ * first (metadata only — name, kind, size, run, time).
+ */
+export function fetchArtifacts(
+  agentId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<ArtifactSummary[]> {
+  return getJson<ArtifactSummary[]>(
+    `/api/artifacts/${encodeURIComponent(agentId)}`,
+    fetchFn,
+  );
+}
+
+/**
+ * Artifacts browser: the download URL for one artifact's bytes
+ * (its own media type, attached under its name). A plain link —
+ * the browser sends the login cookie with it, so it also works
+ * as an "open in browser" link for text and image artifacts.
+ */
+export function artifactDownloadUrl(agentId: string, artifactId: string): string {
+  return `/api/artifacts/${encodeURIComponent(agentId)}/${encodeURIComponent(artifactId)}`;
 }
 
 /** Read the autonomy dial state: five areas, ceilings, streaks, suggestions. */

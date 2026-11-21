@@ -1,0 +1,136 @@
+# Artifacts browser API contract (artifacts + run-logs browser,
+# CowAgent research).
+#
+# Split out of docs/openapi-pwa.yaml (same precedent as replay,
+# rooms, graph, mockup, payments, controls, voice, receipts,
+# morning, and live-view): the main spec references this file
+# with $ref stubs; the generated client is produced from the
+# main spec with openapi-typescript, which resolves external
+# $refs. The Error schema stays in the main spec and is
+# referenced back from here.
+#
+# Honest scope, in the contract: the browser lists the files
+# a run produced (name, kind, size, time, open/download) and
+# serves one file's bytes. The run-log half reuses the replay
+# contract (docs/openapi-replay.yaml): a run's log is its
+# ledger events, so no second log endpoint exists here. The
+# first producer of artifacts is the replay GIF export, which
+# records the generated GIF as an artifact of its run.
+openapi: 3.0.3
+info:
+  title: PuspaBot artifacts browser API
+  version: 1.0.0
+paths:
+  /api/artifacts/{agent_id}:
+    get:
+      tags: [artifacts]
+      summary: Artifacts of one agent, newest first
+      description: |
+        artifacts browser: the agent's produced files, newest
+        first — name, kind, media type, size, run, and time.
+        Metadata only; the bytes come from the download
+        endpoint below.
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Artifacts, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ArtifactSummary"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: The agent does not belong to this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/artifacts/{agent_id}/{artifact_id}:
+    get:
+      tags: [artifacts]
+      summary: Download one artifact's bytes
+      description: |
+        artifacts browser: the artifact's bytes under its own
+        media type, downloaded as an attachment under its
+        name. A text or image artifact can also be opened in
+        the browser from the same URL.
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: artifact_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The artifact's bytes
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "403":
+          description: The agent does not belong to this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown artifact, or not this agent's
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    ArtifactSummary:
+      type: object
+      description: One file a run produced, from the browser list.
+      properties:
+        artifact_id:
+          type: string
+        agent_id:
+          type: string
+        run_id:
+          type: string
+          nullable: true
+          description: The run (task) that produced the file, when known.
+        name:
+          type: string
+          description: File name, used for the download.
+        kind:
+          type: string
+          enum: [gif, markdown, text, json, image, file]
+          description: Short label for the list, not an extension.
+        media_type:
+          type: string
+          description: Media type the download is served with.
+        size_bytes:
+          type: integer
+          description: Size of the stored bytes.
+        created_at:
+          type: string
+          format: date-time
+      required: [artifact_id, agent_id, run_id, name, kind, media_type, size_bytes, created_at]
