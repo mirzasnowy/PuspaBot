@@ -1,12 +1,23 @@
-"""``puspa computer`` command group (V2-31, core; V2-32 visual fallback + web bridge).
+"""``puspa computer`` command group (V2-31 core, V2-32 visual fallback + web bridge,
+V2-33 input + windows).
+
 
 ``snapshot`` prints the accessibility tree as JSON (skeleton by
 default), ``click`` clicks one ref through the permission gate
 and re-reads to verify, ``verify`` re-reads one ref and checks
-it. ``--backend auto`` (the default) uses the real Linux AT-SPI
+it. V2-33 adds ``type``, ``shortcut``, ``scroll``, ``drag``,
+``clipboard`` (read/write), ``windows``, ``open-app``,
+``focus-window``, ``switch-window``, and ``task`` (a JSON list
+of steps run end to end, stopping at the first unverified one).
+
+``--backend auto`` (the default) uses the real Linux AT-SPI
 backend and fails closed with a plain error when there is no
 desktop; it never silently falls back to the fake tree.
 ``--backend fake`` reads a small in-memory demo tree instead.
+
+Clipboard content is never printed: ``clipboard read`` reports
+only the length.
+
 
 V2-32 adds two groups under the same ``--backend`` flag:
 
@@ -20,6 +31,7 @@ V2-32 adds two groups under the same ``--backend`` flag:
   Playwright (``auto``), or to a canned demo page (``fake``).
   ``web click`` opens the URL, finds the text in the page, clicks
   it (gated), and verifies by re-reading the page.
+
 """
 
 from __future__ import annotations
@@ -46,6 +58,10 @@ def _expect_from_args(args: argparse.Namespace) -> dict | None:
         expect["state"] = args.expect_state
     if getattr(args, "expect_absent", False):
         expect["absent"] = True
+    if getattr(args, "expect_value", None):
+        expect["value"] = args.expect_value
+    if getattr(args, "expect_value_contains", None):
+        expect["value_contains"] = args.expect_value_contains
     return expect or None
 
 
@@ -73,16 +89,25 @@ def _add_expect_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="The element should be gone after the action.",
     )
+    parser.add_argument(
+        "--expect-value", default=None, help="Text the element should hold after the action."
+    )
+    parser.add_argument(
+        "--expect-value-contains",
+        default=None,
+        help="Text the element should contain after the action.",
+    )
 
 
 def add_computer_parser(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
     """Add the ``computer`` group to the top-level parser."""
     computer = subparsers.add_parser(
         "computer",
-        help="Desktop hands: snapshot, click, verify (V2-31).",
+        help="Desktop hands: snapshot, click, verify, type, shortcut, scroll, drag, clipboard, windows (V2-31 + V2-33).",
         description=(
             "Drive the local desktop through its accessibility tree: read a snapshot, click a ref, "
-            "verify by re-reading. Linux first (AT-SPI); every click asks the user first."
+            "type, press shortcuts, scroll, drag, use the clipboard, manage windows. Linux first "
+            "(AT-SPI); every action asks the user first."
         ),
     )
     computer.add_argument(
@@ -119,6 +144,96 @@ def add_computer_parser(subparsers: argparse._SubParsersAction) -> argparse.Argu
     verify.add_argument("ref", help="Element ref from `puspa computer snapshot`, e.g. n3.")
     _add_backend_arg(verify)
     _add_expect_args(verify)
+
+    type_cmd = computer_sub.add_parser(
+        "type",
+        help="Type text into one editable element by ref, then verify by re-reading.",
+        description="Type text into an editable element. Asks the user first, then re-reads to verify.",
+    )
+    type_cmd.add_argument("ref", help="Element ref from `puspa computer snapshot`, e.g. n5.")
+    type_cmd.add_argument("text", help="Text to type into the element.")
+    _add_backend_arg(type_cmd)
+    _add_expect_args(type_cmd)
+    shortcut = computer_sub.add_parser(
+        "shortcut",
+        help="Press a keyboard chord like ctrl+a, then verify by re-reading.",
+        description="Press a keyboard chord (keys joined with +, e.g. ctrl+a). Asks the user first.",
+    )
+    shortcut.add_argument("keys", help="Chord to press, e.g. ctrl+a.")
+    shortcut.add_argument(
+        "--ref", default=None, help="Element ref to target; without one, the focused element."
+    )
+    _add_backend_arg(shortcut)
+    _add_expect_args(shortcut)
+    scroll = computer_sub.add_parser(
+        "scroll",
+        help="Scroll at one element by ref, then verify by re-reading.",
+        description="Scroll at an element. Asks the user first, then re-reads to verify.",
+    )
+    scroll.add_argument("ref", help="Element ref from `puspa computer snapshot`, e.g. n5.")
+    scroll.add_argument(
+        "--direction",
+        choices=["up", "down", "left", "right"],
+        default="down",
+        help="Scroll direction (default down).",
+    )
+    scroll.add_argument("--amount", type=int, default=3, help="Scroll clicks (default 3).")
+    _add_backend_arg(scroll)
+    _add_expect_args(scroll)
+    drag = computer_sub.add_parser(
+        "drag",
+        help="Drag one element onto another by ref, then verify by re-reading.",
+        description="Drag one element onto another. Asks the user first, then re-reads the drop target.",
+    )
+    drag.add_argument("ref_from", help="Element ref to drag, e.g. n7.")
+    drag.add_argument("ref_to", help="Element ref to drop onto, e.g. n8.")
+    _add_backend_arg(drag)
+    _add_expect_args(drag)
+    clipboard = computer_sub.add_parser(
+        "clipboard",
+        help="Read or write the session clipboard (content is never printed).",
+        description="Clipboard read/write. Read reports only the length; the content is never printed.",
+    )
+    _add_backend_arg(clipboard)
+    clipboard_sub = clipboard.add_subparsers(dest="clipboard_command", metavar="CLIPBOARD_COMMAND")
+    clipboard_sub.add_parser("read", help="Read the clipboard (reports only its length).")
+    clipboard_write = clipboard_sub.add_parser("write", help="Replace the clipboard contents.")
+    clipboard_write.add_argument("text", help="Text to put on the clipboard.")
+    windows = computer_sub.add_parser(
+        "windows",
+        help="List the open windows.",
+        description="List the open windows (id, app, title, focused). Read-only.",
+    )
+    _add_backend_arg(windows)
+    open_app = computer_sub.add_parser(
+        "open-app",
+        help="Open an app by name, then verify a window for it appeared.",
+        description="Open an app by executable name (or desktop entry). Asks the user first.",
+    )
+    open_app.add_argument("name", help="App to open, e.g. gedit.")
+    _add_backend_arg(open_app)
+    _add_expect_args(open_app)
+    focus_window = computer_sub.add_parser(
+        "focus-window",
+        help="Bring one window to the front by id, then verify it is focused.",
+        description="Focus a window by id from `puspa computer windows`. Asks the user first.",
+    )
+    focus_window.add_argument("window_id", help="Window id, e.g. 0.1.")
+    _add_backend_arg(focus_window)
+    switch_window = computer_sub.add_parser(
+        "switch-window",
+        help="Switch to the next window, then verify the focus moved.",
+        description="Switch to the next window after the focused one (cycling). Asks the user first.",
+    )
+    _add_backend_arg(switch_window)
+    task = computer_sub.add_parser(
+        "task",
+        help="Run a JSON list of steps end to end, stopping at the first unverified one.",
+        description="Run a multi-step task from a JSON file (a list of step objects, see docs/computer-hands.md).",
+    )
+    task.add_argument("steps_file", help="Path to a JSON file holding a list of steps.")
+    _add_backend_arg(task)
+
     visual = computer_sub.add_parser(
         "visual",
         help="Visual fallback: locate text by OCR, click by coordinates (V2-32).",
@@ -194,6 +309,7 @@ def add_computer_parser(subparsers: argparse._SubParsersAction) -> argparse.Argu
         default=None,
         help="Text that must be gone from the page after the click.",
     )
+
     return computer
 
 
@@ -294,10 +410,33 @@ def run_computer(
         return _run_click(args, hands_factory=hands_factory, print_fn=print_fn)
     if args.computer_command == "verify":
         return _run_verify(args, hands_factory=hands_factory, print_fn=print_fn)
+
+    if args.computer_command == "type":
+        return _run_type(args, hands_factory=hands_factory, print_fn=print_fn)
+    if args.computer_command == "shortcut":
+        return _run_shortcut(args, hands_factory=hands_factory, print_fn=print_fn)
+    if args.computer_command == "scroll":
+        return _run_scroll(args, hands_factory=hands_factory, print_fn=print_fn)
+    if args.computer_command == "drag":
+        return _run_drag(args, hands_factory=hands_factory, print_fn=print_fn)
+    if args.computer_command == "clipboard":
+        return _run_clipboard(args, hands_factory=hands_factory, print_fn=print_fn)
+    if args.computer_command == "windows":
+        return _run_windows(args, hands_factory=hands_factory, print_fn=print_fn)
+    if args.computer_command == "open-app":
+        return _run_open_app(args, hands_factory=hands_factory, print_fn=print_fn)
+    if args.computer_command == "focus-window":
+        return _run_focus_window(args, hands_factory=hands_factory, print_fn=print_fn)
+    if args.computer_command == "switch-window":
+        return _run_switch_window(args, hands_factory=hands_factory, print_fn=print_fn)
+    if args.computer_command == "task":
+        return _run_task(args, hands_factory=hands_factory, print_fn=print_fn)
+
     if args.computer_command == "visual":
         return _run_visual(args, fallback_factory=fallback_factory, print_fn=print_fn)
     if args.computer_command == "web":
         return _run_web(args, web_factory=web_factory, print_fn=print_fn)
+
     return 0
 
 
@@ -358,6 +497,169 @@ def _run_verify(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
     if not result.verified:
         return 1
     return 0
+
+
+def _run_action(args: argparse.Namespace, *, hands_factory, print_fn, label: str, call) -> int:
+    """Run one gated input/window action, print its JSON result,
+    exit non-zero when it did not perform or did not verify."""
+    try:
+        hands = _hands(args, hands_factory)
+        result = call(hands)
+    except (BackendUnavailableError, DesktopHandsError) as exc:
+        print_fn(f"puspa computer {label}: failed: {exc}")
+        return 1
+    except Exception as exc:  # permission denial from the prompt or gate
+        print_fn(f"puspa computer {label}: refused: {exc}")
+        return 1
+    print_fn(json.dumps(result.to_dict(), indent=2))
+    if not result.performed or not result.verified:
+        return 1
+    return 0
+
+
+def _run_type(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
+    return _run_action(
+        args,
+        hands_factory=hands_factory,
+        print_fn=print_fn,
+        label="type",
+        call=lambda hands: hands.type_text(args.ref, args.text, expect=_expect_from_args(args)),
+    )
+
+
+def _run_shortcut(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
+    return _run_action(
+        args,
+        hands_factory=hands_factory,
+        print_fn=print_fn,
+        label="shortcut",
+        call=lambda hands: hands.shortcut(args.keys, args.ref, expect=_expect_from_args(args)),
+    )
+
+
+def _run_scroll(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
+    return _run_action(
+        args,
+        hands_factory=hands_factory,
+        print_fn=print_fn,
+        label="scroll",
+        call=lambda hands: hands.scroll(
+            args.ref, args.direction, args.amount, expect=_expect_from_args(args)
+        ),
+    )
+
+
+def _run_drag(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
+    return _run_action(
+        args,
+        hands_factory=hands_factory,
+        print_fn=print_fn,
+        label="drag",
+        call=lambda hands: hands.drag(args.ref_from, args.ref_to, expect=_expect_from_args(args)),
+    )
+
+
+def _run_clipboard(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
+    if getattr(args, "clipboard_command", None) is None:
+        print_fn("puspa computer clipboard: needs a subcommand (read or write)")
+        return 1
+    try:
+        hands = _hands(args, hands_factory)
+        if args.clipboard_command == "read":
+            result = hands.clipboard_read()
+            # Content is never printed: only the length leaves this process.
+            print_fn(
+                json.dumps(
+                    {
+                        "action": result.action,
+                        "performed": result.performed,
+                        "verified": result.verified,
+                        "reason": result.reason,
+                        "length": result.length,
+                        "note": "content is not printed; read it through the Python or MCP API",
+                    },
+                    indent=2,
+                )
+            )
+            return 0 if result.performed else 1
+        result = hands.clipboard_write(args.text)
+    except (BackendUnavailableError, DesktopHandsError) as exc:
+        print_fn(f"puspa computer clipboard: failed: {exc}")
+        return 1
+    except Exception as exc:  # permission denial from the prompt or gate
+        print_fn(f"puspa computer clipboard: refused: {exc}")
+        return 1
+    print_fn(json.dumps(result.to_dict(), indent=2))
+    if not result.performed or not result.verified:
+        return 1
+    return 0
+
+
+def _run_windows(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
+    try:
+        hands = _hands(args, hands_factory)
+        windows = hands.list_windows()
+    except (BackendUnavailableError, DesktopHandsError) as exc:
+        print_fn(f"puspa computer windows: failed: {exc}")
+        return 1
+    print_fn(json.dumps([window.to_dict() for window in windows], indent=2))
+    return 0
+
+
+def _run_open_app(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
+    return _run_action(
+        args,
+        hands_factory=hands_factory,
+        print_fn=print_fn,
+        label="open-app",
+        call=lambda hands: hands.open_app(args.name, expect=_expect_from_args(args)),
+    )
+
+
+def _run_focus_window(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
+    return _run_action(
+        args,
+        hands_factory=hands_factory,
+        print_fn=print_fn,
+        label="focus-window",
+        call=lambda hands: hands.focus_window(args.window_id),
+    )
+
+
+def _run_switch_window(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
+    return _run_action(
+        args,
+        hands_factory=hands_factory,
+        print_fn=print_fn,
+        label="switch-window",
+        call=lambda hands: hands.switch_window(),
+    )
+
+
+def _run_task(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
+    try:
+        with open(args.steps_file, encoding="utf-8") as handle:
+            steps = json.load(handle)
+    except OSError as exc:
+        print_fn(f"puspa computer task: cannot read {args.steps_file}: {exc}")
+        return 1
+    except json.JSONDecodeError as exc:
+        print_fn(f"puspa computer task: {args.steps_file} is not valid JSON: {exc}")
+        return 1
+    if not isinstance(steps, list):
+        print_fn("puspa computer task: the steps file must hold a JSON list of steps")
+        return 1
+    try:
+        hands = _hands(args, hands_factory)
+        outcome = hands.run_task(steps)
+    except (BackendUnavailableError, DesktopHandsError) as exc:
+        print_fn(f"puspa computer task: failed: {exc}")
+        return 1
+    except Exception as exc:  # permission denial from the prompt or gate
+        print_fn(f"puspa computer task: refused: {exc}")
+        return 1
+    print_fn(json.dumps(outcome, indent=2))
+    return 0 if outcome["completed"] else 1
 
 
 def _visual_expect(args: argparse.Namespace) -> dict | None:

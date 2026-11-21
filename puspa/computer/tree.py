@@ -60,6 +60,11 @@ class AccessibleNode:
     children: tuple[AccessibleNode, ...] = ()
     child_count: int = 0
     collapsed: bool = False
+    #: Current text of an editable element (V2-33): the value
+    #: typed into it. Empty for elements with no text. The fake
+    #: backend reads it from the spec ``"value"`` key; the real
+    #: backend reads it through the AT-SPI text interface.
+    value: str = ""
 
     def summary(self) -> str:
         """One short line for logs and click results."""
@@ -140,6 +145,7 @@ def assign_refs(nodes: list[AccessibleNode]) -> list[AccessibleNode]:
             children=tuple(rebuild(child) for child in node.children),
             child_count=node.child_count,
             collapsed=node.collapsed,
+            value=node.value,
         )
 
     return [rebuild(node) for node in nodes]
@@ -168,6 +174,8 @@ def node_to_dict(node: AccessibleNode) -> dict:
         "actions": list(node.actions),
         "child_count": node.child_count,
     }
+    if node.value:
+        data["value"] = node.value
     if node.collapsed:
         data["collapsed"] = True
     else:
@@ -202,6 +210,7 @@ def _collapse(node: AccessibleNode, depth: int, max_depth: int) -> AccessibleNod
             children=(),
             child_count=node.child_count or len(node.children),
             collapsed=bool(node.children),
+            value=node.value,
         )
     return AccessibleNode(
         ref=node.ref,
@@ -218,6 +227,7 @@ def _collapse(node: AccessibleNode, depth: int, max_depth: int) -> AccessibleNod
         children=tuple(_collapse(child, depth + 1, max_depth) for child in node.children),
         child_count=node.child_count or len(node.children),
         collapsed=False,
+        value=node.value,
     )
 
 
