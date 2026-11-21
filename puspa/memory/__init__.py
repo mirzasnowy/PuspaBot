@@ -18,6 +18,7 @@ from . import (
     recall_plan,
     slices,
     trust,
+    working,
     write_cycle,
 )
 from .embeddings import (
@@ -59,5 +60,6 @@ __all__ = [
     "select_provider",
     "slices",
     "trust",
+    "working",
     "write_cycle",
 ]
