@@ -263,8 +263,13 @@ jobs:
         run: |
           # The base commit needs fetching: checkout only has the
           # last 2 commits (same pattern as the changes job).
+          # pr_lane.py diffs base...head (three-dot), which needs a
+          # merge base: a depth-1 fetch of the base leaves it
+          # disconnected when main moved past the PR's fork point, so
+          # unshallow the clone first (history is small post-scrub)
+          # and fall back to the old depth-1 fetch if that fails.
           BASE="${{ github.event.pull_request.base.sha }}"
-          git fetch --depth 1 origin "$BASE" 2>/dev/null || true
+          git fetch --unshallow origin 2>/dev/null || git fetch --depth 1 origin "$BASE" 2>/dev/null || true
           python scripts/pr_lane.py --base "$BASE" --head "${{ github.sha }}"
 
   sandbox:
