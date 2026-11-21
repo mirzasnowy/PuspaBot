@@ -8,6 +8,7 @@ import {
   type ModelSettings,
 } from "../api/client";
 import { AutonomyDialPanel } from "../components/AutonomyDialPanel";
+import { AgentPhotoPicker } from "../components/AgentPhotoPicker";
 import {
   DEFAULT_LOCAL_BASE_URL,
   DEFAULT_LOCAL_MODEL,
@@ -172,6 +173,11 @@ export function SettingsScreen() {
   return (
     <div>
       <h1>Pengaturan</h1>
+      <div className="card">
+        <strong>Foto agen</strong>
+        <p>Ganti foto profil agen. Tanpa foto kustom, logo Puspa dipakai.</p>
+        <AgentPhotoPicker />
+      </div>
       <div className="card">
         <strong>Batas belanja</strong>
         <p>Default Rp0 tanpa persetujuan. Agen tidak bisa menaikkannya sendiri.</p>

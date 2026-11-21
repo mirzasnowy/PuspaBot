@@ -1068,6 +1068,12 @@ def create_app(
     from puspa.pwa import receipt_api
 
     receipt_api.register_routes(app, need_user)
+    # V2-26: agent avatar photo (upload / get / serve / delete).
+    # Registered after share_api so app.state.share_inbox_dir is
+    # already set; the avatar lives under the same per-user base.
+    from puspa.pwa import avatar_api
+
+    avatar_api.register_routes(app, need_user)
     # P-07: morning summary + notes-to-actions (plan section 12.8).
     # The screen itself needs no bootstrap data: it fetches
     # everything through the morning APIs.
