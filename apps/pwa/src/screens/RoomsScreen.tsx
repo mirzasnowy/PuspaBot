@@ -7,6 +7,7 @@ import {
   deleteRoom,
   deleteRoomMemory,
   enqueueRoomJob,
+  fetchDisplayName,
   fetchMemoryFacts,
   fetchRoomBoard,
   fetchRoomDetail,
@@ -21,6 +22,7 @@ import {
   removeMember,
   revokeRoomInvite,
   runRoomJob,
+  saveDisplayName,
   setMemberRole,
   type IssuedInvite,
   type MemoryFactItem,
@@ -32,6 +34,11 @@ import {
   type RoomSummary,
 } from "../api/client";
 import { canWriteInRoom, roleLabel, sortRooms } from "../state/rooms";
+import {
+  displayNameForMember,
+  memberDisplayNames,
+  renderDecisionText,
+} from "../state/names";
 
 function errorText(error: unknown): string {
   return error instanceof ApiError ? error.message : "Gagal memuat ruang.";
@@ -51,6 +58,8 @@ export function RoomsScreen() {
   const [notice, setNotice] = useState("");
   const [newName, setNewName] = useState("");
   const [joinCode, setJoinCode] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [displayNameError, setDisplayNameError] = useState("");
   const [inviteKind, setInviteKind] = useState<"link" | "code">("link");
   const [inviteRole, setInviteRole] = useState<"member" | "guest">("member");
   const [issued, setIssued] = useState<IssuedInvite | null>(null);
@@ -91,6 +100,39 @@ export function RoomsScreen() {
   useEffect(() => {
     void refreshRooms();
   }, [refreshRooms]);
+
+  // V2-27: the caller's own display name, loaded once; a failed
+  // fetch leaves the field blank and the screen still works.
+  useEffect(() => {
+    let cancelled = false;
+    fetchDisplayName()
+      .then((data) => {
+        if (!cancelled) setDisplayName(data.display_name ?? "");
+      })
+      .catch(() => {
+        // No name yet (or the route is unavailable): blank field.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function onSaveDisplayName(event: React.FormEvent) {
+    event.preventDefault();
+    if (!displayName.trim()) {
+      setDisplayNameError("Isi dulu nama yang mau ditampilkan.");
+      return;
+    }
+    try {
+      const saved = await saveDisplayName(displayName.trim());
+      setDisplayName(saved.display_name ?? "");
+      setDisplayNameError("");
+      setNotice("Nama tampilan disimpan. Anggota ruang lain langsung melihat nama baru ini.");
+      if (selectedId) await refreshDetail(selectedId);
+    } catch (err) {
+      setDisplayNameError(errorText(err));
+    }
+  }
 
   useEffect(() => {
     if (selectedId) void refreshDetail(selectedId);
@@ -333,34 +375,65 @@ export function RoomsScreen() {
             {detail.role === "guest" ? " — tamu hanya bisa membaca." : ""}
           </p>
 
+          <form onSubmit={(e) => void onSaveDisplayName(e)} aria-labelledby="display-name-heading">
+            <h3 id="display-name-heading">Nama saya di ruang</h3>
+            <label htmlFor="display-name">Nama tampilan</label>
+            <input
+              id="display-name"
+              name="display_name"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              autoComplete="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              aria-describedby="display-name-help"
+              aria-invalid={displayNameError ? true : undefined}
+              maxLength={100}
+            />
+            <p id="display-name-help" className="muted">
+              Nama ini yang dilihat anggota ruang lain, bukan id kamu. Maksimal 100 karakter.
+            </p>
+            {displayNameError ? (
+              <p role="alert" className="error">
+                {displayNameError}
+              </p>
+            ) : null}
+            <button type="submit">Simpan nama</button>
+          </form>
+
           <h3>Anggota</h3>
-          {detail.members.map((member) => (
-            <div key={member.user_id} className="card">
-              <span>{member.user_id}</span> <span className="badge">{roleLabel(member.role)}</span>
-              {isOwner && member.user_id !== detail.created_by ? (
-                <span>
-                  {" "}
-                  <select
-                    value={member.role}
-                    onChange={(e) =>
-                      void onSetRole(
-                        member.user_id,
-                        e.target.value as "owner" | "member" | "guest",
-                      )
-                    }
-                    aria-label={`Peran ${member.user_id}`}
-                  >
-                    <option value="owner">Pemilik</option>
-                    <option value="member">Anggota</option>
-                    <option value="guest">Tamu</option>
-                  </select>{" "}
-                  <button type="button" onClick={() => void onRemoveMember(member.user_id)}>
-                    Keluarkan
-                  </button>
-                </span>
-              ) : null}
-            </div>
-          ))}
+          {detail.members.map((member, index) => {
+            const shownName =
+              detail.names?.[member.user_id] ?? displayNameForMember(member, index);
+            return (
+              <div key={member.user_id} className="card">
+                <span>{shownName}</span>{" "}
+                <span className="badge">{roleLabel(member.role)}</span>
+                {isOwner && member.user_id !== detail.created_by ? (
+                  <span>
+                    {" "}
+                    <select
+                      value={member.role}
+                      onChange={(e) =>
+                        void onSetRole(
+                          member.user_id,
+                          e.target.value as "owner" | "member" | "guest",
+                        )
+                      }
+                      aria-label={`Peran ${shownName}`}
+                    >
+                      <option value="owner">Pemilik</option>
+                      <option value="member">Anggota</option>
+                      <option value="guest">Tamu</option>
+                    </select>{" "}
+                    <button type="button" onClick={() => void onRemoveMember(member.user_id)}>
+                      Keluarkan
+                    </button>
+                  </span>
+                ) : null}
+              </div>
+            );
+          })}
 
           {canWrite ? (
             <div>
@@ -423,20 +496,30 @@ export function RoomsScreen() {
           {memories.length === 0 ? (
             <p className="muted">Belum ada catatan ruang.</p>
           ) : (
-            memories.map((memory) => (
-              <div key={memory.id} className="card">
-                <p>
-                  {memory.content}
-                  {memory.visibility === "private" ? " (pribadi, cuma saya)" : ""}
-                </p>
-                <p className="muted">
-                  {memory.kind} · {memory.author_user_id}
-                </p>
-                <button type="button" onClick={() => void onDeleteMemory(memory.id)}>
-                  Hapus
-                </button>
-              </div>
-            ))
+            memories.map((memory) => {
+              const names = memberDisplayNames(detail.members);
+              const authorName =
+                memory.author_display_name?.trim() ||
+                names[memory.author_user_id] ||
+                "Anggota";
+              const content =
+                memory.rendered_content?.trim() ||
+                renderDecisionText(memory.content, names);
+              return (
+                <div key={memory.id} className="card">
+                  <p>
+                    {content}
+                    {memory.visibility === "private" ? " (pribadi, cuma saya)" : ""}
+                  </p>
+                  <p className="muted">
+                    {memory.kind} · {authorName}
+                  </p>
+                  <button type="button" onClick={() => void onDeleteMemory(memory.id)}>
+                    Hapus
+                  </button>
+                </div>
+              );
+            })
           )}
           {canWrite ? (
             <div>

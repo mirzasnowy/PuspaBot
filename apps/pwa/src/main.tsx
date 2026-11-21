@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./styles.css";
 import { currentScreen, readBootstrap } from "./api/bootstrap";
 import { fetchOnboardingStatus } from "./state/onboarding";
+import { requiredAgentName } from "./state/names";
 import { Nav } from "./components/Nav";
 import { App } from "./App";
 
@@ -12,7 +13,7 @@ const root = document.getElementById("root");
 if (root) {
   createRoot(root).render(
     <StrictMode>
-      <Nav current={screen} />
+      <Nav current={screen} botName={requiredAgentName(bootstrap.agents ?? [])} />
       <main>
         <App bootstrap={bootstrap} screen={screen} />
       </main>

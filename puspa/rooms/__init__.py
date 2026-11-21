@@ -21,6 +21,10 @@ Public surface:
 - :class:`RoomTaskStore` — the shared task board (owner,
   deadline, status) plus the deterministic chat summariser and
   task splitter.
+- :mod:`puspa.rooms.names` — group chat names (V2-27): the one
+  shared resolver for per-user display names and per-bot names,
+  so member lists, message authors, memory authors, and
+  decisions never show a raw UUID or a hardcoded bot name.
 """
 
 from __future__ import annotations
@@ -47,6 +51,26 @@ from .memory import (
     record_decision,
     record_memory,
     record_summary,
+)
+from .names import (
+    DEFAULT_BOT_NAME,
+    FALLBACK_MEMBER_NAME,
+    MAX_DISPLAY_NAME_CHARS,
+    DisplayNameStore,
+    NamedRoomMember,
+    NamedRoomMemory,
+    RoomNames,
+    get_display_name,
+    get_display_names,
+    render_names_in_text,
+    resolve_bot_name,
+    resolve_memory_authors,
+    resolve_room_bot_names,
+    resolve_room_members,
+    resolve_room_names,
+    resolve_user_names,
+    set_display_name,
+    validate_display_name,
 )
 from .rooms import (
     MAX_ROOM_SIZE,
@@ -85,6 +109,9 @@ from .tasks import (
 )
 
 __all__ = [
+    "DEFAULT_BOT_NAME",
+    "FALLBACK_MEMBER_NAME",
+    "MAX_DISPLAY_NAME_CHARS",
     "MAX_MEMORY_CONTENT_CHARS",
     "MAX_ROOM_SIZE",
     "MAX_TASK_TITLE_CHARS",
@@ -93,10 +120,13 @@ __all__ = [
     "ROLE_MEMBER",
     "ROLE_OWNER",
     "ROOMS_TABLES",
+    "DisplayNameStore",
     "GuestReadOnlyError",
     "InviteError",
     "LastOwnerError",
     "MoneyApprovalError",
+    "NamedRoomMember",
+    "NamedRoomMemory",
     "NotRoomMemberError",
     "NotRoomOwnerError",
     "Room",
@@ -105,6 +135,7 @@ __all__ = [
     "RoomMember",
     "RoomMemory",
     "RoomMemoryStore",
+    "RoomNames",
     "RoomNotFoundError",
     "RoomStore",
     "RoomTask",
@@ -118,6 +149,8 @@ __all__ = [
     "delete_memory",
     "delete_room",
     "due_soon",
+    "get_display_name",
+    "get_display_names",
     "get_room",
     "is_member",
     "is_owner",
@@ -132,10 +165,19 @@ __all__ = [
     "record_memory",
     "record_summary",
     "remove_member",
+    "render_names_in_text",
     "reset_tables",
+    "resolve_bot_name",
+    "resolve_memory_authors",
+    "resolve_room_bot_names",
+    "resolve_room_members",
+    "resolve_room_names",
+    "resolve_user_names",
     "role_of",
     "schema_path",
+    "set_display_name",
     "set_role",
     "split_tasks",
     "summarize_messages",
+    "validate_display_name",
 ]

@@ -1003,6 +1003,7 @@ def create_app(
         live_view_api,
         memory_api,
         mockup_api,
+        names_api,
         onboarding_api,
         proof_api,
         replay_api,
@@ -1015,6 +1016,9 @@ def create_app(
     app.state.memory_service = memory_api.MemoryReadService(dsn=app.state.dsn)
     graph_api.register_routes(app, need_user)
     memory_api.register_routes(app, need_user)
+    # V2-27: the caller's own display name (read + edit). The room
+    # member lists themselves are served by the hosted service.
+    names_api.register_routes(app, need_user)
     controls_api.register_routes(app, need_user)
 
     # P-09: live view + takeover. The store is one per process;

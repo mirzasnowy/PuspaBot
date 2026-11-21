@@ -684,6 +684,31 @@ export function fetchRooms(fetchFn: FetchFn = fetch): Promise<{ rooms: RoomSumma
   return getJson<{ rooms: RoomSummary[] }>("/api/rooms", fetchFn);
 }
 
+/** The caller's own display name (V2-27): null when none is set. */
+export interface ProfileDisplayName {
+  user_id: string;
+  display_name: string | null;
+}
+
+/** Read the caller's own display name (V2-27). */
+export function fetchDisplayName(
+  fetchFn: FetchFn = fetch,
+): Promise<ProfileDisplayName> {
+  return getJson<ProfileDisplayName>("/api/profile/display-name", fetchFn);
+}
+
+/** Set the caller's own display name (V2-27). Only ever acts on the caller. */
+export function saveDisplayName(
+  displayName: string,
+  fetchFn: FetchFn = fetch,
+): Promise<ProfileDisplayName> {
+  return postJson<ProfileDisplayName>(
+    "/api/profile/display-name",
+    { display_name: displayName },
+    fetchFn,
+  );
+}
+
 /** Read the shared task board of one room (B9). */
 export function fetchRoomBoard(
   roomId: string,
@@ -692,14 +717,15 @@ export function fetchRoomBoard(
   return getJson<RoomBoard>(`/api/rooms/${encodeURIComponent(roomId)}/tasks`, fetchFn);
 }
 
-/** One member of a shared room, with their role (P-05). */
+/** One member of a shared room, with their role (P-05). V2-27: `display_name` is the name the member list shows; it is absent for a member who never set one, and the screen falls back to "Anggota N" instead of the raw id. */
 export interface RoomMember {
   user_id: string;
   role: string;
   joined_at: string;
+  display_name?: string | null;
 }
 
-/** One shared room with its members and the caller's role (P-05). */
+/** One shared room with its members and the caller's role (P-05). V2-27: `names` maps each member id to the display name to show, and `bot_names` maps each member id to their own bot's name, so no two bots in one room show the same hardcoded name. */
 export interface RoomDetail {
   id: string;
   name: string;
@@ -707,6 +733,8 @@ export interface RoomDetail {
   created_at: string;
   role: string;
   members: RoomMember[];
+  names?: Record<string, string>;
+  bot_names?: Record<string, string>;
 }
 
 /** One room invitation as listed: never carries the secret (P-05). */
@@ -732,7 +760,7 @@ export interface IssuedInvite {
   expires_at: string;
 }
 
-/** One room-memory row (P-05). */
+/** One room-memory row (P-05). V2-27: `author_display_name` is the resolved author name, and `rendered_content` is the stored text with agreed-by ids replaced by names; either may be absent on an older payload, and the screen resolves them locally instead. */
 export interface RoomMemory {
   id: string;
   room_id: string;
@@ -741,6 +769,8 @@ export interface RoomMemory {
   content: string;
   visibility: string;
   created_at: string;
+  author_display_name?: string | null;
+  rendered_content?: string | null;
 }
 
 /** One job on a room's serial queue (P-05). */
