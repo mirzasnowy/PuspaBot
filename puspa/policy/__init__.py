@@ -107,6 +107,16 @@ from .rules import (
     evaluate_rule,
     parse_rule,
 )
+from .session_modes import (
+    DEFAULT_MODE as SESSION_DEFAULT_MODE,
+)
+from .session_modes import (
+    ModeDecision,
+    ModeSwitch,
+    SessionMode,
+    SessionModeDenied,
+    SessionModeState,
+)
 from .skill_signing import SkillRejected, check_tool, load_skill, sign_skill, verify_skill
 from .spending import SpendingLimit
 from .stop import STOP_TARGET_SECONDS, StopError, StopReport, stop_agent
@@ -147,6 +157,7 @@ __all__ = [
     "KIND_FOR_BENEFICIARY",
     "MAX_TOKEN_TTL_SECONDS",
     "RETENTION_ENGAGEMENT_MIN",
+    "SESSION_DEFAULT_MODE",
     "SEVERITIES",
     "STATUS_RESOLVED_ALTERNATIVE",
     "STATUS_RESOLVED_DECLINED",
@@ -180,6 +191,8 @@ __all__ = [
     "GatewayDecision",
     "GatewayDenied",
     "GuidanceState",
+    "ModeDecision",
+    "ModeSwitch",
     "Policy",
     "PolicyError",
     "PolicySnapshot",
@@ -189,6 +202,9 @@ __all__ = [
     "RevocationList",
     "RuleEvaluationError",
     "RuleTemplate",
+    "SessionMode",
+    "SessionModeDenied",
+    "SessionModeState",
     "SkillRejected",
     "SkillRevocationError",
     "SkillRevocationList",

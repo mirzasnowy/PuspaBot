@@ -48,6 +48,15 @@ DESTRUCTIVE actions always ask. The emergency stop (see
 at every step of :meth:`DesktopHands.run_task`, and every
 action is written to the audit log (see
 :mod:`puspa.computer.audit`) with its tier and decision.
+
+COW-13 layers one per-session permission mode over all of
+that (see :mod:`puspa.policy.session_modes`): when a
+:class:`~puspa.policy.session_modes.SessionModeState` is passed
+in, read-only refuses every write before the prompt, ask-first
+makes every write ask (even inside an allowlisted app), and
+full-access lets ordinary writes run without a prompt while
+destructive actions still ask. The mode never widens the
+token check and never skips the stop check.
 """
 
 from __future__ import annotations
@@ -63,6 +72,7 @@ from puspa.localexec.executor import (
     ask_permission_interactively,
 )
 from puspa.policy.gate import Gate, GateDenied
+from puspa.policy.session_modes import SessionModeState
 
 from .allowlist import Allowlist
 from .audit import InMemoryComputerAudit, LedgerComputerAudit, audit_entry
@@ -213,9 +223,13 @@ class DesktopHands:
     the token-level check on top. ``session_approved`` remembers
     an approve-for-session answer, like the local runner; one
     session approval covers every computer action, not just
-    clicks. ``input_backend`` / ``window_backend`` default to
-    the backends matching ``backend`` (fake shares the fake
-    tree; auto uses the real Linux ones).
+    clicks. ``session_modes`` is one session's permission mode
+    (COW-13): when given, read-only refuses every write, ask-first
+    makes every write ask, and full-access lets ordinary writes
+    run without a prompt while destructive actions still ask.
+    ``input_backend`` / ``window_backend`` default to the
+    backends matching ``backend`` (fake shares the fake tree;
+    auto uses the real Linux ones).
     """
 
     def __init__(
@@ -225,6 +239,7 @@ class DesktopHands:
         prompt: PermissionPrompt | None = None,
         gate: Gate | None = None,
         token_payload: dict | None = None,
+        session_modes: SessionModeState | None = None,
         input_backend: InputBackend | None = None,
         window_backend: WindowBackend | None = None,
         settle_timeout: float = DEFAULT_SETTLE_TIMEOUT_S,
@@ -241,6 +256,10 @@ class DesktopHands:
         self._gate = gate
         self._token_payload = token_payload
         self._session_approved = False
+        #: This session's permission mode (COW-13). None means no
+        #: mode layer: the V2-35 tier flow decides alone, exactly
+        #: as before.
+        self.session_modes = session_modes
         #: Apps the agent may click inside without asking (V2-35).
         #: Defaults to the user's allowlist file; pass an
         #: :class:`Allowlist` on a temp path in tests.
@@ -423,15 +442,21 @@ class DesktopHands:
         length: int | None = None,
     ) -> Tier:
         """The V2-35 gate for one action, in order: stop, token,
-        tier, prompt.
+        session mode, tier, prompt.
 
         Returns the tier when the action may run. Raises
         :class:`ComputerStopped` when the user stopped the hands
-        and :class:`PermissionDenied` when the token refuses or
-        the user denies; both are audited before they raise.
-        Reads never reach the prompt; NORMAL actions skip it
-        inside an allowlisted app; DESTRUCTIVE actions always
-        ask, allowlist or not.
+        and :class:`PermissionDenied` when the token refuses, the
+        session mode refuses, or the user denies; all three are
+        audited before they raise. Reads never reach the prompt;
+        NORMAL actions skip it inside an allowlisted app; DESTRUCTIVE
+        actions always ask, allowlist or not. When a session mode
+        is wired in (COW-13) it sits between the token check and
+        the tier flow: read-only denies every write here, ask-first
+        forces every write through the prompt (the allowlist
+        shortcut does not apply), and full-access lets an ordinary
+        write run without a prompt while a destructive one still
+        asks through the prompt below.
         """
         tier = classify(action, submits=submits)
         if self.stop.is_active():
@@ -447,9 +472,26 @@ class DesktopHands:
             )
             self.stop.check()
         self._check_token(tool)
+        mode_decision = None
+        if self.session_modes is not None:
+            mode_decision = self.session_modes.decide(action, tier=tier)
+            if mode_decision.verdict == "deny":
+                self._audit(
+                    action,
+                    target=target,
+                    tier=tier,
+                    decision="deny",
+                    outcome="denied",
+                    app=app,
+                    length=length,
+                    reason=mode_decision.reason,
+                )
+                raise PermissionDenied(mode_decision.reason)
+            if mode_decision.verdict == "allow":
+                return tier
         if tier is Tier.READ:
             return tier
-        if tier is Tier.NORMAL and self.allowlist.is_allowed(app):
+        if tier is Tier.NORMAL and self.allowlist.is_allowed(app) and mode_decision is None:
             return tier
         try:
             self._ask(prompt_label)
