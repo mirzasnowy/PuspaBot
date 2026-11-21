@@ -14,6 +14,8 @@ New tables (all have a `user_id` column except `system_heartbeats`):
   `cassettes/` (local, deleted with the task).
 - `push_subscriptions`: per-user Web Push subscriptions (section 2.14).
 - `system_heartbeats`: scheduler heartbeats (component `scheduler`).
+- `runtime_session_states`: durable hierarchy session snapshots
+  (one row per session id; migration 0028).
 
 RLS: enabled on the `user_id` tables with the same policies as
 Phase 0/1 (`app.current_user_id`, set by the account
@@ -47,11 +49,12 @@ TABLES = (
     "cassettes",
     "push_subscriptions",
     "system_heartbeats",
+    "runtime_session_states",
 )
 
 
 def create_schema(dsn: str | None = None) -> None:
-    """Apply the runtime tables (migration 0003_runtime).
+    """Apply the runtime tables (migrations 0003 and 0028).
 
     Phase 2 decision (Phase 0 question, item c): the `puspa_app` role
     is given LOGIN + password — but only when the `PUSPA_APP_PASSWORD`
@@ -59,7 +62,7 @@ def create_schema(dsn: str | None = None) -> None:
     no default password is written anywhere).
     """
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    apply_migrations(dsn, target="0003")
+    apply_migrations(dsn, target="0028")
     password = os.environ.get("PUSPA_APP_PASSWORD")
     if password:
         with psycopg.connect(dsn, autocommit=True) as conn:
