@@ -1,5 +1,7 @@
-"""PWA Puspa — 15 layar (7 dari revisi 7, ditambah Insights dan
-Onboarding oleh kerja kematangan G28).
+"""PWA Puspa — 16 layar (7 dari revisi 7, ditambah Insights dan
+Onboarding oleh kerja kematangan G28, ditambah layar Persona untuk
+beberapa persona yang bisa diganti, dan layar Artefak penampil artefak
++ log run dari riset CowAgent).
 
 Stack (keputusan 1, diperbarui G1): FastAPI + TypeScript SPA
 (React 19 + Vite, `apps/pwa/`, dibangun ke `apps/pwa/dist`) + service
@@ -15,10 +17,11 @@ Catatan jujur soal jumlah layar: revisi 7 membatasi PWA pada 7
 layar, tetapi perintah kematangan Nero (kerjakan semua 28 celah
 G1-G28) mewajibkan halaman Insights (celah biaya/token) dan
 Onboarding pertama kali (G28). Batas 7 layar itu sudah tidak
-berlaku lagi setelah penambahan kematangan; total sekarang 15
+berlaku lagi setelah penambahan kematangan; total sekarang 16
 (termasuk Ruang, yang selama ini ada di SPA tapi tidak terdaftar
-di server sehingga /rooms 404, dan Artefak, penampil artefak +
-log run dari riset CowAgent).
+di server sehingga /rooms 404, Artefak, penampil artefak + log run
+dari riset CowAgent, dan Persona untuk beberapa persona yang bisa
+diganti).
 
 Login: Google (keputusan 16, fondasi Fase 1 `puspa.auth`); sesi
 cookie httpOnly via `puspa.accounts.ports`. Di tes, `create_app`
@@ -58,6 +61,9 @@ SCREENS = (
     "connectors",
     "memory",
     "settings",
+    # Multiple switchable personas: one persona per role (work vs
+    # personal), one active at a time (see puspa.persona.switcher).
+    "personas",
     "office",
     "live",
     # P-10: replay timeline of a bot's steps (plan section 12.10).
@@ -103,6 +109,10 @@ def create_app(
     # fakes and no real network is needed.
     voice_http_client=None,
     voice_edge_connect=None,
+    # Switchable personas: the Puspa home holding the persona
+    # files (same test seam pattern as the transcriber above).
+    # None means the switcher resolves the user's real home.
+    persona_home=None,
 ) -> FastAPI:
     """Bangun aplikasi FastAPI PWA."""
     app = FastAPI(title="Puspa")
@@ -111,6 +121,7 @@ def create_app(
         "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql"
     )
     app.state.test_user_id = test_user_id
+    app.state.persona_home = persona_home
     # Anotasi tipe tidak bisa ditulis pada atribut non-self
     # (app.state.*), jadi tipenya dicatat di variabel lokal dulu.
     chat_state: dict[str, list[dict]] = defaultdict(list)
@@ -1032,6 +1043,7 @@ def create_app(
         mockup_api,
         names_api,
         onboarding_api,
+        personas_api,
         proof_api,
         replay_api,
     )
@@ -1048,6 +1060,9 @@ def create_app(
     # the public rooms stores); only delegation and money splits
     # stay in the hosted service.
     names_api.register_routes(app, need_user)
+    # Multiple switchable personas (one active at a time; the
+    # turn loop reads the active one fresh every turn).
+    personas_api.register_routes(app, need_user)
     from puspa.pwa import rooms_api
 
     rooms_api.register_routes(app, need_user)

@@ -49,6 +49,22 @@ text. If the user asks to change how the agent talks, edit the
 file — do not just promise to "keep it in mind" for this
 conversation and forget it.
 
+## Several personas, one active
+
+One set of files is one role. For several roles (work vs
+personal), each persona is the same three files in its own
+folder — `puspa.persona.switcher` — with one active at a time:
+
+- `<home>/personas/<slug>/` holds that persona's `SOUL.md`,
+  `IDENTITY.md`, `USER.md`, and optional `meta.json` with its
+  reply style (`{"style": "santai"}`).
+- `<home>/personas/active.json` names the active slug; missing
+  means the home's own files (the `default` persona).
+- `set_active_persona(home, slug)` switches; the next turn
+  reads the new persona's files. The old persona stays stored.
+- The Personas screen in the PWA is the user-facing way to
+  create, edit, delete, and switch personas.
+
 ## Reply Style
 
 Beyond the files, the agent learns a reply style from the user's

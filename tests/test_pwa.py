@@ -1,13 +1,14 @@
-"""Tes PWA 14 layar (FastAPI + Jinja + SSE).
+"""Tes PWA 15 layar (FastAPI + Jinja + SSE).
 
 Revisi 7 membatasi PWA pada 7 layar, tetapi kerja kematangan G28
 menambah Insights dan Onboarding (perintah Nero: kerjakan semua
 28 celah), kanvas mockup menambah satu lagi, P-07 menambah layar
 pagi, P-09 menambah layar live, dan P-10 menambah layar replay,
-dan perbaikan layar Ruang yang rusak mendaftarkan layar Ruang
-yang selama ini ada di SPA tapi tidak terdaftar di server — jadi
-total sekarang 14. Tes jumlah layar di bawah mencerminkan batas
-baru itu.
+perbaikan layar Ruang yang rusak mendaftarkan layar Ruang yang
+selama ini ada di SPA tapi tidak terdaftar di server, dan layar
+Persona menambah satu lagi untuk beberapa persona yang bisa
+diganti — jadi total sekarang 15. Tes jumlah layar di bawah
+mencerminkan batas baru itu.
 """
 
 import pytest
@@ -32,16 +33,18 @@ def test_eleven_screens_exist_and_200(client):
         assert "Puspa" in resp.text
 
 
-def test_fifteen_screens_exist_including_rooms():
+def test_sixteen_screens_exist_including_rooms():
     """The morning, live, and replay screens are the eleventh, twelfth, and thirteenth,
-    and Rooms is the fourteenth (the SPA already listed
-    it, the server did not). Artifacts is the fifteenth
+    Rooms is the fourteenth (the SPA already listed
+    it, the server did not), Personas is the fifteenth
+    (multiple switchable personas, one active at a time),
+    and Artifacts is the sixteenth
     (the artifacts + run-logs browser from CowAgent research).
 
-    The count is pinned on purpose: a sixteenth screen must be a
+    The count is pinned on purpose: a seventeenth screen must be a
     deliberate decision with its own ticket, not an accident.
     """
-    assert len(SCREENS) == 15
+    assert len(SCREENS) == 16
     assert set(SCREENS) == {
         "chat",
         "tasks",
@@ -60,6 +63,8 @@ def test_fifteen_screens_exist_including_rooms():
         "replay",
         # The Rooms screen the SPA already listed.
         "rooms",
+        # Multiple switchable personas, one active at a time.
+        "personas",
         # Artifacts + run-logs browser (CowAgent research).
         "artifacts",
     }

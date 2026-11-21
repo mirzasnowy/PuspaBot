@@ -126,6 +126,11 @@ class PersonaFiles:
     home: Path
     warnings: list[str] = field(default_factory=list)
     sources: dict[str, str] = field(default_factory=dict)
+    #: Reply style key (one of ``puspa.persona.persona.STYLES``) when
+    #: this read came from a switchable persona (see
+    #: ``puspa.persona.switcher``); None for the default persona,
+    #: whose style lives in the database-backed persona instead.
+    style: str | None = None
 
 
 def persona_file_paths(home=None) -> dict[str, Path]:
@@ -220,8 +225,12 @@ def render_persona_block(persona: PersonaFiles) -> str:
 
     Each non-empty file becomes a labeled section, in file order.
     An all-empty read renders as ``""`` (no block to inject).
-    The block is plain text: the model reads it as instructions
-    from the user, not as tool output or retrieved data.
+    A persona with a reply style (``PersonaFiles.style``, set by
+    ``puspa.persona.switcher``) adds a ``# Reply style`` section
+    naming that style, so the model answers in the active
+    persona's style. The block is plain text: the model reads it
+    as instructions from the user, not as tool output or retrieved
+    data.
     """
     sections = []
     if persona.soul.strip():
@@ -230,6 +239,15 @@ def render_persona_block(persona: PersonaFiles) -> str:
         sections.append(f"# Agent identity\n\n{persona.identity.strip()}")
     if persona.user.strip():
         sections.append(f"# About the user\n\n{persona.user.strip()}")
+    if persona.style:
+        # Lazy import: this loader stays database-free at import
+        # time; the style table lives in the DB-backed persona
+        # module and is only needed when a styled persona renders.
+        from .persona import STYLES
+
+        info = STYLES.get(persona.style)
+        if info is not None:
+            sections.append(f"# Reply style\n\n{info['name']}: {info['description']}")
     return "\n\n".join(sections)
 
 

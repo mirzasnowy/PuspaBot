@@ -1020,6 +1020,102 @@ export function saveDisplayName(
   );
 }
 
+/**
+ * Switchable personas, hand-written here instead of generated:
+ * `npm run generate` is broken at this base (see the V2-35 note
+ * above), so these shapes mirror docs/openapi-personas.yaml
+ * exactly; move them to generated-types.ts once generation is
+ * repaired.
+ */
+
+/** One persona in the list: name, reply style, and active state. */
+export interface PersonaSummary {
+  slug: string;
+  name: string;
+  style: string | null;
+  is_active: boolean;
+  is_default: boolean;
+}
+
+/** The persona list with the active slug. */
+export interface PersonaList {
+  personas: PersonaSummary[];
+  active: string;
+}
+
+/** One persona with its file text (prompt, identity, about-you). */
+export interface PersonaDetail extends PersonaSummary {
+  soul: string;
+  identity: string;
+  user: string;
+}
+
+/** Fields for creating or editing a persona; all but name optional. */
+export interface PersonaInput {
+  name?: string;
+  soul?: string;
+  identity?: string;
+  user?: string;
+  style?: string;
+}
+
+/** List every persona with the active slug. */
+export function fetchPersonas(fetchFn: FetchFn = fetch): Promise<PersonaList> {
+  return getJson<PersonaList>("/api/personas", fetchFn);
+}
+
+/** Read one persona, file text included. */
+export function fetchPersona(
+  slug: string,
+  fetchFn: FetchFn = fetch,
+): Promise<PersonaDetail> {
+  return getJson<PersonaDetail>(`/api/personas/${encodeURIComponent(slug)}`, fetchFn);
+}
+
+/** Create a persona (only `name` is required). */
+export function createPersona(
+  input: PersonaInput,
+  fetchFn: FetchFn = fetch,
+): Promise<PersonaDetail> {
+  return postJson<PersonaDetail>("/api/personas", input, fetchFn);
+}
+
+/** Edit a persona; only the given fields change. */
+export function updatePersona(
+  slug: string,
+  input: PersonaInput,
+  fetchFn: FetchFn = fetch,
+): Promise<PersonaDetail> {
+  return patchJson<PersonaDetail>(
+    `/api/personas/${encodeURIComponent(slug)}`,
+    input,
+    fetchFn,
+  );
+}
+
+/** Delete a persona; the default persona cannot be deleted. */
+export function deletePersona(
+  slug: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ deleted: string; active: string }> {
+  return deleteJson<{ deleted: string; active: string }>(
+    `/api/personas/${encodeURIComponent(slug)}`,
+    fetchFn,
+  );
+}
+
+/** Make a persona active; it applies from the next turn. */
+export function activatePersona(
+  slug: string,
+  fetchFn: FetchFn = fetch,
+): Promise<PersonaList> {
+  return postJson<PersonaList>(
+    `/api/personas/${encodeURIComponent(slug)}/activate`,
+    {},
+    fetchFn,
+  );
+}
+
 /** Read the shared task board of one room (B9). */
 export function fetchRoomBoard(
   roomId: string,

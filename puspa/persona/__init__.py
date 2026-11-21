@@ -31,11 +31,26 @@ from .persona import (
     list_style_samples,
     render_reply,
 )
+from .switcher import (
+    DEFAULT_SLUG,
+    create_persona,
+    delete_persona,
+    get_active_slug,
+    list_personas,
+    load_active_persona_files,
+    set_active_persona,
+    slugify_name,
+    update_persona,
+)
+from .switcher import (
+    get_persona as get_stored_persona,
+)
 
 __all__ = [
     "AMBANG_GERBANG",
     "DEFAULT_IDENTITY",
     "DEFAULT_NAME",
+    "DEFAULT_SLUG",
     "DEFAULT_SOUL",
     "DEFAULT_USER",
     "MAX_EXAMPLE",
@@ -47,9 +62,15 @@ __all__ = [
     "apply_correction",
     "build_blind_test",
     "choose_style",
+    "create_persona",
+    "delete_persona",
     "ensure_persona_files",
+    "get_active_slug",
     "get_persona",
+    "get_stored_persona",
+    "list_personas",
     "list_style_samples",
+    "load_active_persona_files",
     "load_blind_test",
     "load_persona_files",
     "persona_file_paths",
@@ -58,4 +79,7 @@ __all__ = [
     "render_sheet",
     "save_blind_test",
     "score_blind_test",
+    "set_active_persona",
+    "slugify_name",
+    "update_persona",
 ]
