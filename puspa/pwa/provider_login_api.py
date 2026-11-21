@@ -53,6 +53,7 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from puspa.accounts.vault import VaultError
 from puspa.i18n.server_lines import render as render_server_line
 from puspa.router.provider_login import ProviderLoginError, ProviderLoginService
 
@@ -61,6 +62,33 @@ __all__ = ["register_routes"]
 
 def _not_logged_in() -> JSONResponse:
     return JSONResponse({"error": render_server_line("error.not_logged_in")}, status_code=401)
+
+
+def _vault_unavailable_status(service: ProviderLoginService) -> dict:
+    """Every provider as not logged in, for a vault that cannot be
+    read (no master key configured on a fresh local install).
+
+    No token could ever have been stored without a master key, so
+    "not logged in" is the true state, not a guess. ``login_ready``
+    is False here: a login cannot start (let alone finish) while
+    the vault refuses to work, so the panel must not offer a
+    login button that can only fail. Writes keep failing closed
+    with VaultError through the service itself.
+    """
+    providers = []
+    for provider in service.providers():
+        config = service.config(provider)
+        providers.append(
+            {
+                "provider": provider,
+                "flow": config.flow,
+                "state": "not_logged_in",
+                "expires_at": None,
+                "local_only": bool(config.local_only),
+                "login_ready": False,
+            }
+        )
+    return {"providers": providers}
 
 
 def _service(app) -> ProviderLoginService:
@@ -87,6 +115,12 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             return _not_logged_in()
         try:
             return {"providers": _service(app).list_status(user_id)}
+        except VaultError:
+            # Broken-rooms fix: with no vault master key configured the
+            # status read raised and the Settings page logged a
+            # 400 for every provider. A read-only list must still
+            # answer 200: no token could ever have been stored.
+            return _vault_unavailable_status(_service(app))
         except Exception as exc:  # pragma: no cover - defensive
             return _error_response(exc)
 

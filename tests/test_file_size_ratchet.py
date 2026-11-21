@@ -154,7 +154,11 @@ BASELINE_LINES = {
     # the chat_widgets_api import and route registration plus
     # the comment (same seam as the cards: no new screen, no
     # new table). Resumes from 1144.
-    "puspa/pwa/app.py": 1144,
+    # Broken-rooms fix (22 Nov 2026): +10 lines on top of the 1183 the
+    # tree already carried — the "rooms" screen in SCREENS, the
+    # rooms_api route registration, and the docstring lines that
+    # name it. The ratchet resumes from 1193.
+    "puspa/pwa/app.py": 1193,
     # PWA typed API client: every screen's fetch wrapper plus
     # the generated-types aliases in one file. Crossed 1000
     # lines in P-10 (21 Nov 2026): the replay fetchers (tasks,
