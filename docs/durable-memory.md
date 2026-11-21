@@ -74,9 +74,23 @@ One row per user in the `durable_memory` table (migration
 version number, and per-section counts. The same text is what
 the PWA shows and what the user edits.
 
+## Write-through: the turn commits, or it does not finish
+
+Every turn also writes through at once, not just at night.
+`commit_turn` in `puspa/memory/commit_turn.py` writes one
+turn's ledger entries and the rebuilt MEMORY.md document in a
+single transaction: both land together, or neither does. A turn
+whose write fails does not report success; the failed write
+goes to the `turn_commit_retries` table (migration
+`0030_turn_commit_retries`) in a separate transaction, so it can
+be retried later and stays visible through
+`list_pending_retries`. The turn loop calls this hook through
+`make_turn_committer` before a turn may report completed.
+
 ## What this does not do
 
-Write-through (writing the ledger and durable memory in the same
-turn, so a turn cannot finish without both writes) is a separate
-item. This module owns the durable store, the nightly rebuild,
-the journal, and reading edits back.
+This module owns the durable store, the nightly rebuild, the
+journal, and reading edits back. Deciding what a turn produced
+(extracting decisions, corrections, and facts from the turn's
+history) is a separate item; the loop hook records the turn's
+outcome only.
