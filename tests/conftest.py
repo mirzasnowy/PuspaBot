@@ -222,6 +222,7 @@ MEMORY_TABLES = (
     "memory_import_items",
     "memory_import_quarantine",
     "memory_forget_list",
+    "longterm_tiers",
 )
 
 

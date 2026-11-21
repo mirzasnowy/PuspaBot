@@ -44,6 +44,7 @@ TRIGGER_TYPES = (
     "sentinel_scan",
     "ontology_review",
     "amnesia_check",
+    "longterm_consolidation",
 )
 
 #: Proactive trigger types pay from the interruption budget (K10):
@@ -669,6 +670,25 @@ def schedule_amnesia_check(user_id: str, *, hour: int = 3, dsn=None) -> Trigger:
     )
 
 
+def schedule_longterm_consolidation(user_id: str, *, hour: int = 4, dsn=None) -> Trigger:
+    """Register the nightly long-term consolidation (K16) as a trigger.
+
+    Running this trigger calls ``puspa.memory.longterm.
+    consolidate_longterm`` with ``run_k9=True`` through
+    ``run_scheduled_job`` below: the K9 idle consolidation runs
+    first, then the K16 pass applies the promotion rules, the
+    forgetting curve and the tier moves (including archiving).
+    The scheduler moves the trigger one day forward on each run
+    (see ``run_trigger``), so this registration gives one pass a
+    night at the given hour. Hour 4 keeps it clear of the
+    amnesia check at hour 3.
+    """
+    tomorrow = (_now() + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
+    return create_trigger(
+        user_id, "longterm_consolidation", tomorrow, schedule=f"daily {hour:02d}:00", dsn=dsn
+    )
+
+
 def run_scheduled_job(run: dict, *, dsn=None) -> dict:
     """Eksekusi job sistem untuk satu jalan pemicu (backup/konsolidasi).
 
@@ -726,6 +746,26 @@ def run_scheduled_job(run: dict, *, dsn=None) -> dict:
 
         result = run_amnesia_check(str(user_id), dsn=dsn, task_id=run["task_id"])
         return {"job": "amnesia_check", "result": result}
+    if event_type == "longterm_consolidation":
+        from puspa.ledger.ledger import Ledger
+        from puspa.memory.longterm import consolidate_longterm
+
+        result = consolidate_longterm(str(user_id), run_k9=True, dsn=dsn)
+        Ledger(dsn).append_event(
+            task_id=run["task_id"],
+            agent_id="puspa",
+            event_type="task_completed",
+            content={
+                "job": "longterm_consolidation",
+                "user_id": str(user_id),
+                "promoted": result["promoted"],
+                "pinned": result["pinned"],
+                "archived": result["archived"],
+                "restored": result["restored"],
+                "tiers": result["tiers"],
+            },
+        )
+        return {"job": "longterm_consolidation", "result": result}
     if event_type == "trust_root_refresh":
         from puspa.policy.trust_root import run_trust_root_refresh_job
 
