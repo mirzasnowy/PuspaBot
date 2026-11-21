@@ -22,8 +22,9 @@ Flags
 - ``payment_execution`` — moving money: the billing checkout route
   and the payment execution endpoint. Preparation (``prepare``)
   is not execution and stays available; execution has no executor
-  in this codebase at all (see ``puspa.payments.prepare``), so the
-  flag is a second layer on top of the always-refuse design.
+  in this codebase at all (payment preparation lives in the hosted
+  service), so the flag is a second layer on top of the
+  always-refuse design.
 - ``skill_install`` — installing a skill discovered via skills.sh
   (E-12, plan 6.7). Off by default; only built-in skills and the
   self-signed allowlist may install while it is off.

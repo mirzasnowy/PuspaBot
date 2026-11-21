@@ -1004,12 +1004,12 @@ def create_app(
         memory_api,
         mockup_api,
         onboarding_api,
-        payments_api,
         proof_api,
         replay_api,
-        rooms_api,
-        rooms_membership_api,
     )
+    # The hosted-only APIs (room sharing, room membership, payments)
+    # live in the hosted service and mount their routes there; the
+    # local app does not import them.
 
     app.state.graph_views = graph_api.GraphViewService(dsn=app.state.dsn)
     app.state.memory_service = memory_api.MemoryReadService(dsn=app.state.dsn)
@@ -1046,11 +1046,8 @@ def create_app(
     mockup_api.register_routes(app, need_user)
     insights_api.register_routes(app, need_user)
     onboarding_api.register_routes(app, need_user)
-    rooms_api.register_routes(app, need_user)
-    rooms_membership_api.register_routes(app, need_user)
     drafts_api.register_routes(app, need_user)
     proof_api.register_routes(app, need_user)
-    payments_api.register_routes(app, need_user)
     # P-03: Web Share Target (GET/POST /share) and voice messages
     # (POST /api/voice/*). The share handler renders the Chat screen
     # with the shared text prefilled as a draft; nothing is sent
