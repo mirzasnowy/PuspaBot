@@ -87,6 +87,12 @@ def create_app(
     # and an httpx client for the public prayer/holiday sources.
     morning_connector_factory=None,
     morning_http_client=None,
+    # V2-30: voice seams (same pattern as the transcriber above):
+    # an httpx client for BYOK ASR/TTS endpoints and a connect
+    # callable for the Edge TTS WebSocket, so tests can inject
+    # fakes and no real network is needed.
+    voice_http_client=None,
+    voice_edge_connect=None,
 ) -> FastAPI:
     """Bangun aplikasi FastAPI PWA."""
     app = FastAPI(title="Puspa")
@@ -117,10 +123,17 @@ def create_app(
     # P-03: voice messages. The transcriber seam (puspa.voice) is
     # injected here so tests can pass a test double; the default is
     # the stub transcriber — no real speech engine is chosen until
-    # the 50-recording WER measurement exists (plan 12.4).
+    # the 50-recording WER measurement exists (plan 12.4). V2-30:
+    # when no transcriber is injected, each upload resolves the
+    # user's own ASR choice from Settings instead
+    # (puspa.pwa.voice_api); ``transcriber_explicit`` records
+    # which case this app is in.
     from puspa.voice.transcriber import resolve_transcriber
 
+    app.state.transcriber_explicit = transcriber is not None
     app.state.transcriber = transcriber or resolve_transcriber("stub")
+    app.state.voice_http_client = voice_http_client
+    app.state.voice_edge_connect = voice_edge_connect
     # Pending voice transcripts awaiting user confirmation (keyed by
     # pending id; unconfirmed transcripts are not messages).
     app.state.voice_pending = {}
