@@ -4,7 +4,8 @@ Split Step 1: this is the minimal shim behind the ``puspa`` and
 ``puspa-cli`` console entry points. It ships ``puspa web`` / ``puspa
 serve`` (start the local gateway and open the PWA), ``puspa memory
 export`` (a portable, encrypted memory archive, V2-09), ``puspa memory
-import`` / ``rollback`` / ``forget`` (memory import, V2-10), plus
+import`` / ``rollback`` / ``forget`` (memory import, V2-10), ``puspa
+conversation export`` / ``import`` (conversation export, V2-11), plus
 help. The full one-shot CLI lands in a later step of the split;
 until then any other subcommand prints help and says so.
 """
@@ -24,7 +25,7 @@ FULL_CLI_NOTE = (
     "export` / `import` plus help."
 )
 
-_KNOWN_COMMANDS = ("web", "serve", "memory")
+_KNOWN_COMMANDS = ("web", "serve", "memory", "conversation")
 
 #: Environment variable holding the export passphrase (never a
 #: command-line argument: arguments are visible in the process list).
@@ -143,6 +144,69 @@ def build_parser() -> argparse.ArgumentParser:
     memory_forget.add_argument(
         "--content", default=None, help="Fact text (defaults to the stored text)."
     )
+    conversation = sub.add_parser(
+        "conversation",
+        help="Conversation export and import (V2-11).",
+        description="Conversation export and import (V2-11).",
+    )
+    conversation_sub = conversation.add_subparsers(
+        dest="conversation_command", metavar="CONVERSATION_COMMAND"
+    )
+    conversation_export = conversation_sub.add_parser(
+        "export",
+        help="Export one conversation (or all) to a portable zip archive.",
+        description=(
+            "Export one conversation (--conversation <id>) or every "
+            "conversation in the profile (no --conversation) to a zip "
+            "archive with a manifest, per-file hashes and counts."
+        ),
+    )
+    conversation_export.add_argument(
+        "--conversation", default=None, help="Conversation id to export (omit for all)."
+    )
+    conversation_export.add_argument("--out", required=True, help="Zip archive file to write.")
+    conversation_export.add_argument(
+        "--profile", default=None, help="Profile name (defaults to the default profile)."
+    )
+    conversation_export.add_argument(
+        "--home", default=None, help="Puspa home directory (defaults to PUSPA_HOME or ~/.puspa)."
+    )
+    conversation_export.add_argument(
+        "--live-home",
+        action="store_true",
+        help=(
+            "Allow touching the live home (~/.puspa). Also needs "
+            "PUSPA_ALLOW_LIVE_HOME=1 in the environment."
+        ),
+    )
+    conversation_import = conversation_sub.add_parser(
+        "import",
+        help="Import conversations from a portable archive.",
+        description=(
+            "Import conversations from a zip archive. Without --approve "
+            "this only shows the dry-run plan and writes nothing. "
+            "Re-importing the same archive is a no-op; a conflicting "
+            "conversation refuses the whole import."
+        ),
+    )
+    conversation_import.add_argument("--file", required=True, help="Archive zip (or directory).")
+    conversation_import.add_argument(
+        "--profile", default=None, help="Profile name (defaults to the default profile)."
+    )
+    conversation_import.add_argument(
+        "--home", default=None, help="Puspa home directory (defaults to PUSPA_HOME or ~/.puspa)."
+    )
+    conversation_import.add_argument(
+        "--live-home",
+        action="store_true",
+        help=(
+            "Allow touching the live home (~/.puspa). Also needs "
+            "PUSPA_ALLOW_LIVE_HOME=1 in the environment."
+        ),
+    )
+    conversation_import.add_argument(
+        "--approve", action="store_true", help="Apply the import (without it, dry-run only)."
+    )
     return parser
 
 
@@ -247,6 +311,74 @@ def _run_memory_forget(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_conversation_export(args: argparse.Namespace) -> int:
+    """Run ``puspa conversation export`` (lazy import: ``--help`` stays fast)."""
+    from puspa.sessions import open_persistence_reader
+    from puspa.sessions.export import export_conversations
+
+    try:
+        reader = open_persistence_reader(
+            args.profile, home=args.home, allow_live_home=args.live_home
+        )
+    except Exception as exc:
+        print(f"puspa conversation export: failed: {exc}")
+        return 1
+    try:
+        result = export_conversations(
+            reader,
+            conversation_ids=[args.conversation] if args.conversation else None,
+            out=args.out,
+        )
+    except Exception as exc:
+        print(f"puspa conversation export: failed: {exc}")
+        return 1
+    finally:
+        reader.close()
+    print(json.dumps(result, indent=2, default=str))
+    return 0
+
+
+def _run_conversation_import(args: argparse.Namespace) -> int:
+    """Run ``puspa conversation import`` (lazy import: ``--help`` stays fast)."""
+    from puspa.sessions import open_persistence
+    from puspa.sessions.export import import_conversations
+
+    try:
+        # The CLI runs on one machine: the file lock on state.db is
+        # the operative cross-process guard here, so the Postgres
+        # advisory layer is skipped (a CLI run must not assume a
+        # database is reachable).
+        gateway = open_persistence(
+            args.profile, home=args.home, allow_live_home=args.live_home, advisory_lock=False
+        )
+    except Exception as exc:
+        print(f"puspa conversation import: failed: {exc}")
+        return 1
+    try:
+        result = import_conversations(args.file, writer=gateway, approve=args.approve)
+    except Exception as exc:
+        print(f"puspa conversation import: failed: {exc}")
+        return 1
+    finally:
+        gateway.close()
+    print(json.dumps(result, indent=2, default=str))
+    if result["status"] in ("awaiting_approval", "dry_run"):
+        print("Nothing was written. Re-run with --approve to apply this import.")
+    if result["status"] == "refused":
+        print("Nothing was written. Resolve the conflicts and re-run.")
+        return 1
+    return 0
+
+
+def _run_conversation(args: argparse.Namespace) -> int:
+    if args.conversation_command == "export":
+        return _run_conversation_export(args)
+    if args.conversation_command == "import":
+        return _run_conversation_import(args)
+    build_parser().parse_args(["conversation", "--help"])
+    return 0
+
+
 def _run_memory(args: argparse.Namespace) -> int:
     if args.memory_command == "export":
         return _run_memory_export(args)
@@ -275,6 +407,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_web(host=parsed.host, port=parsed.port)
     if parsed.command == "memory":
         return _run_memory(parsed)
+    if parsed.command == "conversation":
+        return _run_conversation(parsed)
     parser.print_help()
     return 0
 

@@ -21,6 +21,14 @@ from .errors import (
     SingleWriterError,
     WriteContentionError,
 )
+from .export import (
+    ARCHIVE_FORMAT,
+    ARCHIVE_SCHEMA_VERSION,
+    ConversationArchiveError,
+    export_conversations,
+    import_conversations,
+    plan_import_conversations,
+)
 from .gateway import SessionGateway
 from .home import (
     default_home,
@@ -43,6 +51,9 @@ from .spawner import child_env, require_home_in_env
 from .store import SessionStore
 
 __all__ = [
+    "ARCHIVE_FORMAT",
+    "ARCHIVE_SCHEMA_VERSION",
+    "ConversationArchiveError",
     "CorruptDatabaseError",
     "LiveHomeError",
     "PostgresAdvisoryLock",
@@ -60,11 +71,14 @@ __all__ = [
     "child_env",
     "default_agent_id",
     "default_home",
+    "export_conversations",
+    "import_conversations",
     "is_live_home",
     "maintenance",
     "open_persistence",
     "open_persistence_reader",
     "override_home",
+    "plan_import_conversations",
     "record_compression",
     "recover_report",
     "require_home_in_env",

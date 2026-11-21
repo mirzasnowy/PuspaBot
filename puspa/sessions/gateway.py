@@ -205,6 +205,10 @@ class SessionGateway:
         """Birth a child session from a parent (see store method)."""
         return self._store.create_child_session(parent_session_id, **kwargs)
 
+    def restore_conversations(self, conversations, lineage=()):
+        """Restore archived conversations verbatim; see store method."""
+        return self._store.restore_conversations(conversations, lineage)
+
     def lineage_chain(self, session_id):
         """Walk a session's ancestry: [self, parent, ...]."""
         return self._store.lineage_chain(session_id)
