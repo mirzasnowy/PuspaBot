@@ -166,7 +166,7 @@ class PostgresDeliveryLedger:
     """Delivery ledger backed by the ``channel_deliveries`` table.
 
     Same interface as :class:`InMemoryDeliveryLedger`. The table is
-    created by ``puspa.channels.schema.create_schema()`` (which
+    created by the hosted channel schema (which
     applies migration 0008_channels). All writes are
     best-effort from the caller's point of view: a ledger failure
     must never drop a user message — callers that need that

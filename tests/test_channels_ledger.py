@@ -1,17 +1,14 @@
-"""Delivery ledger tests (G14).
+"""Delivery ledger tests: the in-memory ledger.
 
-The in-memory ledger runs anywhere. The Postgres ledger tests
-use the shared ``test_dsn`` fixture and create the channel schema
-themselves (``conftest`` does not apply it — same pattern as the
-teams schema).
+The in-memory ledger runs anywhere. The Postgres ledger tests live
+in the hosted suite with the hosted channel schema.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from puspa.channels.ledger import InMemoryDeliveryLedger, PostgresDeliveryLedger
-from puspa.channels.schema import create_schema, reset_tables
+from puspa.channels.ledger import InMemoryDeliveryLedger
 
 
 def _record_kwargs(**overrides):
@@ -71,45 +68,3 @@ def test_in_memory_rejects_bad_values():
         ledger.record(**_record_kwargs(status="nope"))
     with pytest.raises(ValueError):
         ledger.record(**_record_kwargs(direction="sideways"))
-
-
-# -- postgres ---------------------------------------------------------------
-
-
-@pytest.fixture
-def pg_ledger(test_dsn):
-    create_schema(test_dsn)
-    reset_tables(test_dsn)
-    yield PostgresDeliveryLedger(test_dsn)
-    reset_tables(test_dsn)
-
-
-def test_postgres_record_and_seen(pg_ledger):
-    assert pg_ledger.seen("telegram:111:5") is False
-    record = pg_ledger.record(**_record_kwargs())
-    assert record.id.startswith("delivery-")
-    assert pg_ledger.seen("telegram:111:5") is True
-    assert pg_ledger.get(record.id).dedup_key == "telegram:111:5"
-
-
-def test_postgres_duplicate_dedup_returns_existing(pg_ledger):
-    first = pg_ledger.record(**_record_kwargs())
-    second = pg_ledger.record(**_record_kwargs(status="failed"))
-    assert second.id == first.id
-    assert second.status == "sent"  # first write wins
-
-
-def test_postgres_update(pg_ledger):
-    record = pg_ledger.record(**_record_kwargs(status="pending"))
-    updated = pg_ledger.update(record.id, status="sent", attempts=2, error=None)
-    assert updated.status == "sent"
-    assert updated.attempts == 2
-    assert pg_ledger.update("delivery-missing", status="sent") is None
-
-
-def test_postgres_list_for_chat(pg_ledger):
-    pg_ledger.record(**_record_kwargs())
-    pg_ledger.record(**_record_kwargs(dedup_key="telegram:111:6"))
-    pg_ledger.record(**_record_kwargs(chat_id="222", dedup_key="telegram:222:5"))
-    rows = pg_ledger.list_for_chat("telegram", "111")
-    assert len(rows) == 2
