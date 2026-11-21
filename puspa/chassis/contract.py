@@ -41,9 +41,9 @@ CHASSIS_CONTRACT_TESTS: tuple[str, ...] = (
     "tests/test_skills_hooks.py",
     # assemble / build_registry / build_hook_factory (composition root).
     "tests/test_factory_rails.py",
-    # End-to-end wrapper wiring: registry backstop, ledger hook
-    # writes, skill loader, sandbox tool, assemble.
-    "tests/test_integration.py",
+    # End-to-end wrapper wiring lives in the private repo now:
+    # tests/test_integration.py moved with the sandbox in Step 4,
+    # and the private contract list still requires it there.
 )
 
 
