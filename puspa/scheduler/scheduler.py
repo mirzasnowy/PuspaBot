@@ -43,6 +43,7 @@ TRIGGER_TYPES = (
     "dream",
     "sentinel_scan",
     "ontology_review",
+    "amnesia_check",
 )
 
 #: Proactive trigger types pay from the interruption budget (K10):
@@ -370,8 +371,8 @@ def run_trigger_job(run: dict, *, turn_loop=None, dsn=None, now: datetime | None
 
     This is the production caller ``run_scheduled_job`` was
     missing: system jobs (backup, consolidation, dream, sentinel
-    scan, trust-root and revocation refresh, ontology review)
-    run here, directly. A user routine (a ``schedule`` trigger
+    scan, trust-root and revocation refresh, ontology review,
+    amnesia check) run here, directly. A user routine (a ``schedule`` trigger
     whose schedule field holds a schedule dict) runs through
     the given turn loop instead: its task text becomes the
     turn's first message, so it runs with no human present,
@@ -650,6 +651,24 @@ def schedule_ontology_review(user_id: str, *, day: int = 1, hour: int = 3, dsn=N
     )
 
 
+def schedule_amnesia_check(user_id: str, *, hour: int = 3, dsn=None) -> Trigger:
+    """Register the nightly amnesia check (V2) as a trigger.
+
+    Running this trigger calls ``puspa.memory.amnesia.
+    run_amnesia_check`` through ``run_scheduled_job`` below:
+    20 pinned items are recalled cold, any miss is recorded
+    as an incident in the ledger and triggers an index repair
+    (a durable-memory rebuild), followed by a recheck. The
+    scheduler moves the trigger one day forward on each run
+    (see ``run_trigger``), so this registration gives one
+    check a night at the given hour.
+    """
+    tomorrow = (_now() + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
+    return create_trigger(
+        user_id, "amnesia_check", tomorrow, schedule=f"daily {hour:02d}:00", dsn=dsn
+    )
+
+
 def run_scheduled_job(run: dict, *, dsn=None) -> dict:
     """Eksekusi job sistem untuk satu jalan pemicu (backup/konsolidasi).
 
@@ -702,6 +721,11 @@ def run_scheduled_job(run: dict, *, dsn=None) -> dict:
             }
         result = run_ontology_review(str(user_id), dsn=dsn, task_id=run["task_id"])
         return {"job": "ontology_review", "result": result}
+    if event_type == "amnesia_check":
+        from puspa.memory.amnesia import run_amnesia_check
+
+        result = run_amnesia_check(str(user_id), dsn=dsn, task_id=run["task_id"])
+        return {"job": "amnesia_check", "result": result}
     if event_type == "trust_root_refresh":
         from puspa.policy.trust_root import run_trust_root_refresh_job
 
