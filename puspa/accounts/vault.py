@@ -40,11 +40,27 @@ import base64
 import os
 import stat
 
+import psycopg
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-from .users import _connect
+#: Fallback DSN when no DSN is passed and no env var is set (same
+#: convention as the rest of the codebase).
+DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+
+
+def _connect(dsn=None):
+    """Open a Postgres connection (split Step 1: local copy).
+
+    The vault used to take this helper from the multi-user accounts
+    module, which moved private with the hosted accounts. The
+    resolution order is unchanged: explicit DSN, then ``PUSPA_DSN``,
+    then ``PUSPA_TEST_DSN``, then the local default.
+    """
+    resolved = dsn or os.environ.get("PUSPA_DSN") or os.environ.get("PUSPA_TEST_DSN") or DEFAULT_DSN
+    return psycopg.connect(resolved)
+
 
 __all__ = [
     "VaultError",
