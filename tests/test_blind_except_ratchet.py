@@ -31,7 +31,11 @@ room job runner, which must stay blind by design (audit section 2.1)
 handlers — the gateway's intent-advisor boundary, which must stay
 blind by design (an advisor that fails fails closed to a deny, and
 the question-rendering fallback likewise) — so the ratchet resumes
-from 195. Every handler on a money,
+from 195. K7 (21 Nov 2026) adds 1 recorded handler — the simulator's
+learning-loop record seam, which must stay blind by design (a loop
+that fails never breaks a simulation; the same seam as the world
+model's misprediction report, already recorded at 1) — so the
+ratchet resumes from 196. Every handler on a money,
 credential, or approval path was audited; the audit notes which must
 stay blind-except and why are in that document.
 
@@ -143,6 +147,7 @@ BASELINE_BLE001: dict[str, int] = {
     "puspa/world/agents.py": 1,
     "puspa/world/causal.py": 1,
     "puspa/world/model.py": 1,
+    "puspa/world/speeds.py": 1,
     "tests/test_agent_store.py": 1,
     "tests/test_anti_manipulation.py": 1,
     "tests/test_bitemporal.py": 1,
@@ -158,7 +163,7 @@ BASELINE_BLE001: dict[str, int] = {
 #: Total baseline: the sum of BASELINE_BLE001 (193 on 20 Nov 2026;
 #: P-05 adds 1 recorded handler — the room job runner, see
 #: docs/e20-blind-except-audit.md section 2.1).
-BASELINE_TOTAL = 195
+BASELINE_TOTAL = 196
 
 
 def _repo_root() -> Path:

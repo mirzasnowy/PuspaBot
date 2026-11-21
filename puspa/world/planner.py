@@ -31,9 +31,22 @@ Supported tasks (all values English):
 - ``{"goal": "sequence", "steps": [action, ...]}``: simulate the
   given actions in order.
 
-The returned plan is ``{"task": ..., "steps": [...], "feasible":
-bool, "predicted_outcome": {...}}`` where each step holds its action
-plus the predicted outcome and confidence for that step.
+Three speeds (K7, ``puspa.world.speeds``): ``plan`` takes an
+optional ``speed`` (``"fast"`` by default) and an optional
+rehearsal ``world``. Each step is forecast at the requested
+speed through a shared ``ThreeSpeedSimulator`` — fast answers
+from the model's belief snapshot, medium re-derives the
+forecast from the trace history, deep executes the action in
+the supplied world and observes the outcome. A step that its
+speed cannot answer falls back down the chain, and the plan
+records the requested ``"speed"`` and every ``"fallbacks"``
+that happened. A deep plan consumes the world it is given (a
+dry-run pay marks the bill paid in that world), so the caller
+passes a fresh world per plan. The returned plan is
+``{"task": ..., "steps": [...], "feasible": bool,
+"predicted_outcome": {...}, "speed": ..., "fallbacks": [...]}``
+where each step holds its action plus the predicted outcome,
+confidence, and the speed that produced it for that step.
 """
 
 from __future__ import annotations
@@ -42,21 +55,47 @@ import copy
 
 from puspa.world.model import WorldModel
 from puspa.world.simulator import STORES
+from puspa.world.speeds import ThreeSpeedSimulator
 
 MAX_PLAN_STEPS = 10
 
 
-def plan(model: WorldModel, task: dict) -> dict:
-    """Plan a multi-step task by simulating it against the world model."""
+def plan(
+    model: WorldModel,
+    task: dict,
+    *,
+    speed: str = "fast",
+    world=None,
+    tool_runner=None,
+) -> dict:
+    """Plan a multi-step task by simulating it against the world model.
+
+    ``speed`` is the rehearsal speed for the step forecasts
+    (``"fast"`` by default; see :mod:`puspa.world.speeds`).
+    ``world`` is the rehearsal world a deep plan executes in
+    (consumed by the plan — pass a fresh world per plan);
+    ``tool_runner`` is the sandbox dry-run seam for actions the
+    world does not know. The returned plan always carries the
+    requested ``"speed"`` and the ``"fallbacks"`` that happened.
+    """
+    simulator = ThreeSpeedSimulator(model, world, tool_runner)
+    fallbacks: list[str] = []
+    result = _plan(model, task, simulator, speed, fallbacks)
+    result["speed"] = speed
+    result["fallbacks"] = fallbacks
+    return result
+
+
+def _plan(model: WorldModel, task: dict, simulator, speed: str, fallbacks: list) -> dict:
     goal = task.get("goal")
     if goal == "pay_bill":
-        return _plan_pay_bill(model, task)
+        return _plan_pay_bill(model, task, simulator, speed, fallbacks)
     if goal == "find_cheapest_price":
-        return _plan_find_cheapest(model, task)
+        return _plan_find_cheapest(model, task, simulator, speed, fallbacks)
     if goal == "message_contact":
         return _plan_message_contact(model, task)
     if goal == "sequence":
-        return _plan_sequence(model, task)
+        return _plan_sequence(model, task, simulator, speed, fallbacks)
     return {
         "task": task,
         "steps": [],
@@ -67,28 +106,50 @@ def plan(model: WorldModel, task: dict) -> dict:
 
 
 def _simulate_steps(
-    model: WorldModel, actions: list[dict], state: dict | None = None
+    model: WorldModel,
+    actions: list[dict],
+    state: dict | None = None,
+    *,
+    simulator: ThreeSpeedSimulator | None = None,
+    speed: str = "fast",
+    fallbacks: list | None = None,
 ) -> tuple[list[dict], dict]:
-    """Simulate actions in order on a copy of the model state."""
+    """Simulate actions in order on a copy of the model state.
+
+    Each step is forecast at ``speed`` through the shared
+    simulator (one per plan, so a deep plan keeps executing in
+    the same world); a step its speed cannot answer falls back
+    down the chain, and the fallback is appended to ``fallbacks``
+    when given. With no simulator given, a throwaway one is
+    built (fast, no world) — the old behaviour.
+    """
+    simulator = simulator or ThreeSpeedSimulator(model)
     state = copy.deepcopy(state if state is not None else model.state)
     steps = []
     for action in actions:
-        prediction = model.predict(action, state=state)
+        outcome, confidence, used, step_fallbacks = simulator.simulate_action(action, state, speed)
+        if fallbacks is not None:
+            for fallen in step_fallbacks:
+                if fallen not in fallbacks:
+                    fallbacks.append(fallen)
         steps.append(
             {
                 "action": dict(action),
-                "predicted_outcome": prediction.outcome,
-                "confidence": prediction.confidence,
+                "predicted_outcome": outcome,
+                "confidence": confidence,
+                "speed": used,
             }
         )
-        state = model.apply_predicted(state, action, prediction.outcome)
+        state = model.apply_predicted(state, action, outcome)
     return steps, state
 
 
-def _plan_pay_bill(model: WorldModel, task: dict) -> dict:
+def _plan_pay_bill(model: WorldModel, task: dict, simulator, speed: str, fallbacks: list) -> dict:
     bill_id = str(task["bill_id"])
     check = {"type": "check_bill", "bill_id": bill_id}
-    steps, state = _simulate_steps(model, [check])
+    steps, state = _simulate_steps(
+        model, [check], simulator=simulator, speed=speed, fallbacks=fallbacks
+    )
     first = steps[0]["predicted_outcome"]
     if first.get("status") == "paid":
         return {
@@ -106,7 +167,9 @@ def _plan_pay_bill(model: WorldModel, task: dict) -> dict:
             "reason": "unknown_bill",
         }
     pay = {"type": "pay_bill", "bill_id": bill_id}
-    more_steps, _final_state = _simulate_steps(model, [pay, check], state=state)
+    more_steps, _final_state = _simulate_steps(
+        model, [pay, check], state=state, simulator=simulator, speed=speed, fallbacks=fallbacks
+    )
     steps.extend(more_steps)
     final_status = more_steps[-1]["predicted_outcome"].get("status")
     return {
@@ -117,13 +180,17 @@ def _plan_pay_bill(model: WorldModel, task: dict) -> dict:
     }
 
 
-def _plan_find_cheapest(model: WorldModel, task: dict) -> dict:
+def _plan_find_cheapest(
+    model: WorldModel, task: dict, simulator, speed: str, fallbacks: list
+) -> dict:
     product_id = str(task["product_id"])
     stores = list(task.get("stores") or STORES)
     actions = [
         {"type": "check_price", "product_id": product_id, "store": store} for store in stores
     ]
-    steps, state = _simulate_steps(model, actions)
+    steps, state = _simulate_steps(
+        model, actions, simulator=simulator, speed=speed, fallbacks=fallbacks
+    )
     known = [
         (step["action"]["store"], step["predicted_outcome"]["price"])
         for step in steps
@@ -145,7 +212,9 @@ def _plan_find_cheapest(model: WorldModel, task: dict) -> dict:
         probe = model.probe_for("price", f"{product_id}@{stores[0]}")
         probe_steps: list[dict] = []
         if probe is not None:
-            probe_steps, _ = _simulate_steps(model, [probe["action"]])
+            probe_steps, _ = _simulate_steps(
+                model, [probe["action"]], simulator=simulator, speed=speed, fallbacks=fallbacks
+            )
             probe_steps[0]["probe"] = True
         return {
             "task": task,
@@ -158,7 +227,9 @@ def _plan_find_cheapest(model: WorldModel, task: dict) -> dict:
         }
     cheapest_store, cheapest_price = min(known, key=lambda item: item[1])
     buy = {"type": "buy_from_store", "product_id": product_id, "store": cheapest_store}
-    buy_steps, _ = _simulate_steps(model, [buy], state=state)
+    buy_steps, _ = _simulate_steps(
+        model, [buy], state=state, simulator=simulator, speed=speed, fallbacks=fallbacks
+    )
     steps.extend(buy_steps)
     return {
         "task": task,
@@ -223,7 +294,7 @@ def _plan_message_contact(model: WorldModel, task: dict) -> dict:
     }
 
 
-def _plan_sequence(model: WorldModel, task: dict) -> dict:
+def _plan_sequence(model: WorldModel, task: dict, simulator, speed: str, fallbacks: list) -> dict:
     actions = list(task.get("steps") or [])
     if not actions:
         return {
@@ -241,6 +312,8 @@ def _plan_sequence(model: WorldModel, task: dict) -> dict:
             "predicted_outcome": {},
             "reason": "too_many_steps",
         }
-    steps, _ = _simulate_steps(model, actions)
+    steps, _ = _simulate_steps(
+        model, actions, simulator=simulator, speed=speed, fallbacks=fallbacks
+    )
     last = steps[-1]["predicted_outcome"] if steps else {}
     return {"task": task, "steps": steps, "feasible": True, "predicted_outcome": last}

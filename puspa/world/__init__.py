@@ -80,6 +80,7 @@ from .noisy_simulator import (
 )
 from .planner import plan
 from .simulator import SimulatedWorld, run_episode, run_episodes
+from .speeds import SimulationResult, SpeedUnavailable, ThreeSpeedSimulator, simulate
 from .store import (
     apply_agent_migration,
     apply_bitemporal_migration,
@@ -122,6 +123,9 @@ __all__ = [
     "NoisySimulatedWorld",
     "Prediction",
     "SimulatedWorld",
+    "SimulationResult",
+    "SpeedUnavailable",
+    "ThreeSpeedSimulator",
     "WorldModel",
     "apply_agent_migration",
     "apply_bitemporal_migration",
@@ -152,5 +156,6 @@ __all__ = [
     "save_causal_hypotheses",
     "save_world_state",
     "serialize_state",
+    "simulate",
     "utcnow",
 ]

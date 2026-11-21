@@ -103,6 +103,32 @@ to the `TaskRunner` they build. With no arguments their behaviour
 is unchanged, so existing trigger and curriculum behaviour is
 unaffected.
 
+### 4. Three-speed simulator (`puspa/world/speeds.py`)
+
+A rehearsal — "what happens if I do these actions?" — runs at
+three speeds, weakest first: `fast` answers from the model's
+belief snapshot (one `WorldModel.predict` per action on a copy
+of the state), `medium` re-derives the forecast from the raw
+trace history behind the belief (price-move history, observed
+durations, success counts), and `deep` executes each action in
+a rehearsal world (`SimulatedWorld` or `NoisySimulatedWorld`)
+and observes the outcome. A step its speed cannot answer falls
+back down the chain (deep -> medium -> fast) with every
+abandonment recorded; the result's `speed_used` is the weakest
+speed any step needed. Every result is recorded through the
+learning loop as a non-teaching experience, best effort, and
+kept in the simulator's own `simulations` list.
+
+The planner routes its step forecasts through the simulator:
+`plan(model, task, speed="fast", world=None, tool_runner=None)`
+— the default is the old fast behaviour, unchanged. A deep plan
+consumes the world it is given, so the caller passes a fresh
+world per plan. `WorldModel` itself gains no method: its
+file-size baseline (1395 lines, may only shrink) forbids it, so
+the wiring is the speeds module plus the planner. The
+`tool_runner` argument is the sandbox dry-run seam for actions
+the world does not know: a callable returning an outcome dict.
+
 ## Persistence: `puspa/world/store.py`
 
 One row per (user, agent) in table `world_beliefs`
@@ -160,6 +186,10 @@ host=/var/run/postgresql`.
   (in-memory, no Postgres) plus Postgres save/load round trip and
   upsert. Each database test skips itself when Postgres is not
   reachable. Run with `pytest tests/test_world_store.py -q`.
+- `tests/test_simulator_speeds.py` (in-memory, no Postgres): all
+  three speeds, the fallback chain, recording through the
+  learning loop, and the planner wiring at each speed. Run with
+  `pytest tests/test_simulator_speeds.py -q --noconftest`.
 
 ## Known limits
 
