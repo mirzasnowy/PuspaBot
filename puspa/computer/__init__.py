@@ -49,6 +49,7 @@ from .input import (
     make_input_backend,
 )
 from .mcp import handle_tool, mcp_server_definition, tool_definitions
+from .safety import MASKED, ScreenTextSafety, ledger_event_log
 from .screenshot import (
     FakeScreenshotBackend,
     Screenshot,
@@ -93,6 +94,7 @@ from .web import (
 )
 
 __all__ = [
+    "MASKED",
     "TOOL_CLICK_AT",
     "TOOL_WEB_CLICK",
     "AccessibleNode",
@@ -121,6 +123,7 @@ __all__ = [
     "OcrBackend",
     "OcrWord",
     "PlaywrightWebBackend",
+    "ScreenTextSafety",
     "Screenshot",
     "ScreenshotBackend",
     "SettleReport",
@@ -158,6 +161,7 @@ __all__ = [
     "handle_tool",
     "is_submit_shortcut",
     "is_web_target",
+    "ledger_event_log",
     "make_backend",
     "make_clicker",
     "make_input_backend",
