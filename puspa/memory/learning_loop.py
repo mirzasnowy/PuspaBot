@@ -39,9 +39,10 @@ Safety rules enforced here:
   `conflicts_with_manual_edit` instead of replacing anything.
 - Verification is fail-closed: string code is never executed
   by this module. A skill whose code is a string needs an
-  `executor` callable (in production: the sandbox runner in
-  `puspa/sandbox/runner.py`); without one the skill stays
-  unverified. No network call is made on any path here.
+  `executor` callable (in production: the local executor in
+  `puspa/localexec/`, permission-prompted and limited to the
+  workspace); without one the skill stays unverified. No
+  network call is made on any path here.
 
 Seam for the world-model agent (exact signature required):
 
@@ -901,8 +902,8 @@ class LearningLoop:
         `test_cases` is a list of {"args": [...], "expected": ...}
         (or {"kwargs": {...}, "expected": ...}). Callable code is
         called directly; string code needs an `executor` callable
-        `executor(code, case)` (in production: the sandbox
-        runner) and stays unverified without one. Returns
+        `executor(code, case)` (in production: the local executor
+        in `puspa/localexec/`) and stays unverified without one. Returns
         {"passed", "failed", "verified", "details"} and records
         the result on the skill. A skill is verified only when
         every case passes.

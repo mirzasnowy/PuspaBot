@@ -143,8 +143,13 @@ own branch, PR, and green suite, the way K1-K13 landed.
   `assemble()` tested only with a stubbed AgentLoop.
 - `run_scheduled_job` has no production caller: scheduler jobs exist,
   nothing invokes due triggers.
-- The learning loop's `record_misprediction` degrades best-effort on
-  some paths (its guardrail lazily imports a removed module).
+- The learning loop's `record_misprediction` guardrail is fixed:
+  its lazy import of the evidence renderer resolves through the
+  public `puspa.policy` allowlist (the removed private sandbox
+  is gone from the chain), and the watcher tests run the real
+  guardrail end to end instead of stubbing it, so a
+  misprediction reaches the loop on every path
+  (`tests/test_misprediction_guardrail.py`).
 - The world model re-derives dynamics from traces on read, so the
   consolidation pass IS the retraining (documented, not a separate
   training step).

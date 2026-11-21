@@ -3,8 +3,7 @@
 No live provider, no network, no database: the watcher is
 in-memory, the writer and the learning loop are fakes (or a
 fresh in-memory loop), and the detector reads synthetic ledger
-events. Only modules with a clean import chain on the scrubbed
-main are imported here, so these tests run with --noconftest.
+events.
 """
 
 from __future__ import annotations
@@ -265,24 +264,13 @@ def test_check_due_compares_a_non_string_fresh_value_as_text():
     assert result.fresh_observed == "42"
 
 
-def test_late_failure_teaches_a_real_loop(monkeypatch):
+def test_late_failure_teaches_a_real_loop():
     """The watcher feeds a real loop and the loop learns.
 
-    The loop's guardrail classification is stubbed here: on the
-    scrubbed main its lazy import of the evidence renderer
-    fails (the ``puspa.sandbox`` chain the split extraction
-    owns), so the real classifier cannot run yet. The stub
-    stands in for the guardrail, which has its own tests; the
-    watcher only has to call the loop with the right record.
+    Runs the real guardrail: the late failure carries plain
+    text (no orphan numbers), so the loop teaches and the
+    next prediction returns the fresh observed value.
     """
-    monkeypatch.setattr(
-        "puspa.memory.learning_loop.classify_experience",
-        lambda **kwargs: {
-            "verification": "world_observation",
-            "quarantined": False,
-            "quarantine_reasons": [],
-        },
-    )
     loop = LearningLoop()
     watcher = OutcomeWatcher(record_outcome=_FakeWriter(), learning_loop=loop)
     watcher.watch(_outcome(), recheck=lambda: "unpaid", now=NOW)
@@ -293,21 +281,14 @@ def test_late_failure_teaches_a_real_loop(monkeypatch):
     assert loop.predict("pay the electricity bill") == "unpaid"
 
 
-def test_late_failure_surfaces_the_loop_quarantine_verdict(monkeypatch):
+def test_late_failure_surfaces_the_loop_quarantine_verdict():
     """When the loop quarantines, the result says so.
 
-    Same stub as above, this time reporting the guardrail's
-    orphan-numbers quarantine: the watcher must not hide the
-    loop's verdict, and a quarantined record never teaches.
+    Runs the real guardrail: the late failure carries bare
+    figures with no evidence behind them (orphan numbers), so
+    the loop quarantines the record instead of teaching, and
+    the watcher reports that verdict instead of hiding it.
     """
-    monkeypatch.setattr(
-        "puspa.memory.learning_loop.classify_experience",
-        lambda **kwargs: {
-            "verification": "quarantined",
-            "quarantined": True,
-            "quarantine_reasons": ["orphan_numbers"],
-        },
-    )
     loop = LearningLoop()
     watcher = OutcomeWatcher(record_outcome=_FakeWriter(), learning_loop=loop)
     watcher.watch(
@@ -341,21 +322,12 @@ def test_a_failing_loop_or_writer_never_kills_the_check():
     assert result.fresh_observed == "unpaid"
 
 
-def test_the_default_loop_feeds_without_an_injected_loop(monkeypatch):
+def test_the_default_loop_feeds_without_an_injected_loop():
     """The default (module-level) loop is fed when no loop is injected.
 
-    Guardrail classification stubbed as in the teaching test
-    above: the stub stands in for the classifier whose lazy
-    evidence import is broken on the scrubbed main.
+    Runs the real guardrail on the shared default loop: the
+    late failure carries plain text, so the loop teaches.
     """
-    monkeypatch.setattr(
-        "puspa.memory.learning_loop.classify_experience",
-        lambda **kwargs: {
-            "verification": "world_observation",
-            "quarantined": False,
-            "quarantine_reasons": [],
-        },
-    )
     watcher = OutcomeWatcher(record_outcome=_FakeWriter())
     unique_task = "k8 default loop task 9f3c21"
     watcher.watch(_outcome(task=unique_task), recheck=lambda: "unpaid", now=NOW)

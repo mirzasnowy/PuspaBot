@@ -40,11 +40,17 @@ Seams (so the watcher never imports a broken chain):
   exists, so the detector (which reads the ledger) stays the
   only source of issues in a scheduled scan. The eval-harness
   follow-up wires the real writer; this module never imports
-  ``puspa.evidence.outcomes`` (its import chain is broken on
-  the scrubbed main), so these tests run with ``--noconftest``.
+  ``puspa.evidence.outcomes`` directly, so the watcher stays
+  free of the ledger and database dependency and its tests
+  need no database.
 - The learning loop defaults to the module-level
   ``record_misprediction`` (in-memory, same seam the world
-  model uses); a test may inject a fake loop instead.
+  model uses); a test may inject a fake loop instead. The
+  loop's guardrail runs for real on every path: its lazy
+  import of the evidence renderer resolves through the
+  public ``puspa.policy`` allowlist (the private sandbox the
+  split removed is gone from the chain), so a misprediction
+  is never dropped by a broken import.
 
 One failure boundary: every injected or arbitrary callable in
 this module (the recheck, the writer, the loop) goes through
