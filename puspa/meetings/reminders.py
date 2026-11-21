@@ -40,7 +40,7 @@ from datetime import UTC, datetime, timedelta
 import psycopg
 from psycopg.rows import dict_row
 
-from puspa.accounts.users import resolve_dsn
+from puspa.accounts.ports import resolve_dsn
 from puspa.rooms.errors import NotRoomMemberError
 from puspa.rooms.rooms import RoomStore, _validate_uuid
 from puspa.rooms.tasks import RoomTask, RoomTaskStore

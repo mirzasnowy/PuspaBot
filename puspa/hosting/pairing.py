@@ -12,7 +12,7 @@ Rules, all enforced here:
   returned once at issue time and never written anywhere.
 - A correct code mints a session token (``secrets.token_urlsafe(32)``)
   valid for 30 days. Only the SHA-256 hash of the token is stored,
-  the same pattern as ``puspa.accounts.user_sessions``.
+  the same pattern as ``puspa.accounts.ports``.
 - 5 wrong codes from one address lock that address for 10 minutes.
   While locked, verification refuses immediately without touching
   any code, so a locked address cannot burn other users' codes.

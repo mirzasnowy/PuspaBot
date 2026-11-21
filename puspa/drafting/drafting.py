@@ -45,7 +45,7 @@ from datetime import UTC, datetime, timedelta
 import psycopg
 from psycopg.rows import dict_row
 
-from puspa.accounts.users import resolve_dsn
+from puspa.accounts.ports import resolve_dsn
 from puspa.evidence.outcomes import write_outcome
 from puspa.ledger import Ledger
 from puspa.memory import facts as facts_module

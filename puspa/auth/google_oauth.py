@@ -316,7 +316,7 @@ def complete_google_login(
     Kembalikan {user_id, email, session_token, baru}. Sesi dibuat
     lewat sessions.py Fase 0 (dipakai ulang, tanpa perubahan).
     """
-    from puspa.accounts.user_sessions import create_session
+    from puspa.accounts.ports import create_session
 
     tokens = exchange_code(
         code,

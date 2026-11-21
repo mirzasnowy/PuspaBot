@@ -53,7 +53,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from puspa.accounts.users import resolve_dsn
+from puspa.accounts.ports import resolve_dsn
 from puspa.migrations import apply_migrations
 
 #: Shared tables this module owns. The canonical DDL lives in

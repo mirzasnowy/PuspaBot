@@ -56,7 +56,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from puspa.accounts.users import resolve_dsn
+from puspa.accounts.ports import resolve_dsn
 from puspa.evidence.outcomes import write_outcome
 from puspa.ledger import Ledger
 from puspa.rooms.errors import NotRoomMemberError

@@ -55,6 +55,8 @@ from pathlib import Path
 
 import psycopg
 
+from puspa.accounts.ports import resolve_dsn as _port_resolve_dsn
+
 from .errors import SingleWriterError
 
 __all__ = [
@@ -84,9 +86,10 @@ def resolve_dsn(dsn: str | None = None) -> str:
     """Postgres DSN: explicit argument, then ``PUSPA_DSN`` /
     ``PUSPA_TEST_DSN`` env, then the local peer-auth default.
 
-    Same resolution order as ``puspa.accounts.users.resolve_dsn``.
+    Delegates to :func:`puspa.accounts.ports.resolve_dsn`, the one
+    canonical resolution order in the tree.
     """
-    return dsn or os.environ.get("PUSPA_DSN") or os.environ.get("PUSPA_TEST_DSN") or DEFAULT_DSN
+    return _port_resolve_dsn(dsn)
 
 
 def default_agent_id(profile: str | None) -> str:

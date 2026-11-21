@@ -35,12 +35,13 @@ The DSN comes from ``--dsn``, then ``PUSPA_DSN``, then
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import psycopg
+
+from puspa.accounts.ports import resolve_dsn as _port_resolve_dsn
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
@@ -81,8 +82,12 @@ class Migration:
 
 
 def resolve_dsn(dsn: str | None = None) -> str:
-    """Postgres DSN: argument, then env, then the local test default."""
-    return dsn or os.environ.get("PUSPA_DSN") or os.environ.get("PUSPA_TEST_DSN") or DEFAULT_DSN
+    """Postgres DSN: argument, then env, then the local test default.
+
+    Delegates to :func:`puspa.accounts.ports.resolve_dsn`, the one
+    canonical resolution order in the tree.
+    """
+    return _port_resolve_dsn(dsn)
 
 
 def list_migrations(directory: Path | None = None) -> list[Migration]:

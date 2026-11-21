@@ -6,7 +6,7 @@ from pathlib import Path
 
 import psycopg
 
-from puspa.accounts.users import resolve_dsn
+from puspa.accounts.ports import resolve_dsn
 from puspa.migrations import apply_migrations
 
 __all__ = ["MEETINGS_TABLES", "create_schema", "reset_tables", "schema_path"]

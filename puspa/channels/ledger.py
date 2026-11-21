@@ -174,7 +174,7 @@ class PostgresDeliveryLedger:
     """
 
     def __init__(self, dsn=None) -> None:
-        from puspa.accounts.users import resolve_dsn
+        from puspa.accounts.ports import resolve_dsn
 
         self.dsn = resolve_dsn(dsn)
 

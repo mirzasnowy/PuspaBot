@@ -18,14 +18,12 @@ kejadian tugasnya ditolak. Fungsi ini idempotent.
 
 from __future__ import annotations
 
-import os
 import uuid
 
 import psycopg
 
-from puspa.accounts.access import register_agent
+from puspa.accounts.ports import register_agent, resolve_dsn
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 MAX_AGENT = 3
 NAME_PUSPA = "Puspa"
 
@@ -35,7 +33,7 @@ class AgentError(Exception):
 
 
 def _connect(dsn=None):
-    return psycopg.connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN))
+    return psycopg.connect(resolve_dsn(dsn))
 
 
 def _agent_id_puspa(user_id: str) -> str:

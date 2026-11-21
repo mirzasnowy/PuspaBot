@@ -18,7 +18,7 @@ Onboarding pertama kali (G28). Batas 7 layar itu sudah tidak
 berlaku lagi setelah penambahan kematangan; total sekarang 9.
 
 Login: Google (keputusan 16, fondasi Fase 1 `puspa.auth`); sesi
-cookie httpOnly via `puspa.accounts.user_sessions`. Di tes, `create_app`
+cookie httpOnly via `puspa.accounts.ports`. Di tes, `create_app`
 menerima `test_user_id` (seam tes saja; di produksi None dan cookie
 wajib). Pesan chat + kejadian demo disimpan di `app.state` (memori
 proses) untuk demo lokal; jalur produksi menulis ke Buku Kerja
@@ -235,7 +235,7 @@ def create_app(
         if not token:
             return None
         try:
-            from puspa.accounts.user_sessions import validate_session
+            from puspa.accounts.ports import validate_session
 
             return validate_session(token, dsn=app.state.dsn)
         except Exception:
