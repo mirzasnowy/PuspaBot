@@ -1072,6 +1072,11 @@ def create_app(
     from puspa.pwa import receipt_api
 
     receipt_api.register_routes(app, need_user)
+    # V2-28: Puspa-native subscription login (terminal + PWA share
+    # the same ProviderLoginService; see puspa/pwa/provider_login_api.py).
+    from puspa.pwa import provider_login_api
+
+    provider_login_api.register_routes(app, need_user)
     # V2-26: agent avatar photo (upload / get / serve / delete).
     # Registered after share_api so app.state.share_inbox_dir is
     # already set; the avatar lives under the same per-user base.

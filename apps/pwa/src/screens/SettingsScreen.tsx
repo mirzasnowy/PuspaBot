@@ -2,12 +2,18 @@ import { useEffect, useState } from "react";
 import {
   deleteByokKey,
   getModelSettings,
+  getProviders,
+  logoutProvider,
+  pollProviderDeviceLogin,
   saveByokKey,
   saveModelSettings,
+  startProviderLogin,
   subscribePush,
   type ModelSettings,
+  type ProviderStatus,
 } from "../api/client";
 import { AutonomyDialPanel } from "../components/AutonomyDialPanel";
+import { ProviderLoginPanel } from "../components/ProviderLoginPanel";
 import { AgentPhotoPicker } from "../components/AgentPhotoPicker";
 import {
   DEFAULT_LOCAL_BASE_URL,
@@ -37,6 +43,20 @@ export function SettingsScreen() {
   const [modelBusy, setModelBusy] = useState(false);
   const [byokKey, setByokKey] = useState("");
   const [byokBusy, setByokBusy] = useState(false);
+  const [providers, setProviders] = useState<ProviderStatus[]>([]);
+  const [providersLoaded, setProvidersLoaded] = useState(false);
+  const [providersError, setProvidersError] = useState<string | null>(null);
+
+  async function loadProviders() {
+    try {
+      const data = await getProviders();
+      setProviders(Array.isArray(data.providers) ? data.providers : []);
+      setProvidersLoaded(true);
+      setProvidersError(null);
+    } catch (err) {
+      setProvidersError(err instanceof Error ? err.message : "error tak dikenal");
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +73,10 @@ export function SettingsScreen() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    void loadProviders();
   }, []);
 
   async function saveModelChoice() {
@@ -292,6 +316,19 @@ export function SettingsScreen() {
           {modelBusy ? "Menyimpan…" : "Simpan pilihan model"}
         </button>
         {modelStatus ? <p className="muted">{modelStatus}</p> : null}
+      </div>
+      <div className="card">
+        <ProviderLoginPanel
+          providers={providers}
+          loading={!providersLoaded}
+          error={providersError}
+          onStartLogin={(provider) => startProviderLogin(provider)}
+          onPollDevice={(provider, pollKey) => pollProviderDeviceLogin(provider, pollKey)}
+          onLogout={async (provider) => {
+            await logoutProvider(provider);
+          }}
+          onRefresh={() => void loadProviders()}
+        />
       </div>
       <div className="card">
         <strong>Bahasa</strong>

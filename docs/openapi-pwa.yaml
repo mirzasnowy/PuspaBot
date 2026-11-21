@@ -1038,6 +1038,196 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/providers:
+    get:
+      tags: [settings]
+      summary: List subscription providers with login state (V2-28)
+      description: |
+        One entry per known subscription provider (xai, github_copilot,
+        openai_codex) with its login state. Never returns token material:
+        only the state and the expiry time.
+      responses:
+        "200":
+          description: Provider login states
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderList"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/providers/{provider}/login/start:
+    post:
+      tags: [settings]
+      summary: Start a subscription login (V2-28)
+      description: |
+        PKCE providers return an authorize URL to open in a tab;
+        device-flow providers return a user code and verification URL.
+        The pending login lives server-side in memory for ten minutes.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [xai, github_copilot, openai_codex]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                redirect_uri:
+                  type: string
+                  description: PKCE redirect URI (defaults to the PWA callback).
+      responses:
+        "200":
+          description: Login started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderLoginStart"
+        "400":
+          description: Provider login is not wired yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Unknown provider
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/providers/callback:
+    get:
+      tags: [settings]
+      summary: Finish a PKCE subscription login (V2-28)
+      description: |
+        The provider redirects here with `code` and `state`; the code is
+        exchanged for tokens stored in the vault, and a plain page says
+        the login is done. No token is ever in the response.
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Login done (HTML page)
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Unknown or stale login session
+          content:
+            text/html:
+              schema:
+                type: string
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/providers/{provider}/device/poll:
+    post:
+      tags: [settings]
+      summary: Poll a device-flow subscription login (V2-28)
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [xai, github_copilot, openai_codex]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [poll_key]
+              properties:
+                poll_key:
+                  type: string
+                  description: Poll key returned by the login start.
+      responses:
+        "200":
+          description: "`pending` while the user has not approved yet, `complete` with the provider status once stored"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [pending, complete]
+                  provider:
+                    type: string
+                  state:
+                    type: string
+                    enum: [logged_in, expiring, expired, not_logged_in]
+        "400":
+          description: Unknown device login, or the flow expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/providers/{provider}/logout:
+    post:
+      tags: [settings]
+      summary: Log out of a subscription provider (V2-28)
+      description: Deletes the provider's tokens from the vault (idempotent).
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [xai, github_copilot, openai_codex]
+      responses:
+        "200":
+          description: Provider status after logout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderStatus"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Unknown provider
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   schemas:
     Error:
@@ -1173,6 +1363,68 @@ components:
         has_byok_key:
           type: boolean
           description: Whether a BYOK key for `provider` exists in the vault.
+    ProviderStatus:
+      type: object
+      description: |
+        Login state of one subscription provider (V2-28). Carries no
+        token material: only the state and the expiry time.
+      required: [provider, flow, state, expires_at, login_ready]
+      properties:
+        provider:
+          type: string
+          enum: [xai, github_copilot, openai_codex]
+        flow:
+          type: string
+          enum: [pkce, device]
+        state:
+          type: string
+          enum: [logged_in, expiring, expired, not_logged_in]
+        expires_at:
+          type: string
+          nullable: true
+          description: ISO-8601 expiry of the access token, or null when not logged in.
+        login_ready:
+          type: boolean
+          description: False when the provider login is not wired yet (Codex today).
+    ProviderList:
+      type: object
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderStatus"
+    ProviderLoginStart:
+      type: object
+      description: |
+        What the user needs to finish a login (V2-28): an authorize URL
+        for PKCE, or a user code + verification URL for the device flow.
+      required: [flow]
+      properties:
+        flow:
+          type: string
+          enum: [pkce, device]
+        url:
+          type: string
+          description: PKCE authorize URL to open in a tab.
+        state:
+          type: string
+          description: PKCE login state, returned to the callback.
+        user_code:
+          type: string
+          description: Device-flow code the user types at the verification URL.
+        verification_uri:
+          type: string
+          description: Device-flow URL the user opens to approve.
+        expires_in:
+          type: integer
+          description: Seconds until the device code expires.
+        interval:
+          type: integer
+          description: Seconds to wait between device polls.
+        poll_key:
+          type: string
+          description: Key to pass back when polling the device login.
     InsightsReport:
       type: object
       description: |

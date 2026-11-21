@@ -83,4 +83,35 @@ describe("SettingsScreen model picker", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("shows the subscription login panel with one button per provider", async () => {
+    const providersBody = {
+      providers: [
+        { provider: "xai", flow: "pkce", state: "logged_in", expires_at: null, login_ready: true },
+        { provider: "github_copilot", flow: "device", state: "not_logged_in", expires_at: null, login_ready: true },
+        { provider: "openai_codex", flow: "pkce", state: "not_logged_in", expires_at: null, login_ready: false },
+      ],
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      const body = url === "/api/providers" ? providersBody : hostedSettings;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => body,
+      } as Response);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      render(<SettingsScreen />);
+      expect(await screen.findByText("Login Langganan")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Logout xAI (Grok)" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Login GitHub Copilot" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Login Codex" })).toHaveProperty("disabled", true);
+      expect(fetchMock).toHaveBeenCalledWith("/api/providers", {
+        credentials: "same-origin",
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

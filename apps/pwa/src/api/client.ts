@@ -650,6 +650,59 @@ export async function deleteByokKey(
   return (await response.json()) as { ok: boolean };
 }
 
+/** Login state of one subscription provider (V2-28). No token ever appears here. */
+export type ProviderLoginState = "logged_in" | "expiring" | "expired" | "not_logged_in";
+
+export interface ProviderStatus {
+  provider: string;
+  flow: "pkce" | "device";
+  state: ProviderLoginState;
+  expires_at: string | null;
+  login_ready: boolean;
+}
+
+export type ProviderLoginStart =
+  | { flow: "pkce"; url: string; state: string }
+  | {
+      flow: "device";
+      user_code: string;
+      verification_uri: string;
+      expires_in: number;
+      interval: number;
+      poll_key: string;
+    };
+
+/** List every subscription provider with its login state (V2-28). */
+export function getProviders(fetchFn: FetchFn = fetch): Promise<{ providers: ProviderStatus[] }> {
+  return getJson("/api/providers", fetchFn);
+}
+
+/** Start a subscription login (V2-28): PKCE returns an authorize URL, device returns a user code. */
+export function startProviderLogin(
+  provider: string,
+  redirectUri?: string,
+  fetchFn: FetchFn = fetch,
+): Promise<ProviderLoginStart> {
+  return postJson(`/api/providers/${encodeURIComponent(provider)}/login/start`, { redirect_uri: redirectUri ?? null }, fetchFn);
+}
+
+/** Poll one device login started by startProviderLogin (V2-28). */
+export function pollProviderDeviceLogin(
+  provider: string,
+  pollKey: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ status: string; state?: ProviderLoginState; provider?: string }> {
+  return postJson(`/api/providers/${encodeURIComponent(provider)}/device/poll`, { poll_key: pollKey }, fetchFn);
+}
+
+/** Log out of one subscription provider; clears its vault tokens (V2-28). */
+export function logoutProvider(
+  provider: string,
+  fetchFn: FetchFn = fetch,
+): Promise<ProviderStatus> {
+  return postJson(`/api/providers/${encodeURIComponent(provider)}/logout`, {}, fetchFn);
+}
+
 /**
  * Parse one SSE `data:` frame body into an SseEvent. Returns null
  * when the frame is not valid JSON or not an event object.
