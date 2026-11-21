@@ -29,11 +29,9 @@ backend object (anything with ``run_python`` / ``sync`` /
 ``name``). The hosted computer backends plug in here; the local
 install builds one over the local runner through
 :func:`backend_executor`. A backend that cannot run raises its own
-``BackendUnavailable``; :class:`BackendExecutor` normalises that
-into the harness-level :class:`BackendUnavailable` (the two are
-different class objects — the private backend's error lives in
-another package — so the seam matches on the exception name,
-which is the contract), and the loop ends the run with status
+``BackendUnavailable``, which subclasses the harness-level one
+(one error identity across the boundary); :class:`BackendExecutor`
+lets it propagate unchanged, and the loop ends the run with status
 ``sandbox_unavailable``.
 
 Both executors share one interface: ``run(code, timeout_s=30)``
@@ -188,17 +186,12 @@ class BackendExecutor(Executor):
 
     def run(self, code: str, *, timeout_s: int = 30) -> ExecutionResult:
         # A backend that cannot run raises its own BackendUnavailable.
-        # That class lives in the backend's package, so it is not the
-        # harness-level BackendUnavailable the loop catches; normalise
-        # it here (the exception NAME is the contract) so the loop
-        # still ends the run with sandbox_unavailable. No host
-        # fallback, no retry on the host.
-        try:
-            result = self.backend.run_python(code, timeout_s=timeout_s)
-        except Exception as exc:
-            if type(exc).__name__ == "BackendUnavailable":
-                raise BackendUnavailable(str(exc)) from exc
-            raise
+        # That class subclasses the harness-level BackendUnavailable
+        # (one error identity across the boundary: the private
+        # backends inherit it from here), so it propagates unchanged
+        # and the loop still ends the run with sandbox_unavailable.
+        # No host fallback, no retry on the host.
+        result = self.backend.run_python(code, timeout_s=timeout_s)
         return ExecutionResult(
             ok=bool(result.ok),
             stdout=result.stdout,
