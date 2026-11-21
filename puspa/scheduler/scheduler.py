@@ -362,7 +362,7 @@ def tick(
 def schedule_backup_daily(user_id: str, *, hour: int = 3, dsn=None) -> Trigger:
     """Daftarkan job backup harian Fase 1 (C126) sebagai pemicu.
 
-    Jalan pemicu ini memanggil `puspa.backup.create_backup`; penjadwal
+    Jalan pemicu ini memanggil `puspa.backup.ports.create_backup`; penjadwal
     yang menjalankan job memakai `jalankan_job_terjadwal` di bawah.
     """
     tomorrow = (_now() + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
@@ -489,7 +489,7 @@ def run_scheduled_job(run: dict, *, dsn=None) -> dict:
         return {"job": "unknown", "result": None}
     event_type, user_id = row
     if event_type == "backup_daily":
-        from puspa.backup.backup import create_backup
+        from puspa.backup.ports import create_backup
 
         result = create_backup(dsn=dsn)
         return {"job": "backup_daily", "result": str(result)}
