@@ -44,6 +44,8 @@ tags:
     description: Visual approval overlay over the approvals taxonomy gate (visual approval overlay, plan 12.10)
   - name: replay
     description: Replay timeline of a bot's steps + GIF export (replay timeline, plan 12.10)
+  - name: artifacts
+    description: Artifacts a run produced, listed and downloaded (artifacts + run-logs browser, CowAgent research)
   - name: chat-cards
     description: Rich cards in Chat (rich cards in chat, plan 12.10)
   - name: chat-widgets
@@ -522,6 +524,10 @@ paths:
     $ref: './openapi-replay.yaml#/paths/~1api~1replay~1{agent_id}~1{task_id}~1steps~1{index}'
   /api/replay/{agent_id}/{task_id}/export.gif:
     $ref: './openapi-replay.yaml#/paths/~1api~1replay~1{agent_id}~1{task_id}~1export.gif'
+  /api/artifacts/{agent_id}:
+    $ref: './openapi-artifacts.yaml#/paths/~1api~1artifacts~1{agent_id}'
+  /api/artifacts/{agent_id}/{artifact_id}:
+    $ref: './openapi-artifacts.yaml#/paths/~1api~1artifacts~1{agent_id}~1{artifact_id}'
   /api/rooms:
     $ref: './openapi-rooms.yaml#/paths/~1api~1rooms'
   /api/rooms/{room_id}/tasks:
@@ -1920,6 +1926,8 @@ components:
       $ref: './openapi-replay.yaml#/components/schemas/ReplayStep'
     ReplayTimeline:
       $ref: './openapi-replay.yaml#/components/schemas/ReplayTimeline'
+    ArtifactSummary:
+      $ref: './openapi-artifacts.yaml#/components/schemas/ArtifactSummary'
     ApprovalRequest:
       type: object
       required: [request_id, status]
@@ -2074,7 +2082,7 @@ components:
       properties:
         screen:
           type: string
-          enum: [chat, tasks, modules, connectors, memory, settings, office, live, replay, insights, onboarding, login]
+          enum: [chat, tasks, modules, connectors, memory, settings, office, live, replay, artifacts, insights, onboarding, login]
         user_id:
           type: string
         messages:

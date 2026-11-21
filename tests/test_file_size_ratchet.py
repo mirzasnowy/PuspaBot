@@ -158,7 +158,11 @@ BASELINE_LINES = {
     # tree already carried — the "rooms" screen in SCREENS, the
     # rooms_api route registration, and the docstring lines that
     # name it. The ratchet resumes from 1193.
-    "puspa/pwa/app.py": 1193,
+    # Artifacts + run-logs browser (22 Nov 2026): +11 lines — the
+    # "artifacts" screen in SCREENS, its agents context (shared
+    # with replay), and the artifacts route registration.
+    # Resumes from 1204.
+    "puspa/pwa/app.py": 1204,
     # PWA typed API client: every screen's fetch wrapper plus
     # the generated-types aliases in one file. Crossed 1000
     # lines in P-10 (21 Nov 2026): the replay fetchers (tasks,
@@ -180,7 +184,13 @@ BASELINE_LINES = {
     # types). Split candidate when it grows again: one fetch
     # module per feature area, keeping the type aliases in
     # client.ts. The ratchet resumes from 1186.
-    "apps/pwa/src/api/client.ts": 1186,
+    # NOTE (22 Nov 2026): the file already measured 1,481 lines
+    # at this item's base — the 1186 baseline above is stale
+    # against merged work, not against this item. This item
+    # adds +46 lines only: the ArtifactSummary interface (21)
+    # plus the fetchArtifacts + artifactDownloadUrl fetchers
+    # (25). The ratchet resumes from 1527.
+    "apps/pwa/src/api/client.ts": 1527,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Shared-room delegation (B6): the delegation board, task
@@ -342,7 +352,16 @@ BASELINE_LINES = {
     # docs/openapi-chat-widgets.yaml). Main spec 1926, still
     # under the 2000-line hard cap (74 lines of headroom left).
     # Resumes from 1926.
-    "docs/openapi-pwa.yaml": 1926,
+    # NOTE (22 Nov 2026): the file already measured 2,295 lines
+    # at this item's base — the 1926 baseline above is stale
+    # against merged work (the spec is already past the
+    # 2000-line hard cap before this item), not against this
+    # item. This item adds +8 lines only: the `artifacts` tag
+    # (2), $ref stubs for 2 artifact paths + the ArtifactSummary
+    # schema (6), and "artifacts" in the Bootstrap screen enum
+    # (same line). The contract itself lives in
+    # docs/openapi-artifacts.yaml. The ratchet resumes from 2303.
+    "docs/openapi-pwa.yaml": 2303,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:

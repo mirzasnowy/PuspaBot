@@ -10,6 +10,7 @@ import {
   deleteGraphEdge,
   discardVoice,
   fetchApprovalOverlays,
+  fetchArtifacts,
   fetchGraphNode,
   fetchGraphPage,
   fetchReplay,
@@ -17,6 +18,7 @@ import {
   fetchReplayTasks,
   fetchRoomBoard,
   fetchRooms,
+  artifactDownloadUrl,
   renameGraphNode,
   rejectOverlay,
   releaseTakeover,
@@ -607,5 +609,30 @@ describe("P-10 replay timeline", () => {
     expect(replayGifUrl("puspa-1", "tugas-1")).toBe(
       "/api/replay/puspa-1/tugas-1/export.gif",
     );
+  });
+});
+
+describe("artifacts browser", () => {
+  it("fetchArtifacts reads /api/artifacts/{agent_id}", async () => {
+    const fetchMock = mockFetch([
+      {
+        artifact_id: "art-1",
+        agent_id: "puspa-1",
+        run_id: "tugas-1",
+        name: "laporan.md",
+        kind: "markdown",
+        media_type: "text/markdown",
+        size_bytes: 8,
+        created_at: "2026-11-20T15:00:00+00:00",
+      },
+    ]);
+    const result = await fetchArtifacts("puspa-1", fetchMock as unknown as typeof fetch);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/artifacts/puspa-1");
+    expect(result[0].name).toBe("laporan.md");
+    expect(result[0].size_bytes).toBe(8);
+  });
+
+  it("artifactDownloadUrl builds the download URL", () => {
+    expect(artifactDownloadUrl("puspa-1", "art-1")).toBe("/api/artifacts/puspa-1/art-1");
   });
 });

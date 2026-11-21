@@ -179,6 +179,19 @@ select {
 .panel {
   background: #f9fafb;
 }
+/* Artifacts browser tabs (modern-web-guidance "tabs"): the
+   selected tab is marked by an underline drawn with a border
+   on a pseudo-element — never by color alone — so the visual
+   state can never disagree with aria-selected. */
+[role="tab"] {
+  position: relative;
+}
+[role="tab"][aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  border-block-end: 3px solid #fff;
+}
 /* V2-26: agent avatar. The photo breathes calmly and blinks
    while idle, and bobs with a pulsing ring while working. All
    animation is transform/opacity only (compositor thread) and

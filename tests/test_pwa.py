@@ -32,15 +32,16 @@ def test_eleven_screens_exist_and_200(client):
         assert "Puspa" in resp.text
 
 
-def test_fourteen_screens_exist_including_rooms():
+def test_fifteen_screens_exist_including_rooms():
     """The morning, live, and replay screens are the eleventh, twelfth, and thirteenth,
     and Rooms is the fourteenth (the SPA already listed
-    it, the server did not).
+    it, the server did not). Artifacts is the fifteenth
+    (the artifacts + run-logs browser from CowAgent research).
 
-    The count is pinned on purpose: a fifteenth screen must be a
+    The count is pinned on purpose: a sixteenth screen must be a
     deliberate decision with its own ticket, not an accident.
     """
-    assert len(SCREENS) == 14
+    assert len(SCREENS) == 15
     assert set(SCREENS) == {
         "chat",
         "tasks",
@@ -59,6 +60,8 @@ def test_fourteen_screens_exist_including_rooms():
         "replay",
         # The Rooms screen the SPA already listed.
         "rooms",
+        # Artifacts + run-logs browser (CowAgent research).
+        "artifacts",
     }
 
 
