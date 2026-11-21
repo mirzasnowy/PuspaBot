@@ -76,6 +76,18 @@ puspa-cli = "puspa.cli:main"
 [tool.setuptools.packages.find]
 include = ["puspa*"]
 
+# Package data (split Step 6, 21 Nov 2026): runtime code reads data
+# files from inside the package (i18n locales, migration SQL,
+# plugin catalog + API + MCP definitions, chassis pin, eval corpora),
+# so they must ship in the wheel. Without this the wheel contained
+# 0 .sql / 0 .json files and `import puspa.i18n.server_lines` failed
+# from an installed package (missing default locale 'id').
+# The glob covers every data file type currently under puspa/; a
+# regression test (tests/test_packaging_data.py) fails if a data file
+# is added without a matching glob.
+[tool.setuptools.package-data]
+"*" = ["*.sql", "*.json", "*.yaml", "*.md", "py.typed"]
+
 [tool.ruff]
 # The codebase's natural width is around 100 columns (only 180 lines
 # exceed 100, versus 749 exceeding 88), so the formatter wraps at 100.

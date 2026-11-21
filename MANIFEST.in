@@ -1,0 +1,6 @@
+# Source distribution contents (split Step 6, 21 Nov 2026): the wheel
+# gets its data files from [tool.setuptools.package-data] in
+# pyproject.toml; the sdist needs them listed here too, or a build
+# from the sdist would miss them.
+recursive-include puspa *.sql *.json *.yaml *.md
+include puspa/py.typed
