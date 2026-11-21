@@ -14,6 +14,7 @@ import {
   localEcho,
   reconcileEcho,
 } from "../state/chat";
+import { requiredAgentName, resolveSenderName } from "../state/names";
 import { VoiceRecorder } from "../components/VoiceRecorder";
 import { ReceiptUpload } from "../components/ReceiptUpload";
 import { TaskProgressRail } from "../components/TaskProgressRail";
@@ -24,6 +25,10 @@ import { AgentAvatar } from "../components/AgentAvatar";
 
 export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
   const [state, setState] = useState(() => initialChatState(bootstrap.messages ?? []));
+  // V2-27: the bot's own name comes from the bootstrap agents list
+  // (the required agent), never a hardcoded string, so a renamed
+  // bot is called by its own name on every message.
+  const botName = requiredAgentName(bootstrap.agents ?? []);
   // P-03: text shared into the PWA from another app arrives via the
   // bootstrap as shared_text; it prefills the draft so the user can
   // review it and tap Send. Nothing is sent automatically.
@@ -97,18 +102,18 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
         photoSrc={avatarPhotoSrc(avatar)}
       />
       <p className="muted">
-        Group chat: kamu, Puspa, dan agenmu di satu thread. Sub-agen terlipat secara default;
+        Group chat: kamu, {botName}, dan agenmu di satu thread. Sub-agen terlipat secara default;
         pesanmu selalu menyela tugas yang berjalan.
       </p>
       <WorkStrip office={state.liveOffice} connected={state.liveConnected} />
       <div className="chat-layout">
         <div className="chat-thread" aria-live="polite">
           {state.messages.length === 0 ? (
-            <p className="muted">Belum ada pesan. Sapa Puspa dulu.</p>
+            <p className="muted">Belum ada pesan. Sapa {botName} dulu.</p>
           ) : (
             state.messages.map((m, i) => (
               <div key={`${m.created_at}-${i}`} className="card">
-                <strong>{m.sender}</strong>: {m.text}
+                <strong>{resolveSenderName(m.sender, { botName })}</strong>: {m.text}
                 {m.card ? (
                   <ChatCard card={m.card} onPickOption={(option) => void sendText(option.label)} />
                 ) : null}
@@ -132,8 +137,8 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Tulis pesan ke Puspa..."
-          aria-label="Pesan ke Puspa"
+          placeholder={`Tulis pesan ke ${botName}...`}
+          aria-label={`Pesan ke ${botName}`}
           disabled={state.sending}
         />
         <button type="submit" disabled={state.sending || draft.trim().length === 0}>

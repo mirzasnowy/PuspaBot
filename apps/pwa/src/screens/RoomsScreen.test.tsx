@@ -141,3 +141,128 @@ describe("RoomsScreen (P-05)", () => {
     expect(screen.queryByText("Antrekan catatan")).toBeNull();
   });
 });
+
+const UUID_RE =
+  /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
+const OWNER_UUID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+const MEMBER_UUID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+
+function namedDetailPayload() {
+  return {
+    id: ROOM_ID,
+    name: "Keluarga",
+    created_by: OWNER_UUID,
+    created_at: "2026-11-20T00:00:00Z",
+    role: "owner",
+    members: [
+      {
+        user_id: OWNER_UUID,
+        role: "owner",
+        joined_at: "2026-11-20T00:00:00Z",
+        display_name: "Rani",
+      },
+      { user_id: MEMBER_UUID, role: "member", joined_at: "2026-11-20T00:00:00Z" },
+    ],
+  };
+}
+
+describe("RoomsScreen group chat names (V2-27)", () => {
+  function stubNamedFetch() {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (url: string, init?: { method?: string }) => {
+        const method = init?.method ?? "GET";
+        if (url === "/api/rooms") return { ok: true, status: 200, json: async () => roomPayload() };
+        if (url === "/api/memory") return { ok: true, status: 200, json: async () => ({ facts: [], total_facts: 0 }) };
+        if (url === "/api/profile/display-name") {
+          if (method === "POST") {
+            return {
+              ok: true,
+              status: 200,
+              json: async () => ({ user_id: OWNER_UUID, display_name: "Rani" }),
+            };
+          }
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ user_id: OWNER_UUID, display_name: null }),
+          };
+        }
+        if (url === `/api/rooms/${ROOM_ID}`) {
+          return { ok: true, status: 200, json: async () => namedDetailPayload() };
+        }
+        if (url === `/api/rooms/${ROOM_ID}/tasks`) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ room_id: ROOM_ID, room_name: "Keluarga", tasks: [] }),
+          };
+        }
+        if (url === `/api/rooms/${ROOM_ID}/memory`) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              room_id: ROOM_ID,
+              memories: [
+                {
+                  id: "m1",
+                  room_id: ROOM_ID,
+                  author_user_id: MEMBER_UUID,
+                  kind: "decision",
+                  content: `Piknik hari Minggu.\nAgreed by: ${OWNER_UUID}, ${MEMBER_UUID}`,
+                  visibility: "room",
+                  created_at: "2026-11-20T00:00:00Z",
+                },
+              ],
+            }),
+          };
+        }
+        if (url === `/api/rooms/${ROOM_ID}/jobs`) {
+          return { ok: true, status: 200, json: async () => ({ room_id: ROOM_ID, jobs: [] }) };
+        }
+        if (url === `/api/rooms/${ROOM_ID}/invites`) {
+          return { ok: true, status: 200, json: async () => ({ room_id: ROOM_ID, invites: [] }) };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+  }
+
+  it("shows display names in the member list and never a raw UUID", async () => {
+    vi.stubGlobal("EventSource", FakeEventSource);
+    stubNamedFetch();
+    const user = userEvent.setup();
+    render(<RoomsScreen />);
+    await user.click(await screen.findByText("Keluarga"));
+    expect(await screen.findByText("Rani")).toBeTruthy();
+    expect(screen.getByText("Anggota 2")).toBeTruthy();
+    const text = document.body.textContent ?? "";
+    expect(UUID_RE.test(text)).toBe(false);
+    expect(text).not.toContain(OWNER_UUID);
+    expect(text).not.toContain(MEMBER_UUID);
+  });
+
+  it("renders the decision's agreed-by ids as names", async () => {
+    vi.stubGlobal("EventSource", FakeEventSource);
+    stubNamedFetch();
+    const user = userEvent.setup();
+    render(<RoomsScreen />);
+    await user.click(await screen.findByText("Keluarga"));
+    expect(await screen.findByText(/Piknik hari Minggu/)).toBeTruthy();
+    expect(screen.getByText(/Agreed by: Rani, Anggota 2/)).toBeTruthy();
+    expect(UUID_RE.test(document.body.textContent ?? "")).toBe(false);
+  });
+
+  it("saves the caller's display name from the edit form", async () => {
+    vi.stubGlobal("EventSource", FakeEventSource);
+    stubNamedFetch();
+    const user = userEvent.setup();
+    render(<RoomsScreen />);
+    await user.click(await screen.findByText("Keluarga"));
+    const input = await screen.findByLabelText("Nama tampilan");
+    await user.type(input, "Rani");
+    await user.click(screen.getByRole("button", { name: "Simpan nama" }));
+    expect(await screen.findByText(/Nama tampilan disimpan/)).toBeTruthy();
+  });
+});
