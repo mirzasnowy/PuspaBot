@@ -34,9 +34,11 @@ What it does, in plain words:
   section of MEMORY.md.
 
 What it does NOT do: write-through (one ``commit_turn`` call that
-writes the ledger and durable memory in the same turn) is a
-separate item and lives elsewhere; this module only owns the
-durable store, the rebuild, the journal, and reading edits back.
+writes the ledger and durable memory in the same turn) lives in
+``puspa.memory.commit_turn``; this module only owns the durable
+store, the rebuild, the journal, and reading edits back. The
+``*_on`` methods on ``PostgresDurableStore`` are the seams
+``commit_turn`` uses to join its transaction.
 
 Storage: ``PostgresDurableStore`` is the production store over
 migration 0029 (tables ``durable_memory`` and
@@ -408,66 +410,105 @@ class PostgresDurableStore:
         return psycopg.connect(self.dsn, row_factory=dict_row)
 
     def save_document(self, user_id, content, content_hash, generated_at, source_counts):
+        with self._connect() as conn:
+            record = self.save_document_on(
+                conn, user_id, content, content_hash, generated_at, source_counts
+            )
+            conn.commit()
+        return record
+
+    def save_document_on(self, conn, user_id, content, content_hash, generated_at, source_counts):
+        """Save a document on a caller-supplied connection; no commit.
+
+        Same upsert and version rule as :meth:`save_document`
+        (the version only grows when the text actually changes),
+        but the write joins the caller's transaction: the seam
+        ``puspa.memory.commit_turn`` uses to write the durable
+        memory and the ledger entry in one transaction. The
+        caller commits or rolls back. ``conn`` needs the dict
+        row factory (a plain connection still works: the
+        read-back uses an explicit ``dict_row`` cursor).
+        """
         import json
 
-        with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT content_hash, version FROM durable_memory WHERE user_id = %s",
-                    (str(user_id),),
-                )
-                previous = cur.fetchone()
-                if previous is not None and previous["content_hash"] == content_hash:
-                    cur.execute("SELECT * FROM durable_memory WHERE user_id = %s", (str(user_id),))
-                    return _public_document(cur.fetchone())
-                version = 1 if previous is None else int(previous["version"]) + 1
-                cur.execute(
-                    "INSERT INTO durable_memory "
-                    "(user_id, content, content_hash, version, generated_at, source_counts) "
-                    "VALUES (%s, %s, %s, %s, %s, %s::jsonb) "
-                    "ON CONFLICT (user_id) DO UPDATE SET content = EXCLUDED.content, "
-                    "content_hash = EXCLUDED.content_hash, version = EXCLUDED.version, "
-                    "generated_at = EXCLUDED.generated_at, "
-                    "source_counts = EXCLUDED.source_counts RETURNING *",
-                    (
-                        str(user_id),
-                        content,
-                        content_hash,
-                        version,
-                        generated_at,
-                        json.dumps(source_counts),
-                    ),
-                )
-                row = cur.fetchone()
-            conn.commit()
-        return _public_document(row)
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "SELECT content_hash, version FROM durable_memory WHERE user_id = %s",
+                (str(user_id),),
+            )
+            previous = cur.fetchone()
+            if previous is not None and previous["content_hash"] == content_hash:
+                cur.execute("SELECT * FROM durable_memory WHERE user_id = %s", (str(user_id),))
+                return _public_document(cur.fetchone())
+            version = 1 if previous is None else int(previous["version"]) + 1
+            cur.execute(
+                "INSERT INTO durable_memory "
+                "(user_id, content, content_hash, version, generated_at, source_counts) "
+                "VALUES (%s, %s, %s, %s, %s, %s::jsonb) "
+                "ON CONFLICT (user_id) DO UPDATE SET content = EXCLUDED.content, "
+                "content_hash = EXCLUDED.content_hash, version = EXCLUDED.version, "
+                "generated_at = EXCLUDED.generated_at, "
+                "source_counts = EXCLUDED.source_counts RETURNING *",
+                (
+                    str(user_id),
+                    content,
+                    content_hash,
+                    version,
+                    generated_at,
+                    json.dumps(source_counts),
+                ),
+            )
+            return _public_document(cur.fetchone())
 
     def get_document(self, user_id):
-        with self._connect() as conn, conn.cursor() as cur:
+        with self._connect() as conn:
+            return self.get_document_on(conn, user_id)
+
+    def get_document_on(self, conn, user_id):
+        """Read a document on a caller-supplied connection.
+
+        Same as :meth:`get_document`, but the read sees the
+        caller's own uncommitted writes, so a rebuild inside
+        one transaction reads what that transaction just wrote.
+        """
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SELECT * FROM durable_memory WHERE user_id = %s", (str(user_id),))
             row = cur.fetchone()
         return _public_document(row) if row is not None else None
 
     def save_journal_entry(self, user_id, entry_date, text, source_event_ids):
-        day = entry_date.isoformat() if hasattr(entry_date, "isoformat") else str(entry_date)
         with self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO narrative_journal "
-                    "(user_id, entry_date, text, source_event_ids) "
-                    "VALUES (%s, %s, %s, %s) "
-                    "ON CONFLICT (user_id, entry_date) DO UPDATE SET text = EXCLUDED.text, "
-                    "source_event_ids = EXCLUDED.source_event_ids, "
-                    "updated_at = now() RETURNING *",
-                    (str(user_id), day, text, [str(e) for e in (source_event_ids or [])]),
-                )
-                row = cur.fetchone()
+            record = self.save_journal_entry_on(conn, user_id, entry_date, text, source_event_ids)
             conn.commit()
-        return _public_journal_entry(row)
+        return record
+
+    def save_journal_entry_on(self, conn, user_id, entry_date, text, source_event_ids):
+        """Save a journal entry on a caller-supplied connection; no commit.
+
+        Same upsert as :meth:`save_journal_entry`, joining the
+        caller's transaction (see :meth:`save_document_on`).
+        """
+        day = entry_date.isoformat() if hasattr(entry_date, "isoformat") else str(entry_date)
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "INSERT INTO narrative_journal "
+                "(user_id, entry_date, text, source_event_ids) "
+                "VALUES (%s, %s, %s, %s) "
+                "ON CONFLICT (user_id, entry_date) DO UPDATE SET text = EXCLUDED.text, "
+                "source_event_ids = EXCLUDED.source_event_ids, "
+                "updated_at = now() RETURNING *",
+                (str(user_id), day, text, [str(e) for e in (source_event_ids or [])]),
+            )
+            return _public_journal_entry(cur.fetchone())
 
     def get_journal_entry(self, user_id, entry_date):
+        with self._connect() as conn:
+            return self.get_journal_entry_on(conn, user_id, entry_date)
+
+    def get_journal_entry_on(self, conn, user_id, entry_date):
+        """Read one journal entry on a caller-supplied connection."""
         day = entry_date.isoformat() if hasattr(entry_date, "isoformat") else str(entry_date)
-        with self._connect() as conn, conn.cursor() as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 "SELECT * FROM narrative_journal WHERE user_id = %s AND entry_date = %s",
                 (str(user_id), day),
@@ -476,7 +517,12 @@ class PostgresDurableStore:
         return _public_journal_entry(row) if row is not None else None
 
     def list_journal_entries(self, user_id, limit=JOURNAL_MAX_ENTRIES):
-        with self._connect() as conn, conn.cursor() as cur:
+        with self._connect() as conn:
+            return self.list_journal_entries_on(conn, user_id, limit=limit)
+
+    def list_journal_entries_on(self, conn, user_id, limit=JOURNAL_MAX_ENTRIES):
+        """List journal entries on a caller-supplied connection."""
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 "SELECT * FROM narrative_journal WHERE user_id = %s "
                 "ORDER BY entry_date DESC LIMIT %s",

@@ -176,6 +176,15 @@ class TurnLoop:
     before the next model call and no further tool call runs.
     A hold check that fails fails open, like the advisor and
     the dial: a broken signal must never block the turn.
+    ``turn_committer`` is an optional write-through hook, a
+    callable ``(*, user_id, task_id, agent_id, reply_text,
+    history)`` (see :func:`puspa.memory.commit_turn.
+    make_turn_committer`): when wired in, a turn that reached a
+    final reply commits that reply through it before it may
+    report completed. A committer that raises ends the turn as
+    ``failed`` with the failure shown in the message, so a turn
+    whose memory did not land never reports success. Without a
+    committer the loop behaves exactly as before.
     """
 
     def __init__(
@@ -198,6 +207,7 @@ class TurnLoop:
         dial_area_for_tool=None,
         conflict_gate=None,
         takeover_hold=None,
+        turn_committer=None,
     ) -> None:
         self.config = config or TurnConfig()
         self.model_call = model_call
@@ -215,6 +225,7 @@ class TurnLoop:
         self.dial_area_for_tool = dict(dial_area_for_tool) if dial_area_for_tool else {}
         self.conflict_gate = conflict_gate
         self.takeover_hold = takeover_hold
+        self.turn_committer = turn_committer
         self._refusal_message = ""
         self._event: list[dict] = []
         self.sink = sink or (
@@ -596,6 +607,26 @@ class TurnLoop:
             )
             reply = outcome.reply
             if not reply.tool_calls:
+                commit_failure = self._run_turn_committer(
+                    user_id=user_id,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    reply=reply,
+                    history=history,
+                )
+                if commit_failure is not None:
+                    return self._finish_failed(
+                        checkpoint,
+                        iteration_budget,
+                        commit_failure,
+                        repairs,
+                        notes,
+                        attempts,
+                        hops,
+                        cost_rp,
+                        agent_id,
+                        task_id,
+                    )
                 return self._finish_completed(
                     history,
                     iteration_budget,
@@ -933,6 +964,37 @@ class TurnLoop:
     def _record(self, event_type: str, content: dict) -> None:
         with contextlib.suppress(Exception):
             self.sink(event_type, content)
+
+    def _run_turn_committer(self, *, user_id, agent_id, task_id, reply, history) -> str | None:
+        """Write-through at turn completion; failure message or None.
+
+        No committer wired in means nothing to commit: returns
+        None and the turn completes as before. A committer that
+        raises ends the turn failed: the message names the
+        failure, and the sink carries a ``turn_commit_failed``
+        event so the failure is shown, not swallowed.
+        """
+        if self.turn_committer is None:
+            return None
+        try:
+            self.turn_committer(
+                user_id=user_id,
+                task_id=task_id,
+                agent_id=agent_id,
+                reply_text=reply.text,
+                history=list(history),
+            )
+        except Exception as exc:
+            message = (
+                "turn did not complete: the turn's memory could not be written "
+                f"({exc}); the reply was not saved"
+            )
+            self._record(
+                "turn_commit_failed",
+                {"agent_id": agent_id, "task_id": task_id, "reason": str(exc)},
+            )
+            return message
+        return None
 
     def _finish_completed(
         self,

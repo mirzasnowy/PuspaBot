@@ -228,37 +228,15 @@ class Ledger:
         `create_schema()` (migration 0001_core) to
         get the column.
         """
-        if not isinstance(task_id, str) or not task_id:
-            raise LedgerError("task_id harus string tak kosong")
-        if not isinstance(agent_id, str) or not agent_id:
-            raise LedgerError("agent_id harus string tak kosong")
-        if event_type not in EVENT_TYPES:
-            raise InvalidEventTypeError(event_type)
-        if not isinstance(content, dict):
-            raise LedgerError("isi harus dict")
-        if valid_at is not None and (not isinstance(valid_at, datetime) or valid_at.tzinfo is None):
-            raise LedgerError("valid_at must be a timezone-aware datetime")
-        try:
-            canonical_json(content)
-        except (TypeError, ValueError) as exc:
-            raise LedgerError(f"isi tidak bisa dijadikan JSON: {exc}") from exc
-        if initiator is not None:
-            # Validated here (lazy import: audit.py lives in this
-            # same package, but ledger.py must not import it at
-            # module level — audit.py imports from ledger).
-            from .audit import INITIATOR_KINDS, attach_initiator
-
-            if not isinstance(initiator, dict) or initiator.get("kind") not in INITIATOR_KINDS:
-                raise LedgerError(
-                    f"unknown initiator kind: {initiator!r} "
-                    f"(must be one of {sorted(INITIATOR_KINDS)})"
-                )
-            content = attach_initiator(content, initiator)
-        if parent_id is not None:
-            try:
-                UUID(str(parent_id))
-            except ValueError as exc:
-                raise LedgerError(f"id_induk bukan UUID: {parent_id!r}") from exc
+        content, valid_at = self._prepare_append(
+            task_id=task_id,
+            agent_id=agent_id,
+            event_type=event_type,
+            content=content,
+            parent_id=parent_id,
+            initiator=initiator,
+            valid_at=valid_at,
+        )
 
         try:
             event_id = self._insert_event(
@@ -294,6 +272,112 @@ class Ledger:
             raise LedgerError(f"kejadian {event_id} hilang setelah INSERT")
         return _row_to_event(row)
 
+    def append_event_on(
+        self,
+        conn,
+        *,
+        task_id: str,
+        agent_id: str,
+        subagent_id: str | None = None,
+        event_type: str,
+        content: dict,
+        parent_id: str | None = None,
+        initiator: dict | None = None,
+        valid_at: datetime | None = None,
+    ) -> dict:
+        """Append one event on a caller-supplied connection.
+
+        Same validation and hash chain as :meth:`append_event`,
+        but the INSERT runs on ``conn`` and this method never
+        commits: the caller owns the transaction. That is the
+        seam ``puspa.memory.commit_turn`` uses to write the
+        ledger entry and the durable memory in a single
+        transaction: when the memory write fails, the caller
+        rolls back and this event never lands. The row is read
+        back on the same connection, so the caller sees the
+        uncommitted event. ``conn`` needs the dict row factory
+        (a plain connection still works: the read-back uses an
+        explicit ``dict_row`` cursor).
+        """
+        content, valid_at = self._prepare_append(
+            task_id=task_id,
+            agent_id=agent_id,
+            event_type=event_type,
+            content=content,
+            parent_id=parent_id,
+            initiator=initiator,
+            valid_at=valid_at,
+        )
+        event_id = self._insert_event_on(
+            conn,
+            task_id=task_id,
+            agent_id=agent_id,
+            subagent_id=subagent_id,
+            event_type=event_type,
+            content=content,
+            parent_id=parent_id,
+            valid_at=valid_at,
+            with_valid_at=None,
+        )
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT * FROM events WHERE id = %s", (event_id,))
+            row = cur.fetchone()
+        if row is None:  # tidak mungkin terjadi; pertahanan terakhir
+            raise LedgerError(f"kejadian {event_id} hilang setelah INSERT")
+        return _row_to_event(row)
+
+    def _prepare_append(
+        self,
+        *,
+        task_id: str,
+        agent_id: str,
+        event_type: str,
+        content: dict,
+        parent_id: str | None,
+        initiator: dict | None,
+        valid_at: datetime | None,
+    ) -> tuple[dict, datetime | None]:
+        """Validate one append; return the stored content and valid time.
+
+        Shared by :meth:`append_event` and
+        :meth:`append_event_on`, so both paths reject the same
+        bad input with the same error. The returned content
+        carries the initiator when one was given (see
+        :meth:`append_event`).
+        """
+        if not isinstance(task_id, str) or not task_id:
+            raise LedgerError("task_id harus string tak kosong")
+        if not isinstance(agent_id, str) or not agent_id:
+            raise LedgerError("agent_id harus string tak kosong")
+        if event_type not in EVENT_TYPES:
+            raise InvalidEventTypeError(event_type)
+        if not isinstance(content, dict):
+            raise LedgerError("isi harus dict")
+        if valid_at is not None and (not isinstance(valid_at, datetime) or valid_at.tzinfo is None):
+            raise LedgerError("valid_at must be a timezone-aware datetime")
+        try:
+            canonical_json(content)
+        except (TypeError, ValueError) as exc:
+            raise LedgerError(f"isi tidak bisa dijadikan JSON: {exc}") from exc
+        if initiator is not None:
+            # Validated here (lazy import: audit.py lives in this
+            # same package, but ledger.py must not import it at
+            # module level — audit.py imports from ledger).
+            from .audit import INITIATOR_KINDS, attach_initiator
+
+            if not isinstance(initiator, dict) or initiator.get("kind") not in INITIATOR_KINDS:
+                raise LedgerError(
+                    f"unknown initiator kind: {initiator!r} "
+                    f"(must be one of {sorted(INITIATOR_KINDS)})"
+                )
+            content = attach_initiator(content, initiator)
+        if parent_id is not None:
+            try:
+                UUID(str(parent_id))
+            except ValueError as exc:
+                raise LedgerError(f"id_induk bukan UUID: {parent_id!r}") from exc
+        return content, valid_at
+
     def _insert_event(
         self,
         *,
@@ -308,78 +392,120 @@ class Ledger:
     ) -> UUID:
         """One append transaction; returns the new event id.
 
-        The advisory lock, the DB `now()`, the previous hash, the
-        hash computation, and the INSERT are one transaction, so
-        the value that enters the hash is exactly the value that
-        is stored. `with_valid_at` selects the INSERT shape: with
-        the column (migrated database) or without it (a database
-        that predates the K3 migration).
+        Opens its own connection and commits: the
+        :meth:`append_event` path. Callers that share one
+        transaction across stores use :meth:`_insert_event_on`
+        directly and commit themselves.
         """
         with self._connect() as conn:
-            with conn.cursor() as cur:
-                # Kunci per tugas: dua append bersamaan tidak boleh bercabang.
-                cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (task_id,))
-                cur.execute("SELECT now() AS created_at")
-                created_at = cur.fetchone()["created_at"]
-                cur.execute(
-                    "SELECT hash FROM events WHERE task_id = %s "
-                    "ORDER BY created_at DESC, id DESC LIMIT 1",
-                    (task_id,),
-                )
-                prev = cur.fetchone()
-                previous_hash = prev["hash"] if prev else GENESIS
-                event_hash = compute_event_hash(
-                    task_id=task_id,
-                    agent_id=agent_id,
-                    subagent_id=subagent_id,
-                    event_type=event_type,
-                    content=content,
-                    parent_id=str(parent_id) if parent_id is not None else None,
-                    previous_hash=previous_hash,
-                    created_at=created_at,
-                )
-                if with_valid_at:
-                    cur.execute(
-                        "INSERT INTO events "
-                        "(created_at, valid_at, task_id, agent_id, subagent_id, type, "
-                        " content, parent_id, previous_hash, hash) "
-                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
-                        "RETURNING id",
-                        (
-                            created_at,
-                            valid_at if valid_at is not None else created_at,
-                            task_id,
-                            agent_id,
-                            subagent_id,
-                            event_type,
-                            Jsonb(content),
-                            parent_id,
-                            previous_hash,
-                            event_hash,
-                        ),
-                    )
-                else:
-                    cur.execute(
-                        "INSERT INTO events "
-                        "(created_at, task_id, agent_id, subagent_id, type, content, "
-                        " parent_id, previous_hash, hash) "
-                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
-                        "RETURNING id",
-                        (
-                            created_at,
-                            task_id,
-                            agent_id,
-                            subagent_id,
-                            event_type,
-                            Jsonb(content),
-                            parent_id,
-                            previous_hash,
-                            event_hash,
-                        ),
-                    )
-                event_id = cur.fetchone()["id"]
+            event_id = self._insert_event_on(
+                conn,
+                task_id=task_id,
+                agent_id=agent_id,
+                subagent_id=subagent_id,
+                event_type=event_type,
+                content=content,
+                parent_id=parent_id,
+                valid_at=valid_at,
+                with_valid_at=with_valid_at,
+            )
             conn.commit()
         return event_id
+
+    def _insert_event_on(
+        self,
+        conn,
+        *,
+        task_id: str,
+        agent_id: str,
+        subagent_id: str | None,
+        event_type: str,
+        content: dict,
+        parent_id: str | None,
+        valid_at: datetime | None,
+        with_valid_at: bool | None,
+    ) -> UUID:
+        """Insert one event on ``conn``; no commit.
+
+        The advisory lock, the DB `now()`, the previous hash, the
+        hash computation, and the INSERT are one transaction
+        owned by the caller, so the value that enters the hash is
+        exactly the value that is stored. ``with_valid_at``
+        selects the INSERT shape: True forces the column, False
+        leaves it out (a database that predates the K3
+        migration), None detects the column first with a catalog
+        lookup, so no failed statement ever poisons the caller's
+        transaction (a failed statement would abort it: Postgres
+        aborts the whole transaction on the first error).
+        """
+        with conn.cursor(row_factory=dict_row) as cur:
+            if with_valid_at is None:
+                cur.execute(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = 'events' AND column_name = 'valid_at'"
+                )
+                with_valid_at = cur.fetchone() is not None
+            # Kunci per tugas: dua append bersamaan tidak boleh bercabang.
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (task_id,))
+            cur.execute("SELECT now() AS created_at")
+            created_at = cur.fetchone()["created_at"]
+            cur.execute(
+                "SELECT hash FROM events WHERE task_id = %s "
+                "ORDER BY created_at DESC, id DESC LIMIT 1",
+                (task_id,),
+            )
+            prev = cur.fetchone()
+            previous_hash = prev["hash"] if prev else GENESIS
+            event_hash = compute_event_hash(
+                task_id=task_id,
+                agent_id=agent_id,
+                subagent_id=subagent_id,
+                event_type=event_type,
+                content=content,
+                parent_id=str(parent_id) if parent_id is not None else None,
+                previous_hash=previous_hash,
+                created_at=created_at,
+            )
+            if with_valid_at:
+                cur.execute(
+                    "INSERT INTO events "
+                    "(created_at, valid_at, task_id, agent_id, subagent_id, type, "
+                    " content, parent_id, previous_hash, hash) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "RETURNING id",
+                    (
+                        created_at,
+                        valid_at if valid_at is not None else created_at,
+                        task_id,
+                        agent_id,
+                        subagent_id,
+                        event_type,
+                        Jsonb(content),
+                        parent_id,
+                        previous_hash,
+                        event_hash,
+                    ),
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO events "
+                    "(created_at, task_id, agent_id, subagent_id, type, content, "
+                    " parent_id, previous_hash, hash) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "RETURNING id",
+                    (
+                        created_at,
+                        task_id,
+                        agent_id,
+                        subagent_id,
+                        event_type,
+                        Jsonb(content),
+                        parent_id,
+                        previous_hash,
+                        event_hash,
+                    ),
+                )
+            return cur.fetchone()["id"]
 
     def events(self, task_id: str, event_type: str | None = None) -> list[dict]:
         """Semua kejadian satu tugas, urut penyisipan; opsional saring `event_type`."""

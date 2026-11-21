@@ -217,6 +217,7 @@ MEMORY_TABLES = (
     "used_email_links",
     "durable_memory",
     "narrative_journal",
+    "turn_commit_retries",
 )
 
 
