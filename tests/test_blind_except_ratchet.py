@@ -24,7 +24,7 @@ swallowing handlers. The baseline below is the 192.
 Baseline history: 203 swallowing handlers before E-20. The "~98"
 figure in the old ``pyproject.toml`` comment was never measured and was
 wrong. E-20 narrowed 11 handlers with provably narrow failure modes
-(see ``docs/e20-blind-except-audit.md``, section 2.2); the ratchet
+(see ``docs/blind-except-audit.md``, section 2.2); the ratchet
 resumes from 192. P-05 (20 Nov 2026) adds 1 recorded handler — the
 room job runner, which must stay blind by design (audit section 2.1)
 — so the ratchet resumes from 193. K2 (21 Nov 2026) adds 2 recorded
@@ -61,17 +61,13 @@ from pathlib import Path
 BASELINE_BLE001: dict[str, int] = {
     "demo/byok_provider.py": 1,
     "demo/mock_provider_server.py": 1,
-    "puspa/backup/drill.py": 2,
     "puspa/backup/local_state.py": 1,
-    "puspa/billing/billing.py": 2,
-    "puspa/billing/client.py": 1,
     "puspa/cassette/cassette.py": 1,
     "puspa/channels/delivery.py": 1,
     "puspa/chassis/agent_session.py": 1,
     "puspa/chassis/hooks.py": 1,
     "puspa/chassis/registry.py": 1,
     "puspa/chassis/tools.py": 4,
-    "puspa/computer/sync.py": 1,
     "puspa/connectors/google.py": 1,
     "puspa/consistency/reconcile.py": 1,
     "puspa/consistency/runner.py": 1,
@@ -84,8 +80,6 @@ BASELINE_BLE001: dict[str, int] = {
     "puspa/graphs/service.py": 3,
     "puspa/guardrails/rails.py": 1,
     "puspa/harness/repo_map.py": 3,
-    "puspa/hosting/fallback.py": 1,
-    "puspa/hosting/gateway.py": 2,
     "puspa/ledger/audit_daemon.py": 1,
     "puspa/marketplace/learning.py": 3,
     "puspa/marketplace/narrowing.py": 1,
@@ -96,8 +90,6 @@ BASELINE_BLE001: dict[str, int] = {
     "puspa/memory/skill_repair.py": 1,
     "puspa/modules/manifest.py": 2,
     "puspa/modules/notifications.py": 1,
-    "puspa/nightly/probes.py": 1,
-    "puspa/observability/alarms.py": 1,
     "puspa/observability/tracing.py": 2,
     "puspa/plugins/adapters.py": 4,
     "puspa/plugins/catalog.py": 2,
@@ -115,12 +107,10 @@ BASELINE_BLE001: dict[str, int] = {
     "puspa/pwa/mockup_api.py": 6,
     "puspa/pwa/model_settings.py": 1,
     "puspa/pwa/onboarding_api.py": 1,
-    "puspa/rooms/job_queue.py": 1,
     "puspa/router/compression.py": 3,
     "puspa/runtime/context_compression.py": 3,
     "puspa/runtime/hierarchy.py": 4,
     "puspa/runtime/tasks.py": 3,
-    "puspa/sandbox/runtime.py": 1,
     "puspa/scheduler/cron.py": 5,
     "puspa/scheduler/curriculum.py": 4,
     "puspa/scheduler/recovery.py": 2,
@@ -132,9 +122,6 @@ BASELINE_BLE001: dict[str, int] = {
     "puspa/subagents/hooks.py": 1,
     "puspa/subagents/host.py": 1,
     "puspa/subagents/lifecycle.py": 2,
-    "puspa/teams/deploy.py": 1,
-    "puspa/teams/visibility.py": 1,
-    "puspa/teams/vps.py": 2,
     "puspa/tools/approval.py": 2,
     "puspa/tools/check.py": 7,
     "puspa/tools/narrowing.py": 2,
@@ -149,25 +136,21 @@ BASELINE_BLE001: dict[str, int] = {
     "puspa/world/causal.py": 1,
     "puspa/world/model.py": 1,
     "puspa/world/speeds.py": 1,
-    "tests/test_agent_store.py": 1,
     "tests/test_anti_manipulation.py": 1,
-    "tests/test_bitemporal.py": 1,
-    "tests/test_causal_store.py": 1,
-    "tests/test_loop_persistence_db.py": 1,
     "tests/test_readers.py": 1,
     "tests/test_router_oauth_translate.py": 1,
     "tests/test_session_gateway.py": 1,
-    "tests/test_world_contact_habit.py": 1,
-    "tests/test_world_store.py": 1,
 }
 
 #: Total baseline: the sum of BASELINE_BLE001 (193 on 20 Nov 2026;
 #: P-05 adds 1 recorded handler — the room job runner, see
-#: docs/e20-blind-except-audit.md section 2.1; K8 adds 1 — the
+#: docs/blind-except-audit.md section 2.1; K8 adds 1 — the
 #: outcome watcher's single failure boundary over the arbitrary
 #: recheck/writer/loop callables, so one broken recheck never
-#: kills a scan).
-BASELINE_TOTAL = 197
+#: kills a scan; 23 less since the public/private split removed
+#: 19 files, so their zero-count entries were removed per the
+#: ratchet's own rule).
+BASELINE_TOTAL = 174
 
 
 def _repo_root() -> Path:

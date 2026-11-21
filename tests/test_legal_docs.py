@@ -39,7 +39,7 @@ DOCS = REPO_ROOT / "docs"
 
 LEGAL_DOCS = {
     "terms-of-service.md": (
-        "What Puspa is",
+        "What PuspaBot is",
         "What the agent does, and what it never does",
         "Plans and prices",
         "Your responsibilities",
