@@ -27,8 +27,11 @@ its own login flow, and Copilot / Codex tokens are fetched on
 demand. This module is the refresh side of that gap: register an
 OAuth provider once (``register_known_oauth_providers`` in
 ``router.py``), store its tokens, and call ``get_valid_token``
-before any provider call. The caller then sends the returned access
-token as the Bearer token; the router never sees a dead token.
+before any provider call. The interactive login itself now lives
+in ``puspa/router/provider_login.py`` (``puspa provider login``),
+which stores tokens in the vault and hands them to this module.
+The caller then sends the returned access token as the Bearer
+token; the router never sees a dead token.
 
 What this module does
 ---------------------
@@ -56,16 +59,15 @@ What this module does
 
 What this module does NOT do (honest limits)
 --------------------------------------------
-- Storage is IN-MEMORY. Tokens do not survive a process restart
-  and are not written to the Puspa vault (``puspa/accounts/vault.py``)
-  yet. The vault is the follow-up: store the token set per user
-  under ``byok:oauth:<provider>`` through ``vault.put`` / ``vault.get``
-  (envelope encryption, per-user key), which needs a user id and a
-  Postgres DSN this module deliberately does not take. Until then,
-  a restart means an interactive login again.
+- Storage here is IN-MEMORY. Tokens do not survive a process
+  restart in this module alone; the vault-backed store lives in
+  ``puspa/router/provider_login.py`` (``VaultTokenStore``), which
+  stores the token set per user under ``byok:oauth:<provider>``
+  through ``vault.put`` / ``vault.get`` and hands it to this
+  module's refresher before every use.
 - No interactive login flow lives here. The authorization-code /
-  device-code step that first obtains a refresh token still runs
-  through nanobot's login commands (or the provider's own flow);
+  device-code step that first obtains a refresh token lives in
+  ``puspa/router/provider_login.py`` (``puspa provider login``);
   this module only keeps a token set alive once one exists.
 - The three named providers are registered as SIMULATED entries by
   ``register_known_oauth_providers``: no real client secret and no

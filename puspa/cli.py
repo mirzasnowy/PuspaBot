@@ -25,7 +25,7 @@ FULL_CLI_NOTE = (
     "export` / `import` plus help."
 )
 
-_KNOWN_COMMANDS = ("web", "serve", "memory", "conversation")
+_KNOWN_COMMANDS = ("web", "serve", "memory", "conversation", "provider")
 
 #: Environment variable holding the export passphrase (never a
 #: command-line argument: arguments are visible in the process list).
@@ -207,6 +207,52 @@ def build_parser() -> argparse.ArgumentParser:
     conversation_import.add_argument(
         "--approve", action="store_true", help="Apply the import (without it, dry-run only)."
     )
+    provider = sub.add_parser(
+        "provider",
+        help="Log in to a subscription provider (V2-28).",
+        description=(
+            "Puspa-native subscription login: `puspa provider login <provider>` "
+            "logs in without nanobot. PKCE providers (xai) print an authorize URL "
+            "and ask for the pasted code; device-flow providers (github_copilot) "
+            "print a user code and a verification URL to approve in a browser. "
+            "Tokens live only in the per-user vault, never printed or logged."
+        ),
+    )
+    provider_sub = provider.add_subparsers(dest="provider_command", metavar="PROVIDER_COMMAND")
+    provider_login = provider_sub.add_parser(
+        "login",
+        help="Log in to a subscription provider.",
+        description="Log in to a subscription provider and store its tokens in the vault.",
+    )
+    provider_login.add_argument(
+        "provider_name",
+        metavar="PROVIDER",
+        choices=("xai", "github_copilot", "openai_codex"),
+        help="Provider to log in to (xai, github_copilot, openai_codex).",
+    )
+    provider_login.add_argument("--user", required=True, help="User id the tokens belong to.")
+    provider_logout = provider_sub.add_parser(
+        "logout",
+        help="Log out of a subscription provider (clears its vault tokens).",
+        description="Delete one provider's tokens from the vault.",
+    )
+    provider_logout.add_argument(
+        "provider_name",
+        metavar="PROVIDER",
+        choices=("xai", "github_copilot", "openai_codex"),
+        help="Provider to log out of.",
+    )
+    provider_logout.add_argument("--user", required=True, help="User id the tokens belong to.")
+    provider_status = provider_sub.add_parser(
+        "status",
+        help="Show login state for every subscription provider.",
+        description="Show login state (logged in / expiring / expired / not logged in) per provider.",
+    )
+    provider_status.add_argument(
+        "--user",
+        default=None,
+        help="User id to check (defaults to PUSPA_USER_ID or 'local-user').",
+    )
     return parser
 
 
@@ -379,6 +425,93 @@ def _run_conversation(args: argparse.Namespace) -> int:
     return 0
 
 
+def _provider_service():
+    """Build the subscription-login service (test seam: monkeypatch this)."""
+    from puspa.router.provider_login import ProviderLoginService
+
+    return ProviderLoginService()
+
+
+#: Loopback redirect used by the terminal PKCE flow: the user opens
+#: the authorize URL, approves, and pastes the returned code back
+#: here (the same paste-back shape as `claude setup-token`).
+_PROVIDER_LOOPBACK_REDIRECT = "http://127.0.0.1:8765/callback"
+
+
+def _run_provider_login(args, *, service=None, input_fn=None, print_fn=None) -> int:
+    """`puspa provider login <provider>`: interactive login, vault storage."""
+    from puspa.router.provider_login import ProviderLoginError
+
+    input_fn = input_fn or input
+    print_fn = print_fn or print
+    service = service if service is not None else _provider_service()
+    try:
+        config = service.config(args.provider_name)
+    except ProviderLoginError as exc:
+        print_fn(str(exc))
+        return 1
+    try:
+        if config.flow == "device":
+            started = service.start_device(args.provider_name)
+            print_fn(f"Open {started['verification_uri']} and enter code: {started['user_code']}")
+            print_fn("Waiting for approval in your browser...")
+            service.wait_for_device_login(args.user, args.provider_name, started["poll_key"])
+        else:
+            started = service.start_pkce(args.provider_name, _PROVIDER_LOOPBACK_REDIRECT)
+            print_fn(f"Open this URL and approve the login:\n{started['url']}")
+            code = input_fn("Paste the authorization code: ").strip()
+            if not code:
+                print_fn("No code pasted; login cancelled.")
+                return 1
+            service.finish_pkce(args.user, started["state"], code)
+    except ProviderLoginError as exc:
+        print_fn(str(exc))
+        return 1
+    print_fn(f"Logged in to {args.provider_name}. Token stored in your vault.")
+    return 0
+
+
+def _run_provider_logout(args, *, service=None, print_fn=None) -> int:
+    """`puspa provider logout <provider>`: clear the vault tokens."""
+    from puspa.router.provider_login import ProviderLoginError
+
+    print_fn = print_fn or print
+    service = service if service is not None else _provider_service()
+    try:
+        service.logout(args.user, args.provider_name)
+    except ProviderLoginError as exc:
+        print_fn(str(exc))
+        return 1
+    print_fn(f"Logged out of {args.provider_name}. Vault tokens cleared.")
+    return 0
+
+
+def _run_provider_status(args, *, service=None, print_fn=None) -> int:
+    """`puspa provider status`: login state per provider."""
+    print_fn = print_fn or print
+    service = service if service is not None else _provider_service()
+    user_id = args.user or os.environ.get("PUSPA_USER_ID") or "local-user"
+    for entry in service.list_status(user_id):
+        ready = "" if entry["login_ready"] else " (login not wired yet)"
+        expires = entry["expires_at"] or "never"
+        print_fn(
+            f"{entry['provider']}: {entry['state']} "
+            f"(flow: {entry['flow']}, expires: {expires}){ready}"
+        )
+    return 0
+
+
+def _run_provider(args: argparse.Namespace) -> int:
+    if args.provider_command == "login":
+        return _run_provider_login(args)
+    if args.provider_command == "logout":
+        return _run_provider_logout(args)
+    if args.provider_command == "status":
+        return _run_provider_status(args)
+    build_parser().parse_args(["provider", "--help"])
+    return 0
+
+
 def _run_memory(args: argparse.Namespace) -> int:
     if args.memory_command == "export":
         return _run_memory_export(args)
@@ -405,6 +538,8 @@ def main(argv: list[str] | None = None) -> int:
     parsed = parser.parse_args(args)
     if parsed.command in ("web", "serve"):
         return _run_web(host=parsed.host, port=parsed.port)
+    if parsed.command == "provider":
+        return _run_provider(parsed)
     if parsed.command == "memory":
         return _run_memory(parsed)
     if parsed.command == "conversation":

@@ -201,23 +201,23 @@ def register_known_oauth_providers(refresher=None):
         client_id="b1a00492-073a-47ea-816f-4c329264a828",
         scope=("openid", "profile", "email", "offline_access"),
         notes="public client id from nanobot source; interactive login "
-        "still via nanobot (`nanobot provider login xai`); "
+        "via Puspa (`puspa provider login xai`); "
         "no client secret is used by this public client",
     )
     refresher.register_simulated(
         "github_copilot",
         token_url="https://github.com/login/oauth/access_token",
         client_id=None,
-        notes="no client id wired yet; interactive login still via "
-        "nanobot (`nanobot provider login github-copilot`)",
+        notes="no client id wired yet; interactive login via "
+        "Puspa (`puspa provider login github_copilot`)",
     )
     refresher.register_simulated(
         "openai_codex",
         token_url=None,
         client_id=None,
         notes="token endpoint not verified from nanobot source; "
-        "interactive login still via nanobot "
-        "(`nanobot provider login openai-codex`)",
+        "interactive login via Puspa "
+        "(`puspa provider login openai_codex`) is not wired yet",
     )
     return ["xai", "github_copilot", "openai_codex"]
 
