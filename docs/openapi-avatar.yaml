@@ -1,0 +1,183 @@
+# Agent avatar photo API contract (V2-26).
+#
+# Split out of docs/openapi-pwa.yaml, following the receipt and
+# voice splits: the main spec references this file with $ref
+# stubs; the generated client is produced from the main spec
+# with openapi-typescript, which resolves external $refs. The
+# Error schema stays in the main spec and is referenced back
+# from here.
+openapi: 3.0.3
+info:
+  title: PuspaBot agent avatar API
+  version: 1.0.0
+paths:
+  /api/agent/avatar/photo:
+    post:
+      tags: [agents]
+      summary: Upload or replace the agent avatar photo
+      description: |
+        Stores one profile photo for the logged-in user's agent
+        (jpeg, png, webp, or gif; non-empty; at most 2 MiB; bytes
+        must decode as an image). A new upload replaces the old
+        photo wholesale, whatever its extension was. 400 on a bad
+        photo (wrong type, empty, over the size limit, bytes that
+        do not decode as an image). HEIC/HEIF are refused: the
+        PWA cannot display them as an <img>, so accepting one
+        would store a photo the avatar could never show.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo:
+                  type: string
+                  format: binary
+                  description: Agent profile photo (jpeg, png, webp, gif; at most 2 MiB)
+      responses:
+        "200":
+          description: Photo stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvatarStatus"
+        "400":
+          description: Bad photo (wrong type, empty, over the size limit, not an image)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    get:
+      tags: [agents]
+      summary: Serve the stored agent avatar photo
+      description: |
+        Returns the photo bytes with the right media type. 404
+        while no photo is set; the PWA then shows the default
+        Puspa logo instead.
+      responses:
+        "200":
+          description: Photo bytes
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+            image/gif:
+              schema:
+                type: string
+                format: binary
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: No agent photo set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvatarMissing"
+    delete:
+      tags: [agents]
+      summary: Delete the agent avatar photo
+      description: |
+        Removes the stored photo; the avatar falls back to the
+        default Puspa logo. Deleting again is still ok
+        (idempotent).
+      responses:
+        "200":
+          description: Photo removed (or already absent)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvatarDeleted"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/agent/avatar:
+    get:
+      tags: [agents]
+      summary: Agent avatar status
+      description: |
+        Whether the user set a custom photo, and where to fetch
+        it. photo_url and updated_at are null while no photo is
+        set; the PWA then shows the default Puspa logo. The
+        caller appends ?v=<updated_at> to photo_url to bust the
+        browser cache after a change.
+      responses:
+        "200":
+          description: Avatar status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvatarStatus"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    AvatarStatus:
+      type: object
+      description: Whether a custom agent photo is set, and where to fetch it.
+      required: [ok, has_photo, photo_url, updated_at, mime_type]
+      properties:
+        ok:
+          type: boolean
+        has_photo:
+          type: boolean
+          description: True once the user uploaded a photo
+        photo_url:
+          type: string
+          nullable: true
+          description: /api/agent/avatar/photo while a photo is set, else null
+        updated_at:
+          type: number
+          nullable: true
+          description: Unix timestamp of the stored photo (cache-buster), else null
+        mime_type:
+          type: string
+          nullable: true
+          description: image/jpeg, image/png, image/webp, or image/gif while a photo is set
+    AvatarMissing:
+      type: object
+      description: No agent photo is set yet.
+      required: [ok, has_photo, error]
+      properties:
+        ok:
+          type: boolean
+        has_photo:
+          type: boolean
+        error:
+          type: string
+    AvatarDeleted:
+      type: object
+      description: The stored photo is gone; the default logo applies.
+      required: [ok, has_photo]
+      properties:
+        ok:
+          type: boolean
+        has_photo:
+          type: boolean

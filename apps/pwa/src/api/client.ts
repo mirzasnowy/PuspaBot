@@ -55,6 +55,8 @@ export type ReceiptUpload = components["schemas"]["ReceiptUpload"];
 export type ReceiptDraft = components["schemas"]["ReceiptDraft"];
 export type ReceiptExpense = components["schemas"]["ReceiptExpense"];
 export type ReceiptStatus = components["schemas"]["ReceiptStatus"];
+export type AvatarStatus = components["schemas"]["AvatarStatus"];
+export type AvatarDeleted = components["schemas"]["AvatarDeleted"];
 export type ModelSource = ModelSettings["source"];
 export type InsightsReport = components["schemas"]["InsightsReport"];
 export type TokenTotals = components["schemas"]["TokenTotals"];
@@ -318,6 +320,35 @@ export function discardReceipt(
 /** Receipt OCR status: which engine, whether one is chosen. */
 export function receiptStatus(fetchFn: FetchFn = fetch): Promise<ReceiptStatus> {
   return getJson<ReceiptStatus>("/api/receipts/status", fetchFn);
+}
+
+/**
+ * Agent avatar status (V2-26): whether the user set a custom
+ * photo, and where to fetch it. photo_url and updated_at are
+ * null while no photo is set; the caller then shows the default
+ * Puspa logo.
+ */
+export function fetchAgentAvatar(fetchFn: FetchFn = fetch): Promise<AvatarStatus> {
+  return getJson<AvatarStatus>("/api/agent/avatar", fetchFn);
+}
+
+/**
+ * Upload or replace the agent avatar photo (V2-26). The server
+ * keeps one photo per user and refuses anything that is not a
+ * displayable image (jpeg, png, webp, gif; at most 2 MiB).
+ */
+export function uploadAgentPhoto(
+  photo: Blob,
+  fetchFn: FetchFn = fetch,
+): Promise<AvatarStatus> {
+  const form = new FormData();
+  form.append("photo", photo, "avatar.png");
+  return postMultipart<AvatarStatus>("/api/agent/avatar/photo", form, fetchFn);
+}
+
+/** Delete the agent avatar photo; the default logo applies again. */
+export function deleteAgentPhoto(fetchFn: FetchFn = fetch): Promise<AvatarDeleted> {
+  return deleteJson<AvatarDeleted>("/api/agent/avatar/photo", fetchFn);
 }
 
 /** Create and run a task synchronously. Returns the outcome. */

@@ -13,6 +13,7 @@ export default defineConfig({
     proxy: {
       "/api": "http://127.0.0.1:8000",
       "/sse": "http://127.0.0.1:8000",
+      "/static": "http://127.0.0.1:8000",
       "/manifest.json": "http://127.0.0.1:8000",
     },
   },

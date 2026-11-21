@@ -162,6 +162,10 @@ paths:
     $ref: './openapi-receipts.yaml#/paths/~1api~1receipts~1expenses'
   /api/receipts/status:
     $ref: './openapi-receipts.yaml#/paths/~1api~1receipts~1status'
+  /api/agent/avatar/photo:
+    $ref: './openapi-avatar.yaml#/paths/~1api~1agent~1avatar~1photo'
+  /api/agent/avatar:
+    $ref: './openapi-avatar.yaml#/paths/~1api~1agent~1avatar'
   /api/morning/status:
     $ref: './openapi-morning.yaml#/paths/~1api~1morning~1status'
   /api/morning/summary:
@@ -1080,6 +1084,12 @@ components:
       $ref: './openapi-receipts.yaml#/components/schemas/ReceiptStatus'
     ReceiptRejection:
       $ref: './openapi-receipts.yaml#/components/schemas/ReceiptRejection'
+    AvatarStatus:
+      $ref: './openapi-avatar.yaml#/components/schemas/AvatarStatus'
+    AvatarMissing:
+      $ref: './openapi-avatar.yaml#/components/schemas/AvatarMissing'
+    AvatarDeleted:
+      $ref: './openapi-avatar.yaml#/components/schemas/AvatarDeleted'
     MorningSourceStatus:
       $ref: './openapi-morning.yaml#/components/schemas/MorningSourceStatus'
     MorningStatus:

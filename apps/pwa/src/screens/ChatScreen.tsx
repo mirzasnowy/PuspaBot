@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { parseSseEvent, sendChat, type Bootstrap } from "../api/client";
+import {
+  fetchAgentAvatar,
+  parseSseEvent,
+  sendChat,
+  type AvatarStatus,
+  type Bootstrap,
+} from "../api/client";
+import { avatarPhotoSrc, avatarStatus } from "../state/avatar";
 import {
   appendMessage,
   applySseEvent,
@@ -13,6 +20,7 @@ import { TaskProgressRail } from "../components/TaskProgressRail";
 import { WorkStrip } from "../components/WorkStrip";
 import { ChatCard } from "../components/ChatCard";
 import { ChatWidget } from "../components/ChatWidget";
+import { AgentAvatar } from "../components/AgentAvatar";
 
 export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
   const [state, setState] = useState(() => initialChatState(bootstrap.messages ?? []));
@@ -21,6 +29,24 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
   // review it and tap Send. Nothing is sent automatically.
   const [draft, setDraft] = useState(bootstrap.shared_text ?? "");
   const bottomRef = useRef<HTMLDivElement>(null);
+  // V2-26: the agent's photo (default logo while none is set).
+  // Loaded once; the photo only changes from Settings, so no
+  // polling is needed here.
+  const [avatar, setAvatar] = useState<AvatarStatus | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAgentAvatar()
+      .then((loaded) => {
+        if (!cancelled) setAvatar(loaded);
+      })
+      .catch(() => {
+        // No photo info: the default logo applies.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const source = new EventSource("/sse");
@@ -66,6 +92,10 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
   return (
     <div>
       <h1>Chat</h1>
+      <AgentAvatar
+        state={avatarStatus(state.sending, state.liveOffice)}
+        photoSrc={avatarPhotoSrc(avatar)}
+      />
       <p className="muted">
         Group chat: kamu, Puspa, dan agenmu di satu thread. Sub-agen terlipat secara default;
         pesanmu selalu menyela tugas yang berjalan.

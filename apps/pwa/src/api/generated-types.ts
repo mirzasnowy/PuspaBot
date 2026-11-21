@@ -2102,6 +2102,212 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent/avatar/photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve the stored agent avatar photo
+         * @description Returns the photo bytes with the right media type. 404
+         *     while no photo is set; the PWA then shows the default
+         *     Puspa logo instead.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Photo bytes */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "image/png": string;
+                        "image/jpeg": string;
+                        "image/webp": string;
+                        "image/gif": string;
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+                /** @description No agent photo set */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AvatarMissing"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Upload or replace the agent avatar photo
+         * @description Stores one profile photo for the logged-in user's agent
+         *     (jpeg, png, webp, or gif; non-empty; at most 2 MiB; bytes
+         *     must decode as an image). A new upload replaces the old
+         *     photo wholesale, whatever its extension was. 400 on a bad
+         *     photo (wrong type, empty, over the size limit, bytes that
+         *     do not decode as an image). HEIC/HEIF are refused: the
+         *     PWA cannot display them as an <img>, so accepting one
+         *     would store a photo the avatar could never show.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /**
+                         * Format: binary
+                         * @description Agent profile photo (jpeg, png, webp, gif; at most 2 MiB)
+                         */
+                        photo: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Photo stored */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AvatarStatus"];
+                    };
+                };
+                /** @description Bad photo (wrong type, empty, over the size limit, not an image) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+            };
+        };
+        /**
+         * Delete the agent avatar photo
+         * @description Removes the stored photo; the avatar falls back to the
+         *     default Puspa logo. Deleting again is still ok
+         *     (idempotent).
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Photo removed (or already absent) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AvatarDeleted"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Agent avatar status
+         * @description Whether the user set a custom photo, and where to fetch
+         *     it. photo_url and updated_at are null while no photo is
+         *     set; the PWA then shows the default Puspa logo. The
+         *     caller appends ?v=<updated_at> to photo_url to bust the
+         *     browser cache after a change.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Avatar status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AvatarStatus"];
+                    };
+                };
+                /** @description Not logged in */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/morning/status": {
         parameters: {
             query?: never;
@@ -8288,6 +8494,29 @@ export interface components {
             /** @enum {string} */
             document_kind: "id_document" | "official_letter";
             reason: string;
+        };
+        /** @description Whether a custom agent photo is set, and where to fetch it. */
+        AvatarStatus: {
+            ok: boolean;
+            /** @description True once the user uploaded a photo */
+            has_photo: boolean;
+            /** @description /api/agent/avatar/photo while a photo is set, else null */
+            photo_url: string | null;
+            /** @description Unix timestamp of the stored photo (cache-buster), else null */
+            updated_at: number | null;
+            /** @description image/jpeg, image/png, image/webp, or image/gif while a photo is set */
+            mime_type: string | null;
+        };
+        /** @description No agent photo is set yet. */
+        AvatarMissing: {
+            ok: boolean;
+            has_photo: boolean;
+            error: string;
+        };
+        /** @description The stored photo is gone; the default logo applies. */
+        AvatarDeleted: {
+            ok: boolean;
+            has_photo: boolean;
         };
         /** @description P-07 — one source's honest status (ok, connected, not_connected, unknown, unavailable). */
         MorningSourceStatus: {
