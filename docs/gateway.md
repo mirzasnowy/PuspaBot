@@ -145,6 +145,22 @@ failures become `tool_completed` events with status `error`. No new
 ledger event type is used. The initiator attribute (audit trail with initiator) rides in
 the content when given.
 
+## Intent advisor (act-or-ask rule)
+
+`Gateway` takes an optional `intent_advisor` (an
+`IntentTurnAdvisor`, or any object with
+`advise(message, tool_name, arguments)`). After the policy
+allows an action, the gateway consults the advisor with the
+user's raw message and the action's arguments; when the advisor
+says ask, the action is denied with the one calm question in the
+reason, so the caller can put it to the user. The advisor may
+only escalate to ask, never override a deny: a denied action
+never reaches the advisor, and an advisor that fails fails
+closed to a deny. In dry-run mode an advisor ask is recorded
+with outcome `deny` but still forwarded, like any other deny.
+With no advisor wired in, or no message given, the gateway
+behaves exactly as before.
+
 ## Acknowledged limits (also OpenBot's)
 
 - **Egress filtering does not stop raw sockets.** That is a
