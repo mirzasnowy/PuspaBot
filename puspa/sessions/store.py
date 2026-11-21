@@ -58,6 +58,68 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _parse_restore_time(value, *, what: str) -> None:
+    """Raise ValueError unless ``value`` is a parseable ISO timestamp."""
+    if not isinstance(value, str):
+        raise ValueError(f"{what} is not a timestamp string: {value!r}")
+    try:
+        datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"{what} is not a valid timestamp: {value!r}") from exc
+
+
+def _validate_restore_record(record) -> None:
+    """Validate one archived conversation record before a restore."""
+    if not isinstance(record, dict):
+        raise ValueError(f"conversation record is not an object: {record!r}")
+    if not isinstance(record.get("id"), str) or not record["id"]:
+        raise ValueError("conversation record has no id")
+    if record.get("title") is not None and not isinstance(record.get("title"), str):
+        raise ValueError(f"conversation {record['id']!r} has no title string")
+    _parse_restore_time(record.get("created_at"), what="created_at")
+    _parse_restore_time(record.get("updated_at"), what="updated_at")
+    parent_id = record.get("parent_id")
+    if parent_id is not None and not isinstance(parent_id, str):
+        raise ValueError(f"conversation {record['id']!r} has a bad parent_id")
+    if record.get("model") is not None and not isinstance(record.get("model"), str):
+        raise ValueError(f"conversation {record['id']!r} has a bad model")
+    if record.get("metadata") is not None and not isinstance(record.get("metadata"), dict):
+        raise ValueError(f"conversation {record['id']!r} has bad metadata")
+    messages = record.get("messages")
+    if messages is None:
+        raise ValueError(f"conversation {record['id']!r} has no messages list")
+    if not isinstance(messages, list):
+        raise ValueError(f"conversation {record['id']!r} messages are not a list")
+    previous_seq = 0
+    for message in messages:
+        if not isinstance(message, dict):
+            raise ValueError(f"conversation {record['id']!r} has a message that is not an object")
+        if message.get("role") not in ROLES:
+            raise ValueError(
+                f"conversation {record['id']!r} has a message with unknown role: "
+                f"{message.get('role')!r}"
+            )
+        if not isinstance(message.get("content"), str):
+            raise ValueError(f"conversation {record['id']!r} has a message with no text content")
+        _parse_restore_time(message.get("created_at"), what="message created_at")
+        seq = message.get("seq")
+        if not isinstance(seq, int) or isinstance(seq, bool) or seq <= previous_seq:
+            raise ValueError(
+                f"conversation {record['id']!r} has messages out of order (seq {seq!r})"
+            )
+        previous_seq = seq
+
+
+def _validate_restore_edge(edge) -> None:
+    """Validate one archived lineage edge before a restore."""
+    if not isinstance(edge, dict):
+        raise ValueError(f"lineage edge is not an object: {edge!r}")
+    for key in ("parent_session_id", "child_session_id"):
+        if not isinstance(edge.get(key), str) or not edge[key]:
+            raise ValueError(f"lineage edge has no {key}")
+    _parse_restore_time(edge.get("created_at"), what="lineage created_at")
+
+
 def _synchronized(fn):
     """Serialize access to the shared connection across threads.
 
@@ -445,6 +507,90 @@ class SessionStore:
                 (parent_session_id, child_id, kind, reason, now),
             )
             return self.get_session(child_id)
+
+        return self._run_write(_insert)
+
+    @_synchronized
+    def restore_conversations(self, conversations, lineage=()):
+        """Restore archived conversations verbatim, in one transaction.
+
+        ``conversations`` is a list of records shaped like
+        :meth:`get_session` output: ``id``, ``title``,
+        ``created_at``, ``updated_at``, ``parent_id``, ``model``,
+        ``metadata`` and ``messages`` (each with ``seq``, ``role``,
+        ``content`` and ``created_at``). ``lineage`` is a list of
+        edges (``parent_session_id``, ``child_session_id``,
+        ``kind``, ``reason``, ``created_at``).
+
+        Every record is validated first (roles, strictly
+        increasing sequence numbers, timestamps that parse, parent
+        links that resolve to a session already stored or earlier
+        in this same batch); a bad record raises ``ValueError``
+        before anything is written, and the whole batch lands or
+        nothing does. A record whose id already exists also raises
+        ``ValueError``: the caller (conversation import) must have
+        planned duplicates away first. Returns the restored
+        session ids in input order.
+        """
+        self._require_writable()
+        for record in conversations:
+            _validate_restore_record(record)
+        for edge in lineage:
+            _validate_restore_edge(edge)
+
+        def _insert(conn):
+            known = {row[0] for row in conn.execute("SELECT id FROM sessions").fetchall()}
+            for record in conversations:
+                if record["id"] in known:
+                    raise ValueError(f"session already exists: {record['id']!r}")
+                parent_id = record.get("parent_id")
+                if parent_id is not None and parent_id not in known:
+                    raise ValueError(f"session {record['id']!r} has unknown parent {parent_id!r}")
+                conn.execute(
+                    "INSERT INTO sessions (id, title, created_at, updated_at,"
+                    " parent_id, model, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        record["id"],
+                        record.get("title") or "",
+                        record["created_at"],
+                        record["updated_at"],
+                        parent_id,
+                        record.get("model"),
+                        json.dumps(record.get("metadata") or {}),
+                    ),
+                )
+                known.add(record["id"])
+                for message in record.get("messages") or []:
+                    conn.execute(
+                        "INSERT INTO messages (session_id, role, content,"
+                        " created_at, seq) VALUES (?, ?, ?, ?, ?)",
+                        (
+                            record["id"],
+                            message["role"],
+                            message["content"],
+                            message["created_at"],
+                            message["seq"],
+                        ),
+                    )
+            for edge in lineage:
+                if edge["parent_session_id"] not in known or edge["child_session_id"] not in known:
+                    raise ValueError(
+                        "lineage edge references a session that is not stored: "
+                        f"{edge['parent_session_id']!r} -> {edge['child_session_id']!r}"
+                    )
+                conn.execute(
+                    "INSERT OR IGNORE INTO session_lineage (parent_session_id,"
+                    " child_session_id, kind, reason, created_at)"
+                    " VALUES (?, ?, ?, ?, ?)",
+                    (
+                        edge["parent_session_id"],
+                        edge["child_session_id"],
+                        edge.get("kind") or "compression",
+                        edge.get("reason"),
+                        edge["created_at"],
+                    ),
+                )
+            return [record["id"] for record in conversations]
 
         return self._run_write(_insert)
 
