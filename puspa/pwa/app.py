@@ -1,4 +1,4 @@
-"""PWA Puspa — 9 layar (7 dari revisi 7, ditambah Insights dan
+"""PWA Puspa — 14 layar (7 dari revisi 7, ditambah Insights dan
 Onboarding oleh kerja kematangan G28).
 
 Stack (keputusan 1, diperbarui G1): FastAPI + TypeScript SPA
@@ -7,7 +7,7 @@ worker. Kalau `dist` belum dibangun, layar jatuh kembali ke template
 Jinja lama. Kontrak API: `docs/openapi-pwa.yaml`.
 Update live lewat SSE dari proyeksi Buku Kerja, tanpa WebSocket
 di MVP. Layar: Chat, Tugas, Modul, Konektor, Memori, Pengaturan,
-Kantor, Insights, Onboarding. Bukti, Rencana, Rekor Otonomi, alur,
+Kantor, Insights, Onboarding, Ruang. Bukti, Rencana, Rekor Otonomi, alur,
 dan modul kustom adalah panel di dalam layar yang sudah ada —
 bukan layar baru.
 
@@ -15,7 +15,9 @@ Catatan jujur soal jumlah layar: revisi 7 membatasi PWA pada 7
 layar, tetapi perintah kematangan Nero (kerjakan semua 28 celah
 G1-G28) mewajibkan halaman Insights (celah biaya/token) dan
 Onboarding pertama kali (G28). Batas 7 layar itu sudah tidak
-berlaku lagi setelah penambahan kematangan; total sekarang 9.
+berlaku lagi setelah penambahan kematangan; total sekarang 14
+(termasuk Ruang, yang selama ini ada di SPA tapi tidak terdaftar
+di server sehingga /rooms 404).
 
 Login: Google (keputusan 16, fondasi Fase 1 `puspa.auth`); sesi
 cookie httpOnly via `puspa.accounts.ports`. Di tes, `create_app`
@@ -62,6 +64,9 @@ SCREENS = (
     "insights",
     "onboarding",
     "mockup",
+    # Broken-rooms fix: the SPA lists Rooms, but the server had no
+    # "rooms" screen, so /rooms and /api/rooms both 404'd.
+    "rooms",
     # P-07: morning summary + notes-to-actions (plan section 12.8).
     "morning",
 )
@@ -1031,8 +1036,13 @@ def create_app(
     graph_api.register_routes(app, need_user)
     memory_api.register_routes(app, need_user)
     # V2-27: the caller's own display name (read + edit). The room
-    # member lists themselves are served by the hosted service.
+    # routes themselves live in rooms_api (local rooms, backed by
+    # the public rooms stores); only delegation and money splits
+    # stay in the hosted service.
     names_api.register_routes(app, need_user)
+    from puspa.pwa import rooms_api
+
+    rooms_api.register_routes(app, need_user)
     controls_api.register_routes(app, need_user)
     # V2-35: computer tiers (allowlist, emergency stop, audit).
     # The allowlist and the stop flag are the same files the
