@@ -241,7 +241,10 @@ def test_parse_reply_requires_exact_score_coverage():
 
 
 def test_decider_uses_llm_when_it_answers():
-    llm = LLMBackend(StubComplete(json.dumps({"choice": "prices", "confidence": 0.9})))
+    llm = LLMBackend(
+        StubComplete(json.dumps({"choice": "prices", "confidence": 0.9})),
+        key_resolver=lambda provider: "sk-test",
+    )
     decider = Decider([llm, RuleBackend()])
     decision = decider.decide("moduleRouting", routing_payload("find a cheap price"))
     assert decision.ok is True
@@ -251,7 +254,7 @@ def test_decider_uses_llm_when_it_answers():
 
 
 def test_decider_falls_back_to_rule_when_llm_fails():
-    llm = LLMBackend(StubComplete("garbage, not json"))
+    llm = LLMBackend(StubComplete("garbage, not json"), key_resolver=lambda provider: "sk-test")
     decider = Decider([llm, RuleBackend()])
     decision = decider.decide("moduleRouting", routing_payload())
     assert decision.ok is True
@@ -262,7 +265,10 @@ def test_decider_falls_back_to_rule_when_llm_fails():
 
 
 def test_decider_falls_back_when_llm_call_raises():
-    llm = LLMBackend(StubComplete("", error=RuntimeError("connection reset")))
+    llm = LLMBackend(
+        StubComplete("", error=RuntimeError("connection reset")),
+        key_resolver=lambda provider: "sk-test",
+    )
     decider = Decider([llm, RuleBackend()])
     decision = decider.decide("moduleRouting", routing_payload())
     assert decision.ok is True
@@ -285,7 +291,10 @@ def test_user_engine_backend_answers_when_configured():
 def test_timeout_with_fake_clock_is_a_failure_value():
     clock = FakeClock()
     slow = LLMBackend(
-        StubComplete(json.dumps({"choice": "bills", "confidence": 0.9}), clock=clock, advance_s=2.0)
+        StubComplete(
+            json.dumps({"choice": "bills", "confidence": 0.9}), clock=clock, advance_s=2.0
+        ),
+        key_resolver=lambda provider: "sk-test",
     )
     decider = Decider([slow, RuleBackend()], clock=clock)
     decision = decider.decide("moduleRouting", routing_payload())
@@ -298,7 +307,10 @@ def test_timeout_with_fake_clock_is_a_failure_value():
 def test_timeout_with_no_fallback_left_is_a_failure_value():
     clock = FakeClock()
     slow = LLMBackend(
-        StubComplete(json.dumps({"choice": "bills", "confidence": 0.9}), clock=clock, advance_s=2.0)
+        StubComplete(
+            json.dumps({"choice": "bills", "confidence": 0.9}), clock=clock, advance_s=2.0
+        ),
+        key_resolver=lambda provider: "sk-test",
     )
     decider = Decider([slow], clock=clock)
     decision = decider.decide("moduleRouting", routing_payload())
