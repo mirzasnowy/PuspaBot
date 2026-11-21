@@ -23,6 +23,10 @@ What already existed, and what this module adds:
   (``puspa.ledger.export.build_user_export``). This module wires
   it to ``GET /api/memory/export`` as a download instead of
   rebuilding it.
+- The portable memory archive (V2-09,
+  ``puspa.memory.memory_export``) is wired to ``POST
+  /api/memory/export/archive`` as a download, encrypted by
+  default. The old route above is untouched.
 - Room memory already existed as a service
   (``puspa.rooms.memory``: membership-gated rows in their own
   table, never mixed with personal memory). This module adds the
@@ -73,10 +77,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from datetime import UTC, datetime
 
 import psycopg
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from psycopg.rows import dict_row
 
 from ..i18n.server_lines import render as render_server_line
@@ -209,6 +214,19 @@ def _parse_int(raw: str | None, name: str, default: int) -> int:
         return int(raw)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{name} must be an integer, got {raw!r}") from exc
+
+
+def _parse_scope_date(raw: str | None) -> datetime | None:
+    """An ISO-8601 date as an aware datetime (naive means UTC)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError("scope dates must be ISO-8601 strings")
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise ValueError(f"bad scope date, got {raw!r}") from exc
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 def _parse_body(data) -> dict:
@@ -433,6 +451,38 @@ class MemoryReadService:
 
         return build_user_export(str(user_id), dsn=self.dsn)
 
+    def export_archive(
+        self,
+        user_id: str,
+        *,
+        passphrase: str | None = None,
+        layers: list[str] | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        person: str | None = None,
+        project: str | None = None,
+        encrypted: bool = True,
+    ) -> tuple[bytes, dict]:
+        """The user's portable memory archive (V2-09, wired not rebuilt).
+
+        Returns ``(file_bytes, manifest)``. Raises ValueError for
+        an unknown user, a bad scope, or a missing passphrase on
+        an encrypted export. The export is recorded as a ledger
+        event by the builder (counts + archive hash only).
+        """
+        from puspa.memory.memory_export import ExportScope, export_archive_bytes
+
+        scope = ExportScope(
+            layers=tuple(layers) if layers else None,
+            date_from=_parse_scope_date(date_from),
+            date_to=_parse_scope_date(date_to),
+            person=person,
+            project=project,
+        )
+        return export_archive_bytes(
+            str(user_id), passphrase, scope, dsn=self.dsn, encrypted=encrypted
+        )
+
     # -- room memory: separate from personal memory ------------------
 
     def list_room_memory(self, room_id: str, *, viewer_user_id: str) -> dict:
@@ -597,6 +647,37 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
         return JSONResponse(
             content=json.loads(json.dumps(document, default=str)),
             headers={"Content-Disposition": 'attachment; filename="puspa-memory-export.json"'},
+        )
+
+    @app.post("/api/memory/export/archive")
+    async def export_archive_endpoint(request: Request):
+        user_id = need_user(request)
+        if user_id is None:
+            return _unauthorized()
+        try:
+            data = _parse_body(await request.json())
+            encrypted = data.get("encrypted", True)
+            if not isinstance(encrypted, bool):
+                raise ValueError("encrypted must be true or false")
+            file_bytes, manifest = _service(request).export_archive(
+                user_id,
+                passphrase=data.get("passphrase"),
+                layers=data.get("layers"),
+                date_from=data.get("date_from"),
+                date_to=data.get("date_to"),
+                person=data.get("person"),
+                project=data.get("project"),
+                encrypted=encrypted,
+            )
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        filename = (
+            "puspa-memory-archive.bin" if manifest.get("encrypted") else "puspa-memory-archive.zip"
+        )
+        return Response(
+            content=file_bytes,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
     @app.get("/api/memory/consent")
