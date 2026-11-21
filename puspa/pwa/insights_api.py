@@ -1,6 +1,6 @@
 """HTTP layer for the Insights screen (G28).
 
-Plain handler functions over :mod:`puspa.billing.insights`, plus
+Plain handler functions over :mod:`puspa.billing.ports`, plus
 :func:`register_routes`, which mounts them on a FastAPI app. This
 module deliberately does not import ``puspa.pwa.app``: the
 coordinator wires it into ``create_app`` later with a few lines::
@@ -25,7 +25,7 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from ..billing.insights import insights_for_user, validate_days
+from ..billing.ports import insights_for_user, validate_days
 from ..i18n.server_lines import render as render_server_line
 
 __all__ = ["get_insights", "register_routes"]

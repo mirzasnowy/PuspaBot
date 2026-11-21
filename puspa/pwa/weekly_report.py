@@ -29,7 +29,7 @@ would have cost elsewhere); the ledger records neither, so
 claiming a saved figure would be invented data. What IS
 measured is shown instead: tasks completed, and the cost
 incurred in the same window (from the billing usage ledger,
-via ``puspa.billing.insights``), labelled as cost, never as
+via ``puspa.billing.ports``), labelled as cost, never as
 savings. When the cost ledger is unreachable the cost is null
 too, not zero: zero would claim no money was spent.
 
@@ -49,7 +49,7 @@ from datetime import UTC, datetime, time, timedelta
 
 import psycopg
 
-from ..billing.insights import format_idr, insights_for_user, validate_days
+from ..billing.ports import format_idr, insights_for_user, validate_days
 from ..evidence.proof import event_belongs_to_user, user_agent_ids
 from ..ledger import Ledger
 

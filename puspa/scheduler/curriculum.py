@@ -155,20 +155,17 @@ RUN_STATUSES = (
 
 
 def default_task_budget_check():
-    """Lazy, fail-soft resolver for the billing-ledger budget check.
+    """Lazy, fail-soft resolver for the billing budget check.
 
-    Returns a callable ``(user_id, task_id, *, cap_rp) -> int``
-    (rupiah remaining for the task) when
-    ``puspa/billing/ledger.py::task_budget_remaining`` exists, or
-    ``None`` when the module is not there yet (the G2 worker builds
-    it in parallel) — the runner then runs without a ledger check
-    instead of failing. The import is lazy and the call is
-    fail-soft, and billing is never imported at module top level.
+    Always returns a callable ``(user_id, task_id, *, cap_rp) ->
+    int`` (rupiah remaining for the task): the budget port
+    (``puspa.billing.ports.task_budget_remaining``) always exists,
+    so there is no "ledger not there yet" case any more. The call
+    itself stays fail-soft — a broken check returns None and the
+    runner runs ungated instead of failing — and billing is never
+    imported at module top level.
     """
-    try:
-        from puspa.billing.ledger import task_budget_remaining
-    except Exception:
-        return None
+    from puspa.billing.ports import task_budget_remaining
 
     def _check(user_id, task_id, *, cap_rp=2000):
         try:
@@ -251,8 +248,8 @@ class CurriculumRunner:
         # Budget gate (policy on top of the general scheduler):
         # ``budget_check(user_id, task_id, cap_rp=...) -> int`` is
         # the remaining rupiah for the task. ``None`` means "use the
-        # default lazy ledger check" (fail-soft: no check at all
-        # while the billing ledger module does not exist yet).
+        # default lazy budget-port check" (fail-soft: a broken check
+        # runs the task ungated instead of failing).
         # Tests inject a stub. Never imported at top level.
         if budget_check is None:
             budget_check = default_task_budget_check()

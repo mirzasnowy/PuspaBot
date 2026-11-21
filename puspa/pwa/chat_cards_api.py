@@ -41,7 +41,7 @@ import uuid
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from ..billing.insights import insights_for_user, validate_days
+from ..billing.ports import insights_for_user, validate_days
 from ..drafting import DraftingService, PostgresDraftStore
 from ..drafting.errors import DraftNotFoundError
 from ..i18n.server_lines import render as render_server_line
