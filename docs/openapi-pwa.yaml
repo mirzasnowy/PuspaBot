@@ -152,6 +152,12 @@ paths:
     $ref: './openapi-voice.yaml#/paths/~1api~1voice~1discard'
   /api/voice/status:
     $ref: './openapi-voice.yaml#/paths/~1api~1voice~1status'
+  /api/voice/settings:
+    $ref: './openapi-voice.yaml#/paths/~1api~1voice~1settings'
+  /api/voice/key:
+    $ref: './openapi-voice.yaml#/paths/~1api~1voice~1key'
+  /api/voice/speak:
+    $ref: './openapi-voice.yaml#/paths/~1api~1voice~1speak'
   /api/receipts/upload:
     $ref: './openapi-receipts.yaml#/paths/~1api~1receipts~1upload'
   /api/receipts/confirm:
@@ -1262,6 +1268,8 @@ components:
       $ref: './openapi-voice.yaml#/components/schemas/VoiceUpload'
     VoiceStatus:
       $ref: './openapi-voice.yaml#/components/schemas/VoiceStatus'
+    VoiceSettings:
+      $ref: './openapi-voice.yaml#/components/schemas/VoiceSettings'
     ReceiptLine:
       $ref: './openapi-receipts.yaml#/components/schemas/ReceiptLine'
     ReceiptDraft:

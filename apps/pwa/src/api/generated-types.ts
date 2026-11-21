@@ -8407,6 +8407,28 @@ export interface components {
             selection: "pending" | "done";
             required_recordings: number;
             note?: string;
+            tts_provider?: string;
+            tts_voice?: string;
+            has_asr_key?: boolean;
+            has_tts_key?: boolean;
+        };
+        /**
+         * @description The user's voice choice (V2-30). Carries no key material: `has_asr_key` / `has_tts_key` only say whether a voice key exists in the vault.
+         * NOTE (V2-30): added by hand to match docs/openapi-voice.yaml because `npm run generate` cannot run in this tree (docs/openapi-rooms.yaml and docs/openapi-payments.yaml are absent); re-run the generator when those specs are back and confirm this type is unchanged.
+         */
+        VoiceSettings: {
+            /** @enum {string} */
+            asr_provider: "none" | "openai-compatible";
+            asr_base_url?: string | null;
+            asr_model?: string | null;
+            /** @enum {string} */
+            tts_provider: "edge" | "browser" | "elevenlabs" | "openai-compatible" | "azure";
+            tts_voice?: string | null;
+            tts_model?: string | null;
+            tts_base_url?: string | null;
+            tts_region?: string | null;
+            has_asr_key?: boolean;
+            has_tts_key?: boolean;
         };
         /** @description One parsed line item, with the evidence id for its amount (photo + OCR line). */
         ReceiptLine: {

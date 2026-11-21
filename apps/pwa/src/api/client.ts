@@ -32,6 +32,7 @@ export type OperatorLogLine = components["schemas"]["OperatorLogLine"];
 export type ModelSettings = components["schemas"]["ModelSettings"];
 export type VoiceUpload = components["schemas"]["VoiceUpload"];
 export type VoiceStatus = components["schemas"]["VoiceStatus"];
+export type VoiceSettings = components["schemas"]["VoiceSettings"];
 export type StopAllReport = components["schemas"]["StopAllReport"];
 export type DialState = components["schemas"]["DialState"];
 export type DialAreaState = components["schemas"]["DialAreaState"];
@@ -275,6 +276,46 @@ export function discardVoice(
 /** Voice transcription status: which engine, whether one is chosen. */
 export function voiceStatus(fetchFn: FetchFn = fetch): Promise<VoiceStatus> {
   return getJson<VoiceStatus>("/api/voice/status", fetchFn);
+}
+
+/** Read the user's voice choice (V2-30). Never returns key material. */
+export function getVoiceSettings(fetchFn: FetchFn = fetch): Promise<VoiceSettings> {
+  return getJson<VoiceSettings>("/api/voice/settings", fetchFn);
+}
+
+/** Save the user's voice choice (V2-30). Never send a key here. */
+export function saveVoiceSettings(
+  settings: Omit<VoiceSettings, "has_asr_key" | "has_tts_key">,
+  fetchFn: FetchFn = fetch,
+): Promise<VoiceSettings> {
+  return postJson("/api/voice/settings", settings, fetchFn);
+}
+
+/**
+ * Save a voice key (V2-30). The server stores it in the vault
+ * only and never returns it. `kind` is "asr" or "tts".
+ */
+export function saveVoiceKey(
+  kind: "asr" | "tts",
+  provider: string,
+  key: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ ok: boolean }> {
+  return postJson("/api/voice/key", { kind, provider, key }, fetchFn);
+}
+
+/** Delete a voice key from the vault (V2-30). Idempotent. */
+export async function deleteVoiceKey(
+  kind: "asr" | "tts",
+  provider: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ ok: boolean }> {
+  const response = await fetchFn(
+    `/api/voice/key?kind=${encodeURIComponent(kind)}&provider=${encodeURIComponent(provider)}`,
+    { method: "DELETE", credentials: "same-origin" },
+  );
+  if (!response.ok) throw new ApiError(response.status, await readError(response));
+  return (await response.json()) as { ok: boolean };
 }
 
 /**

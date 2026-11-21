@@ -7,6 +7,7 @@ import {
   type Bootstrap,
 } from "../api/client";
 import { avatarPhotoSrc, avatarStatus } from "../state/avatar";
+import { requiredAgentName, resolveSenderName } from "../state/names";
 import {
   appendMessage,
   applySseEvent,
@@ -14,7 +15,6 @@ import {
   localEcho,
   reconcileEcho,
 } from "../state/chat";
-import { requiredAgentName, resolveSenderName } from "../state/names";
 import { VoiceRecorder } from "../components/VoiceRecorder";
 import { ReceiptUpload } from "../components/ReceiptUpload";
 import { TaskProgressRail } from "../components/TaskProgressRail";
@@ -22,22 +22,43 @@ import { WorkStrip } from "../components/WorkStrip";
 import { ChatCard } from "../components/ChatCard";
 import { ChatWidget } from "../components/ChatWidget";
 import { AgentAvatar } from "../components/AgentAvatar";
+import { speakReply } from "../state/speech";
 
 export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
   const [state, setState] = useState(() => initialChatState(bootstrap.messages ?? []));
-  // V2-27: the bot's own name comes from the bootstrap agents list
-  // (the required agent), never a hardcoded string, so a renamed
-  // bot is called by its own name on every message.
-  const botName = requiredAgentName(bootstrap.agents ?? []);
   // P-03: text shared into the PWA from another app arrives via the
   // bootstrap as shared_text; it prefills the draft so the user can
   // review it and tap Send. Nothing is sent automatically.
   const [draft, setDraft] = useState(bootstrap.shared_text ?? "");
   const bottomRef = useRef<HTMLDivElement>(null);
+  // V2-27: the bot's own name comes from the bootstrap agents list
+  // (the required agent), never a hardcoded string, so a renamed
+  // bot is called by its own name on every message.
+  const botName = requiredAgentName(bootstrap.agents ?? []);
   // V2-26: the agent's photo (default logo while none is set).
   // Loaded once; the photo only changes from Settings, so no
   // polling is needed here.
   const [avatar, setAvatar] = useState<AvatarStatus | null>(null);
+  // V2-30: per-message speak status for the "Dengarkan" button
+  // on assistant replies (Edge TTS by default, browser voice as
+  // fallback). Speaking is always a tap, never automatic:
+  // browsers block autoplay without a user gesture, and a reply
+  // the user did not ask to hear should stay silent.
+  const [speakStatus, setSpeakStatus] = useState<Record<string, string>>({});
+
+  async function speakMessage(key: string, text: string) {
+    setSpeakStatus((prev) => ({ ...prev, [key]: "Membacakan…" }));
+    const result = await speakReply(text, { speechSynthesis: window.speechSynthesis });
+    setSpeakStatus((prev) => ({
+      ...prev,
+      [key]:
+        result.engine === "none"
+          ? (result.error ?? "Gagal membacakan.")
+          : result.fallback
+            ? "Dibacakan dengan suara browser."
+            : "Dibacakan.",
+    }));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -114,6 +135,22 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
             state.messages.map((m, i) => (
               <div key={`${m.created_at}-${i}`} className="card">
                 <strong>{resolveSenderName(m.sender, { botName })}</strong>: {m.text}
+                {m.sender !== "users" ? (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => void speakMessage(`${m.created_at}-${i}`, m.text)}
+                    >
+                      Dengarkan
+                    </button>
+                    {speakStatus[`${m.created_at}-${i}`] ? (
+                      <span role="status" className="muted">
+                        {" "}
+                        {speakStatus[`${m.created_at}-${i}`]}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
                 {m.card ? (
                   <ChatCard card={m.card} onPickOption={(option) => void sendText(option.label)} />
                 ) : null}

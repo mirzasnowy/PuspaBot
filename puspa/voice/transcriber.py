@@ -2,13 +2,19 @@
 
 The pipeline in :mod:`puspa.voice.pipeline` transcribes through this
 seam and never talks to a speech engine directly, so the engine can
-be swapped once it is chosen. Choosing is a measurement decision,
-not a guess: plan 12.4 requires measuring the word error rate on 50
-real recordings (slang + regional mix) before picking an engine, and
-no such recordings exist yet. Until that measurement exists, the
-only registered transcribers are test doubles — there is deliberately
-no real engine here, and :func:`resolve_transcriber` refuses any
-other name instead of silently falling back to something unmeasured.
+be swapped once it is chosen. Choosing a *default* engine is a
+measurement decision, not a guess: plan 12.4 requires measuring
+the word error rate on 50 real recordings (slang + regional mix)
+before picking one, and no such recordings exist yet, so the app
+default stays the stub.
+
+V2-30 adds one exception that does not violate that rule: a user
+may point the app at their *own* OpenAI-compatible speech
+endpoint with their own key (``"openai-compatible"``). That is
+the user's own choice of engine, not Puspa picking a default,
+so no WER measurement gates it. The engine itself lives in
+:mod:`puspa.voice.asr`; it is resolved lazily here to keep the
+import graph free of cycles.
 """
 
 from __future__ import annotations
@@ -89,17 +95,24 @@ class MappingTranscriber:
         )
 
 
-#: Transcribers the app can resolve by name. Real engines are added
-#: here only after the 50-recording WER measurement picks one.
+#: Transcribers the app can resolve by name. The test doubles
+#: stay here; the one real engine (a user-chosen BYOK endpoint)
+#: is resolved lazily in :func:`resolve_transcriber` so this
+#: module never imports it at load time.
 _TRANSCRIBERS: dict[str, type[StubTranscriber | MappingTranscriber]] = {
     "stub": StubTranscriber,
     "stub-mapping": MappingTranscriber,
 }
 
+#: Real engines, resolved lazily (name -> module attribute path).
+_REAL_TRANSCRIBERS: dict[str, str] = {
+    "openai-compatible": "puspa.voice.asr.OpenAICompatibleTranscriber",
+}
+
 
 def available_transcribers() -> list[str]:
     """Names :func:`resolve_transcriber` accepts, in registry order."""
-    return list(_TRANSCRIBERS)
+    return list(_TRANSCRIBERS) + list(_REAL_TRANSCRIBERS)
 
 
 def resolve_transcriber(name: str, **kwargs) -> StubTranscriber | MappingTranscriber:
@@ -109,6 +122,12 @@ def resolve_transcriber(name: str, **kwargs) -> StubTranscriber | MappingTranscr
     exactly what plan 12.4 forbids, so an unregistered name is a
     configuration error, never a silent default.
     """
+    if name in _REAL_TRANSCRIBERS:
+        import importlib
+
+        module_path, _, attr = _REAL_TRANSCRIBERS[name].rpartition(".")
+        factory = getattr(importlib.import_module(module_path), attr)
+        return factory(**kwargs)
     try:
         factory = _TRANSCRIBERS[name]
     except KeyError:

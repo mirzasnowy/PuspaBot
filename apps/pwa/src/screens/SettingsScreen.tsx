@@ -1,16 +1,21 @@
 import { useEffect, useState } from "react";
 import {
   deleteByokKey,
+  deleteVoiceKey,
   getModelSettings,
   getProviders,
+  getVoiceSettings,
   logoutProvider,
   pollProviderDeviceLogin,
   saveByokKey,
   saveModelSettings,
+  saveVoiceKey,
+  saveVoiceSettings,
   startProviderLogin,
   subscribePush,
   type ModelSettings,
   type ProviderStatus,
+  type VoiceSettings,
 } from "../api/client";
 import { AutonomyDialPanel } from "../components/AutonomyDialPanel";
 import { ProviderLoginPanel } from "../components/ProviderLoginPanel";
@@ -24,6 +29,16 @@ import {
   validateBaseUrl,
   withDefaults,
 } from "../state/modelSettings";
+import {
+  ASR_PROVIDERS,
+  EDGE_TTS_VOICES,
+  TTS_PROVIDERS,
+  defaultVoiceSettings,
+  describeAsrProvider,
+  describeTtsProvider,
+  ttsProviderNeedsKey,
+  withVoiceDefaults,
+} from "../state/voiceSettings";
 
 /** Base64url -> Uint8Array for the VAPID applicationServerKey. */
 function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
@@ -46,6 +61,13 @@ export function SettingsScreen() {
   const [providers, setProviders] = useState<ProviderStatus[]>([]);
   const [providersLoaded, setProvidersLoaded] = useState(false);
   const [providersError, setProvidersError] = useState<string | null>(null);
+  const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>(defaultVoiceSettings());
+  const [voiceLoaded, setVoiceLoaded] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState("");
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [voiceKey, setVoiceKey] = useState("");
+  const [voiceKeyKind, setVoiceKeyKind] = useState<"asr" | "tts">("tts");
+  const [voiceKeyBusy, setVoiceKeyBusy] = useState(false);
 
   async function loadProviders() {
     try {
@@ -69,6 +91,17 @@ export function SettingsScreen() {
       })
       .catch(() => {
         if (!cancelled) setModelStatus("Pilihan model belum bisa dimuat; default hosted dipakai.");
+      });
+    getVoiceSettings()
+      .then((settings) => {
+        if (!cancelled) {
+          setVoiceSettings(settings);
+          setVoiceLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled)
+          setVoiceStatus("Pilihan suara belum bisa dimuat; default Edge TTS dipakai.");
       });
     return () => {
       cancelled = true;
@@ -144,6 +177,97 @@ export function SettingsScreen() {
       );
     } finally {
       setByokBusy(false);
+    }
+  }
+
+  async function saveVoiceChoice() {
+    setVoiceBusy(true);
+    setVoiceStatus("");
+    try {
+      const draft = withVoiceDefaults(voiceSettings);
+      if (draft.asr_base_url) {
+        const error = validateBaseUrl(draft.asr_base_url);
+        if (error) {
+          setVoiceStatus(error);
+          return;
+        }
+      }
+      if (draft.tts_base_url) {
+        const error = validateBaseUrl(draft.tts_base_url);
+        if (error) {
+          setVoiceStatus(error);
+          return;
+        }
+      }
+      const saved = await saveVoiceSettings({
+        asr_provider: draft.asr_provider,
+        asr_base_url: draft.asr_base_url,
+        asr_model: draft.asr_model,
+        tts_provider: draft.tts_provider,
+        tts_voice: draft.tts_voice,
+        tts_model: draft.tts_model,
+        tts_base_url: draft.tts_base_url,
+        tts_region: draft.tts_region,
+      });
+      setVoiceSettings(saved);
+      setVoiceStatus("Pilihan suara tersimpan.");
+    } catch (err) {
+      setVoiceStatus(
+        `Gagal menyimpan pilihan suara: ${err instanceof Error ? err.message : "error tak dikenal"}`,
+      );
+    } finally {
+      setVoiceBusy(false);
+    }
+  }
+
+  function voiceKeyProvider(kind: "asr" | "tts"): string {
+    return kind === "asr" ? voiceSettings.asr_provider : voiceSettings.tts_provider;
+  }
+
+  async function saveVoiceKeyForKind() {
+    setVoiceKeyBusy(true);
+    setVoiceStatus("");
+    try {
+      const provider = voiceKeyProvider(voiceKeyKind);
+      if (!voiceKey.trim()) {
+        setVoiceStatus("Kunci suara tidak boleh kosong.");
+        return;
+      }
+      await saveVoiceKey(voiceKeyKind, provider, voiceKey.trim());
+      setVoiceKey("");
+      setVoiceSettings({
+        ...voiceSettings,
+        has_asr_key: voiceKeyKind === "asr" ? true : voiceSettings.has_asr_key,
+        has_tts_key: voiceKeyKind === "tts" ? true : voiceSettings.has_tts_key,
+      });
+      setVoiceStatus(`Kunci suara ${provider} tersimpan di vault.`);
+    } catch (err) {
+      setVoiceStatus(
+        `Gagal menyimpan kunci suara: ${err instanceof Error ? err.message : "error tak dikenal"}`,
+      );
+    } finally {
+      setVoiceKeyBusy(false);
+    }
+  }
+
+  async function removeVoiceKeyForKind() {
+    setVoiceKeyBusy(true);
+    setVoiceStatus("");
+    try {
+      const provider = voiceKeyProvider(voiceKeyKind);
+      await deleteVoiceKey(voiceKeyKind, provider);
+      setVoiceSettings({
+        ...voiceSettings,
+        has_asr_key: voiceKeyKind === "asr" ? false : voiceSettings.has_asr_key,
+        has_tts_key: voiceKeyKind === "tts" ? false : voiceSettings.has_tts_key,
+      });
+      setVoiceStatus(`Kunci suara ${provider} dihapus dari vault.`);
+    } catch (err) {
+      setVoiceStatus(
+        `Gagal menghapus kunci suara: ${err instanceof Error ? err.message : "error tak dikenal"}`,
+      );
+    } finally {
+      setVoiceKeyBusy(false);
     }
   }
 
@@ -316,6 +440,236 @@ export function SettingsScreen() {
           {modelBusy ? "Menyimpan…" : "Simpan pilihan model"}
         </button>
         {modelStatus ? <p className="muted">{modelStatus}</p> : null}
+      </div>
+      <div className="card">
+        <strong>Suara</strong>
+        <p>
+          Transkripsi pesan suara dan suara balasan. Default: Edge TTS gratis (suara neural
+          Microsoft, termasuk bahasa Indonesia) tanpa kunci apa pun; kalau Edge diblokir, browser
+          yang membacakan.
+        </p>
+        <label htmlFor="voice-asr-provider">Transkripsi (suara ke teks)</label>
+        <select
+          id="voice-asr-provider"
+          value={voiceSettings.asr_provider}
+          aria-describedby="voice-asr-hint"
+          onChange={(event) =>
+            setVoiceSettings({
+              ...voiceSettings,
+              asr_provider: event.target.value as VoiceSettings["asr_provider"],
+            })
+          }
+        >
+          {ASR_PROVIDERS.map((provider) => (
+            <option key={provider} value={provider}>
+              {provider === "none" ? "Tidak ada (stub)" : "Endpoint speech sendiri (BYOK)"}
+            </option>
+          ))}
+        </select>
+        <p id="voice-asr-hint" className="muted">
+          {describeAsrProvider(voiceSettings.asr_provider)}
+        </p>
+        {voiceSettings.asr_provider === "openai-compatible" ? (
+          <div>
+            <label htmlFor="voice-asr-base-url">Base URL endpoint speech</label>
+            <input
+              id="voice-asr-base-url"
+              type="text"
+              value={voiceSettings.asr_base_url ?? ""}
+              placeholder="https://api.openai.com/v1"
+              onChange={(event) =>
+                setVoiceSettings({ ...voiceSettings, asr_base_url: event.target.value })
+              }
+            />
+            <label htmlFor="voice-asr-model">Model (opsional)</label>
+            <input
+              id="voice-asr-model"
+              type="text"
+              value={voiceSettings.asr_model ?? ""}
+              placeholder="whisper-1"
+              onChange={(event) =>
+                setVoiceSettings({ ...voiceSettings, asr_model: event.target.value })
+              }
+            />
+            <p className="muted">
+              {voiceSettings.has_asr_key
+                ? "Kunci ASR sudah tersimpan di vault."
+                : "Belum ada kunci ASR tersimpan di vault."}
+            </p>
+          </div>
+        ) : null}
+        <label htmlFor="voice-tts-provider">Suara balasan (teks ke suara)</label>
+        <select
+          id="voice-tts-provider"
+          value={voiceSettings.tts_provider}
+          aria-describedby="voice-tts-hint"
+          onChange={(event) =>
+            setVoiceSettings({
+              ...voiceSettings,
+              tts_provider: event.target.value as VoiceSettings["tts_provider"],
+            })
+          }
+        >
+          {TTS_PROVIDERS.map((provider) => (
+            <option key={provider} value={provider}>
+              {provider === "edge"
+                ? "Edge TTS (default, gratis)"
+                : provider === "browser"
+                  ? "Suara browser"
+                  : provider === "elevenlabs"
+                    ? "ElevenLabs (BYOK)"
+                    : provider === "openai-compatible"
+                      ? "Endpoint TTS sendiri (BYOK)"
+                      : "Azure Speech F0 (BYOK)"}
+            </option>
+          ))}
+        </select>
+        <p id="voice-tts-hint" className="muted">
+          {describeTtsProvider(voiceSettings.tts_provider)}
+        </p>
+        {voiceSettings.tts_provider === "edge" ? (
+          <div>
+            <label htmlFor="voice-edge-voice">Suara Edge</label>
+            <select
+              id="voice-edge-voice"
+              value={voiceSettings.tts_voice ?? ""}
+              onChange={(event) =>
+                setVoiceSettings({ ...voiceSettings, tts_voice: event.target.value })
+              }
+            >
+              {EDGE_TTS_VOICES.map((voice) => (
+                <option key={voice.id} value={voice.id}>
+                  {voice.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        {voiceSettings.tts_provider === "elevenlabs" ? (
+          <div>
+            <label htmlFor="voice-elevenlabs-id">Voice ID ElevenLabs</label>
+            <input
+              id="voice-elevenlabs-id"
+              type="text"
+              value={voiceSettings.tts_voice ?? ""}
+              placeholder="id suara ElevenLabs"
+              aria-describedby="voice-elevenlabs-hint"
+              onChange={(event) =>
+                setVoiceSettings({ ...voiceSettings, tts_voice: event.target.value })
+              }
+            />
+            <p id="voice-elevenlabs-hint" className="muted">
+              {voiceSettings.has_tts_key
+                ? "Kunci ElevenLabs sudah tersimpan di vault."
+                : "Belum ada kunci ElevenLabs tersimpan di vault."}
+            </p>
+          </div>
+        ) : null}
+        {voiceSettings.tts_provider === "openai-compatible" ? (
+          <div>
+            <label htmlFor="voice-tts-base-url">Base URL endpoint TTS</label>
+            <input
+              id="voice-tts-base-url"
+              type="text"
+              value={voiceSettings.tts_base_url ?? ""}
+              placeholder="https://api.openai.com/v1"
+              onChange={(event) =>
+                setVoiceSettings({ ...voiceSettings, tts_base_url: event.target.value })
+              }
+            />
+            <label htmlFor="voice-tts-model">Model (opsional)</label>
+            <input
+              id="voice-tts-model"
+              type="text"
+              value={voiceSettings.tts_model ?? ""}
+              placeholder="tts-1"
+              onChange={(event) =>
+                setVoiceSettings({ ...voiceSettings, tts_model: event.target.value })
+              }
+            />
+            <label htmlFor="voice-tts-voice">Suara (opsional)</label>
+            <input
+              id="voice-tts-voice"
+              type="text"
+              value={voiceSettings.tts_voice ?? ""}
+              placeholder="alloy"
+              onChange={(event) =>
+                setVoiceSettings({ ...voiceSettings, tts_voice: event.target.value })
+              }
+            />
+            <p className="muted">
+              {voiceSettings.has_tts_key
+                ? "Kunci TTS sudah tersimpan di vault."
+                : "Belum ada kunci TTS tersimpan di vault."}
+            </p>
+          </div>
+        ) : null}
+        {voiceSettings.tts_provider === "azure" ? (
+          <div>
+            <label htmlFor="voice-azure-region">Region Azure</label>
+            <input
+              id="voice-azure-region"
+              type="text"
+              value={voiceSettings.tts_region ?? ""}
+              placeholder="southeastasia"
+              aria-describedby="voice-azure-hint"
+              onChange={(event) =>
+                setVoiceSettings({ ...voiceSettings, tts_region: event.target.value })
+              }
+            />
+            <p id="voice-azure-hint" className="muted">
+              Tier F0 gratis selamanya, tapi butuh akun Azure.{" "}
+              {voiceSettings.has_tts_key
+                ? "Kunci Azure sudah tersimpan di vault."
+                : "Belum ada kunci Azure tersimpan di vault."}
+            </p>
+          </div>
+        ) : null}
+        <button type="button" onClick={saveVoiceChoice} disabled={voiceBusy || !voiceLoaded}>
+          {voiceBusy ? "Menyimpan…" : "Simpan pilihan suara"}
+        </button>
+        {(voiceSettings.asr_provider === "openai-compatible" ||
+          ttsProviderNeedsKey(voiceSettings.tts_provider)) && (
+          <div>
+            <label htmlFor="voice-key-kind">Kunci untuk</label>
+            <select
+              id="voice-key-kind"
+              value={voiceKeyKind}
+              onChange={(event) =>
+                setVoiceKeyKind(event.target.value as "asr" | "tts")
+              }
+            >
+              {voiceSettings.asr_provider === "openai-compatible" ? (
+                <option value="asr">Transkripsi (ASR)</option>
+              ) : null}
+              {ttsProviderNeedsKey(voiceSettings.tts_provider) ? (
+                <option value="tts">Suara balasan (TTS)</option>
+              ) : null}
+            </select>
+            <label htmlFor="voice-key">Kunci API</label>
+            <input
+              id="voice-key"
+              type="password"
+              value={voiceKey}
+              autoComplete="off"
+              placeholder="tempel kunci, lalu simpan"
+              onChange={(event) => setVoiceKey(event.target.value)}
+            />
+            <button type="button" onClick={saveVoiceKeyForKind} disabled={voiceKeyBusy}>
+              {voiceKeyBusy ? "Menyimpan…" : "Simpan kunci suara ke vault"}
+            </button>{" "}
+            {(voiceKeyKind === "asr" ? voiceSettings.has_asr_key : voiceSettings.has_tts_key) ? (
+              <button type="button" onClick={removeVoiceKeyForKind} disabled={voiceKeyBusy}>
+                Hapus kunci suara
+              </button>
+            ) : null}
+          </div>
+        )}
+        {voiceStatus ? (
+          <p role="status" className="muted">
+            {voiceStatus}
+          </p>
+        ) : null}
       </div>
       <div className="card">
         <ProviderLoginPanel
