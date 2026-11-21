@@ -6,8 +6,9 @@ serve`` (start the local gateway and open the PWA), ``puspa memory
 export`` (a portable, encrypted memory archive, V2-09), ``puspa memory
 import`` / ``rollback`` / ``forget`` (memory import, V2-10), ``puspa
 conversation export`` / ``import`` (conversation export, V2-11), ``puspa
-mcp`` (serve Puspa's tools to outside agents over MCP stdio), plus
-help. The full one-shot CLI lands in a later step of the split;
+mcp`` (serve Puspa's tools to outside agents over MCP stdio), ``puspa
+service`` (lifecycle of the local agent service: start, stop, restart,
+status, logs, update), plus help. The full one-shot CLI lands in a later step of the split;
 until then any other subcommand prints help and says so.
 """
 
@@ -22,14 +23,24 @@ from datetime import UTC, datetime
 
 from puspa.computer.cli import add_computer_parser, run_computer
 from puspa.mcp_server.cli import add_mcp_parser, run_mcp
+from puspa.service.cli import add_service_parser, run_service
 
 FULL_CLI_NOTE = (
     "The full PuspaBot CLI lands in a later step of the public/private "
     "split; this build ships `puspa web` / `puspa serve`, `puspa memory "
-    "export` / `import`, `puspa mcp`, plus help."
+    "export` / `import`, `puspa mcp`, `puspa service`, plus help."
 )
 
-_KNOWN_COMMANDS = ("web", "serve", "memory", "conversation", "provider", "computer", "mcp")
+_KNOWN_COMMANDS = (
+    "web",
+    "serve",
+    "memory",
+    "conversation",
+    "provider",
+    "computer",
+    "mcp",
+    "service",
+)
 
 #: Environment variable holding the export passphrase (never a
 #: command-line argument: arguments are visible in the process list).
@@ -265,6 +276,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_computer_parser(sub)
     add_mcp_parser(sub)
+    add_service_parser(sub)
     return parser
 
 
@@ -592,6 +604,11 @@ def main(argv: list[str] | None = None) -> int:
         return run_computer(parsed)
     if parsed.command == "mcp":
         return run_mcp(parsed)
+    if parsed.command == "service":
+        if parsed.service_command is None:
+            parser.print_help()
+            return 0
+        return run_service(parsed)
     parser.print_help()
     return 0
 
