@@ -351,7 +351,7 @@ class SandboxExecutor(Executor):
                 self.workdir.mkdir(parents=True, exist_ok=True)
             else:
                 workspace = getattr(executor, "workspace", None)
-                base = Path(workspace) if workspace is not None else Path.cwd()
+                base = Path(workspace) if workspace is not None else Path(tempfile.gettempdir())
                 base.mkdir(parents=True, exist_ok=True)
                 self.workdir = Path(tempfile.mkdtemp(prefix="puspa-harness-", dir=str(base)))
 
