@@ -1,0 +1,21 @@
+-- Teams (G13): team tables live in the hosted service now.
+--
+-- The public repo keeps this version file so the version numbers
+-- stay aligned with the hosted schema and already-applied
+-- databases keep a file for every recorded version. The tables
+-- themselves (teams, team_members, invitations, bot_access_grants,
+-- bot_access_requests, entitlements, workspace_moves) are created
+-- by the hosted service's own migrations, not here: no public
+-- module reads or writes them. The up/down sections below are
+-- intentionally no-ops.
+--
+-- Apply with: python -m puspa.migrations up
+-- Never edit an applied migration: add a new numbered migration instead.
+-- Never run this file with psql -f: only the migration runner applies
+-- it, in order, inside one transaction per migration.
+
+-- migrate:up
+-- No-op: the team tables live in the hosted service (see header).
+
+-- migrate:down
+-- No-op: nothing created here, nothing to drop.
