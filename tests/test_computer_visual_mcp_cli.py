@@ -90,7 +90,7 @@ def _web():
 # ------------------------------------------------------------------
 
 
-def test_tool_definitions_cover_all_eighteen_tools():
+def test_tool_definitions_cover_all_nineteen_tools():
     tools = tool_definitions()
     names = [tool["name"] for tool in tools]
     assert names == [
@@ -108,6 +108,7 @@ def test_tool_definitions_cover_all_eighteen_tools():
         "computer_focus_window",
         "computer_switch_window",
         "computer_run_task",
+        "computer_wait_settle",
         "computer_visual_locate",
         "computer_visual_click",
         "computer_web_open",
@@ -120,11 +121,12 @@ def test_tool_definitions_cover_all_eighteen_tools():
     assert by_name["computer_web_click"]["inputSchema"]["required"] == ["text"]
     # The first three V2-31 definitions are untouched.
     assert by_name["computer_click"]["inputSchema"]["required"] == ["ref"]
+    assert by_name["computer_wait_settle"]["inputSchema"]["required"] == []
 
 
-def test_mcp_server_definition_validates_with_eighteen_tools():
+def test_mcp_server_definition_validates_with_nineteen_tools():
     definition = mcp_server_definition()
-    assert len(definition["tools"]) == 18
+    assert len(definition["tools"]) == 19
     validate_mcp_definition(definition)
 
 

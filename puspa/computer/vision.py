@@ -143,13 +143,21 @@ class OcrBackend(Protocol):
 class FakeOcrBackend:
     """In-memory OCR: returns the words it was built with, no
     matter what image it is handed. This is what the tests and
-    the CLI demo run on; it never touches a real OCR engine."""
+    the CLI demo run on; it never touches a real OCR engine.
+
+    ``on_read`` is a test seam (V2-34): when set, it is called
+    with the read count before each read returns, so a test can
+    move or delete the target between one read and the next and
+    prove a stale coordinate is never pressed.
+    """
 
     name = "fake"
 
-    def __init__(self, words: list[OcrWord] | None = None) -> None:
+    def __init__(self, words: list[OcrWord] | None = None, *, on_read=None) -> None:
         self._words: list[OcrWord] = list(words) if words is not None else []
         self.words_seen: list[bytes] = []
+        self.on_read = on_read
+        self.read_count = 0
 
     def set_words(self, words: list[OcrWord]) -> None:
         """Replace the words the next read returns (how a fake
@@ -161,6 +169,9 @@ class FakeOcrBackend:
 
     def read(self, image_png: bytes) -> list[OcrWord]:
         self.words_seen.append(image_png)
+        self.read_count += 1
+        if self.on_read is not None:
+            self.on_read(self.read_count)
         return list(self._words)
 
 

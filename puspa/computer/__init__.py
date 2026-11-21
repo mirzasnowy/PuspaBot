@@ -2,7 +2,10 @@
 full input and window management (V2-33), plus the visual fallback
 (V2-32): when the accessibility tree is empty or too poor, see the
 screen with a screenshot + OCR and click by coordinates, or route a
-web target to headless Chromium.
+web target to headless Chromium. V2-34 adds synchronization: wait
+for the tree (or the OCR words) to settle before acting, and
+re-resolve every ref (or re-ground every OCR target) right before
+acting, refusing stale targets instead of mis-clicking them.
 
 This package is new in V2-31: no ``puspa/computer/local.py``
 existed at this base, so the module was built from scratch here
@@ -15,6 +18,7 @@ from .fallback import (
     TOOL_CLICK_AT,
     CoordinateClicker,
     FakeCoordinateClicker,
+    StaleVisualTargetError,
     VisualClickResult,
     VisualFallback,
     XTestClicker,
@@ -22,7 +26,14 @@ from .fallback import (
     make_ocr_backend,
 )
 from .gating import ask_user, check_token_gate
-from .hands import ClickResult, DesktopHands, DesktopHandsError, UnknownRefError, Verification
+from .hands import (
+    ClickResult,
+    DesktopHands,
+    DesktopHandsError,
+    StaleRefError,
+    UnknownRefError,
+    Verification,
+)
 from .input import (
     ClipboardResult,
     FakeInputBackend,
@@ -37,6 +48,16 @@ from .screenshot import (
     ScreenshotBackend,
     X11ScreenshotBackend,
     make_screenshot_backend,
+)
+from .sync import (
+    ElementIdentity,
+    SettleReport,
+    SettleTimeoutError,
+    fingerprint,
+    tree_signature,
+    visual_fingerprint,
+    wait_for_settle,
+    words_signature,
 )
 from .tree import AccessibleNode, Snapshot
 from .vision import (
@@ -74,6 +95,7 @@ __all__ = [
     "CoordinateClicker",
     "DesktopHands",
     "DesktopHandsError",
+    "ElementIdentity",
     "FakeBackend",
     "FakeCoordinateClicker",
     "FakeInputBackend",
@@ -87,7 +109,11 @@ __all__ = [
     "PlaywrightWebBackend",
     "Screenshot",
     "ScreenshotBackend",
+    "SettleReport",
+    "SettleTimeoutError",
     "Snapshot",
+    "StaleRefError",
+    "StaleVisualTargetError",
     "TesseractBackend",
     "UnavailableVisionBackend",
     "UnknownRefError",
@@ -108,6 +134,7 @@ __all__ = [
     "XTestInputBackend",
     "ask_user",
     "check_token_gate",
+    "fingerprint",
     "ground_text",
     "handle_tool",
     "is_web_target",
@@ -120,4 +147,8 @@ __all__ = [
     "mcp_server_definition",
     "tool_definitions",
     "tree_is_poor",
+    "tree_signature",
+    "visual_fingerprint",
+    "wait_for_settle",
+    "words_signature",
 ]

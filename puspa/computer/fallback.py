@@ -36,6 +36,15 @@ from puspa.localexec.executor import PermissionDecision
 from .gating import ask_user, check_token_gate
 from .hands import DesktopHands
 from .screenshot import FakeScreenshotBackend, ScreenshotBackend, make_screenshot_backend
+from .sync import (
+    DEFAULT_POLL_INTERVAL_S,
+    DEFAULT_SETTLE_TIMEOUT_S,
+    DEFAULT_STABLE_ROUNDS,
+    SettleReport,
+    visual_fingerprint,
+    wait_for_settle,
+    words_signature,
+)
 from .vision import (
     FakeOcrBackend,
     OcrBackend,
@@ -50,6 +59,7 @@ from .vision import (
 __all__ = [
     "CoordinateClicker",
     "FakeCoordinateClicker",
+    "StaleVisualTargetError",
     "VisualClickResult",
     "VisualFallback",
     "XTestClicker",
@@ -87,6 +97,15 @@ class VisualClickResult:
             "before": self.before,
             "after": self.after,
         }
+
+
+class StaleVisualTargetError(VisualFallbackError):
+    """The text was on the screen when it was located, but the
+    screen changed before the click ran: the text is gone, or
+    its box moved or changed. NOT a permission denial: nobody
+    refused the click, the target simply is not at the approved
+    box any more, so the click was refused and the old pixel was
+    never pressed. Locate the text again on the fresh screen."""
 
 
 class CoordinateClicker(Protocol):
@@ -212,6 +231,9 @@ class VisualFallback:
         prompt=None,
         gate=None,
         token_payload: dict | None = None,
+        settle_timeout: float = DEFAULT_SETTLE_TIMEOUT_S,
+        settle_stable_rounds: int = DEFAULT_STABLE_ROUNDS,
+        settle_poll_interval: float = DEFAULT_POLL_INTERVAL_S,
     ) -> None:
         if isinstance(screenshot_backend, str):
             screenshot_backend = make_screenshot_backend(screenshot_backend)
@@ -227,12 +249,30 @@ class VisualFallback:
         self._gate = gate
         self._token_payload = token_payload
         self._session_approved = False
+        self._settle_timeout = settle_timeout
+        self._settle_stable_rounds = settle_stable_rounds
+        self._settle_poll_interval = settle_poll_interval
 
     # -- reads ------------------------------------------------------
     def read_screen(self) -> list[OcrWord]:
         """Screenshot + OCR: the words on the screen right now."""
         shot = self.screenshot_backend.capture()
         return self.ocr_backend.read(shot.png)
+
+    def wait_settle(
+        self, *, timeout_s: float | None = None, stable_rounds: int | None = None
+    ) -> tuple[list[OcrWord], SettleReport]:
+        """Wait until the words on the screen stop changing, then
+        return the settled words and the settle report. Raises
+        :class:`puspa.computer.sync.SettleTimeoutError` when the
+        screen never goes quiet inside the bounded wait."""
+        return wait_for_settle(
+            self.read_screen,
+            signature=words_signature,
+            timeout_s=self._settle_timeout if timeout_s is None else timeout_s,
+            stable_rounds=self._settle_stable_rounds if stable_rounds is None else stable_rounds,
+            poll_interval_s=self._settle_poll_interval,
+        )
 
     def locate_text(self, query: str) -> VisualElement | None:
         """Locate ``query`` on the screen by OCR text, or None
@@ -262,6 +302,13 @@ class VisualFallback:
         """Locate ``query`` by OCR, click its centre by
         coordinates (gated), then re-read to verify.
 
+        Steps: wait for the words on the screen to settle,
+        ground the query, ask the user, read the screen AGAIN
+        and re-ground (a moved or vanished target refuses with
+        :class:`StaleVisualTargetError` and the old pixel is
+        never pressed), click the re-grounded centre, re-read to
+        verify.
+
         ``expect`` describes the change to look for: ``{"text":
         ...}`` (this text must be on the screen afterwards),
         ``{"absent_text": ...}`` (this text must be gone), or
@@ -270,14 +317,30 @@ class VisualFallback:
         verified=false, exactly like a V2-31 ref click that left
         the screen unchanged.
         """
-        before_words = self.read_screen()
+        before_words, _report = self.wait_settle()
         element = ground_text(before_words, query)
         if element is None:
             raise VisualFallbackError(f"cannot locate {query!r} on the screen by OCR text")
+        expected = visual_fingerprint(element)
         before = _words_text(before_words)
         self._ask(element)
+        fresh_words = self.read_screen()
+        fresh = ground_text(fresh_words, query)
+        if fresh is None:
+            raise StaleVisualTargetError(
+                f"text {query!r} is gone: it was at {element.center} when approved, "
+                "but the screen changed before the click ran, so the click was refused "
+                "and the old pixel was never pressed. Locate the text again."
+            )
+        if visual_fingerprint(fresh) != expected:
+            raise StaleVisualTargetError(
+                f"text {query!r} moved or changed: it was {element.label!r} at "
+                f"{element.center}, the screen now shows it at {fresh.center}, so the "
+                "click was refused and the old pixel was never pressed. Locate the text "
+                "again on the fresh screen instead of aiming at the stale box."
+            )
         try:
-            performed = self.clicker.click_at(*element.center)
+            performed = self.clicker.click_at(*fresh.center)
         except VisualFallbackError:
             raise
         except Exception as exc:

@@ -1,12 +1,13 @@
 """MCP tool definitions for desktop hands (V2-31, core; V2-32
 visual fallback + web bridge; V2-33 full input + window
-management).
+management; V2-34 settle + non-stale refs).
 
-Eighteen tools, in the same shape as the rest of Puspa's MCP
+Nineteen tools, in the same shape as the rest of Puspa's MCP
 definitions (``name`` / ``description`` / ``inputSchema``):
 ``computer_snapshot`` (read the screen), ``computer_click`` (the
 gated act + re-read loop), ``computer_verify`` (re-read one ref
-and check it), plus the V2-32 tools ``computer_visual_locate``
+and check it), ``computer_wait_settle`` (wait for the tree to
+stop changing), plus the V2-32 tools ``computer_visual_locate``
 (find text on the screen by OCR), ``computer_visual_click``
 (gated coordinate click + re-read verify), ``computer_web_open``
 (open a URL in headless Chromium) and ``computer_web_click``
@@ -23,6 +24,13 @@ instance (and, for the V2-32 tools, to a
 :class:`~puspa.computer.web.WebBridge` passed as ``fallback`` /
 ``web``) and returns a plain JSON-ready dict.
 
+
+V2-34: ``computer_click`` waits for the tree to settle and
+re-resolves the ref right before acting; when the element is
+gone or the ref now finds a different element, the click is
+refused as stale (raised, never a mis-click) instead of acting.
+``computer_visual_click`` re-grounds its OCR target the same
+way. A stale refusal is not a permission denial.
 
 These definitions are ready for the future ``puspa mcp`` server
 (V2-37). That server does NOT exist yet: nothing here claims a
@@ -41,6 +49,7 @@ import copy
 
 from .fallback import VisualClickResult, VisualFallback
 from .hands import ClickResult, DesktopHands, Verification
+from .sync import SettleTimeoutError
 from .tree import snapshot_to_dict
 from .vision import VisualElement
 from .web import WebBridge, WebClickResult
@@ -95,12 +104,16 @@ TOOL_DEFINITIONS: list[dict] = [
     {
         "name": "computer_click",
         "description": (
-            "Click one element by ref from the latest snapshot. The click is permission-gated (the user "
-            "is asked first, and a token without the computer.click permission is refused), then the "
-            "screen is re-read to verify: a successful click never proves the UI changed. Pass expect "
-            "to say what should be true afterwards (name, state, or absent=true when the element should "
-            "be gone). Returns performed (did the action run) separately from verified (did the re-read "
-            "confirm a change)."
+            "Click one element by ref from the latest snapshot. The tree is waited on until it "
+            "settles first, then the click is permission-gated (the user is asked first, and a "
+            "token without the computer.click permission is refused), then the ref is re-resolved "
+            "right before acting: when the element is gone, or the ref now finds a different "
+            "element, the click is refused as stale and nothing is pressed (a stale refusal is "
+            "not a permission denial). After the click the screen is re-read to verify: a "
+            "successful click never proves the UI changed. Pass expect to say what should be true "
+            "afterwards (name, state, or absent=true when the element should be gone). Returns "
+            "performed (did the action run) separately from verified (did the re-read confirm "
+            "a change)."
         ),
         "inputSchema": {
             "type": "object",
@@ -319,6 +332,33 @@ TOOL_DEFINITIONS: list[dict] = [
         },
     },
     {
+        "name": "computer_wait_settle",
+        "description": (
+            "Wait for the desktop accessibility tree to stop changing, then return the settle "
+            "report (settled, snapshots read, elapsed_ms, total_nodes). The wait ends when the "
+            "same tree comes back twice in a row, or when the timeout runs out: a screen that "
+            "never goes quiet returns settled=false instead of acting on a moving target. "
+            "Read-only: never clicks anything. Use it before computer_click when the app is "
+            "still loading or animating."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "timeout": {
+                    "type": "number",
+                    "default": 5,
+                    "description": "Longest to wait for the tree to settle, in seconds.",
+                },
+                "stable_rounds": {
+                    "type": "integer",
+                    "default": 2,
+                    "description": "Identical reads in a row that count as settled.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "computer_visual_locate",
         "description": (
             "Locate text on the screen by OCR (the visual fallback, for apps whose accessibility "
@@ -340,14 +380,16 @@ TOOL_DEFINITIONS: list[dict] = [
     {
         "name": "computer_visual_click",
         "description": (
-            "Click text on the screen by coordinates (the visual fallback). Locates the text by "
-            "OCR, clicks its centre pixel, then re-reads the screen to verify. The click is "
-            "permission-gated (the user is asked first, and a token without the "
-            "computer.click_at permission is refused); coordinate clicks are riskier than ref "
-            "clicks, so they need that permission on their own. Pass expect to say what should "
-            "be true afterwards (text, or absent_text when the text should be gone). Returns "
-            "performed (did the action run) separately from verified (did the re-read confirm "
-            "a change)."
+            "Click text on the screen by coordinates (the visual fallback). The words on the "
+            "screen are waited on until they settle, then the text is located by OCR, the click "
+            "is permission-gated (the user is asked first, and a token without the "
+            "computer.click_at permission is refused), and the text is re-grounded right before "
+            "pressing: when the text is gone, or its box moved or changed, the click is refused "
+            "as stale and the old pixel is never pressed (a stale refusal is not a permission "
+            "denial). After the click the screen is re-read to verify. Pass expect to say what "
+            "should be true afterwards (text, or absent_text when the text should be gone). "
+            "Returns performed (did the action run) separately from verified (did the re-read "
+            "confirm a change)."
         ),
         "inputSchema": {
             "type": "object",
@@ -421,8 +463,7 @@ TOOL_DEFINITIONS: list[dict] = [
 
 
 def tool_definitions() -> list[dict]:
-    """A fresh copy of the eighteen tool definitions."""
-
+    """A fresh copy of the nineteen tool definitions."""
     return copy.deepcopy(TOOL_DEFINITIONS)
 
 
@@ -436,8 +477,9 @@ def mcp_server_definition() -> dict:
         "version": "0.1.0",
         "description": (
             "Drive the local desktop through its accessibility tree (snapshot, click, verify), "
-            "type, shortcuts, scroll, drag, clipboard, and window management, fall back to "
-            "screenshot + OCR when the tree is too poor, and drive web pages in headless Chromium."
+            "type, shortcuts, scroll, drag, clipboard, and window management, wait for the "
+            "tree to settle before acting, fall back to screenshot + OCR when the "
+            "tree is too poor, and drive web pages in headless Chromium."
         ),
         "server": {"command": "puspa", "args": ["mcp"], "transport": "stdio", "env": {}},
         "tools": tool_definitions(),
@@ -557,6 +599,23 @@ def handle_tool(
             raise ValueError("computer_run_task needs a list 'steps'")
         return hands.run_task(steps)
 
+    if name == "computer_wait_settle":
+        try:
+            timeout = float(arguments.get("timeout", 5))
+            stable_rounds = int(arguments.get("stable_rounds", 2))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "computer_wait_settle needs a numeric 'timeout' and 'stable_rounds'"
+            ) from exc
+        try:
+            shot, report = hands.wait_settle(timeout_s=timeout, stable_rounds=stable_rounds)
+        except SettleTimeoutError as exc:
+            data = exc.report.to_dict()
+            data["total_nodes"] = -1
+            return data
+        data = report.to_dict()
+        data["total_nodes"] = shot.total_nodes
+        return data
     if name == "computer_visual_locate":
         if fallback is None:
             raise ValueError("computer_visual_locate needs a VisualFallback (no fallback wired up)")

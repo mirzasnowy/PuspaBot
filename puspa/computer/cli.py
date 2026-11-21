@@ -32,6 +32,12 @@ V2-32 adds two groups under the same ``--backend`` flag:
   ``web click`` opens the URL, finds the text in the page, clicks
   it (gated), and verifies by re-reading the page.
 
+V2-34 adds ``wait``: wait for the tree to stop changing and
+print the settle report as JSON. Every click also waits for the
+tree (or the OCR words) to settle first and re-resolves its
+target right before acting; when the screen changed under it,
+the click is refused as stale (a stale refusal is not a
+permission denial) and nothing is pressed.
 """
 
 from __future__ import annotations
@@ -40,9 +46,10 @@ import argparse
 import json
 
 from .backend import BackendUnavailableError, make_backend
-from .fallback import VisualFallback, VisualFallbackError
-from .hands import DesktopHands, DesktopHandsError
+from .fallback import StaleVisualTargetError, VisualFallback, VisualFallbackError
+from .hands import DesktopHands, DesktopHandsError, StaleRefError
 from .screenshot import FakeScreenshotBackend
+from .sync import DEFAULT_SETTLE_TIMEOUT_S, DEFAULT_STABLE_ROUNDS, SettleTimeoutError
 from .tree import snapshot_to_dict
 from .vision import FakeOcrBackend, OcrWord
 from .web import FakeWebBackend, WebBridge
@@ -234,6 +241,28 @@ def add_computer_parser(subparsers: argparse._SubParsersAction) -> argparse.Argu
     task.add_argument("steps_file", help="Path to a JSON file holding a list of steps.")
     _add_backend_arg(task)
 
+    wait = computer_sub.add_parser(
+        "wait",
+        help="Wait for the screen to settle, then print the settle report (V2-34).",
+        description=(
+            "Read the accessibility tree repeatedly until it stops changing, then print "
+            "the settle report as JSON. Refuses (exit 1) when the screen never goes quiet "
+            "inside the bounded wait, instead of acting on a moving target."
+        ),
+    )
+    _add_backend_arg(wait)
+    wait.add_argument(
+        "--timeout",
+        type=float,
+        default=DEFAULT_SETTLE_TIMEOUT_S,
+        help="Longest to wait for the tree to settle, in seconds (default 5).",
+    )
+    wait.add_argument(
+        "--stable-rounds",
+        type=int,
+        default=DEFAULT_STABLE_ROUNDS,
+        help="Identical reads in a row that count as settled (default 2).",
+    )
     visual = computer_sub.add_parser(
         "visual",
         help="Visual fallback: locate text by OCR, click by coordinates (V2-32).",
@@ -432,6 +461,8 @@ def run_computer(
     if args.computer_command == "task":
         return _run_task(args, hands_factory=hands_factory, print_fn=print_fn)
 
+    if args.computer_command == "wait":
+        return _run_wait(args, hands_factory=hands_factory, print_fn=print_fn)
     if args.computer_command == "visual":
         return _run_visual(args, fallback_factory=fallback_factory, print_fn=print_fn)
     if args.computer_command == "web":
@@ -462,6 +493,14 @@ def _run_click(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
     try:
         hands = _hands(args, hands_factory)
         result = hands.click(args.ref, expect=_expect_from_args(args))
+    except StaleRefError as exc:
+        # A stale refusal is not a permission denial and not a
+        # crash: the screen changed, so report it distinctly.
+        print_fn(f"puspa computer click: refused: stale ref: {exc}")
+        return 1
+    except SettleTimeoutError as exc:
+        print_fn(f"puspa computer click: refused: screen never settled: {exc}")
+        return 1
     except (BackendUnavailableError, DesktopHandsError) as exc:
         print_fn(f"puspa computer click: failed: {exc}")
         return 1
@@ -472,6 +511,30 @@ def _run_click(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
     if not result.performed or not result.verified:
         return 1
     return 0
+
+
+def _run_wait(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
+    try:
+        if hands_factory is not None:
+            hands = hands_factory(getattr(args, "backend", "auto"))
+        else:
+            hands = DesktopHands(
+                make_backend(getattr(args, "backend", "auto")),
+                settle_timeout=args.timeout,
+                settle_stable_rounds=args.stable_rounds,
+            )
+        shot, report = hands.wait_settle()
+        data = report.to_dict()
+        data["total_nodes"] = shot.total_nodes
+        print_fn(json.dumps(data, indent=2))
+        return 0
+    except SettleTimeoutError as exc:
+        print_fn(json.dumps(exc.report.to_dict(), indent=2))
+        print_fn(f"puspa computer wait: screen never settled: {exc}")
+        return 1
+    except (BackendUnavailableError, DesktopHandsError) as exc:
+        print_fn(f"puspa computer wait: failed: {exc}")
+        return 1
 
 
 def _run_verify(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
@@ -698,6 +761,12 @@ def _run_visual(args: argparse.Namespace, *, fallback_factory, print_fn) -> int:
     if args.visual_command == "click":
         try:
             result = fallback.click_text(args.text, expect=_visual_expect(args))
+        except StaleVisualTargetError as exc:
+            print_fn(f"puspa computer visual click: refused: stale target: {exc}")
+            return 1
+        except SettleTimeoutError as exc:
+            print_fn(f"puspa computer visual click: refused: screen never settled: {exc}")
+            return 1
         except VisualFallbackError as exc:
             print_fn(f"puspa computer visual click: failed: {exc}")
             return 1
