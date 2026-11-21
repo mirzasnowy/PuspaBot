@@ -521,6 +521,14 @@ class SkillCompiler:
 
     def _replay_in_sandbox(self, bound: CompiledSkill) -> ReplayResult:
         """Replay bound steps as subprocesses; check the postcondition."""
+        executor = self._executor
+        if executor is None:
+            return ReplayResult(
+                passed=False,
+                steps_run=0,
+                detail="no sandbox executor configured for replay",
+                kind=REPLAY_NOT_CONFIGURED,
+            )
         executions: list[ExecutionResult] = []
         last_result: dict | None = None
         for index, step in enumerate(bound.steps):
@@ -567,7 +575,7 @@ class SkillCompiler:
                     executions=tuple(executions),
                     kind=REPLAY_STEP_FAILED,
                 )
-            result = self._executor.execute(argv)
+            result = executor.execute(argv)
             executions.append(result)
             if result.timed_out:
                 return ReplayResult(
