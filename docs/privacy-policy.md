@@ -106,7 +106,7 @@ has been run. The beta is small and closed for exactly that reason.
 ## 7. Your rights: access, correction, export, deletion
 
 These are implemented in the product, not just promised here
-(`docs/memory-screen-p01.md`, `puspa/consent/account.py`):
+(`docs/memory-screen.md`, `puspa/consent/account.py`):
 
 - **Access and correction.** The Memory screen shows your stored
   facts with source and confidence. You can correct a fact, or

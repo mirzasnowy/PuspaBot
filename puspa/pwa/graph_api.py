@@ -31,7 +31,7 @@ read, then replaying that user's ledger corrections in order.
 Retrieval after an edit (``GraphViewService.retrieve``) runs the
 HippoRAG retriever over this same graph object, so a correction
 changes the next answer. Honest limit, stated here and in
-``docs/graph-view-b18.md``: the graph is process memory, not a
+``docs/graph-view.md``: the graph is process memory, not a
 database table — a restart rebuilds it from episodes plus the
 ledger replay, and episodes recorded after the seed do not
 appear until the process restarts (or the service is reset).

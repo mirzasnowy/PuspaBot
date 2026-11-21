@@ -14,7 +14,7 @@ moves; one PLN bill of Rp150,000 due day 20): the widget is
 checked against the simulator, not against hand-typed
 numbers. The honest limit (no live browser in this VM to
 prove a tap or a slider drag on a real screen) is recorded
-in ``docs/chat-widgets-p14.md``.
+in ``docs/chat-widgets.md``.
 """
 
 from __future__ import annotations

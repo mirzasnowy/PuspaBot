@@ -81,7 +81,7 @@ What exists in the product today:
 - **Conflict gate** (`puspa/policy/conflicts.py`): actions that
   benefit another party more than you are surfaced, not hidden.
 - **Attack testing** (attack corpus, benchmark, mutation and scorecard): a frozen corpus of attack payloads and
-  a scorecard run against the rails (`docs/eval-e16.md`). A zero
+  a scorecard run against the rails (`docs/eval.md`). A zero
   attack-success rate on that corpus means no payload in that corpus
   got through — not that the system is safe in general.
 - **Fraud vocabulary** (Indonesian context pass): a starting table of fraud patterns,

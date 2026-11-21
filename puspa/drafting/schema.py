@@ -1,4 +1,4 @@
-"""Drafting schema loader: the drafting tables come from migration 0012_drafting (``puspa/migrations/versions/0012_drafting.sql``). This module is only the programmatic entry point — the test suite calls ``create_schema()`` so each test run starts from the same schema. See ``docs/drafting-b13.md`` for the design."""
+"""Drafting schema loader: the drafting tables come from migration 0012_drafting (``puspa/migrations/versions/0012_drafting.sql``). This module is only the programmatic entry point — the test suite calls ``create_schema()`` so each test run starts from the same schema. See ``docs/drafting.md`` for the design."""
 
 from __future__ import annotations
 

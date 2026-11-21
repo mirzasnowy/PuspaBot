@@ -133,7 +133,7 @@ def _content_words(text: str) -> list[str]:
 # decisions in English or Indonesian and briefs in either, so a
 # "never offer discounts" decision must still catch an Indonesian
 # brief about "diskon". This is word matching with a fixed
-# dictionary, not meaning — see the limits in docs/drafting-b13.md.
+# dictionary, not meaning — see the limits in docs/drafting.md.
 _SYNONYMS = {
     "diskon": "discount",
     "pelanggan": "customer",

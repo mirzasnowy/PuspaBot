@@ -9,7 +9,7 @@ Rules, following the file-size ratchet in ``tests/test_file_size_ratchet.py``:
   regrowth cannot hide behind a stale entry.
 
 Scope (each exclusion has a reason, recorded in
-``docs/e20-blind-except-audit.md``, section 3):
+``docs/blind-except-audit.md``, section 3):
 
 - Only ``puspa/`` is scanned. Scanning ``tests/`` adds 12,600 ``B101``
   (assert) findings — test asserts are the test mechanism, not a
@@ -47,7 +47,7 @@ import pytest
 #: (bandit 1.8.6). A count here may only ever go down. A test id may be
 #: removed from this table only when its count reaches zero; a count may
 #: only be lowered by fixing the finding (or proving it a false positive
-#: and recording why in docs/e20-blind-except-audit.md), never by
+#: and recording why in docs/blind-except-audit.md), never by
 #: editing this table to match a regrowth.
 BASELINE_BANDIT: dict[str, int] = {
     # Asserts in production code: real debt (they vanish under

@@ -103,7 +103,7 @@ content is not deleted by account deletion yet.
 If you only want to correct or forget a single memory — rather than
 delete everything — use the Memory screen: correct a fact, or forget
 it, without withdrawing consent as a whole
-(`docs/memory-screen-p01.md`).
+(`docs/memory-screen.md`).
 
 ## 6. When this text changes
 

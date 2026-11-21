@@ -36,7 +36,7 @@ verbatim):
 - ``puspa/router/complete.py`` — the ``complete(prompt)`` seam
   the optional polish step takes as ``llm_complete``.
 
-Honest limits (see ``docs/meetings-b10.md``): extraction is
+Honest limits (see ``docs/meetings.md``): extraction is
 deterministic and marker-based — unmarked talk is ignored, so
 a transcript without ``Decision:`` / ``Action:`` markers yields
 empty minutes; owner names resolve only through a

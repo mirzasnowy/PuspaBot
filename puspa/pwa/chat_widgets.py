@@ -37,7 +37,7 @@ its widget, the same list ``POST /api/chat`` appends to. No new
 database table and no migration: the simulator is pure
 in-memory maths and the widgets live in the chat store.
 
-Honest limit, stated here and in ``docs/chat-widgets-p14.md``:
+Honest limit, stated here and in ``docs/chat-widgets.md``:
 the widgets are verified by the Python tests plus vitest/jsdom
 rendering and interaction tests — this VM has no live browser,
 so a tap or a slider drag on a real phone screen is not

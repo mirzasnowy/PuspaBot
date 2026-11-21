@@ -133,7 +133,7 @@ ANSWER_TTL_SECONDS = 24 * 3600
 #: the beta must not create. "share" joined this set after the
 #: E-16 follow-up showed a broad "always" share grant auto-
 #: allowing a payload that tells the bot to publish the whole
-#: chat (see docs/eval-e16.md). Enforced by ``ApprovalStore``
+#: chat (see docs/eval.md). Enforced by ``ApprovalStore``
 #: and ``ApprovalPolicy`` when ``beta_mode`` is on.
 BETA_ALWAYS_FORBIDDEN_KINDS = frozenset({"pay", "send_to_other", "share"})
 
