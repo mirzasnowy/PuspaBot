@@ -76,8 +76,7 @@ def _ref(hands, name):
 # -- MCP definitions ------------------------------------------------
 
 
-def test_eighteen_tools_with_names_descriptions_and_schemas():
-
+def test_nineteen_tools_with_names_descriptions_and_schemas():
     tools = tool_definitions()
     assert [tool["name"] for tool in tools] == [
         "computer_snapshot",
@@ -94,6 +93,7 @@ def test_eighteen_tools_with_names_descriptions_and_schemas():
         "computer_focus_window",
         "computer_switch_window",
         "computer_run_task",
+        "computer_wait_settle",
         "computer_visual_locate",
         "computer_visual_click",
         "computer_web_open",
@@ -107,11 +107,13 @@ def test_eighteen_tools_with_names_descriptions_and_schemas():
     assert tool_definitions()[2]["inputSchema"]["required"] == ["ref"]
     assert tool_definitions()[3]["inputSchema"]["required"] == ["ref", "text"]
     assert tool_definitions()[13]["inputSchema"]["required"] == ["steps"]
+    # The V2-34 wait tool takes no required arguments.
+    assert tool_definitions()[14]["inputSchema"]["required"] == []
     # The V2-32 tools keep the same shape: one required string each.
-    assert tool_definitions()[14]["inputSchema"]["required"] == ["text"]
     assert tool_definitions()[15]["inputSchema"]["required"] == ["text"]
-    assert tool_definitions()[16]["inputSchema"]["required"] == ["url"]
-    assert tool_definitions()[17]["inputSchema"]["required"] == ["text"]
+    assert tool_definitions()[16]["inputSchema"]["required"] == ["text"]
+    assert tool_definitions()[17]["inputSchema"]["required"] == ["url"]
+    assert tool_definitions()[18]["inputSchema"]["required"] == ["text"]
 
 
 def test_server_definition_validates():

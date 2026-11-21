@@ -24,6 +24,17 @@ approve for the session, or deny). A denial raises
 Snapshots and verifies are reads; they need no prompt, but what
 they return is screen text, and screening that text is V2-36
 work, not this module's.
+
+V2-34 (synchronization + non-stale refs): ``click`` waits for
+the tree to settle first (see :mod:`puspa.computer.sync`), then
+resolves the ref, asks the user, and snapshots AGAIN right
+before touching the desktop, checking the live element's
+identity against the one that was approved. When the element is
+gone, or the ref now finds a different element, the click is
+refused with :class:`StaleRefError` and nothing is pressed. A
+stale refusal is not a permission denial: the user did not deny
+anything and the token gate did not refuse anything, the screen
+changed, so it is raised (and reported) distinctly.
 """
 
 from __future__ import annotations
@@ -53,6 +64,15 @@ from .input import (
     InputResult,
     make_input_backend,
 )
+from .sync import (
+    DEFAULT_POLL_INTERVAL_S,
+    DEFAULT_SETTLE_TIMEOUT_S,
+    DEFAULT_STABLE_ROUNDS,
+    SettleReport,
+    fingerprint,
+    tree_signature,
+    wait_for_settle,
+)
 from .tree import SKELETON_DEPTH, AccessibleNode, Snapshot, skeletonize
 from .windows import (
     WindowBackend,
@@ -66,6 +86,8 @@ __all__ = [
     "ClickResult",
     "DesktopHands",
     "DesktopHandsError",
+    "SettleReport",
+    "StaleRefError",
     "UnknownRefError",
     "Verification",
 ]
@@ -95,6 +117,15 @@ class DesktopHandsError(Exception):
 class UnknownRefError(DesktopHandsError):
     """The ref is not in the latest snapshot (stale ref, or a
     typo). Re-snapshot and pick a ref from the fresh tree."""
+
+
+class StaleRefError(DesktopHandsError):
+    """The ref was valid when it was picked, but the screen
+    changed before the click ran: the element is gone, or the
+    ref now finds a different element. NOT a permission denial:
+    nobody refused the click, the target simply is not the same
+    element any more, so the click was refused and nothing was
+    pressed. Re-snapshot and pick a ref from the fresh tree."""
 
 
 @dataclass(frozen=True)
@@ -174,6 +205,9 @@ class DesktopHands:
         token_payload: dict | None = None,
         input_backend: InputBackend | None = None,
         window_backend: WindowBackend | None = None,
+        settle_timeout: float = DEFAULT_SETTLE_TIMEOUT_S,
+        settle_stable_rounds: int = DEFAULT_STABLE_ROUNDS,
+        settle_poll_interval: float = DEFAULT_POLL_INTERVAL_S,
     ) -> None:
         self.backend = backend if backend is not None else make_backend("auto")
         self._prompt = prompt
@@ -192,6 +226,9 @@ class DesktopHands:
             self.window_backend = make_window_backend("fake", self.backend)
         else:
             self.window_backend = make_window_backend("auto", self.backend)
+        self._settle_timeout = settle_timeout
+        self._settle_stable_rounds = settle_stable_rounds
+        self._settle_poll_interval = settle_poll_interval
 
     # -- reads ------------------------------------------------------
     def snapshot(
@@ -207,6 +244,21 @@ class DesktopHands:
         if skeleton:
             return skeletonize(shot, SKELETON_DEPTH)
         return shot
+
+    def wait_settle(
+        self, *, timeout_s: float | None = None, stable_rounds: int | None = None
+    ) -> tuple[Snapshot, SettleReport]:
+        """Wait until the tree stops changing, then return the
+        settled snapshot and the settle report. Raises
+        :class:`puspa.computer.sync.SettleTimeoutError` when the
+        screen never goes quiet inside the bounded wait."""
+        return wait_for_settle(
+            lambda: self.snapshot(skeleton=False),
+            signature=tree_signature,
+            timeout_s=self._settle_timeout if timeout_s is None else timeout_s,
+            stable_rounds=self._settle_stable_rounds if stable_rounds is None else stable_rounds,
+            poll_interval_s=self._settle_poll_interval,
+        )
 
     def drill(self, ref: str) -> AccessibleNode:
         """Expand one skeleton node: re-read the full tree and
@@ -265,23 +317,42 @@ class DesktopHands:
     def click(self, ref: str, *, expect: dict | None = None) -> ClickResult:
         """Click one ref, then re-read to verify.
 
-        Steps: fresh snapshot, resolve the ref, token check,
-        user prompt, backend click, fresh snapshot, verify.
+        Steps: wait for the tree to settle, resolve the ref,
+        token check, user prompt, snapshot AGAIN and re-resolve
+        the ref against the approved element's identity (a
+        changed screen refuses with :class:`StaleRefError` and
+        nothing is pressed), backend click on the live element,
+        fresh snapshot, verify.
         ``expect`` describes the change to look for (same shape
         as :meth:`verify`). With no ``expect``, verified means
         the re-read shows the element changed state, changed
         name, or is gone; an unchanged screen is reported as
         not verified, even when the backend said the click ran.
         """
-        before_shot = self.snapshot(skeleton=False)
-        node = before_shot.find(ref)
+        settled_shot, _report = self.wait_settle()
+        node = settled_shot.find(ref)
         if node is None:
             raise UnknownRefError(f"no element with ref {ref!r} in the latest snapshot")
+        expected = fingerprint(node)
         before = node.summary()
         self._check_token(TOOL_CLICK)
         self._ask(f"computer click {node.ref} {node.role} {node.name!r}")
+        live_shot = self.snapshot(skeleton=False)
+        live = live_shot.find(ref)
+        if live is None:
+            raise StaleRefError(
+                f"ref {ref!r} is gone: the element {before} left the screen after it was "
+                "approved, so the click was refused and nothing was pressed. "
+                "Re-snapshot and pick a ref from the fresh tree."
+            )
+        if fingerprint(live) != expected:
+            raise StaleRefError(
+                f"ref {ref!r} now points at a different element: it was {before}, "
+                f"the screen now shows {live.summary()} there, so the click was refused "
+                "and nothing was pressed. Re-snapshot and pick a ref from the fresh tree."
+            )
         try:
-            performed = self.backend.click(node)
+            performed = self.backend.click(live)
         except BackendUnavailableError:
             raise
         except Exception as exc:

@@ -214,12 +214,23 @@ class FakeBackend:
     [...]}`` change its states, and ``{"removes_path": [..]}``
     deletes another node (a dialog that closes). Clicking a node
     without a click action returns False.
+
+    ``on_snapshot`` is a test seam (V2-34): when set, it is
+    called with the snapshot count before each snapshot is built,
+    so a test can change the spec between one snapshot and the
+    next and prove a stale ref is refused instead of mis-clicked.
+    ``clicks`` records the path of every node the backend was
+    asked to click, so a test can prove a refused click never
+    ran.
     """
 
     name = "fake"
 
-    def __init__(self, spec: list[dict] | None = None) -> None:
+    def __init__(self, spec: list[dict] | None = None, *, on_snapshot=None) -> None:
         self._spec: list[dict] = spec if spec is not None else demo_tree()
+        self.on_snapshot = on_snapshot
+        self.snapshot_count = 0
+        self.clicks: list[tuple[int, ...]] = []
 
     @property
     def spec(self) -> list[dict]:
@@ -235,12 +246,16 @@ class FakeBackend:
         self, *, max_nodes: int = DEFAULT_MAX_NODES, max_depth: int = DEFAULT_MAX_DEPTH
     ) -> Snapshot:
         del max_nodes, max_depth  # the fake tree is tiny by construction
+        self.snapshot_count += 1
+        if self.on_snapshot is not None:
+            self.on_snapshot(self.snapshot_count)
         nodes = assign_refs(
             [_spec_to_node(spec, (index,)) for index, spec in enumerate(self._spec)]
         )
         return Snapshot(nodes=tuple(nodes), backend=self.name)
 
     def click(self, node: AccessibleNode) -> bool:
+        self.clicks.append(node.path)
         spec = _find_spec(self._spec, node.path)
         if spec is None:
             return False
