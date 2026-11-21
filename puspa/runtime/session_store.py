@@ -142,6 +142,7 @@ class SqliteSessionStore(SessionStore):
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self._lock = threading.RLock()
+        self._closed = False
         self._conn = sqlite3.connect(
             self.path, timeout=5.0, check_same_thread=False, isolation_level=None
         )
@@ -199,9 +200,10 @@ class SqliteSessionStore(SessionStore):
     def close(self) -> None:
         """Close the connection. Idempotent."""
         with self._lock:
-            conn, self._conn = self._conn, None
-            if conn is not None:
-                conn.close()
+            if self._closed:
+                return
+            self._closed = True
+            self._conn.close()
 
     def __enter__(self):
         return self
