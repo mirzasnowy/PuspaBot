@@ -12,6 +12,7 @@ from typing import ClassVar
 
 import pytest
 
+from puspa.accounts.ports import resolve_dsn
 from puspa.memory.provider import (
     DEFAULT_PROVIDER_NAME,
     DefaultPgVectorProvider,
@@ -230,7 +231,7 @@ def test_pgvector_provider_round_trip():
         assert provider.query(user_id, "rice cooker prices", layer="episodic")
     finally:
         with psycopg.connect(
-            "dbname=puspa_test user=root host=/var/run/postgresql",
+            resolve_dsn(),
             autocommit=True,
         ) as conn:
             conn.execute("DELETE FROM episodic WHERE user_id = %s", (user_id,))

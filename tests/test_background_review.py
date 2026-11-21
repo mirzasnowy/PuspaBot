@@ -7,6 +7,7 @@ module (the fail-soft default path is tested explicitly).
 
 import pytest
 
+from puspa.accounts.ports import resolve_dsn
 from puspa.memory.background_review import (
     TURN_TIMEOUT_SECONDS,
     ReviewHandle,
@@ -194,7 +195,7 @@ def test_review_default_record_fact_writes_to_g7_store():
         assert "dark mode" in facts[0]["value"]
     finally:
         with psycopg.connect(
-            "dbname=puspa_test user=root host=/var/run/postgresql",
+            resolve_dsn(),
             autocommit=True,
         ) as conn:
             conn.execute("DELETE FROM profile_facts WHERE user_id = %s", (user_id,))

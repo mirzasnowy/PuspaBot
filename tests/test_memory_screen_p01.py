@@ -378,9 +378,12 @@ def test_room_memory_is_separate_and_membership_gated(make_user, test_dsn):
 
 def test_memory_page_renders_facts(make_user, test_dsn):
     """The /memory page serves the SPA shell with the facts in its
-    bootstrap payload; the Jinja template (served when no dist is
-    built) carries the actions, checked on disk."""
+    bootstrap payload when the dist is built; the Jinja template
+    (served when no dist is built, as in CI) renders the facts
+    server-side instead and carries the actions, checked on disk."""
     from pathlib import Path
+
+    from puspa.pwa.app import DIST_DIR
 
     user = make_user()
     user_id = user["user_id"]
@@ -390,7 +393,8 @@ def test_memory_page_renders_facts(make_user, test_dsn):
         page = client.get("/memory")
         assert page.status_code == 200
         assert "Karawang" in page.text
-        assert "__PUSPA_BOOTSTRAP__" in page.text
+        if (DIST_DIR / "index.html").exists():
+            assert "__PUSPA_BOOTSTRAP__" in page.text
     template = Path("apps/pwa/templates/memory.html").read_text(encoding="utf-8")
     assert "Forget this" in template
     assert "Guest mode" in template
