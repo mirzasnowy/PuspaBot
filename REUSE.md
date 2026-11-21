@@ -818,3 +818,27 @@ awaits that host; the pinned-DNS live test is skipped on this VM
 (the VM blocks UDP send with EPERM) and runs where UDP works;
 the gVisor/Kata choice is not made here — the harness exists so
 it is decided from measured spawn times on the real host.
+
+## Kosmos Phase 2 (V2-31: Sophisticated desktop hands, core only)
+
+| Ide besar | Dari repo apa (lisensi) | Apa yang diadaptasi | Apa yang ditulis ulang dari nol |
+| --- | --- | --- | --- |
+| Snapshot the OS accessibility tree as JSON, every element gets a ref, act on the ref, re-read the screen to verify (a successful action never proves the UI changed); skeleton-then-drill-down for huge trees; headless by default (no mouse move, no focus steal) | vercel-labs/agent-desktop (Apache-2.0, v1.2.0) | The act-on-a-ref + re-read-to-verify loop, the skeleton-then-drill-down shape for huge trees, the headless default | `puspa/computer/tree.py` (ref + path model, skeletonize, JSON shape), `puspa/computer/backend.py` (backend seam, in-memory fake backend, real Linux AT-SPI backend through ctypes against libatspi, no pyatspi), `puspa/computer/hands.py` (permission-gated click + re-read verify), `puspa/computer/mcp.py` (three MCP tool definitions + handlers), `puspa/computer/cli.py` (`puspa computer snapshot/click/verify`) |
+
+No new dependency was added for V2-31 (standard library only;
+the AT-SPI backend uses ctypes against the system libatspi).
+Tests: `tests/test_computer_hands.py` (tree refs + skeleton,
+fake-backend click effects, click + re-read verify incl. the
+unchanged-screen case, prompt + token permission gate) +
+`tests/test_computer_atspi.py` (fail-closed with no bus on this
+headless VM, libatspi symbol binding, backend seam) +
+`tests/test_computer_mcp_cli.py` (MCP definitions + handlers,
+CLI snapshot/click/verify on the fake backend, fail-closed
+auto-backend on this VM). Honest limits: no live desktop exists
+on this VM (no AT-SPI bus, no display), so the real AT-SPI
+backend was never run against a real application here: its
+tree walk and click path are written and type-checked, and only
+the fail-closed half is tested live; the first live check is on
+a Linux desktop session. Windows/macOS backends are not built
+(the seam raises for them). The MCP server itself (`puspa mcp`)
+is V2-37 work, not this item: only the definitions exist here.

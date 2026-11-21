@@ -19,13 +19,15 @@ import os
 import sys
 from datetime import UTC, datetime
 
+from puspa.computer.cli import add_computer_parser, run_computer
+
 FULL_CLI_NOTE = (
     "The full PuspaBot CLI lands in a later step of the public/private "
     "split; this build ships `puspa web` / `puspa serve`, `puspa memory "
     "export` / `import` plus help."
 )
 
-_KNOWN_COMMANDS = ("web", "serve", "memory", "conversation", "provider")
+_KNOWN_COMMANDS = ("web", "serve", "memory", "conversation", "provider", "computer")
 
 #: Environment variable holding the export passphrase (never a
 #: command-line argument: arguments are visible in the process list).
@@ -253,6 +255,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="User id to check (defaults to PUSPA_USER_ID or 'local-user').",
     )
+    add_computer_parser(sub)
     return parser
 
 
@@ -544,6 +547,11 @@ def main(argv: list[str] | None = None) -> int:
         return _run_memory(parsed)
     if parsed.command == "conversation":
         return _run_conversation(parsed)
+    if parsed.command == "computer":
+        if parsed.computer_command is None:
+            parser.print_help()
+            return 0
+        return run_computer(parsed)
     parser.print_help()
     return 0
 
