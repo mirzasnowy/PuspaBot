@@ -179,47 +179,34 @@ def oauth_refresher():
 
 
 def register_known_oauth_providers(refresher=None):
-    """Register the three OAuth providers the BYOK factory already knows.
+    """Register every known OAuth subscription provider.
 
-    All three are SIMULATED registrations: no live credential and no
-    live call is made here. xAI carries the token endpoint and public
+    All registrations are SIMULATED: no live credential and no
+    live call is made here. Each entry comes from
+    ``puspa/router/provider_login.py`` (``known_provider_configs``)
+    via its ``to_oauth_config``: the same registry the login
+    uses, so a provider that can log in can also refresh, and a
+    provider with no refresh grant (pasted tokens, GLM, Muse,
+    KiloCode, CodeBuddy, Qoder) fails fast on refresh with
+    "log in again" instead of posting a grant the provider
+    would refuse. xAI carries the token endpoint and public
     client id read from nanobot's own source
     (`nanobot/nanobot/providers/xai_oauth.py`: issuer
     `https://auth.x.ai`, token endpoint
-    `https://auth.x.ai/oauth2/token`); GitHub Copilot carries the
-    public GitHub OAuth token endpoint but no client id; Codex
-    carries neither, because its token endpoint was not verified
-    from nanobot's source. A refresh against any of them raises a
-    clear error naming what is missing until a real registration
-    (client id, secret from env or vault, token URL) is supplied.
+    `https://auth.x.ai/oauth2/token`); the 9Router providers
+    carry the endpoints and public client ids verified from
+    the 9Router registry, and their client secrets (where the
+    flow needs one) come from env, never from code.
     Returns the list of provider names registered.
     """
+    from .provider_login import known_provider_configs
+
     refresher = refresher if refresher is not None else oauth_refresher()
-    refresher.register_simulated(
-        "xai",
-        token_url="https://auth.x.ai/oauth2/token",
-        client_id="b1a00492-073a-47ea-816f-4c329264a828",
-        scope=("openid", "profile", "email", "offline_access"),
-        notes="public client id from nanobot source; interactive login "
-        "via Puspa (`puspa provider login xai`); "
-        "no client secret is used by this public client",
-    )
-    refresher.register_simulated(
-        "github_copilot",
-        token_url="https://github.com/login/oauth/access_token",
-        client_id=None,
-        notes="no client id wired yet; interactive login via "
-        "Puspa (`puspa provider login github_copilot`)",
-    )
-    refresher.register_simulated(
-        "openai_codex",
-        token_url=None,
-        client_id=None,
-        notes="token endpoint not verified from nanobot source; "
-        "interactive login via Puspa "
-        "(`puspa provider login openai_codex`) is not wired yet",
-    )
-    return ["xai", "github_copilot", "openai_codex"]
+    names: list[str] = []
+    for name, login_config in sorted(known_provider_configs().items()):
+        refresher.register(login_config.to_oauth_config())
+        names.append(name)
+    return names
 
 
 def get_valid_oauth_token(provider: str, http_client=None) -> str:

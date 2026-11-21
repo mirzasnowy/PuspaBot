@@ -522,7 +522,7 @@ def test_token_set_repr_and_store_repr_hide_values():
 
 
 # ---------------------------------------------------------------------------
-# Registry: the three named OAuth providers, simulated
+# Registry: every known OAuth provider, simulated (V2-29)
 # ---------------------------------------------------------------------------
 
 
@@ -531,7 +531,31 @@ def test_known_oauth_providers_register_as_simulated():
 
     refresher = TokenRefresher(now_fn=FakeClock().now)
     names = register_known_oauth_providers(refresher)
-    assert names == ["xai", "github_copilot", "openai_codex"]
+    assert names == [
+        "antigravity",
+        "claude",
+        "cline",
+        "codebuddy_cn",
+        "codebuddy_intl",
+        "cursor",
+        "gemini_cli",
+        "github_copilot",
+        "gitlab",
+        "glm",
+        "grok_cli",
+        "iflow",
+        "kilocode",
+        "kimi",
+        "kiro",
+        "minimax_code",
+        "minimax_code_global",
+        "muse",
+        "nous",
+        "openai_codex",
+        "qoder",
+        "qoder_cn",
+        "xai",
+    ]
     for name in names:
         config = refresher.config(name)
         assert config is not None
@@ -539,7 +563,15 @@ def test_known_oauth_providers_register_as_simulated():
     xai = refresher.config("xai")
     assert xai.token_url == "https://auth.x.ai/oauth2/token"
     assert xai.client_id is not None
-    assert refresher.config("openai_codex").token_url is None
+    # Codex is wired since V2-29: its token endpoint and public
+    # client id were verified from the 9Router registry.
+    assert refresher.config("openai_codex").token_url == "https://auth.openai.com/oauth/token"
+    # Providers with no refresh grant fail fast instead of
+    # posting a grant the provider would refuse.
+    assert refresher.config("claude").refresh_grant is False
+    assert refresher.config("cursor").refresh_grant is False
+    # Kiro refreshes with a JSON body, not the form grant.
+    assert refresher.config("kiro").refresh_json is True
 
 
 def test_router_wiring_get_valid_oauth_token_delegates():

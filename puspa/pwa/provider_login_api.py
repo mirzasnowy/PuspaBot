@@ -4,24 +4,41 @@ Contract (all routes require login; the user is the app's own
 ``need_user`` resolver, the same as every other PWA API):
 
 - ``GET /api/providers`` -> ``{"providers": [...]}``: one entry
-  per known provider with ``provider``, ``flow`` (``"pkce"`` or
-  ``"device"``), ``state`` (``logged_in`` / ``expiring`` /
-  ``expired`` / ``not_logged_in``), ``expires_at`` (ISO string or
-  null), and ``login_ready`` (False when the provider is not
-  wired yet, e.g. Codex). No token value is ever in a response.
+  per known provider with ``provider``, ``flow`` (``"pkce"``,
+  ``"device"``, ``"polling"``, ``"setup_token"``,
+  ``"import_token"``, or ``"encoded_token"``), ``state``
+  (``logged_in`` / ``expiring`` / ``expired`` /
+  ``not_logged_in``), ``expires_at`` (ISO string or null),
+  ``local_only`` (True for every plan-credential provider),
+  and ``login_ready`` (False when the provider is not wired
+  yet, e.g. a PKCE provider without its client secret).
+  No token value is ever in a response.
 - ``POST /api/providers/{provider}/login/start`` (JSON
   ``{"redirect_uri"}`` for the PKCE flow) -> for PKCE
   ``{"flow": "pkce", "url", "state"}`` (open ``url`` in a tab);
   for the device flow ``{"flow": "device", "user_code",
   "verification_uri", "expires_in", "interval", "poll_key"}``
-  (show the code and URL, then poll).
+  (show the code and URL, then poll); for the polling flow
+  (GLM, CodeBuddy) ``{"flow": "polling", "verification_uri",
+  "expires_in", "interval", "poll_key"}`` (open the URL, then
+  poll the same device/poll route); for a pasted-token flow
+  (Claude setup token, Cursor import) ``{"flow":
+  "setup_token" | "import_token", "help", "token_prefix"}``
+  and for the encoded-token flow (Cline) ``{"flow":
+  "encoded_token", "help"}`` (show the help, then finish at
+  the finish-token route below).
+- ``POST /api/providers/{provider}/login/finish-token`` (JSON
+  ``{"token"}``) -> finishes a pasted-token or encoded-token
+  login and returns the provider status. The token value is
+  never in the response.
 - ``GET /api/providers/callback?code=...&state=...`` -> exchanges
   the PKCE code, stores the token in the vault, and answers a
   small page saying the login is done (the tab can be closed).
   400 on an unknown or stale state.
 - ``POST /api/providers/{provider}/device/poll`` (JSON
   ``{"poll_key"}``) -> ``{"status": "pending"}`` or
-  ``{"status": "complete", ...provider status}``.
+  ``{"status": "complete", ...provider status}``. Serves the
+  device flow and the polling flow alike.
 - ``POST /api/providers/{provider}/logout`` -> the provider
   status after the vault entry is deleted.
 
@@ -86,6 +103,12 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
         try:
             if config.flow == "device":
                 return {"flow": "device", **service.start_device(provider)}
+            if config.flow == "polling":
+                return {"flow": "polling", **service.start_polling(provider)}
+            if config.flow in ("setup_token", "import_token"):
+                return {"flow": config.flow, **service.start_pasted_token(provider)}
+            if config.flow == "encoded_token":
+                return {"flow": "encoded_token", "help": config.setup_token_help}
             data = await request.json() if await request.body() else {}
             if isinstance(data, dict) and data.get("redirect_uri"):
                 redirect_uri = str(data["redirect_uri"])
@@ -96,6 +119,27 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
         except ProviderLoginError as exc:
             return _error_response(exc)
         except Exception as exc:  # pragma: no cover - defensive
+            return _error_response(exc)
+
+    @app.post("/api/providers/{provider}/login/finish-token")
+    async def api_finish_token_login(request: Request, provider: str):
+        user_id = need_user(request)
+        if user_id is None:
+            return _not_logged_in()
+        service = _service(app)
+        try:
+            config = service.config(provider)
+        except ProviderLoginError as exc:
+            return _error_response(exc, status=404)
+        try:
+            data = await request.json()
+            token = data.get("token") if isinstance(data, dict) else None
+            if not token:
+                return _error_response(ValueError("token is required"))
+            if config.flow == "encoded_token":
+                return service.finish_encoded_token(user_id, provider, str(token))
+            return service.finish_pasted_token(user_id, provider, str(token))
+        except ProviderLoginError as exc:
             return _error_response(exc)
 
     @app.get("/api/providers/callback", name="api_provider_callback")
@@ -130,6 +174,9 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             poll_key = data.get("poll_key") if isinstance(data, dict) else None
             if not poll_key:
                 return _error_response(ValueError("poll_key is required"))
+            config = service.config(provider)
+            if config.flow == "polling":
+                return service.poll_polling(user_id, provider, poll_key)
             return service.poll_device(user_id, provider, poll_key)
         except ProviderLoginError as exc:
             return _error_response(exc)

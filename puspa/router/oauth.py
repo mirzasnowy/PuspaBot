@@ -18,15 +18,17 @@ Where it sits in the router path
 --------------------------------
 Puspa's router catalog (``puspa/router/router.py``) is API-key
 providers only: OpenRouter and the OpenAI-compatible family behind
-the BYOK factory (``demo/byok_provider.py``). The three OAuth
+the BYOK factory (``demo/byok_provider.py``). The OAuth
 providers the factory already knows, ``xai`` (Grok subscription),
-``github_copilot``, ``openai_codex``, are built by nanobot with an
+``github_copilot``, ``openai_codex``, were built by nanobot with an
 interactive login (``nanobot provider login ...``) and no proactive
 refresh on Puspa's side: nanobot refreshes xAI tokens only inside
 its own login flow, and Copilot / Codex tokens are fetched on
-demand. This module is the refresh side of that gap: register an
-OAuth provider once (``register_known_oauth_providers`` in
-``router.py``), store its tokens, and call ``get_valid_token``
+demand. V2-29 adds the 9Router list (Claude, Antigravity, Gemini
+CLI, Cursor, Kiro, Kimi, GLM, and the rest), all registered in
+the same registry. This module is the refresh side of that gap:
+register an OAuth provider once (``register_known_oauth_providers``
+in ``router.py``), store its tokens, and call ``get_valid_token``
 before any provider call. The interactive login itself now lives
 in ``puspa/router/provider_login.py`` (``puspa provider login``),
 which stores tokens in the vault and hands them to this module.
@@ -69,7 +71,7 @@ What this module does NOT do (honest limits)
   device-code step that first obtains a refresh token lives in
   ``puspa/router/provider_login.py`` (``puspa provider login``);
   this module only keeps a token set alive once one exists.
-- The three named providers are registered as SIMULATED entries by
+- The known providers are registered as SIMULATED entries by
   ``register_known_oauth_providers``: no real client secret and no
   live call is made here. xAI carries its token URL and public
   client id as read from nanobot's own source
@@ -77,16 +79,24 @@ What this module does NOT do (honest limits)
   ``https://auth.x.ai``, token endpoint
   ``https://auth.x.ai/oauth2/token``); GitHub Copilot carries the
   public GitHub OAuth token endpoint but no client id; Codex
-  carries neither, because its token endpoint was not verified
-  from nanobot's source. A refresh against any of them raises a
+  carries its token endpoint and public client id as verified
+  from the 9Router registry (decolua/9router, MIT); the other
+  9Router providers carry the endpoints and public client ids
+  verified from the same registry, and their client secrets
+  (where the flow needs one) come from env, never from code. A
+  refresh against a provider with a missing piece raises a
   clear error naming exactly what is missing until a real
   registration (client id, secret from env or vault, token URL)
-  is supplied.
-- Only the refresh-token grant is implemented. Providers whose
-  sessions cannot be refreshed with a refresh token (for example
-  a device-flow-only session with no refresh token) raise
-  ``TokenRefreshError`` with ``reauth_required=True`` instead of
-  pretending a refresh happened.
+  is supplied. Providers with no refresh grant at all
+  (``refresh_grant=False``) fail fast with "log in again".
+- Only the refresh-token grant is implemented, plus the JSON
+  variant Kiro's AWS SSO OIDC endpoint needs
+  (``refresh_json=True``: JSON body, camelCase fields).
+  Providers whose sessions cannot be refreshed with a refresh
+  token (for example a device-flow-only session with no refresh
+  token) raise ``TokenRefreshError`` with
+  ``reauth_required=True`` instead of pretending a refresh
+  happened.
 """
 
 from __future__ import annotations
@@ -173,7 +183,10 @@ class TokenSet:
     issued no refresh token). ``expires_at`` is when the access token
     stops being valid (None when the provider never said). ``scope``
     records the granted scopes for audit, never a secret.
-    ``__repr__`` deliberately shows no token value.
+    ``extra`` carries provider-side material the refresh needs
+    (Kiro's registered OIDC client id/secret/region); its values
+    are credentials and are never shown. ``__repr__`` deliberately
+    shows no token value.
     """
 
     access_token: str
@@ -182,12 +195,14 @@ class TokenSet:
     token_type: str = "Bearer"
     scope: str = ""
     obtained_at: datetime = field(default_factory=_utcnow)
+    extra: dict[str, str] = field(default_factory=dict)
 
     def __repr__(self) -> str:  # never leak a token value
         return (
             f"TokenSet(access_token=<redacted>, "
             f"refresh_token={'present' if self.refresh_token else 'absent'}, "
-            f"expires_at={self.expires_at!r}, token_type={self.token_type!r})"
+            f"expires_at={self.expires_at!r}, token_type={self.token_type!r}, "
+            f"extra_keys={sorted(self.extra)!r})"
         )
 
     def seconds_until_expiry(self, now: datetime) -> int | None:
@@ -226,6 +241,13 @@ class OAuthProviderConfig:
     and is never logged. ``simulated`` marks a registration that
     has no live credentials behind it: refreshes against it are
     expected to run only against a fake endpoint in tests.
+    ``refresh_json`` means the provider's token endpoint speaks
+    JSON with camelCase fields (AWS SSO OIDC for Kiro) instead
+    of the standard form grant. ``refresh_grant`` is False when
+    the provider issues no refresh grant at all (pasted tokens,
+    GLM, Muse, KiloCode, CodeBuddy, Qoder): refresh then fails
+    fast with "log in again" instead of posting a grant the
+    provider would refuse.
     """
 
     provider: str
@@ -236,6 +258,8 @@ class OAuthProviderConfig:
     refresh_leeway_seconds: int = DEFAULT_REFRESH_LEEWAY_SECONDS
     simulated: bool = False
     notes: str = ""
+    refresh_json: bool = False
+    refresh_grant: bool = True
 
     def __repr__(self) -> str:  # never leak the client secret
         return (
@@ -468,6 +492,15 @@ class TokenRefresher:
         token values.
         """
         provider = config.provider
+        if not config.refresh_grant:
+            self._record(provider, "failed", "no refresh grant for this provider")
+            raise TokenRefreshError(
+                provider,
+                "this provider issues no refresh grant; "
+                "log in again to get a fresh token"
+                + (f" ({config.notes})" if config.notes else ""),
+                reauth_required=True,
+            )
         if config.token_url is None:
             self._record(provider, "failed", "no token URL registered")
             raise TokenRefreshError(
@@ -490,17 +523,8 @@ class TokenRefresher:
                 "no refresh token stored; interactive login required",
                 reauth_required=True,
             )
-        data: dict[str, str] = {
-            "grant_type": "refresh_token",
-            "refresh_token": old.refresh_token,
-            "client_id": config.client_id,
-        }
-        if config.client_secret:
-            data["client_secret"] = config.client_secret
-        if config.scope:
-            data["scope"] = " ".join(config.scope)
         try:
-            response = self._post(config.token_url, data, http_client)
+            response = self._refresh_post(config.token_url, config, old, http_client)
         except TokenRefreshError:
             raise
         except Exception as exc:
@@ -530,6 +554,16 @@ class TokenRefresher:
                 provider,
                 "token endpoint returned a response that is not JSON",
             ) from exc
+        if config.refresh_json and isinstance(payload, dict):
+            # AWS SSO OIDC answers in camelCase: map it to the
+            # snake_case shape the rest of this method reads.
+            payload = {
+                "access_token": payload.get("accessToken"),
+                "refresh_token": payload.get("refreshToken"),
+                "expires_in": payload.get("expiresIn"),
+                "token_type": payload.get("tokenType"),
+                "scope": payload.get("scope"),
+            }
         if not isinstance(payload, dict) or not payload.get("access_token"):
             self._record(provider, "failed", "token endpoint returned no access_token")
             raise TokenRefreshError(
@@ -551,7 +585,41 @@ class TokenRefresher:
             token_type=str(payload.get("token_type") or old.token_type),
             scope=str(scope),
             obtained_at=now,
+            # Provider-side material rides along untouched, so the
+            # next refresh still has the same OIDC client.
+            extra=dict(old.extra),
         )
+
+    def _refresh_post(
+        self, token_url: str, config: OAuthProviderConfig, old: TokenSet, http_client
+    ):
+        """One refresh POST, form or JSON per provider shape.
+
+        The standard grant is a form POST. Kiro's AWS SSO OIDC
+        endpoint wants a JSON body with camelCase fields
+        (``grantType`` / ``clientId`` / ``clientSecret`` /
+        ``refreshToken``). ``token_url`` was checked non-None by
+        ``_refresh`` before calling.
+        """
+        if config.refresh_json:
+            body: dict[str, str] = {
+                "grantType": "refresh_token",
+                "clientId": config.client_id or "",
+                "refreshToken": old.refresh_token or "",
+            }
+            if config.client_secret:
+                body["clientSecret"] = config.client_secret
+            return self._post_json(token_url, body, http_client)
+        data: dict[str, str] = {
+            "grant_type": "refresh_token",
+            "refresh_token": old.refresh_token or "",
+            "client_id": config.client_id or "",
+        }
+        if config.client_secret:
+            data["client_secret"] = config.client_secret
+        if config.scope:
+            data["scope"] = " ".join(config.scope)
+        return self._post(token_url, data, http_client)
 
     @staticmethod
     def _post(url: str, data: dict[str, str], http_client):
@@ -562,6 +630,16 @@ class TokenRefresher:
 
         with httpx.Client(timeout=30) as client:
             return client.post(url, data=data)
+
+    @staticmethod
+    def _post_json(url: str, data: dict[str, str], http_client):
+        """POST a JSON body to a token endpoint (injectable transport)."""
+        if http_client is not None:
+            return http_client.post(url, json=data)
+        import httpx
+
+        with httpx.Client(timeout=30) as client:
+            return client.post(url, json=data)
 
     @staticmethod
     def _error_code(response) -> str | None:

@@ -129,13 +129,42 @@ def test_list_providers_shows_all_three_states(make_user, test_dsn, vault_master
         resp = client.get("/api/providers")
     assert resp.status_code == 200
     providers = {entry["provider"]: entry for entry in resp.json()["providers"]}
-    assert set(providers) == {"xai", "github_copilot", "openai_codex"}
+    assert set(providers) == {
+        "antigravity",
+        "claude",
+        "cline",
+        "codebuddy_cn",
+        "codebuddy_intl",
+        "cursor",
+        "gemini_cli",
+        "github_copilot",
+        "gitlab",
+        "glm",
+        "grok_cli",
+        "iflow",
+        "kilocode",
+        "kimi",
+        "kiro",
+        "minimax_code",
+        "minimax_code_global",
+        "muse",
+        "nous",
+        "openai_codex",
+        "qoder",
+        "qoder_cn",
+        "xai",
+    }
     # The stored token expires far in the future relative to the
     # real clock only when BASE_TIME is near now; the state is
     # either logged_in or expired, never a token value.
     assert providers["xai"]["state"] in ("logged_in", "expiring", "expired")
     assert providers["github_copilot"]["state"] == "not_logged_in"
-    assert providers["openai_codex"]["login_ready"] is False
+    # Codex is wired since V2-29 (endpoints verified from the
+    # 9Router registry), and Claude/Cursor need no client id.
+    assert providers["openai_codex"]["login_ready"] is True
+    assert providers["claude"]["login_ready"] is True
+    assert providers["cursor"]["login_ready"] is True
+    assert providers["kiro"]["login_ready"] is True
     assert OLD_ACCESS not in resp.text
     assert OLD_REFRESH not in resp.text
 
