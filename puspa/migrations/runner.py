@@ -165,13 +165,19 @@ def _check_target(migrations: list[Migration], target: str | None) -> None:
         raise MigrationError(f"unknown migration target {target!r}; known versions: {known}")
 
 
-def apply_migrations(dsn: str | None = None, target: str | None = None) -> list[str]:
+def apply_migrations(
+    dsn: str | None = None,
+    target: str | None = None,
+    directory: Path | None = None,
+) -> list[str]:
     """Apply every pending migration up to ``target`` (or all of them).
 
     Returns the versions applied by this call, in order. A second call
-    is a no-op. Each migration runs in its own transaction.
+    is a no-op. Each migration runs in its own transaction. ``directory``
+    overrides the versions directory (the hosted service keeps its own
+    full set there); it defaults to this package's ``versions/``.
     """
-    migrations = list_migrations()
+    migrations = list_migrations(directory)
     _check_target(migrations, target)
     applied: list[str] = []
     with psycopg.connect(resolve_dsn(dsn)) as conn:
@@ -200,15 +206,17 @@ def apply_migrations(dsn: str | None = None, target: str | None = None) -> list[
     return applied
 
 
-def rollback_migrations(dsn: str | None = None, target: str = "") -> list[str]:
+def rollback_migrations(
+    dsn: str | None = None, target: str = "", directory: Path | None = None
+) -> list[str]:
     """Roll back every applied migration after ``target`` (exclusive).
 
     ``target`` is the version that stays applied; pass ``""`` to roll
     back everything. Returns the versions rolled back, newest first.
     Raises MigrationError on an irreversible migration instead of
-    rolling it back.
+    rolling it back. ``directory`` overrides the versions directory.
     """
-    migrations = list_migrations()
+    migrations = list_migrations(directory)
     if target != "":
         _check_target(migrations, target)
     rolled_back: list[str] = []
@@ -243,9 +251,14 @@ def _irreversible_reason(down_sql: str) -> str:
     return "no reason recorded"
 
 
-def migration_status(dsn: str | None = None) -> list[dict[str, str | bool]]:
-    """One row per migration file: version, name, applied or not."""
-    migrations = list_migrations()
+def migration_status(
+    dsn: str | None = None, directory: Path | None = None
+) -> list[dict[str, str | bool]]:
+    """One row per migration file: version, name, applied or not.
+
+    ``directory`` overrides the versions directory.
+    """
+    migrations = list_migrations(directory)
     with psycopg.connect(resolve_dsn(dsn)) as conn:
         recorded = _applied_versions(conn)
     return [
