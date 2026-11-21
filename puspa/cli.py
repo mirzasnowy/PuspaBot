@@ -3,6 +3,7 @@
 Split Step 1: this is the minimal shim behind the ``puspa`` and
 ``puspa-cli`` console entry points. It ships ``puspa web`` / ``puspa
 serve`` (start the local gateway and open the PWA), ``puspa memory
+export`` (a portable, encrypted memory archive, V2-09), ``puspa memory
 import`` / ``rollback`` / ``forget`` (memory import, V2-10), plus
 help. The full one-shot CLI lands in a later step of the split;
 until then any other subcommand prints help and says so.
@@ -11,15 +12,23 @@ until then any other subcommand prints help and says so.
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
+import os
 import sys
+from datetime import UTC, datetime
 
 FULL_CLI_NOTE = (
     "The full PuspaBot CLI lands in a later step of the public/private "
-    "split; this build ships `puspa web` / `puspa serve` plus help."
+    "split; this build ships `puspa web` / `puspa serve`, `puspa memory "
+    "export` / `import` plus help."
 )
 
 _KNOWN_COMMANDS = ("web", "serve", "memory")
+
+#: Environment variable holding the export passphrase (never a
+#: command-line argument: arguments are visible in the process list).
+EXPORT_PASSPHRASE_ENV = "PUSPA_EXPORT_PASSPHRASE"
 
 _IMPORT_SOURCES = ("kosmos", "memory_md", "generic_json", "generic_markdown")
 
@@ -43,10 +52,52 @@ def build_parser() -> argparse.ArgumentParser:
 
     memory = sub.add_parser(
         "memory",
-        help="Memory import, rollback and forget (V2-10).",
-        description="Memory import, rollback and forget (V2-10).",
+        help="Memory export and import (V2-09, V2-10).",
+        description="Memory export and import (V2-09, V2-10).",
     )
     memory_sub = memory.add_subparsers(dest="memory_command", metavar="MEMORY_COMMAND")
+    export = memory_sub.add_parser(
+        "export",
+        help="Export one user's memory as an encrypted archive.",
+        description=(
+            "Export one user's memory as a portable archive "
+            "(MEMORY.md, ledger events, graph, people, values, "
+            "skills, causal hypotheses, known unknowns, manifest). "
+            "Full exports are encrypted by default; the passphrase "
+            "comes from the PUSPA_EXPORT_PASSPHRASE environment "
+            "variable or an interactive prompt, never an argument."
+        ),
+    )
+    export.add_argument("--user", required=True, help="User id to export.")
+    export.add_argument("--out", required=True, help="Where to write the archive file.")
+    export.add_argument(
+        "--layers",
+        nargs="+",
+        default=None,
+        metavar="LAYER",
+        help="Only these sections (memory events graph people values skills causal ignorance).",
+    )
+    export.add_argument(
+        "--from",
+        dest="date_from",
+        default=None,
+        metavar="ISO-DATE",
+        help="Only events/episodes on or after this ISO-8601 date.",
+    )
+    export.add_argument(
+        "--to",
+        dest="date_to",
+        default=None,
+        metavar="ISO-DATE",
+        help="Only events/episodes before this ISO-8601 date.",
+    )
+    export.add_argument("--person", default=None, help="Only this person's record.")
+    export.add_argument("--project", default=None, help="Only one task (its task id).")
+    export.add_argument(
+        "--no-encrypt",
+        action="store_true",
+        help="Write a plain ZIP instead of an encrypted archive (debugging only).",
+    )
     memory_import = memory_sub.add_parser(
         "import",
         help="Import memory from a Kosmos archive, a MEMORY.md file, or another assistant's export.",
@@ -103,6 +154,51 @@ def _run_web(host: str, port: int) -> int:
     return 0
 
 
+def _parse_scope_date(raw: str | None, name: str) -> datetime | None:
+    """An ISO-8601 date as an aware datetime (naive means UTC)."""
+    if raw is None:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an ISO-8601 date, got {raw!r}") from exc
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+
+def _run_memory_export(args: argparse.Namespace) -> int:
+    """Export one user's memory archive (lazy import: ``--help`` stays fast)."""
+    from puspa.memory.memory_export import ExportScope, export_memory
+
+    encrypted = not args.no_encrypt
+    passphrase = os.environ.get(EXPORT_PASSPHRASE_ENV) or None
+    if encrypted and passphrase is None:
+        entered = getpass.getpass("Export passphrase: ")
+        passphrase = entered or None
+    try:
+        scope = ExportScope(
+            layers=tuple(args.layers) if args.layers else None,
+            date_from=_parse_scope_date(args.date_from, "--from"),
+            date_to=_parse_scope_date(args.date_to, "--to"),
+            person=args.person,
+            project=args.project,
+        )
+        result = export_memory(
+            args.user,
+            args.out,
+            passphrase,
+            scope,
+            encrypted=encrypted,
+        )
+    except ValueError as exc:
+        print(f"puspa: memory export failed: {exc}", file=sys.stderr)
+        return 1
+    counts = ", ".join(f"{name}={count}" for name, count in sorted(result.counts.items()))
+    print(f"Wrote {result.path} ({counts})")
+    print(f"Archive sha256: {result.archive_sha256}")
+    print(f"Encrypted: {'yes' if result.encrypted else 'no'}")
+    return 0
+
+
 def _run_memory_import(args: argparse.Namespace) -> int:
     """Run ``puspa memory import`` (lazy import: ``--help`` stays fast)."""
     from puspa.memory.importer import import_memory
@@ -152,6 +248,8 @@ def _run_memory_forget(args: argparse.Namespace) -> int:
 
 
 def _run_memory(args: argparse.Namespace) -> int:
+    if args.memory_command == "export":
+        return _run_memory_export(args)
     if args.memory_command == "import":
         return _run_memory_import(args)
     if args.memory_command == "rollback":
