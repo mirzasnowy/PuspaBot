@@ -27,7 +27,11 @@ wrong. E-20 narrowed 11 handlers with provably narrow failure modes
 (see ``docs/e20-blind-except-audit.md``, section 2.2); the ratchet
 resumes from 192. P-05 (20 Nov 2026) adds 1 recorded handler — the
 room job runner, which must stay blind by design (audit section 2.1)
-— so the ratchet resumes from 193. Every handler on a money,
+— so the ratchet resumes from 193. K2 (21 Nov 2026) adds 2 recorded
+handlers — the gateway's intent-advisor boundary, which must stay
+blind by design (an advisor that fails fails closed to a deny, and
+the question-rendering fallback likewise) — so the ratchet resumes
+from 195. Every handler on a money,
 credential, or approval path was audited; the audit notes which must
 stay blind-except and why are in that document.
 
@@ -94,6 +98,7 @@ BASELINE_BLE001: dict[str, int] = {
     "puspa/plugins/adapters.py": 4,
     "puspa/plugins/catalog.py": 2,
     "puspa/plugins/loader.py": 2,
+    "puspa/policy/gateway.py": 2,
     "puspa/policy/revocation.py": 2,
     "puspa/policy/signing.py": 1,
     "puspa/policy/sigstore_verify.py": 4,
@@ -153,7 +158,7 @@ BASELINE_BLE001: dict[str, int] = {
 #: Total baseline: the sum of BASELINE_BLE001 (193 on 20 Nov 2026;
 #: P-05 adds 1 recorded handler — the room job runner, see
 #: docs/e20-blind-except-audit.md section 2.1).
-BASELINE_TOTAL = 193
+BASELINE_TOTAL = 195
 
 
 def _repo_root() -> Path:

@@ -126,11 +126,26 @@ Decision order:
    behaviour (policy, gates) stands.
 3. Intent at goal/values but not at desire → `ask`: the immediate
    want is unread, so acting would be a guess.
-4. Desire level conflicting → `ask`.
-5. Desire top weight below 0.6 (`CLEAR_CONFIDENCE`) → `ask`.
-6. Irreversible action, or high stakes → `ask` (the act-or-ask rule shape:
-   confidence × reversibility × stakes, all three must pass).
-7. Otherwise → `act`: clear, reversible, low-stakes intent.
+4. Desire level conflicting → `ask`: a conflict is the more
+   specific diagnosis, and any conflicting level has a top weight
+   below the act bar anyway.
+5. Otherwise the decision is COMPUTED: `score = confidence ×
+   reversibility × stakes`, and the action runs only when `score
+   >= 0.6` (`ACT_THRESHOLD`, the clear bar). A score below the bar
+   asks, and the reason names the factor that failed it.
+
+The score and its three factors ride on every
+`ActAskDecision`, so the "why?" door can show the working
+instead of asserting the verdict. Reversibility and stakes come
+from the caller when given, and are otherwise derived from the
+action's effect data (`derive_effect_factors`): the
+approvals-taxonomy kind of the tool name — kinds whose effects
+leave the agent's control (delete, send, share, post, pay,
+credential change) are irreversible and high-stakes, a skill
+install is reversible but always asks, and an unrecognized
+action fails closed to asking. An `ActionSpec` may leave either
+value blank (`None`) to derive it; an explicit value is an
+override.
 
 `clarifying_question(decision)` renders the one calm question for
 an `ask` decision: it names what was read (or that nothing was

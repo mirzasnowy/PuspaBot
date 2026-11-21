@@ -639,7 +639,7 @@ def test_persisting_without_user_or_agent_ids_raises(make_user):
 
 
 # ---------------------------------------------------------------------------
-# Docs: the K1-K12 review checklist (acceptance criterion 4)
+# Docs: the review checklist (acceptance criterion 4)
 # ---------------------------------------------------------------------------
 
 
@@ -647,7 +647,17 @@ def test_docs_checklist_covers_every_implemented_k_item():
     doc = (REPO_ROOT / "docs" / "anti-manipulation.md").read_text(encoding="utf-8")
     assert "## Review checklist" in doc
     checklist = doc.split("## Review checklist", 1)[1]
-    for item in ("K1", "K3", "K4", "K5", "K6", "K10", "K11", "K12"):
+    for item in (
+        "intent engine",
+        "act-or-ask rule",
+        "bitemporal state",
+        "causal ledger",
+        "other-agent goal models",
+        "ignorance map",
+        "interruption budget",
+        "autonomy dial",
+        "kill switch and export",
+    ):
         assert item in checklist, f"checklist is missing a review row for {item}"
     for kind in CONFLICT_KINDS:
         assert kind in doc, f"docs never name conflict kind {kind}"

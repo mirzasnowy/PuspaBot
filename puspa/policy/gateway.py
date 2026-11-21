@@ -26,6 +26,17 @@ attributes OpenBot documents: ``tool.name``, ``intent``,
 ``and`` / ``or`` / ``not``, parentheses, ``==`` / ``!=`` against
 string literals, and the literals ``true`` / ``false``.
 
+Intent advisor (K2): when an intent advisor is wired in (an
+:class:`puspa.intent.turn_wiring.IntentTurnAdvisor`, passed as
+``intent_advisor``), the gateway consults it AFTER the policy
+allows an action — and only there. The advisor may only
+escalate to ask, never override a deny: a denied action stays
+denied whatever the advisor says, and an advisor that fails
+fails closed to a deny. An advisor "ask" denies the action with
+the one calm question in the reason, so the caller can put it to
+the user. With no advisor wired in, or no user message given,
+the gateway behaves exactly as before.
+
 Deny is evaluated BEFORE allow. Fail-closed throughout:
 
 - Missing or empty policy -> nothing is allowed.
@@ -488,7 +499,12 @@ class Gateway:
     ``audit`` is a callable taking one audit record dict (see
     :func:`make_ledger_gateway_sink` for the ledger adapter).
     ``snapshot`` supplies the policy when given; otherwise the
-    policy passed to the constructor is used.
+    policy passed to the constructor is used. ``intent_advisor``
+    is an optional :class:`puspa.intent.turn_wiring.IntentTurnAdvisor`
+    (or any object with ``advise(message, tool_name, arguments)``):
+    after the policy allows an action, the advisor may escalate
+    it to ask — it can never override a deny, and with no advisor
+    wired in the gateway behaves exactly as before.
     """
 
     def __init__(
@@ -498,8 +514,10 @@ class Gateway:
         snapshot: PolicySnapshot | None = None,
         dry_run: bool = False,
         audit=None,
+        intent_advisor=None,
     ) -> None:
         self.snapshot = snapshot
+        self._advisor = intent_advisor
         if isinstance(policy, Policy):
             self._policy = policy
         elif isinstance(policy, dict):
@@ -615,8 +633,22 @@ class Gateway:
         return node if isinstance(node, str) else ""
 
     # -- decision -------------------------------------------------------
-    def decide(self, context: ActionContext | dict) -> GatewayDecision:
-        """Decide one action. Deny rules run before allow rules."""
+    def decide(
+        self,
+        context: ActionContext | dict,
+        *,
+        message: str | None = None,
+        arguments: dict | None = None,
+    ) -> GatewayDecision:
+        """Decide one action. Deny rules run before allow rules.
+
+        ``message`` is the user's raw message and ``arguments``
+        are the action's arguments: both are handed to the wired-in
+        intent advisor (when one is wired in) after the policy
+        allows, so the advisor can escalate the action to ask. With
+        no advisor, or no message, the advisor step is skipped and
+        the decision is the policy's alone.
+        """
         nested = self._normalize_context(context)
         policy = self._current_policy()
         if policy is None:
@@ -681,6 +713,9 @@ class Gateway:
             except RuleEvaluationError:
                 continue
             if matched:
+                advised = self._advisor_check(nested, message=message, arguments=arguments)
+                if advised is not None:
+                    return advised
                 decision = GatewayDecision(
                     allowed=True,
                     outcome="allow",
@@ -692,6 +727,44 @@ class Gateway:
                 self._audit_decision(decision, nested)
                 return decision
         return self._deny_or_dry_run(nested, rule=None, reason="no allow rule matched")
+
+    def _advisor_check(
+        self, nested: dict, *, message: str | None, arguments: dict | None
+    ) -> GatewayDecision | None:
+        """The intent advisor's say on an action the policy allowed.
+
+        Returns a deny decision when the advisor says ask (or when
+        the advisor fails — failing closed), and None when the
+        action may proceed. The advisor only ever escalates: this
+        runs after the deny rules passed and an allow rule matched,
+        so a denied action never reaches it. With no advisor wired
+        in, or no user message to read intent from, there is
+        nothing to check.
+        """
+        if self._advisor is None or message is None:
+            return None
+        tool_name = self._nested_str(nested, "tool", "name")
+        try:
+            decision = self._advisor.advise(message, tool_name, arguments)
+        except Exception as exc:
+            return self._deny_or_dry_run(
+                nested,
+                rule=None,
+                reason=f"intent advisor failed, failing closed: {exc}",
+            )
+        if decision.outcome != "ask":
+            return None
+        try:
+            from puspa.intent.act_ask import clarifying_question
+
+            question = clarifying_question(decision, tool_name=tool_name)
+        except Exception:
+            question = decision.reason
+        return self._deny_or_dry_run(
+            nested,
+            rule=None,
+            reason=f"intent advisor asked: {question} ({decision.reason})",
+        )
 
     def _deny_or_dry_run(self, nested: dict, *, rule: str | None, reason: str) -> GatewayDecision:
         """Build a deny decision, honoring dry-run: in dry-run the
@@ -718,7 +791,15 @@ class Gateway:
         return decision
 
     # -- execution (the five steps) -------------------------------------
-    def execute(self, context: ActionContext | dict, computer_call, *args, **kwargs):
+    def execute(
+        self,
+        context: ActionContext | dict,
+        computer_call,
+        *args,
+        message: str | None = None,
+        arguments: dict | None = None,
+        **kwargs,
+    ):
         """Run one computer action through the boundary:
 
         1. resolve the target from the snapshot (inside decide),
@@ -727,12 +808,16 @@ class Gateway:
         4. call the computer only when the decision forwards,
         5. audit a second line when a forwarded action fails.
 
+        ``message`` and ``arguments`` are the user's raw message
+        and the action's arguments, handed to the wired-in intent
+        advisor inside decide (see :meth:`decide`).
+
         Dry-run still forwards (but the decision record says so).
         Returns the computer call's result. Raises GatewayDenied
         when the decision refuses, and re-raises the computer
         call's own exception after auditing the failure.
         """
-        decision = self.decide(context)
+        decision = self.decide(context, message=message, arguments=arguments)
         if not decision.allowed:
             raise GatewayDenied(decision.reason)
         nested = self._normalize_context(context)

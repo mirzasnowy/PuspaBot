@@ -140,6 +140,8 @@ These criteria were written by Luna on 19 Nov 2026 from this design note and the
 4. Tests cover both ends of the spectrum plus boundary cases.
 5. Suite green, docs updated.
 
+Implemented 21 Nov 2026: the decision is computed as score = confidence x reversibility x stakes in `puspa/intent/act_ask.py` (threshold 0.6, the clear bar), with the score and its three factors on every decision; reversibility and stakes derive from the approvals-taxonomy kind when the spec leaves them blank; the gateway consults the advisor after the policy allows (`puspa/policy/gateway.py`); tests in `tests/test_act_ask_computed.py`.
+
 **bitemporal state — Bitemporal state**
 1. Every belief and ledger entry stores two times: when true (valid time) and when the system learned it (known time).
 2. Tests prove correcting the past does not overwrite history (old times stay readable).

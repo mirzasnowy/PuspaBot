@@ -20,7 +20,11 @@ existing gates and the call runs exactly as it would without an
 advisor. That keeps the wiring additive — wiring an advisor in
 cannot newly block a tool nobody described — and the spec is
 where the reversibility and stakes of each tool are stated, in
-one place, instead of guessed per call.
+one place, instead of guessed per call. A spec may leave either
+value blank (``None``) to derive it from the tool's effect data
+instead (see :func:`puspa.intent.act_ask.derive_effect_factors`);
+an explicit value is always an override and is never
+second-guessed.
 """
 
 from __future__ import annotations
@@ -46,17 +50,20 @@ class ActionSpec:
     """What the advisor needs to know about one tool.
 
     ``reversible`` is whether the tool's effect can be undone;
-    ``stakes`` is ``"low"`` or ``"high"``. ``approval_tool_name``
-    overrides the tool name used when classifying the action for
-    the G4 policy (a tool whose registry name hides its verb can
-    be classified under its real action name). ``content_keys``
-    names tool-argument keys copied into the policy content, so
-    the policy's auto-review sees the amount, recipient, or
-    target (for example ``("amount",)`` for a payment tool).
+    ``stakes`` is ``"low"`` or ``"high"``. Either may be left as
+    ``None`` to derive it from the tool's effect data (the
+    approvals-taxonomy kind of the tool name); an explicit value
+    is an override. ``approval_tool_name`` overrides the tool
+    name used when classifying the action for the G4 policy (a
+    tool whose registry name hides its verb can be classified
+    under its real action name). ``content_keys`` names
+    tool-argument keys copied into the policy content, so the
+    policy's auto-review sees the amount, recipient, or target
+    (for example ``("amount",)`` for a payment tool).
     """
 
-    reversible: bool
-    stakes: str = "low"
+    reversible: bool | None = None
+    stakes: str | None = None
     approval_tool_name: str | None = None
     content_keys: tuple[str, ...] = ()
 
