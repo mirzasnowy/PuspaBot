@@ -76,7 +76,7 @@ def _ref(hands, name):
 # -- MCP definitions ------------------------------------------------
 
 
-def test_nineteen_tools_with_names_descriptions_and_schemas():
+def test_twenty_three_tools_with_names_descriptions_and_schemas():
     tools = tool_definitions()
     assert [tool["name"] for tool in tools] == [
         "computer_snapshot",
@@ -98,6 +98,10 @@ def test_nineteen_tools_with_names_descriptions_and_schemas():
         "computer_visual_click",
         "computer_web_open",
         "computer_web_click",
+        "computer_close_window",
+        "computer_allowlist",
+        "computer_stop",
+        "computer_audit",
     ]
     for tool in tools:
         assert tool["description"].strip()
@@ -114,6 +118,11 @@ def test_nineteen_tools_with_names_descriptions_and_schemas():
     assert tool_definitions()[16]["inputSchema"]["required"] == ["text"]
     assert tool_definitions()[17]["inputSchema"]["required"] == ["url"]
     assert tool_definitions()[18]["inputSchema"]["required"] == ["text"]
+    # The V2-35 tools: close needs a window id, allowlist and stop need an op.
+    assert tool_definitions()[19]["inputSchema"]["required"] == ["window_id"]
+    assert tool_definitions()[20]["inputSchema"]["required"] == ["op"]
+    assert tool_definitions()[21]["inputSchema"]["required"] == ["op"]
+    assert tool_definitions()[22]["inputSchema"]["required"] == []
 
 
 def test_server_definition_validates():

@@ -40,6 +40,50 @@ export type DialSuggestion = components["schemas"]["DialSuggestion"];
 export type CeilingName = components["schemas"]["CeilingRequest"]["ceiling"];
 export type WeeklyReport = components["schemas"]["WeeklyReport"];
 export type WeeklyLinkedEvent = components["schemas"]["WeeklyLinkedEvent"];
+
+/**
+ * V2-35 computer types, hand-written here instead of generated:
+ * `npm run generate` is broken at this base (docs/openapi-rooms.yaml
+ * is missing from the repo and docs/openapi-voice.yaml has an
+ * unquoted colon at line 439), so the generated file cannot be
+ * rebuilt right now. These shapes mirror docs/openapi-computer.yaml
+ * exactly; move them to generated-types.ts once generation is
+ * repaired.
+ */
+export interface ComputerAllowlist {
+  apps: string[];
+}
+export interface ComputerAllowlistChange {
+  app: string;
+  allowed: boolean;
+  changed: boolean;
+}
+export interface ComputerStopState {
+  active: boolean;
+  actor: string;
+  reason: string;
+  updated_at: string | null;
+}
+export interface ComputerAuditEntry {
+  id?: string;
+  created_at?: string;
+  type?: string;
+  tool?: string;
+  computer_action?: string;
+  computer_stop?: string;
+  target?: string;
+  app?: string;
+  tier?: string;
+  decision?: string;
+  outcome?: string;
+  length?: number;
+  reason?: string;
+  actor?: string;
+}
+export interface ComputerAuditList {
+  entries: ComputerAuditEntry[];
+  ledger_available: boolean;
+}
 export type LiveFrame = components["schemas"]["LiveFrame"];
 export type LiveFrameEvent = components["schemas"]["LiveFrameEvent"];
 export type TakeoverHold = components["schemas"]["TakeoverHold"];
@@ -572,6 +616,69 @@ export function fetchWeeklyReport(
   fetchFn: FetchFn = fetch,
 ): Promise<WeeklyReport> {
   return getJson<WeeklyReport>(`/api/weekly-report?days=${days}`, fetchFn);
+}
+
+/**
+ * V2-35 computer tiers: read the per-app allowlist (apps whose
+ * normal clicks run without asking).
+ */
+export function fetchComputerAllowlist(fetchFn: FetchFn = fetch): Promise<ComputerAllowlist> {
+  return getJson<ComputerAllowlist>("/api/computer/allowlist", fetchFn);
+}
+
+/** V2-35 computer tiers: allowlist one app by name. */
+export function addComputerAllowlistApp(
+  app: string,
+  fetchFn: FetchFn = fetch,
+): Promise<ComputerAllowlistChange> {
+  return postJson<ComputerAllowlistChange>("/api/computer/allowlist", { app }, fetchFn);
+}
+
+/** V2-35 computer tiers: revoke one app from the allowlist. */
+export function removeComputerAllowlistApp(
+  app: string,
+  fetchFn: FetchFn = fetch,
+): Promise<ComputerAllowlistChange> {
+  return deleteJson<ComputerAllowlistChange>(
+    `/api/computer/allowlist/${encodeURIComponent(app)}`,
+    fetchFn,
+  );
+}
+
+/** V2-35 computer stop: read the emergency stop flag. */
+export function fetchComputerStop(fetchFn: FetchFn = fetch): Promise<ComputerStopState> {
+  return getJson<ComputerStopState>("/api/computer/stop", fetchFn);
+}
+
+/**
+ * V2-35 computer stop: halt the desktop hands immediately. A
+ * running task stops at the next step boundary at the latest.
+ */
+export function requestComputerStop(
+  reason: string,
+  fetchFn: FetchFn = fetch,
+): Promise<ComputerStopState> {
+  return postJson<ComputerStopState>("/api/computer/stop", { reason }, fetchFn);
+}
+
+/** V2-35 computer stop: let the desktop hands run again. */
+export function clearComputerStop(
+  reason: string,
+  fetchFn: FetchFn = fetch,
+): Promise<ComputerStopState> {
+  return postJson<ComputerStopState>("/api/computer/stop/clear", { reason }, fetchFn);
+}
+
+/**
+ * V2-35 computer audit: newest-first audit entries from the
+ * ledger (what action, which target, tier, decision, outcome).
+ * Never carries clipboard content or typed text.
+ */
+export function fetchComputerAudit(
+  limit: number,
+  fetchFn: FetchFn = fetch,
+): Promise<ComputerAuditList> {
+  return getJson<ComputerAuditList>(`/api/computer/audit?limit=${limit}`, fetchFn);
 }
 
 /**

@@ -1009,6 +1009,7 @@ def create_app(
         approval_overlay_api,
         chat_cards_api,
         chat_widgets_api,
+        computer_api,
         controls_api,
         drafts_api,
         graph_api,
@@ -1033,6 +1034,19 @@ def create_app(
     # member lists themselves are served by the hosted service.
     names_api.register_routes(app, need_user)
     controls_api.register_routes(app, need_user)
+    # V2-35: computer tiers (allowlist, emergency stop, audit).
+    # The allowlist and the stop flag are the same files the
+    # `puspa computer` CLI reads and writes, so the panel and the
+    # CLI always agree; the audit sink reads the app's ledger.
+    from puspa.computer.allowlist import Allowlist
+    from puspa.computer.audit import LedgerComputerAudit
+    from puspa.computer.stop import ComputerStop
+    from puspa.ledger import Ledger
+
+    app.state.computer_allowlist = Allowlist()
+    app.state.computer_stop = ComputerStop()
+    app.state.computer_audit = LedgerComputerAudit(Ledger(dsn=app.state.dsn))
+    computer_api.register_routes(app, need_user)
 
     # P-09: live view + takeover. The store is one per process;
     # the turn loop consults the same table through its own

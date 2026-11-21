@@ -1,4 +1,4 @@
-# Desktop hands (V2-31 core, V2-33 full input + windows)
+# Desktop hands (V2-31 core, V2-33 full input + windows, V2-35 tiers)
 
 Puspa's hands on the local desktop: read the accessibility tree
 as a JSON snapshot, click one element by ref, and verify the
@@ -114,7 +114,15 @@ puspa computer windows                   # id, app, title, focused
 puspa computer open-app gedit
 puspa computer focus-window 0.1
 puspa computer switch-window
+puspa computer close-window 0.1          # destructive: always asks
 puspa computer task steps.json           # multi-step task, see below
+puspa computer allow                     # list allowlisted apps
+puspa computer allow Notes               # allowlist one app
+puspa computer allow --revoke Notes      # take it off the list
+puspa computer stop                      # halt the hands now
+puspa computer stop --status             # show the stop flag
+puspa computer stop --clear              # let the hands run again
+puspa computer audit --limit 20          # newest ledger entries
 ```
 
 `--backend auto` (the default) uses the real AT-SPI desktop and
@@ -192,9 +200,59 @@ session answer covers every computer action.
   the focused one, cycling. It reports `performed=false` when
   only one window is open.
 
+## Tiers, allowlist, stop, audit (V2-35)
+
+V2-31 asked the user before every action. V2-35 replaces that
+with three tiers (`puspa/computer/tiers.py`):
+
+- **READ, free.** Snapshot, verify, list windows, locate text
+  by OCR, open a web page, find text on a page. They change
+  nothing, so they never ask.
+- **NORMAL, free inside an allowlisted app.** Clicks, typing,
+  shortcuts, scroll, focus/switch window, open app. The user
+  allowlists an app once (`puspa computer allow Notes`, the PWA
+  panel on the Settings screen, or `computer_allowlist`) and the
+  agent clicks freely inside it; outside one it still asks.
+  The list is one JSON file
+  (`~/.local/share/puspa/computer/allowlist.json`), so the CLI,
+  the PWA server, and the MCP host read the same list.
+  Clipboard read is NORMAL too: it returns the user's own data,
+  so it asks.
+- **DESTRUCTIVE, always asks.** Clipboard write, drag, typing
+  into a field that submits (`type --submits`, or a `type` step
+  with `"submits": true`), a shortcut holding Enter/Return, and
+  closing a window (`puspa computer close-window 0.1`). The
+  allowlist never covers these.
+
+The token check from V2-31 still applies on top: a token
+without the tool permission is refused whatever the tier says.
+
+**Emergency stop.** `puspa computer stop` sets a flag file
+(`~/.local/share/puspa/computer/stop.json`); every action
+re-reads it before it runs, and a running `run_task` stops at
+the next step boundary at the latest, reporting
+`"stopped": true`. `puspa computer stop --clear` (or the PWA
+panel, or `computer_stop`) lets the hands run again. The stop
+needs no database and no desktop session: the flag must flip
+even when everything else is down. It is computer-scoped, not
+the global agent kill switch (which stops the whole agent and
+is operator-only).
+
+**Audit.** Every action is one `tool_called` event on the
+`computer` task stream in the Puspa ledger (no second ledger):
+what action, which target (a ref, window id, or app name),
+which tier and decision, and the allow/deny/stop outcome, with
+the event's own timestamp. Typed text and clipboard content
+never appear, only their lengths. `puspa computer audit`
+lists the newest entries; `computer_audit` is the MCP tool.
+Stop transitions use the kill-switch precedent (`task_stopped`
+for a request, `user_message` for a clear). Writing is
+best-effort: when no database is reachable the action still
+runs and the write is skipped.
+
 ## MCP
 
-`puspa/computer/mcp.py` defines eighteen tools
+`puspa/computer/mcp.py` defines twenty-two tools
 (`computer_snapshot`, `computer_click`, `computer_verify`,
 `computer_type`, `computer_shortcut`, `computer_scroll`,
 `computer_drag`, `computer_clipboard_read`,
@@ -202,7 +260,9 @@ session answer covers every computer action.
 `computer_open_app`, `computer_focus_window`,
 `computer_switch_window`, `computer_run_task`, plus the four
 V2-32 tools `computer_visual_locate`, `computer_visual_click`,
-`computer_web_open`, `computer_web_click`) with
+`computer_web_open`, `computer_web_click`, plus the four V2-35
+tools `computer_close_window`, `computer_allowlist`,
+`computer_stop`, `computer_audit`) with
 `name` / `description` / `inputSchema`, plus `handle_tool` and a
 validated server definition (`mcp_server_definition`, id
 `puspa-computer`). The `puspa mcp` server itself does NOT exist
@@ -257,8 +317,12 @@ nothing here claims a working server.
   (type + shortcut + scroll + window switch + open app), and
   the same steps run through `puspa computer task` on the fake
   backend; nothing here claims a live desktop run.
-- **No audit log or emergency stop yet.** Those are V2-35. The
-  prompt is the stop for now: deny, and nothing runs.
+- **Audit log and emergency stop are V2-35, done.** Every
+  action is a `tool_called` ledger event (lengths only, never
+  typed text or clipboard content); the stop flag halts the
+  hands mid-task and is clearable from the CLI, the PWA, or
+  MCP. The live half is still unverified: the real backends
+  have never run against a real desktop on this VM.
 - **Screen-text safety is V2-36.** Snapshots return raw screen
   text (window titles, labels, typed values) with no redaction.
   Clipboard content is the one exception by design: it never

@@ -10,6 +10,17 @@ it. V2-33 adds ``type``, ``shortcut``, ``scroll``, ``drag``,
 ``focus-window``, ``switch-window``, and ``task`` (a JSON list
 of steps run end to end, stopping at the first unverified one).
 
+V2-35 adds tiers (reads free, normal clicks free inside an
+allowlisted app, destructive actions always ask), the
+``allow`` command (manage the per-app allowlist), the ``stop``
+command (request, clear, or read the emergency stop), the
+``audit`` command (list recent computer actions from the
+ledger), and ``close-window`` (close one window, destructive).
+Every action the CLI runs is written to the ledger audit log
+when a database is reachable; when none is, the action still
+runs and the audit write is skipped (best-effort, never a
+blocker).
+
 ``--backend auto`` (the default) uses the real Linux AT-SPI
 backend and fails closed with a plain error when there is no
 desktop; it never silently falls back to the fake tree.
@@ -45,10 +56,13 @@ from __future__ import annotations
 import argparse
 import json
 
+from .allowlist import Allowlist
+from .audit import LedgerComputerAudit
 from .backend import BackendUnavailableError, make_backend
 from .fallback import StaleVisualTargetError, VisualFallback, VisualFallbackError
 from .hands import DesktopHands, DesktopHandsError, StaleRefError
 from .screenshot import FakeScreenshotBackend
+from .stop import ComputerStop
 from .sync import DEFAULT_SETTLE_TIMEOUT_S, DEFAULT_STABLE_ROUNDS, SettleTimeoutError
 from .tree import snapshot_to_dict
 from .vision import FakeOcrBackend, OcrWord
@@ -110,11 +124,12 @@ def add_computer_parser(subparsers: argparse._SubParsersAction) -> argparse.Argu
     """Add the ``computer`` group to the top-level parser."""
     computer = subparsers.add_parser(
         "computer",
-        help="Desktop hands: snapshot, click, verify, type, shortcut, scroll, drag, clipboard, windows (V2-31 + V2-33).",
+        help="Desktop hands: snapshot, click, verify, type, shortcut, scroll, drag, clipboard, windows, allowlist, stop, audit (V2-31 + V2-33 + V2-35).",
         description=(
             "Drive the local desktop through its accessibility tree: read a snapshot, click a ref, "
             "type, press shortcuts, scroll, drag, use the clipboard, manage windows. Linux first "
-            "(AT-SPI); every action asks the user first."
+            "(AT-SPI). Reads are free, normal clicks are free inside an allowlisted app, and "
+            "destructive actions always ask the user first."
         ),
     )
     computer.add_argument(
@@ -159,6 +174,11 @@ def add_computer_parser(subparsers: argparse._SubParsersAction) -> argparse.Argu
     )
     type_cmd.add_argument("ref", help="Element ref from `puspa computer snapshot`, e.g. n5.")
     type_cmd.add_argument("text", help="Text to type into the element.")
+    type_cmd.add_argument(
+        "--submits",
+        action="store_true",
+        help="Typing here submits (a search box, a chat input): destructive, always asks.",
+    )
     _add_backend_arg(type_cmd)
     _add_expect_args(type_cmd)
     shortcut = computer_sub.add_parser(
@@ -263,6 +283,51 @@ def add_computer_parser(subparsers: argparse._SubParsersAction) -> argparse.Argu
         default=DEFAULT_STABLE_ROUNDS,
         help="Identical reads in a row that count as settled (default 2).",
     )
+    allow = computer_sub.add_parser(
+        "allow",
+        help="Manage the per-app allowlist (V2-35).",
+        description=(
+            "An allowlisted app's normal clicks run without asking. With no app, list the "
+            "allowlisted apps; with an app, allowlist it; with --revoke, take it off the list. "
+            "Destructive actions always ask, even in an allowlisted app."
+        ),
+    )
+    allow.add_argument("app", nargs="?", default=None, help="App to allowlist, e.g. Notes.")
+    allow.add_argument(
+        "--revoke", action="store_true", help="Remove the app from the allowlist instead."
+    )
+    stop = computer_sub.add_parser(
+        "stop",
+        help="Emergency stop for the desktop hands (V2-35).",
+        description=(
+            "With no flag, request the stop: the hands halt immediately (a running task stops at "
+            "the next step boundary). --clear lets the hands run again; --status shows the flag."
+        ),
+    )
+    stop.add_argument("--reason", default="", help="Why the stop was requested or cleared.")
+    stop.add_argument("--clear", action="store_true", help="Clear the stop flag.")
+    stop.add_argument(
+        "--status", action="store_true", help="Show the stop flag without changing it."
+    )
+    audit = computer_sub.add_parser(
+        "audit",
+        help="List recent computer audit entries from the ledger (V2-35).",
+        description=(
+            "Newest first: what action, which target, which tier and decision, and the "
+            "allow/deny/stop outcome. Never carries clipboard content or typed text."
+        ),
+    )
+    audit.add_argument(
+        "--limit", type=int, default=50, help="How many entries to show (default 50)."
+    )
+    close_window = computer_sub.add_parser(
+        "close-window",
+        help="Close one window by id, then verify it is gone (V2-35, destructive).",
+        description="Close a window by id from `puspa computer windows`. Always asks the user first.",
+    )
+    close_window.add_argument("window_id", help="Window id, e.g. 0.1.")
+    _add_backend_arg(close_window)
+
     visual = computer_sub.add_parser(
         "visual",
         help="Visual fallback: locate text by OCR, click by coordinates (V2-32).",
@@ -392,8 +457,11 @@ def _demo_fake_fallback() -> VisualFallback:
 
 def _default_fallback(backend_kind: str) -> VisualFallback:
     if backend_kind == "fake":
-        return _demo_fake_fallback()
-    return VisualFallback(screenshot_backend="auto", ocr_backend="auto", clicker="auto")
+        fallback = _demo_fake_fallback()
+    else:
+        fallback = VisualFallback(screenshot_backend="auto", ocr_backend="auto", clicker="auto")
+    fallback.audit = _default_audit()
+    return fallback
 
 
 def _demo_fake_web() -> WebBridge:
@@ -419,9 +487,9 @@ def _demo_fake_web() -> WebBridge:
 
 
 def _default_web(backend_kind: str) -> WebBridge:
-    if backend_kind == "fake":
-        return _demo_fake_web()
-    return WebBridge("playwright")
+    bridge = _demo_fake_web() if backend_kind == "fake" else WebBridge("playwright")
+    bridge.audit = _default_audit()
+    return bridge
 
 
 def run_computer(
@@ -460,6 +528,14 @@ def run_computer(
         return _run_switch_window(args, hands_factory=hands_factory, print_fn=print_fn)
     if args.computer_command == "task":
         return _run_task(args, hands_factory=hands_factory, print_fn=print_fn)
+    if args.computer_command == "allow":
+        return _run_allow(args, print_fn=print_fn)
+    if args.computer_command == "stop":
+        return _run_stop(args, print_fn=print_fn)
+    if args.computer_command == "audit":
+        return _run_audit(args, print_fn=print_fn)
+    if args.computer_command == "close-window":
+        return _run_close_window(args, hands_factory=hands_factory, print_fn=print_fn)
 
     if args.computer_command == "wait":
         return _run_wait(args, hands_factory=hands_factory, print_fn=print_fn)
@@ -471,11 +547,22 @@ def run_computer(
     return 0
 
 
+def _default_audit() -> LedgerComputerAudit:
+    """The ledger-backed audit sink for real CLI runs. Creating
+    it connects to nothing; each record opens its own
+    connection and fails softly when no database is reachable,
+    so a plain desktop install still runs every command."""
+    return LedgerComputerAudit()
+
+
 def _hands(args: argparse.Namespace, hands_factory) -> DesktopHands:
     backend_kind = getattr(args, "backend", "auto")
     if hands_factory is not None:
         return hands_factory(backend_kind)
-    return _default_hands(backend_kind)
+    hands = _default_hands(backend_kind)
+    if hands.audit is None:
+        hands.audit = _default_audit()
+    return hands
 
 
 def _run_snapshot(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
@@ -586,7 +673,9 @@ def _run_type(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
         hands_factory=hands_factory,
         print_fn=print_fn,
         label="type",
-        call=lambda hands: hands.type_text(args.ref, args.text, expect=_expect_from_args(args)),
+        call=lambda hands: hands.type_text(
+            args.ref, args.text, expect=_expect_from_args(args), submits=bool(args.submits)
+        ),
     )
 
 
@@ -687,6 +776,68 @@ def _run_focus_window(args: argparse.Namespace, *, hands_factory, print_fn) -> i
         label="focus-window",
         call=lambda hands: hands.focus_window(args.window_id),
     )
+
+
+def _run_close_window(args: argparse.Namespace, *, hands_factory, print_fn) -> int:
+    return _run_action(
+        args,
+        hands_factory=hands_factory,
+        print_fn=print_fn,
+        label="close-window",
+        call=lambda hands: hands.close_window(args.window_id),
+    )
+
+
+def _run_allow(args: argparse.Namespace, *, print_fn) -> int:
+    allowlist = Allowlist()
+    if args.app is None:
+        print_fn(json.dumps({"apps": allowlist.apps()}, indent=2))
+        return 0
+    if args.revoke:
+        removed = allowlist.revoke(args.app)
+        print_fn(json.dumps({"app": args.app, "allowed": False, "changed": removed}, indent=2))
+        return 0
+    try:
+        added = allowlist.allow(args.app)
+    except ValueError as exc:
+        print_fn(f"puspa computer allow: {exc}")
+        return 1
+    print_fn(json.dumps({"app": args.app, "allowed": True, "changed": added}, indent=2))
+    return 0
+
+
+def _run_stop(args: argparse.Namespace, *, print_fn) -> int:
+    stop = ComputerStop()
+    audit = _default_audit()
+    if args.status:
+        print_fn(json.dumps(stop.state(), indent=2))
+        return 0
+    if args.clear:
+        state = stop.clear(reason=args.reason)
+        audit.record_stop_cleared(reason=args.reason)
+        print_fn(json.dumps(state, indent=2))
+        return 0
+    state = stop.request(reason=args.reason)
+    audit.record_stop_requested(reason=args.reason)
+    print_fn(json.dumps(state, indent=2))
+    return 0
+
+
+def _run_audit(args: argparse.Namespace, *, print_fn) -> int:
+    audit = _default_audit()
+    entries = audit.recent(max(args.limit, 0))
+    print_fn(
+        json.dumps(
+            {
+                "entries": entries,
+                "ledger_available": audit.last_error is None,
+                "error": audit.last_error,
+            },
+            indent=2,
+            default=str,
+        )
+    )
+    return 0
 
 
 def _run_switch_window(args: argparse.Namespace, *, hands_factory, print_fn) -> int:

@@ -19,6 +19,7 @@ import {
   type VoiceSettings,
 } from "../api/client";
 import { AutonomyDialPanel } from "../components/AutonomyDialPanel";
+import { ComputerPanel } from "../components/ComputerPanel";
 import { ProviderLoginPanel } from "../components/ProviderLoginPanel";
 import { AgentPhotoPicker } from "../components/AgentPhotoPicker";
 import {
@@ -724,6 +725,7 @@ export function SettingsScreen() {
         </p>
       </div>
       <AutonomyDialPanel />
+      <ComputerPanel />
     </div>
   );
 }
