@@ -100,6 +100,14 @@ it never grants money, access, or approval by default.
   moves on; a failed job must never kill the queue. Narrowing to a
   fixed exception list would let an unexpected handler failure
   propagate and stop every later job for that room.
+* **MCP server failure boundaries** (`puspa/mcp_server/server.py:230, 264`,
+  22 Nov 2026, V2-37): a tool call runs an arbitrary handler (any of the
+  29 tools' handlers, real Puspa code), so any exception type can escape
+  it. The handler returns an `isError` tool result and the server keeps
+  serving; a bad message returns an internal-error reply and the stdio
+  loop goes on. Narrowing to a fixed exception list would let an
+  unexpected tool failure propagate and kill the server for every later
+  client message.
 
 ### 2.2 Narrowed during blind-except, bandit and mypy ratchets (11 sites, baseline 203 -> 192)
 

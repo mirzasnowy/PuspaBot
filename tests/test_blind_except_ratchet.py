@@ -83,6 +83,7 @@ BASELINE_BLE001: dict[str, int] = {
     "puspa/ledger/audit_daemon.py": 1,
     "puspa/marketplace/learning.py": 3,
     "puspa/marketplace/narrowing.py": 1,
+    "puspa/mcp_server/server.py": 2,
     "puspa/memory/background_review.py": 3,
     "puspa/memory/curator.py": 2,
     "puspa/memory/learning_loop.py": 4,
@@ -147,10 +148,12 @@ BASELINE_BLE001: dict[str, int] = {
 #: docs/blind-except-audit.md section 2.1; K8 adds 1 — the
 #: outcome watcher's single failure boundary over the arbitrary
 #: recheck/writer/loop callables, so one broken recheck never
-#: kills a scan; 23 less since the public/private split removed
-#: 19 files, so their zero-count entries were removed per the
-#: ratchet's own rule).
-BASELINE_TOTAL = 174
+#: kills a scan; V2-37 adds 2 — the MCP server's two failure
+#: boundaries over arbitrary tool handlers and message dispatch,
+#: see docs/blind-except-audit.md section 2.1; 23 less since the
+#: public/private split removed 19 files, so their zero-count
+#: entries were removed per the ratchet's own rule).
+BASELINE_TOTAL = 176
 
 
 def _repo_root() -> Path:

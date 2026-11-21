@@ -807,3 +807,27 @@ the standard library (the AT-SPI backend uses ctypes against
 the system libatspi) plus Puspa's existing permission model
 (`puspa.localexec` prompt, `puspa.policy.gate` token check);
 tests use the in-memory fake backend (no live desktop).
+
+# NOTICE - Kosmos Phase 2, V2-37 (22 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **vercel-labs/agent-desktop** (https://github.com/vercel-labs/agent-desktop,
+  Apache License 2.0), pattern only, studied at version `v1.2.0`:
+  the idea of a `mcp` command that serves the agent's own tools
+  to outside agents over MCP stdio (`initialize`, `tools/list`,
+  `tools/call`). No agent-desktop code was copied, ported,
+  vendored, or depended on: the transport is hand-rolled JSON-RPC
+  2.0 over newline-delimited JSON in the standard library, the
+  tool definitions and handlers are Puspa's own, and every call
+  is policed by Puspa's own policy gateway — all in
+  `puspa/mcp_server/`. Full license text: Apache License 2.0
+  (https://www.apache.org/licenses/LICENSE-2.0).
+
+## New dependency: none
+
+No new dependency was added for V2-37. The server uses only the
+standard library plus Puspa's existing modules (policy gateway,
+memory recall, ledger, price wedge, Bills module, scheduler,
+desktop hands); tests use injected fakes and the in-memory fake
+desktop backend.

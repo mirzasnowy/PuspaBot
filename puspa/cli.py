@@ -5,7 +5,8 @@ Split Step 1: this is the minimal shim behind the ``puspa`` and
 serve`` (start the local gateway and open the PWA), ``puspa memory
 export`` (a portable, encrypted memory archive, V2-09), ``puspa memory
 import`` / ``rollback`` / ``forget`` (memory import, V2-10), ``puspa
-conversation export`` / ``import`` (conversation export, V2-11), plus
+conversation export`` / ``import`` (conversation export, V2-11), ``puspa
+mcp`` (serve Puspa's tools to outside agents over MCP stdio), plus
 help. The full one-shot CLI lands in a later step of the split;
 until then any other subcommand prints help and says so.
 """
@@ -20,14 +21,15 @@ import sys
 from datetime import UTC, datetime
 
 from puspa.computer.cli import add_computer_parser, run_computer
+from puspa.mcp_server.cli import add_mcp_parser, run_mcp
 
 FULL_CLI_NOTE = (
     "The full PuspaBot CLI lands in a later step of the public/private "
     "split; this build ships `puspa web` / `puspa serve`, `puspa memory "
-    "export` / `import` plus help."
+    "export` / `import`, `puspa mcp`, plus help."
 )
 
-_KNOWN_COMMANDS = ("web", "serve", "memory", "conversation", "provider", "computer")
+_KNOWN_COMMANDS = ("web", "serve", "memory", "conversation", "provider", "computer", "mcp")
 
 #: Environment variable holding the export passphrase (never a
 #: command-line argument: arguments are visible in the process list).
@@ -262,6 +264,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="User id to check (defaults to PUSPA_USER_ID or 'local-user').",
     )
     add_computer_parser(sub)
+    add_mcp_parser(sub)
     return parser
 
 
@@ -587,6 +590,8 @@ def main(argv: list[str] | None = None) -> int:
             parser.print_help()
             return 0
         return run_computer(parsed)
+    if parsed.command == "mcp":
+        return run_mcp(parsed)
     parser.print_help()
     return 0
 
