@@ -137,8 +137,11 @@ own branch, PR, and green suite, the way K1-K13 landed.
 
 ### Known brain-adjacent gaps (from the partial-done audit)
 
-- Durable session store missing: only InMemorySessionStore exists;
-  sessions are lost on restart (`puspa/runtime/hierarchy.py:253,256`).
+- Durable session store: built (V2-01). `PostgresSessionStore`
+  and `SqliteSessionStore` in `puspa/runtime/session_store.py`
+  (Postgres table `runtime_session_states`, migration 0028, with
+  row level security by user); a session resumes after a restart.
+  `InMemorySessionStore` stays the default for tests.
 - Chassis factory full-loop end-to-end test deferred to phase 2:
   `assemble()` tested only with a stubbed AgentLoop.
 - `run_scheduled_job` has no production caller: scheduler jobs exist,

@@ -40,15 +40,17 @@ Step execution is an injected ``executor`` callable
 the model and tools through the chassis.
 
 Persistence, stated honestly: ``SessionState`` is in-memory by
-default (``InMemorySessionStore``), with a ``SessionStore``
-save/load interface for a durable backend. There is no Postgres
-table for session state yet: adding one needs a schema migration
-and an RLS policy, which is a coordinator decision, not a silent
-addition by this module. ``puspa.world.store`` was NOT reused: its
-table stores world-model beliefs only, not session state. Like
-``AgentBrain`` in ``puspa.chassis.agent_session``, state survives
-across turns inside one process and is lost on restart until a
-durable store is wired in.
+default (``InMemorySessionStore``), and the durable backends live
+in ``puspa.runtime.session_store``: ``PostgresSessionStore``
+(table ``runtime_session_states``, migration 0028, with row level
+security by user) for the hosted install and
+``SqliteSessionStore`` (one local file) for the local install.
+Pass either one as the ``store`` of a ``SessionState`` and the
+session resumes after a restart with its working memory intact.
+``puspa.world.store`` was NOT reused: its table stores world-model
+beliefs only, not session state. Like ``AgentBrain`` in
+``puspa.chassis.agent_session``, state survives across turns inside
+one process; with a durable store it also survives a restart.
 
 Parallel composition is logical, not threaded: children run one
 after another in a fixed order and their results are merged, the
@@ -243,16 +245,26 @@ class AgentNode:
 class SessionStore:
     """Durable backend for session state snapshots.
 
-    ``save`` stores the snapshot dict for a session id; ``load``
-    returns it, or None when the session has no saved state.
-    Implementations must be keyed by session id and must not mix
-    sessions. The in-memory store below is the default.
+    ``save`` stores the snapshot dict for a session id, together
+    with the owning ``user_id`` and ``app_name`` (backends that
+    have an ownership column record them; the in-memory store
+    ignores them). ``load`` returns the snapshot, or None when
+    the session has no saved state. ``delete`` drops the saved
+    snapshot, or does nothing when there is none. Implementations
+    must be keyed by session id and must not mix sessions. The
+    in-memory store below is the default; the durable backends
+    are ``puspa.runtime.session_store``.
     """
 
-    def save(self, session_id: str, snapshot: dict) -> None:
+    def save(
+        self, session_id: str, snapshot: dict, *, user_id: str = "", app_name: str = "puspa"
+    ) -> None:
         raise NotImplementedError
 
     def load(self, session_id: str) -> dict | None:
+        raise NotImplementedError
+
+    def delete(self, session_id: str) -> None:
         raise NotImplementedError
 
 
@@ -262,12 +274,17 @@ class InMemorySessionStore(SessionStore):
     def __init__(self) -> None:
         self._sessions: dict[str, dict] = {}
 
-    def save(self, session_id: str, snapshot: dict) -> None:
+    def save(
+        self, session_id: str, snapshot: dict, *, user_id: str = "", app_name: str = "puspa"
+    ) -> None:
         self._sessions[str(session_id)] = dict(snapshot)
 
     def load(self, session_id: str) -> dict | None:
         snapshot = self._sessions.get(str(session_id))
         return dict(snapshot) if snapshot is not None else None
+
+    def delete(self, session_id: str) -> None:
+        self._sessions.pop(str(session_id), None)
 
 
 #: Key prefixes and their scope, mirroring ADK state scopes.
@@ -294,7 +311,9 @@ class SessionState:
     exactly like ADK strips them before persisting. ``save`` /
     ``load`` go through a ``SessionStore``; the default store is
     in-memory, so without a durable store the state survives
-    across turns in one process and is lost on restart.
+    across turns in one process and is lost on restart. Pass a
+    durable store (``puspa.runtime.session_store``) and the
+    session resumes after a restart.
     """
 
     session_id: str
@@ -337,7 +356,16 @@ class SessionState:
         """Persist the snapshot through the store, if one is set."""
         if self.store is None:
             return
-        self.store.save(self.session_id, self.snapshot())
+        self.store.save(
+            self.session_id, self.snapshot(), user_id=self.user_id, app_name=self.app_name
+        )
+
+    def delete_saved(self) -> None:
+        """Drop the saved snapshot and clear this state's values."""
+        if self.store is not None:
+            self.store.delete(self.session_id)
+        self._values.clear()
+        self._temp.clear()
 
     @classmethod
     def load(
