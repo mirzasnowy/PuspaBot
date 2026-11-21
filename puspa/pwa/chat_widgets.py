@@ -100,7 +100,7 @@ def _require(condition: bool, message: str) -> None:
 
 
 def _require_string(value, field: str) -> str:
-    _require(isinstance(value, str) and value.strip(), f"{field} must be a non-empty string")
+    _require(bool(isinstance(value, str) and value.strip()), f"{field} must be a non-empty string")
     return value
 
 
@@ -121,6 +121,21 @@ def _require_number(value, field: str) -> float:
 
 def _require_int(value, field: str) -> int:
     _require(isinstance(value, int) and not isinstance(value, bool), f"{field} must be an integer")
+    return value
+
+
+def _require_list(value, field: str) -> list:
+    _require(isinstance(value, list), f"{field} must be a list")
+    return value
+
+
+def _require_dict(value, field: str) -> dict:
+    _require(isinstance(value, dict), f"{field} must be an object")
+    return value
+
+
+def _require_bool(value, field: str) -> bool:
+    _require(isinstance(value, bool), f"{field} must be a boolean")
     return value
 
 
@@ -154,10 +169,8 @@ def _eval_node(node: ast.AST, values: dict[str, float]) -> float:
     if isinstance(node, ast.Expression):
         return _eval_node(node.body, values)
     if isinstance(node, ast.Constant):
-        _require(
-            isinstance(node.value, (int, float)) and not isinstance(node.value, bool),
-            "formula constants must be numbers",
-        )
+        if not isinstance(node.value, (int, float)) or isinstance(node.value, bool):
+            raise ValueError("formula constants must be numbers")
         return float(node.value)
     if isinstance(node, ast.Name):
         _require(node.id in values, f"formula uses unknown input {node.id!r}")
@@ -195,10 +208,8 @@ def _eval_node(node: ast.AST, values: dict[str, float]) -> float:
         operand = _eval_node(node.operand, values)
         return -operand if isinstance(node.op, ast.USub) else operand
     if isinstance(node, ast.Call):
-        _require(
-            isinstance(node.func, ast.Name) and node.func.id in _ALLOWED_CALLS,
-            "formula calls must be min, max, abs, or round",
-        )
+        if not isinstance(node.func, ast.Name) or node.func.id not in _ALLOWED_CALLS:
+            raise ValueError("formula calls must be min, max, abs, or round")
         _require(not node.keywords, "formula calls take no keyword arguments")
         _require(1 <= len(node.args) <= 2, "formula calls take 1 or 2 arguments")
         args = [_eval_node(arg, values) for arg in node.args]
@@ -221,7 +232,9 @@ def evaluate_formula(formula: str, values: dict[str, float]) -> float:
     node through the whitelist in :func:`_eval_node` — it is
     data, never code, so a formula cannot call out to anything.
     """
-    _require(isinstance(formula, str) and formula.strip(), "formula must be a non-empty string")
+    _require(
+        bool(isinstance(formula, str) and formula.strip()), "formula must be a non-empty string"
+    )
     _require(len(formula) <= MAX_FORMULA_CHARS, "formula exceeds the 500-character cap")
     try:
         tree = ast.parse(formula, mode="eval")
@@ -260,7 +273,9 @@ def calculator_widget(
     a broken result to the user.
     """
     title = _require_string(title, "calculator title")
-    _require(isinstance(inputs, list) and inputs, "calculator inputs must be a non-empty list")
+    _require(
+        bool(isinstance(inputs, list) and inputs), "calculator inputs must be a non-empty list"
+    )
     _require(len(inputs) <= MAX_INPUTS, f"calculator holds at most {MAX_INPUTS} inputs")
     _require(value_format in _VALUE_FORMATS, f"value format must be one of {_VALUE_FORMATS}")
     cleaned = []
@@ -319,9 +334,9 @@ def compute_calculator(widget: dict, values: dict) -> float:
         "widget must be a calculator",
     )
     cleaned = calculator_widget(
-        title=widget.get("title"),
-        inputs=widget.get("inputs"),
-        formula=widget.get("formula"),
+        title=_require_string(widget.get("title"), "calculator title"),
+        inputs=_require_list(widget.get("inputs"), "calculator inputs"),
+        formula=_require_string(widget.get("formula"), "calculator formula"),
         result_label=widget.get("result_label"),
         value_format=widget.get("value_format") or "number",
     )
@@ -357,7 +372,7 @@ def form_widget(
     answers indistinguishable.
     """
     title = _require_string(title, "form title")
-    _require(isinstance(fields, list) and fields, "form fields must be a non-empty list")
+    _require(bool(isinstance(fields, list) and fields), "form fields must be a non-empty list")
     _require(len(fields) <= MAX_FIELDS, f"form holds at most {MAX_FIELDS} fields")
     cleaned = []
     seen: set[str] = set()
@@ -382,10 +397,8 @@ def form_widget(
             cleaned_entry["placeholder"] = placeholder
         if kind == "select":
             options = entry.get("options")
-            _require(
-                isinstance(options, list) and 2 <= len(options) <= 20,
-                "select field needs 2 to 20 options",
-            )
+            if not isinstance(options, list) or not 2 <= len(options) <= 20:
+                raise ValueError("select field needs 2 to 20 options")
             cleaned_options = [_require_string(o, "select option") for o in options]
             _require(
                 len(set(cleaned_options)) == len(cleaned_options),
@@ -412,8 +425,8 @@ def validate_form_submission(widget: dict, answers: dict) -> dict:
     """
     _require(isinstance(widget, dict) and widget.get("kind") == "form", "widget must be a form")
     cleaned = form_widget(
-        title=widget.get("title"),
-        fields=widget.get("fields"),
+        title=_require_string(widget.get("title"), "form title"),
+        fields=_require_list(widget.get("fields"), "form fields"),
         submit_label=widget.get("submit_label"),
     )
     _require(isinstance(answers, dict), "answers must be an object")
@@ -429,7 +442,7 @@ def validate_form_submission(widget: dict, answers: dict) -> dict:
             continue
         if field["field_kind"] == "text":
             _require(
-                isinstance(answer, str) and answer.strip(),
+                bool(isinstance(answer, str) and answer.strip()),
                 f"field {field['label']!r} must be a non-empty string",
             )
             result[field["id"]] = answer
@@ -469,7 +482,7 @@ def comparison_widget(
     """
     title = _require_string(title, "comparison title")
     _require(
-        isinstance(columns, list) and 2 <= len(columns) <= MAX_COLUMNS,
+        bool(isinstance(columns, list) and 2 <= len(columns) <= MAX_COLUMNS),
         f"comparison needs 2 to {MAX_COLUMNS} columns",
     )
     cleaned_columns = []
@@ -485,7 +498,7 @@ def comparison_widget(
         _require(isinstance(is_numeric, bool), "column numeric must be a boolean")
         numeric[column_id] = is_numeric
         cleaned_columns.append({"id": column_id, "label": label, "numeric": is_numeric})
-    _require(isinstance(rows, list) and rows, "comparison rows must be a non-empty list")
+    _require(bool(isinstance(rows, list) and rows), "comparison rows must be a non-empty list")
     _require(len(rows) <= MAX_ROWS, f"comparison holds at most {MAX_ROWS} rows")
     cleaned_rows = []
     seen_rows: set[str] = set()
@@ -495,8 +508,7 @@ def comparison_widget(
         _require(row_id not in seen_rows, f"duplicate row id {row_id!r}")
         seen_rows.add(row_id)
         label = _require_string(entry.get("label"), "row label")
-        values = entry.get("values")
-        _require(isinstance(values, dict), "row values must be an object")
+        values = _require_dict(entry.get("values"), "row values")
         cleaned_values: dict = {}
         for column_id in seen:
             _require(column_id in values, f"row {row_id!r} is missing column {column_id!r}")
@@ -530,12 +542,13 @@ def best_row(widget: dict, column_id: str) -> dict:
         "widget must be a comparison",
     )
     cleaned = comparison_widget(
-        title=widget.get("title"),
-        columns=widget.get("columns"),
-        rows=widget.get("rows"),
+        title=_require_string(widget.get("title"), "comparison title"),
+        columns=_require_list(widget.get("columns"), "comparison columns"),
+        rows=_require_list(widget.get("rows"), "comparison rows"),
     )
     column = next((c for c in cleaned["columns"] if c["id"] == column_id), None)
-    _require(column is not None, f"unknown column {column_id!r}")
+    if column is None:
+        raise ValueError(f"unknown column {column_id!r}")
     _require(column["numeric"], f"column {column_id!r} is not numeric")
     return min(cleaned["rows"], key=lambda row: row["values"][column_id])
 
@@ -557,7 +570,7 @@ def diagram_widget(
     taps through must have a direction, so the widget is a DAG.
     """
     title = _require_string(title, "diagram title")
-    _require(isinstance(nodes, list) and nodes, "diagram nodes must be a non-empty list")
+    _require(bool(isinstance(nodes, list) and nodes), "diagram nodes must be a non-empty list")
     _require(len(nodes) <= MAX_NODES, f"diagram holds at most {MAX_NODES} nodes")
     cleaned_nodes = []
     seen: set[str] = set()
@@ -690,20 +703,22 @@ def _validate_simulation(widget: dict) -> dict:
     """
     day = widget.get("day")
     bill_paid = widget.get("bill_paid")
-    _require(
-        isinstance(day, int) and not isinstance(day, bool),
-        "simulation day must be an integer",
-    )
+    if not isinstance(day, int) or isinstance(day, bool):
+        raise ValueError("simulation day must be an integer")
     _require(
         EPISODE_START_DAY <= day <= MAX_SIMULATION_DAY,
         f"simulation day must be between {EPISODE_START_DAY} and {MAX_SIMULATION_DAY}",
     )
-    _require(isinstance(bill_paid, bool), "bill_paid must be a boolean")
+    if not isinstance(bill_paid, bool):
+        raise ValueError("bill_paid must be a boolean")
+    product_id = widget.get("product_id")
+    if not isinstance(product_id, str):
+        raise ValueError(f"simulator only knows product {PRODUCT_ID!r}")
     rebuilt = simulation_widget(
         title=widget.get("title"),
         day=day,
         bill_paid=bill_paid,
-        product_id=widget.get("product_id"),
+        product_id=product_id,
     )
     _require(
         widget.get("stores") == rebuilt["stores"]
@@ -752,7 +767,7 @@ def simulate_step(widget: dict, action: dict) -> tuple[dict, dict]:
         return simulation_widget(day=world.day, bill_paid=world.bill_paid), outcome
     if action_type == "pay_bill":
         outcome = world.act({"type": "pay_bill", "bill_id": BILL_ID})
-        _require(outcome.get("success"), "bill is already paid")
+        _require(bool(outcome.get("success")), "bill is already paid")
         return simulation_widget(day=world.day, bill_paid=world.bill_paid), outcome
     store = action.get("store")
     _require(store in STORES, f"unknown store {store!r}")
@@ -818,29 +833,29 @@ def validate_widget(widget: dict) -> dict:
     kind = widget.get("kind")
     if kind == "calculator":
         return calculator_widget(
-            title=widget.get("title"),
-            inputs=widget.get("inputs"),
-            formula=widget.get("formula"),
+            title=_require_string(widget.get("title"), "calculator title"),
+            inputs=_require_list(widget.get("inputs"), "calculator inputs"),
+            formula=_require_string(widget.get("formula"), "calculator formula"),
             result_label=widget.get("result_label"),
             value_format=widget.get("value_format") or "number",
         )
     if kind == "form":
         return form_widget(
-            title=widget.get("title"),
-            fields=widget.get("fields"),
+            title=_require_string(widget.get("title"), "form title"),
+            fields=_require_list(widget.get("fields"), "form fields"),
             submit_label=widget.get("submit_label"),
         )
     if kind == "comparison":
         return comparison_widget(
-            title=widget.get("title"),
-            columns=widget.get("columns"),
-            rows=widget.get("rows"),
+            title=_require_string(widget.get("title"), "comparison title"),
+            columns=_require_list(widget.get("columns"), "comparison columns"),
+            rows=_require_list(widget.get("rows"), "comparison rows"),
         )
     if kind == "diagram":
         return diagram_widget(
-            title=widget.get("title"),
-            nodes=widget.get("nodes"),
-            edges=widget.get("edges"),
+            title=_require_string(widget.get("title"), "diagram title"),
+            nodes=_require_list(widget.get("nodes"), "diagram nodes"),
+            edges=_require_list(widget.get("edges"), "diagram edges"),
         )
     if kind == "simulation":
         return _validate_simulation(widget)

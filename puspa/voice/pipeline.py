@@ -138,6 +138,11 @@ class VoicePipeline:
                 tmp_path = Path(tmp.name)
             transcription = self._transcriber.transcribe(audio, mime_type=mime_type)
             if keep_audio:
+                if keep_dir is None:
+                    # Unreachable: the method raises above when
+                    # keep_audio is set without a keep_dir. Guarded
+                    # so the directory below is known to exist.
+                    raise AudioValidationError("keep_dir is required when keep_audio is true")
                 kept = Path(keep_dir) / f"{uuid.uuid4().hex}{suffix}"
                 kept.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(tmp_path, kept)

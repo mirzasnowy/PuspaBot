@@ -143,6 +143,11 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
                 },
                 status_code=422,
             )
+        if result.draft is None:
+            # Unreachable in practice: the pipeline sets a draft
+            # whenever the photo is not rejected. Guarded so the
+            # draft below is known to exist.
+            return JSONResponse({"error": "receipt draft missing"}, status_code=500)
         base_dir = getattr(app.state, "share_inbox_dir", None)
         photo_path: str | None = None
         if base_dir is not None:
@@ -200,7 +205,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             edited = True
         total = data.get("total", draft.get("total"))
         try:
-            total = int(total)  # type: ignore[arg-type]
+            total = int(total)
         except (TypeError, ValueError):
             return JSONResponse({"error": "total must be a number"}, status_code=400)
         if total <= 0:
@@ -219,8 +224,11 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
         for position, line in enumerate(lines):
             if not isinstance(line, dict):
                 continue
+            raw_amount = line.get("amount")
+            if raw_amount is None:
+                continue
             try:
-                amount = int(line.get("amount"))
+                amount = int(raw_amount)
             except (TypeError, ValueError):
                 continue
             if amount <= 0:

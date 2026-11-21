@@ -319,7 +319,10 @@ def save_note(
                     json.dumps(stored_actions),
                 ),
             )
-            note_id = str(cur.fetchone()[0])
+            row = cur.fetchone()
+            if row is None:
+                raise RuntimeError("morning note insert returned no id")
+            note_id = str(row[0])
         conn.commit()
     return {"note_id": note_id, "summary": summary, "actions": stored_actions}
 

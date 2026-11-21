@@ -48,6 +48,7 @@ from ..i18n.server_lines import render as render_server_line
 from ..memory.facts import PostgresFactStore
 from .chat_cards import (
     CHART_METRICS,
+    _require_dict,
     append_card_message,
     chart_card_from_insights,
     draft_card_from_draft,
@@ -78,7 +79,7 @@ def post_card(user_id: str, *, body: dict, chat_state=None) -> dict:
     text = body.get("text")
     if not isinstance(text, str) or not text.strip():
         raise ValueError("text must be a non-empty string")
-    card = validate_card(body.get("card"))
+    card = validate_card(_require_dict(body.get("card"), "card"))
     store = chat_state if chat_state is not None else {}
     return append_card_message(store, user_id, text, card)
 

@@ -158,7 +158,8 @@ def source_label(fact: dict) -> str:
     detail = fact.get("source_detail")
     if detail:
         return str(detail)
-    verb = _SOURCE_VERBS.get(fact.get("source"), "recorded")
+    source = fact.get("source")
+    verb = _SOURCE_VERBS.get(source, "recorded") if isinstance(source, str) else "recorded"
     date = _format_date(fact.get("created_at"))
     label = f"{verb} on {date}" if date else verb
     if fact.get("source") == "inferred" and fact.get("status") == "proposed":
@@ -274,6 +275,7 @@ class MemoryReadService:
         if offset < 0:
             raise ValueError("offset must be at least 0")
         limit = min(limit, MAX_LIMIT)
+        statuses: tuple[str, ...] | None
         if status == "history":
             statuses = HISTORY_STATUSES
         elif status is not None:
