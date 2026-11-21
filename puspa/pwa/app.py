@@ -864,7 +864,7 @@ def create_app(
                 {"error": render_server_line("error.not_logged_in")}, status_code=401
             )
         data = await request.json()
-        from puspa.push.push import save_subscription
+        from puspa.push.ports import save_subscription
 
         subscription_id = save_subscription(
             user_id,
