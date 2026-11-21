@@ -1,7 +1,8 @@
-"""Sentinel detectors (G12).
+"""Sentinel detectors (G12, K8).
 
-Five pure detectors over ledger events — the same five DuskBot's
-sentinel runs, rewritten for Puspa's ledger shapes:
+Six pure detectors over ledger events — the same five DuskBot's
+sentinel runs, rewritten for Puspa's ledger shapes, plus the
+outcome watcher (K8):
 
 - ``tool_error`` — a tool failing repeatedly (``tool_completed``
   with ``content.status == "error"``, the shape
@@ -23,6 +24,16 @@ sentinel runs, rewritten for Puspa's ledger shapes:
   the lookback window.
 - ``retry_loop`` — the same tool called ``retry_min`` times in
   one task without a single success in between.
+- ``outcome_failure`` — an outcome record of type
+  ``"late_failure"`` (``evidence_recorded`` with
+  ``content.kind == "outcome_record"``), written by the outcome
+  watcher (``outcome_watcher.py``) when a recheck after "done"
+  finds the world moved against the recorded outcome. One issue
+  per originally watched outcome, however many late-failure
+  records it gathered; the issue stays open until an operator
+  acknowledges or resolves it, because a late failure is a
+  fact, not a transient condition — the record never leaves
+  the append-only ledger.
 
 Detectors are pure functions: they take event dicts (the shape
 ``puspa/ledger/ledger.py`` returns), a thresholds object, and a
@@ -47,10 +58,12 @@ __all__ = [
     "DETECTORS",
     "TERMINAL_EVENT_TYPES",
     "detect_cost_overruns",
+    "detect_outcome_failures",
     "detect_queue_waits",
     "detect_retry_loops",
     "detect_tool_errors",
     "detect_turn_stops",
+    "outcome_failure_issue",
     "run_detectors",
 ]
 
@@ -59,7 +72,10 @@ __all__ = [
 TERMINAL_EVENT_TYPES = frozenset({"task_completed", "task_failed", "task_stopped"})
 
 #: Detector names, in the order ``run_detectors`` runs them.
-DETECTORS = ("tool_error", "turn_stop", "queue_wait", "cost", "retry_loop")
+DETECTORS = ("tool_error", "turn_stop", "queue_wait", "cost", "retry_loop", "outcome_failure")
+
+#: The outcome type the outcome watcher writes for a late failure.
+LATE_FAILURE_OUTCOME_TYPE = "late_failure"
 
 
 def _as_utc(moment: datetime) -> datetime:
@@ -472,10 +488,113 @@ def detect_retry_loops(
     return issues
 
 
+def outcome_failure_issue(
+    *,
+    outcome_id: str,
+    task_id: str | None,
+    summary: str,
+    evidence: dict,
+    first_seen: datetime,
+    last_seen: datetime,
+) -> dict:
+    """One ``outcome_failure`` issue, the shape the detector builds.
+
+    Shared by ``detect_outcome_failures`` and the outcome watcher
+    (``outcome_watcher.py``), so an issue the watcher raises for
+    a late failure is exactly the issue the detector finds for
+    the same record in a scheduled scan.
+    """
+    return _issue(
+        detector="outcome_failure",
+        key=f"outcome_failure:{outcome_id}",
+        severity="warning",
+        summary=summary,
+        task_id=task_id,
+        evidence=evidence,
+        first_seen=first_seen,
+        last_seen=last_seen,
+    )
+
+
+def detect_outcome_failures(
+    events: list[dict], *, thresholds: SentinelThresholds | None = None, now: datetime | None = None
+) -> list[dict]:
+    """One issue per outcome that failed after it was marked done.
+
+    Reads ``evidence_recorded`` events whose content is an
+    outcome record (``kind == "outcome_record"``) of type
+    ``"late_failure"`` — the records the outcome watcher writes
+    when a recheck finds the world moved against the recorded
+    outcome. Several late-failure records for the same watched
+    outcome fold into one issue (keyed by the original outcome
+    id from ``details.original_outcome_id``), with the earliest
+    and latest record times as first/last seen.
+    """
+    thresholds = thresholds or SentinelThresholds()
+    now = _as_utc(now or datetime.now(UTC))
+    window = _in_lookback(events, now=now, lookback_days=thresholds.lookback_days)
+    by_outcome: dict[str, dict] = {}
+    for event in window:
+        if event.get("type") != "evidence_recorded":
+            continue
+        content = _content(event)
+        if content.get("kind") != "outcome_record":
+            continue
+        if content.get("outcome_type") != LATE_FAILURE_OUTCOME_TYPE:
+            continue
+        details = content.get("details")
+        details = details if isinstance(details, dict) else {}
+        original_id = str(details.get("original_outcome_id") or event.get("id") or "?")
+        created_at = event.get("created_at")
+        if not isinstance(created_at, datetime):
+            continue
+        created_at = _as_utc(created_at)
+        record = by_outcome.setdefault(
+            original_id,
+            {
+                "task_id": event.get("task_id"),
+                "summary": str(content.get("summary") or ""),
+                "late_failure_ids": [],
+                "first_seen": created_at,
+                "last_seen": created_at,
+                "fresh_observed": details.get("fresh_observed"),
+                "original_observed": details.get("original_observed"),
+            },
+        )
+        record["late_failure_ids"].append(str(event.get("id")))
+        record["first_seen"] = min(record["first_seen"], created_at)
+        record["last_seen"] = max(record["last_seen"], created_at)
+        if details.get("fresh_observed") is not None:
+            record["fresh_observed"] = details.get("fresh_observed")
+        if details.get("original_observed") is not None:
+            record["original_observed"] = details.get("original_observed")
+    issues = []
+    for outcome_id in sorted(by_outcome):
+        record = by_outcome[outcome_id]
+        issues.append(
+            outcome_failure_issue(
+                outcome_id=outcome_id,
+                task_id=record["task_id"],
+                summary=record["summary"]
+                or f"Outcome {outcome_id} failed after it was marked done",
+                evidence={
+                    "outcome_id": outcome_id,
+                    "late_failure_ids": sorted(set(record["late_failure_ids"])),
+                    "count": len(set(record["late_failure_ids"])),
+                    "fresh_observed": record["fresh_observed"],
+                    "original_observed": record["original_observed"],
+                },
+                first_seen=record["first_seen"],
+                last_seen=record["last_seen"],
+            )
+        )
+    return issues
+
+
 def run_detectors(
     events: list[dict], *, thresholds: SentinelThresholds | None = None, now: datetime | None = None
 ) -> list[dict]:
-    """Run all five detectors over the events, in detector order."""
+    """Run all six detectors over the events, in detector order."""
     thresholds = thresholds or SentinelThresholds()
     now = _as_utc(now or datetime.now(UTC))
     found: list[dict] = []
@@ -484,4 +603,5 @@ def run_detectors(
     found.extend(detect_queue_waits(events, thresholds=thresholds, now=now))
     found.extend(detect_cost_overruns(events, thresholds=thresholds, now=now))
     found.extend(detect_retry_loops(events, thresholds=thresholds, now=now))
+    found.extend(detect_outcome_failures(events, thresholds=thresholds, now=now))
     return found

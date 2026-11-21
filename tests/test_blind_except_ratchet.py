@@ -126,6 +126,7 @@ BASELINE_BLE001: dict[str, int] = {
     "puspa/scheduler/recovery.py": 2,
     "puspa/scheduler/scheduler.py": 1,
     "puspa/sentinel/insights.py": 2,
+    "puspa/sentinel/outcome_watcher.py": 1,
     "puspa/sentinel/scanner.py": 2,
     "puspa/sentinel/verifier.py": 2,
     "puspa/subagents/hooks.py": 1,
@@ -162,8 +163,11 @@ BASELINE_BLE001: dict[str, int] = {
 
 #: Total baseline: the sum of BASELINE_BLE001 (193 on 20 Nov 2026;
 #: P-05 adds 1 recorded handler — the room job runner, see
-#: docs/e20-blind-except-audit.md section 2.1).
-BASELINE_TOTAL = 196
+#: docs/e20-blind-except-audit.md section 2.1; K8 adds 1 — the
+#: outcome watcher's single failure boundary over the arbitrary
+#: recheck/writer/loop callables, so one broken recheck never
+#: kills a scan).
+BASELINE_TOTAL = 197
 
 
 def _repo_root() -> Path:
