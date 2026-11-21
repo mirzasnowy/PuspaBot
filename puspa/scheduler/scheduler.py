@@ -232,7 +232,13 @@ def run_trigger(
 
 
 def run_missed(
-    *, sink=None, dsn=None, now: datetime | None = None, budget=None, kill_switch=None
+    *,
+    sink=None,
+    dsn=None,
+    now: datetime | None = None,
+    budget=None,
+    kill_switch=None,
+    turn_loop=None,
 ) -> list[dict]:
     """Saat bangun: jalankan sekali tiap pemicu terlewat + laporkan.
 
@@ -241,6 +247,11 @@ def run_missed(
     yang baru jatuh tempo ditangani `tick` biasa). Dengan `budget`,
     pemicu proaktif yang terlewat membayar dari budget seperti
     pemicu biasa (lihat `run_trigger`).
+
+    Like ``tick``, every fired trigger also runs its job here
+    through :func:`run_trigger_job` (a routine runs through
+    ``turn_loop`` when one is wired in); the job outcome is
+    attached to each returned run dict under ``"job"``.
     """
     now = now or _now()
     cutoff = now - timedelta(hours=1)
@@ -273,7 +284,7 @@ def run_missed(
             kill_switch=kill_switch,
         )
         if run is not None:
-            result.append(run)
+            result.append(_execute_run(run, turn_loop=turn_loop, dsn=dsn, now=now))
     return result
 
 
@@ -300,6 +311,161 @@ def is_healthy(dsn=None, now: datetime | None = None) -> bool:
     return (now - row[0]).total_seconds() < HEARTBEAT_STALE_SECONDS
 
 
+def _trigger_row(trigger_id: str, dsn=None) -> dict | None:
+    """One triggers row as a dict, or None when it does not exist."""
+    with _connect(dsn) as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+        cur.execute(
+            "SELECT id, user_id, type, schedule, workflow, next_trigger_at, active"
+            " FROM triggers WHERE id = %s",
+            (trigger_id,),
+        )
+        return cur.fetchone()
+
+
+def _routine_schedule_of(row: dict):
+    """The schedule dict of a routine trigger row, or None.
+
+    Imported lazily: ``puspa.scheduler.routines`` imports this
+    module, so a top-level import would be circular.
+    """
+    from .routines import routine_schedule
+
+    trigger = Trigger(
+        id=row["id"],
+        user_id=str(row["user_id"]),
+        event_type=row["type"],
+        schedule=row["schedule"] or "",
+        workflow=row["workflow"] or "",
+        next_trigger_at=row["next_trigger_at"],
+        active=row["active"],
+    )
+    return routine_schedule(trigger)
+
+
+def _advance_routine(trigger_id: str, schedule: dict, *, now: datetime, dsn=None) -> None:
+    """Move a routine to its next fire time from its own schedule.
+
+    ``run_trigger`` always moves a trigger one day forward, which
+    is wrong for an hourly or weekday routine and for a one-shot.
+    This overwrites that step with the schedule's real next
+    occurrence; a one-shot (no next occurrence) is deactivated
+    instead so it never fires again.
+    """
+    from .schedules import next_occurrence
+
+    with _connect(dsn) as conn:
+        with conn.cursor() as cur:
+            nxt = next_occurrence(schedule, now)
+            if nxt is None:
+                cur.execute("UPDATE triggers SET active = FALSE WHERE id = %s", (trigger_id,))
+            else:
+                cur.execute(
+                    "UPDATE triggers SET next_trigger_at = %s WHERE id = %s", (nxt, trigger_id)
+                )
+        conn.commit()
+
+
+def run_trigger_job(run: dict, *, turn_loop=None, dsn=None, now: datetime | None = None) -> dict:
+    """Execute the job of one fired trigger run.
+
+    This is the production caller ``run_scheduled_job`` was
+    missing: system jobs (backup, consolidation, dream, sentinel
+    scan, trust-root and revocation refresh, ontology review)
+    run here, directly. A user routine (a ``schedule`` trigger
+    whose schedule field holds a schedule dict) runs through
+    the given turn loop instead: its task text becomes the
+    turn's first message, so it runs with no human present,
+    through the same loop, budget, and safety checks as a chat
+    turn. With no turn loop wired in, the routine is recorded
+    as not run, never silently pretended to have run.
+
+    A plain trigger that is neither a system job nor a routine
+    (for example a workflow trigger, which ``tick_workflow``
+    runs) is recorded as skipped. One failing job never raises
+    into the tick: the outcome carries ``status: "failed"``
+    and the error text, and the tick moves on to the next
+    trigger. The outcome is returned (and attached to the run
+    dict by the tick); it is NOT sent through the tick's sink,
+    which stays reserved for the trigger ledger events
+    (``trigger_fired`` / ``trigger_missed``).
+    """
+    now = now or _now()
+    outcome: dict = {
+        "trigger_id": run["trigger_id"],
+        "task_id": run["task_id"],
+        "job": "unknown",
+        "status": "failed",
+    }
+    try:
+        job_result = run_scheduled_job(run, dsn=dsn)
+    except Exception as exc:
+        outcome["error"] = f"{type(exc).__name__}: {exc}"
+        return outcome
+    job = job_result.get("job", "unknown")
+    outcome["job"] = job
+    if job != "regular_task":
+        outcome["status"] = "completed"
+        outcome["result"] = job_result.get("result")
+        return outcome
+    row = _trigger_row(run["trigger_id"], dsn=dsn)
+    if row is None:
+        outcome["status"] = "skipped"
+        outcome["reason"] = "trigger row is gone"
+        return outcome
+    schedule = _routine_schedule_of(row)
+    task_text = (row["workflow"] or "").strip()
+    if schedule is None or not task_text:
+        outcome["status"] = "skipped"
+        outcome["reason"] = "not a routine; handled by its own runner"
+        return outcome
+    with contextlib.suppress(Exception):
+        _advance_routine(run["trigger_id"], schedule, now=now, dsn=dsn)
+    if turn_loop is None:
+        outcome["status"] = "not_run"
+        outcome["reason"] = "no turn loop wired in; the routine text was not run"
+        return outcome
+    try:
+        from puspa.turns.messages import InternalMessage
+
+        result = turn_loop.run_turn(
+            [InternalMessage.user(task_text)],
+            user_id=str(row["user_id"]),
+            task_id=run["task_id"],
+        )
+    except Exception as exc:
+        outcome["status"] = "failed"
+        outcome["error"] = f"{type(exc).__name__}: {exc}"
+        return outcome
+    outcome["turn_status"] = result.status
+    outcome["text"] = result.text
+    if result.status == "completed":
+        outcome["status"] = "completed"
+    else:
+        outcome["status"] = "failed"
+        outcome["error"] = result.message or f"turn ended {result.status}"
+    return outcome
+
+
+def _execute_run(run: dict, *, turn_loop=None, dsn=None, now=None) -> dict:
+    """Run one fired trigger's job and attach the outcome to the run.
+
+    The job runner never raises into the tick: an unexpected
+    failure is recorded as a failed outcome instead.
+    """
+    try:
+        outcome = run_trigger_job(run, turn_loop=turn_loop, dsn=dsn, now=now)
+    except Exception as exc:  # belt and braces around an injected runner
+        outcome = {
+            "trigger_id": run["trigger_id"],
+            "task_id": run["task_id"],
+            "job": "unknown",
+            "status": "failed",
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    run["job"] = outcome
+    return run
+
+
 def tick(
     *,
     sink=None,
@@ -308,6 +474,7 @@ def tick(
     curriculum=None,
     budget=None,
     kill_switch=None,
+    turn_loop=None,
 ) -> list[dict]:
     """Satu putaran penjadwal: detak + jalankan pemicu jatuh tempo.
 
@@ -326,6 +493,14 @@ def tick(
     When ``kill_switch`` is given (K12) and active, the whole
     tick is a no-op: no heartbeat (a stopped scheduler must not
     report itself healthy), no trigger runs, no curriculum work.
+
+    Every fired trigger now also runs its job through
+    :func:`run_trigger_job` (the production caller): system jobs
+    execute here, and a user routine runs through ``turn_loop``
+    (a :class:`puspa.turns.loop.TurnLoop`; with none wired in,
+    the routine is recorded as not run). The job outcome is
+    attached to each returned run dict under ``"job"``. A job
+    failure never stops the tick or the other triggers.
     """
     if is_kill_switch_active(kill_switch):
         return []
@@ -348,7 +523,7 @@ def tick(
             trigger, sink=sink, dsn=dsn, now=now, budget=budget, kill_switch=kill_switch
         )
         if run is not None:
-            result.append(run)
+            result.append(_execute_run(run, turn_loop=turn_loop, dsn=dsn, now=now))
     if curriculum is not None:
         try:
             from puspa.scheduler.curriculum import run_curriculum_tick
