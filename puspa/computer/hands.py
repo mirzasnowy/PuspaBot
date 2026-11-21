@@ -22,8 +22,11 @@ click). Second, the interactive prompt: the user is asked first
 approve for the session, or deny). A denial raises
 :class:`PermissionDenied` and nothing touches the desktop.
 Snapshots and verifies are reads; they need no prompt, but what
-they return is screen text, and screening that text is V2-36
-work, not this module's.
+they return is screen text, so every snapshot this class hands
+out first passes through the V2-36 safety layer
+(:mod:`puspa.computer.safety`): injected instructions are marked
+as data and logged, password/PIN/card content is masked, and
+the guard cannot be bypassed by calling the raw backend.
 
 V2-34 (synchronization + non-stale refs): ``click`` waits for
 the tree to settle first (see :mod:`puspa.computer.sync`), then
@@ -77,6 +80,7 @@ from .input import (
     InputResult,
     make_input_backend,
 )
+from .safety import ScreenTextSafety
 from .stop import ComputerStop, ComputerStopped
 from .sync import (
     DEFAULT_POLL_INTERVAL_S,
@@ -229,8 +233,10 @@ class DesktopHands:
         allowlist: Allowlist | None = None,
         stop: ComputerStop | None = None,
         audit: LedgerComputerAudit | InMemoryComputerAudit | None = None,
+        safety: ScreenTextSafety | None = None,
     ) -> None:
         self.backend = backend if backend is not None else make_backend("auto")
+        self.safety = safety if safety is not None else ScreenTextSafety()
         self._prompt = prompt
         self._gate = gate
         self._token_payload = token_payload
@@ -272,11 +278,13 @@ class DesktopHands:
     ) -> Snapshot:
         """Read the screen without auditing: the internal re-read
         every action does. Public callers use :meth:`snapshot`,
-        which audits the read."""
+        which audits the read. The returned snapshot is sanitised
+        by the safety layer: screen text the model sees is data,
+        never instructions, and secrets are masked."""
         shot = self.backend.snapshot(max_nodes=max_nodes, max_depth=max_depth)
         if skeleton:
-            return skeletonize(shot, SKELETON_DEPTH)
-        return shot
+            shot = skeletonize(shot, SKELETON_DEPTH)
+        return self.safety.sanitize_snapshot(shot)
 
     def wait_settle(
         self, *, timeout_s: float | None = None, stable_rounds: int | None = None
@@ -971,7 +979,10 @@ class DesktopHands:
         in memory only: it never appears in a log, a file, or a
         result dict, only its length does. Tier NORMAL (it
         returns the user's own data), so it asks; the audit
-        records only the length."""
+        records only the length. Before it is returned it passes
+        through the safety layer, so a password, PIN, or card
+        number on the clipboard reaches the agent masked and an
+        injected instruction arrives marked as data."""
         tier = self._decide(
             "clipboard_read",
             TOOL_CLIPBOARD_READ,
@@ -992,6 +1003,7 @@ class DesktopHands:
                 reason=str(exc),
             )
             raise DesktopHandsError(f"clipboard read failed: {exc}") from exc
+        content = self.safety.sanitize_clipboard(content)
         self._audit(
             "clipboard_read",
             target="clipboard",

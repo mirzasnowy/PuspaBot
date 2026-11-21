@@ -37,6 +37,7 @@ from puspa.localexec.executor import PermissionDecision, PermissionDenied
 from .audit import InMemoryComputerAudit, LedgerComputerAudit, audit_entry
 from .gating import ask_user, check_token_gate
 from .hands import DesktopHands
+from .safety import ScreenTextSafety
 from .screenshot import FakeScreenshotBackend, ScreenshotBackend, make_screenshot_backend
 from .stop import ComputerStop, ComputerStopped
 from .sync import (
@@ -246,6 +247,7 @@ class VisualFallback:
         settle_poll_interval: float = DEFAULT_POLL_INTERVAL_S,
         stop: ComputerStop | None = None,
         audit: LedgerComputerAudit | InMemoryComputerAudit | None = None,
+        safety: ScreenTextSafety | None = None,
     ) -> None:
         if isinstance(screenshot_backend, str):
             screenshot_backend = make_screenshot_backend(screenshot_backend)
@@ -254,6 +256,7 @@ class VisualFallback:
         if isinstance(clicker, str):
             clicker = make_clicker(clicker)
         self.hands = hands
+        self.safety = safety if safety is not None else ScreenTextSafety()
         self.screenshot_backend = screenshot_backend or FakeScreenshotBackend()
         self.ocr_backend = ocr_backend or FakeOcrBackend()
         self.clicker = clicker or FakeCoordinateClicker()
@@ -269,9 +272,12 @@ class VisualFallback:
 
     # -- reads ------------------------------------------------------
     def read_screen(self) -> list[OcrWord]:
-        """Screenshot + OCR: the words on the screen right now."""
+        """Screenshot + OCR: the words on the screen right now.
+        The words pass through the safety layer first, so a card
+        number on the screen reaches the agent masked and an
+        injected instruction is logged."""
         shot = self.screenshot_backend.capture()
-        return self.ocr_backend.read(shot.png)
+        return self.safety.sanitize_words(self.ocr_backend.read(shot.png))
 
     def wait_settle(
         self, *, timeout_s: float | None = None, stable_rounds: int | None = None
