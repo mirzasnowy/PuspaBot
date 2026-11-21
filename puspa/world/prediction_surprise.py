@@ -71,7 +71,19 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from puspa.memory.learning_loop import record_misprediction as _default_record_misprediction
+
+def _default_record_misprediction(record, **kwargs):
+    """Default learning-loop feed, imported lazily at call time.
+
+    A top-level import here would pull ``puspa.memory.learning_loop``
+    into ``sys.modules`` on any ``puspa.world`` import, breaking the
+    lazy seam ``test_world_model_imports_without_learning_loop``
+    guards (the world model must import without the loop).
+    """
+    from puspa.memory.learning_loop import record_misprediction
+
+    return record_misprediction(record, **kwargs)
+
 
 __all__ = [
     "PredictionRecord",
