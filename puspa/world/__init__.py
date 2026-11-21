@@ -26,6 +26,11 @@
   K3) — two time pairs per belief, corrections append a new
   version and never overwrite history, as-of queries on known
   time and valid time.
+- ``puspa.world.prediction_surprise``: prediction and surprise
+  (Kosmos K19) — record a forecast before acting, score it
+  against reality, and feed the error back: the stored prior
+  becomes the observed outcome, the learning loop learns the
+  correction, and the update is written as a ledger event.
 - ``puspa.world.beliefs``: the belief data holders split out of
   ``model.py`` (K4 ratchet fix) — the six belief dataclasses, the
   price-key helper, and the three constants only the beliefs need.
@@ -79,6 +84,7 @@ from .noisy_simulator import (
     run_episodes as run_noisy_episodes,
 )
 from .planner import plan
+from .prediction_surprise import PredictionRecord, PredictionSurprise, SurpriseResult, surprise_of
 from .simulator import SimulatedWorld, run_episode, run_episodes
 from .speeds import SimulationResult, SpeedUnavailable, ThreeSpeedSimulator, simulate
 from .store import (
@@ -122,9 +128,12 @@ __all__ = [
     "KeywordGoalInferrer",
     "NoisySimulatedWorld",
     "Prediction",
+    "PredictionRecord",
+    "PredictionSurprise",
     "SimulatedWorld",
     "SimulationResult",
     "SpeedUnavailable",
+    "SurpriseResult",
     "ThreeSpeedSimulator",
     "WorldModel",
     "apply_agent_migration",
@@ -157,5 +166,6 @@ __all__ = [
     "save_world_state",
     "serialize_state",
     "simulate",
+    "surprise_of",
     "utcnow",
 ]
