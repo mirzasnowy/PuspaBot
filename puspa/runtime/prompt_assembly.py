@@ -14,9 +14,13 @@ The three layers, always in this order:
    whole session: the stable layer is the cache prefix, so changing
    it mid-session would invalidate the provider's prompt cache and
    multiply the cost of every following turn.
-2. ``context`` -- context files (project notes, workspace files).
-   Rebuilt every turn; changing it does not move the cache
-   breakpoint because it sits after the stable layer.
+2. ``context`` -- context files (project notes, workspace files)
+   and the user's persona files (SOUL.md, IDENTITY.md, USER.md,
+   rendered by ``puspa.persona.files``). Rebuilt every turn;
+   changing it does not move the cache breakpoint because it sits
+   after the stable layer. Persona files belong here, never in
+   the stable layer, precisely so an edit applies on the next
+   turn instead of waiting for the next session.
 3. ``volatile`` -- memory, profile, timestamp. Rebuilt every turn.
 
 Invariants the builder enforces:
@@ -362,6 +366,7 @@ class PromptBuilder:
         stable: str | object | None = None,
         context: str | object | None = None,
         volatile: str | object | None = None,
+        persona: str | None = None,
     ) -> PromptSurface:
         """Render the surface: three layers, then the messages as-is.
 
@@ -371,6 +376,14 @@ class PromptBuilder:
         :attr:`pending_changes` as a deferred ``"replace_stable"``
         change instead of taking effect mid-session. Context and
         volatile layers are rebuilt freely every turn.
+
+        ``persona`` is the pre-rendered persona block for this
+        turn (see ``puspa.persona.files.render_persona_block``).
+        It goes at the head of the context layer, never the stable
+        layer, so an edit to the persona files changes the system
+        prompt on the next turn without invalidating the frozen
+        cache prefix. The caller re-renders it every turn; this
+        builder keeps no copy between builds.
         """
         _validate_messages(messages)
         stable_text = _normalize_layer(stable)
@@ -388,6 +401,9 @@ class PromptBuilder:
             )
             stable_text = self._frozen_stable
         context_text = _normalize_layer(context)
+        persona_text = _normalize_layer(persona)
+        if persona_text:
+            context_text = persona_text + "\n\n" + context_text if context_text else persona_text
         volatile_text = _normalize_layer(volatile)
         layers = [text for text in (stable_text, context_text, volatile_text) if text]
         system_prompt = LAYER_SEPARATOR.join(layers)
@@ -456,13 +472,21 @@ class PromptSession:
         *,
         context: str | object | None = None,
         volatile: str | object | None = None,
+        persona: str | None = None,
     ) -> PromptSurface:
-        """Render this turn's surface from the frozen stable layer."""
+        """Render this turn's surface from the frozen stable layer.
+
+        ``persona`` is the pre-rendered persona block for this
+        turn; it goes at the head of the context layer (see
+        :meth:`PromptBuilder.build`), so an edit to the persona
+        files applies on the next turn.
+        """
         surface = self._builder.build(
             messages,
             stable=self.stable_text,
             context=context,
             volatile=volatile,
+            persona=persona,
         )
         self.turn_count += 1
         return surface
