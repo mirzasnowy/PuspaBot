@@ -1,7 +1,8 @@
-"""Desktop hands: snapshot, click, verify (V2-31, core), plus the
-visual fallback (V2-32): when the accessibility tree is empty or
-too poor, see the screen with a screenshot + OCR and click by
-coordinates, or route a web target to headless Chromium.
+"""Desktop hands: snapshot, click, verify (V2-31, core), plus
+full input and window management (V2-33), plus the visual fallback
+(V2-32): when the accessibility tree is empty or too poor, see the
+screen with a screenshot + OCR and click by coordinates, or route a
+web target to headless Chromium.
 
 This package is new in V2-31: no ``puspa/computer/local.py``
 existed at this base, so the module was built from scratch here
@@ -22,6 +23,13 @@ from .fallback import (
 )
 from .gating import ask_user, check_token_gate
 from .hands import ClickResult, DesktopHands, DesktopHandsError, UnknownRefError, Verification
+from .input import (
+    ClipboardResult,
+    FakeInputBackend,
+    InputResult,
+    XTestInputBackend,
+    make_input_backend,
+)
 from .mcp import handle_tool, mcp_server_definition, tool_definitions
 from .screenshot import (
     FakeScreenshotBackend,
@@ -59,16 +67,21 @@ __all__ = [
     "TOOL_WEB_CLICK",
     "AccessibleNode",
     "AtspiBackend",
+    "AtspiWindowBackend",
     "BackendUnavailableError",
     "ClickResult",
+    "ClipboardResult",
     "CoordinateClicker",
     "DesktopHands",
     "DesktopHandsError",
     "FakeBackend",
     "FakeCoordinateClicker",
+    "FakeInputBackend",
     "FakeOcrBackend",
     "FakeScreenshotBackend",
     "FakeWebBackend",
+    "FakeWindowBackend",
+    "InputResult",
     "OcrBackend",
     "OcrWord",
     "PlaywrightWebBackend",
@@ -88,8 +101,11 @@ __all__ = [
     "WebBridge",
     "WebClickResult",
     "WebPage",
+    "WindowInfo",
+    "WindowResult",
     "X11ScreenshotBackend",
     "XTestClicker",
+    "XTestInputBackend",
     "ask_user",
     "check_token_gate",
     "ground_text",
@@ -97,8 +113,10 @@ __all__ = [
     "is_web_target",
     "make_backend",
     "make_clicker",
+    "make_input_backend",
     "make_ocr_backend",
     "make_screenshot_backend",
+    "make_window_backend",
     "mcp_server_definition",
     "tool_definitions",
     "tree_is_poor",

@@ -824,6 +824,7 @@ it is decided from measured spawn times on the real host.
 | Ide besar | Dari repo apa (lisensi) | Apa yang diadaptasi | Apa yang ditulis ulang dari nol |
 | --- | --- | --- | --- |
 | Snapshot the OS accessibility tree as JSON, every element gets a ref, act on the ref, re-read the screen to verify (a successful action never proves the UI changed); skeleton-then-drill-down for huge trees; headless by default (no mouse move, no focus steal) | vercel-labs/agent-desktop (Apache-2.0, v1.2.0) | The act-on-a-ref + re-read-to-verify loop, the skeleton-then-drill-down shape for huge trees, the headless default | `puspa/computer/tree.py` (ref + path model, skeletonize, JSON shape), `puspa/computer/backend.py` (backend seam, in-memory fake backend, real Linux AT-SPI backend through ctypes against libatspi, no pyatspi), `puspa/computer/hands.py` (permission-gated click + re-read verify), `puspa/computer/mcp.py` (three MCP tool definitions + handlers), `puspa/computer/cli.py` (`puspa computer snapshot/click/verify`) |
+| Full input (type, shortcuts, scroll, drag, clipboard) + window management (list, open, focus, switch) on the same act-on-a-ref + re-read-to-verify loop, each action under its own per-tool permission name, clipboard content never logged or persisted | X11 XTest key/button injection + AT-SPI editable-text interface + session clipboard tools (xclip/xsel, wl-copy/wl-paste) are public platform APIs, not a repo; the loop shape is the V2-31 agent-desktop pattern above | The mechanism shapes only: XTest fake key/button/motion events for keys, scroll (buttons 4-7), and drag; AT-SPI editable-text insert for typing; clipboard through the session tool's stdin/stdout; window list/focus from the AT-SPI tree | `puspa/computer/input.py` (input seam, in-memory fake input, real Linux XTest + AT-SPI editable-text backend, clipboard tools), `puspa/computer/windows.py` (window seam, fake windows from the shared tree spec, real Linux AT-SPI list/focus + launcher open), `puspa/computer/hands.py` (type/shortcut/scroll/drag/clipboard/windows + multi-step `run_task`, per-action token names), `puspa/computer/mcp.py` (ten more tool definitions + handlers, thirteen total), `puspa/computer/cli.py` (type/shortcut/scroll/drag/clipboard/windows/open-app/focus-window/switch-window/task), `puspa/computer/tree.py` (`AccessibleNode.value` for typed text) |
 
 No new dependency was added for V2-31 (standard library only;
 the AT-SPI backend uses ctypes against the system libatspi).
@@ -843,6 +844,28 @@ a Linux desktop session. Windows/macOS backends are not built
 (the seam raises for them). The MCP server itself (`puspa mcp`)
 is V2-37 work, not this item: only the definitions exist here.
 
+
+No new dependency was added for V2-33 either (standard library
+only; the real input backend uses ctypes against the system
+libXtst/libX11/libatspi and subprocess calls to the session
+clipboard tools). Tests: `tests/test_computer_input_windows.py`
+(fake-backend typing, shortcuts, scroll, drag, clipboard
+round-trip with content never in a result dict, windows,
+permission gate per action, multi-step task end to end incl.
+type + shortcut + scroll + window switch + open app, and the
+stop-at-first-unverified case) +
+`tests/test_computer_input_backends.py` (fail-closed real
+backends on this headless VM: no display, no bus, no libXtst,
+no clipboard tool; libatspi editable-text symbol binding) +
+`tests/test_computer_mcp_cli.py` (eighteen MCP tools, CLI
+type/shortcut/windows/clipboard/task on the fake backend).
+Honest limits: on this VM libXtst is missing and no clipboard
+tool is installed, so the real key/scroll/drag/clipboard paths
+were never run against a real desktop here: they are written
+and type-checked, and only the fail-closed half is tested live;
+the first live check needs a Linux desktop session with libXtst
+and xclip (or wl-clipboard on Wayland) installed.
+
 ## Kosmos Phase 2 (V2-32: Visual fallback, screenshot + OCR/vision + web bridge)
 
 | Ide besar | Dari repo apa (lisensi) | Apa yang diadaptasi | Apa yang ditulis ulang dari nol |
@@ -852,3 +875,4 @@ is V2-37 work, not this item: only the definitions exist here.
 No new dependency was added for V2-32 (Playwright and Pillow were already Puspa dependencies; the X11 backend uses ctypes against the system libX11, tesseract is an external binary, not a dependency).
 Tests: `tests/test_computer_visual.py` (OCR grounding, fake + tesseract fail-closed, X11 capture live under Xvfb, gated coordinate-click loop, end-to-end task in an app with no tree) + `tests/test_computer_web.py` (routing, fake web page, gated web click loop, Playwright backend live against a local page) + `tests/test_computer_visual_mcp_cli.py` (four new MCP definitions + handlers, CLI visual/web on the fake backends).
 Honest limits: no live desktop exists on this VM (no display, no AT-SPI bus), so the X11 backend was only run against a test window under Xvfb, never a real application; tesseract is not installed, so real OCR was never run here; libXtst is not installed, so no real coordinate click was ever pressed here; the vision-model path is a seam with nothing behind it.
+

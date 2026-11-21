@@ -1,7 +1,8 @@
 """MCP tool definitions for desktop hands (V2-31, core; V2-32
-visual fallback + web bridge).
+visual fallback + web bridge; V2-33 full input + window
+management).
 
-Seven tools, in the same shape as the rest of Puspa's MCP
+Eighteen tools, in the same shape as the rest of Puspa's MCP
 definitions (``name`` / ``description`` / ``inputSchema``):
 ``computer_snapshot`` (read the screen), ``computer_click`` (the
 gated act + re-read loop), ``computer_verify`` (re-read one ref
@@ -9,17 +10,29 @@ and check it), plus the V2-32 tools ``computer_visual_locate``
 (find text on the screen by OCR), ``computer_visual_click``
 (gated coordinate click + re-read verify), ``computer_web_open``
 (open a URL in headless Chromium) and ``computer_web_click``
-(gated web click + re-read verify). :func:`handle_tool`
-dispatches one call to a :class:`~puspa.computer.hands.DesktopHands`
+(gated web click + re-read verify), plus V2-33:
+``computer_type``, ``computer_shortcut``, ``computer_scroll``,
+``computer_drag``, ``computer_clipboard_read``,
+``computer_clipboard_write``, ``computer_list_windows``,
+``computer_open_app``, ``computer_focus_window``,
+``computer_switch_window``, and ``computer_run_task`` (a
+multi-step task run end to end). :func:`handle_tool` dispatches
+one call to a :class:`~puspa.computer.hands.DesktopHands`
 instance (and, for the V2-32 tools, to a
-:class:`~puspa.computer.fallback.VisualFallback` / :class:`~puspa.computer.web.WebBridge`
-passed as ``fallback`` / ``web``) and returns a plain JSON-ready
-dict.
+:class:`~puspa.computer.fallback.VisualFallback` /
+:class:`~puspa.computer.web.WebBridge` passed as ``fallback`` /
+``web``) and returns a plain JSON-ready dict.
+
 
 These definitions are ready for the future ``puspa mcp`` server
 (V2-37). That server does NOT exist yet: nothing here claims a
 working MCP server, and :func:`mcp_server_definition` only builds
 the validated definition dict the server will serve one day.
+
+Clipboard content goes to the calling agent only, through the
+``computer_clipboard_read`` result: it is never written to a
+log, a file, or the CLI, and it never appears in any other
+tool's result.
 """
 
 from __future__ import annotations
@@ -38,6 +51,20 @@ __all__ = [
     "mcp_server_definition",
     "tool_definitions",
 ]
+
+_EXPECT_SCHEMA = {
+    "type": "object",
+    "description": "What the re-read should find: name, state, role, absent=true, value, or value_contains.",
+    "properties": {
+        "name": {"type": "string"},
+        "state": {"type": "string"},
+        "role": {"type": "string"},
+        "absent": {"type": "boolean"},
+        "value": {"type": "string"},
+        "value_contains": {"type": "string"},
+    },
+    "additionalProperties": False,
+}
 
 TOOL_DEFINITIONS: list[dict] = [
     {
@@ -82,17 +109,7 @@ TOOL_DEFINITIONS: list[dict] = [
                     "type": "string",
                     "description": "Element ref from computer_snapshot, e.g. 'n3'.",
                 },
-                "expect": {
-                    "type": "object",
-                    "description": "What the re-read should find: name, state, or absent=true.",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "state": {"type": "string"},
-                        "role": {"type": "string"},
-                        "absent": {"type": "boolean"},
-                    },
-                    "additionalProperties": False,
-                },
+                "expect": _EXPECT_SCHEMA,
             },
             "required": ["ref"],
         },
@@ -111,19 +128,194 @@ TOOL_DEFINITIONS: list[dict] = [
                     "type": "string",
                     "description": "Element ref from computer_snapshot, e.g. 'n3'.",
                 },
+                "expect": _EXPECT_SCHEMA,
+            },
+            "required": ["ref"],
+        },
+    },
+    {
+        "name": "computer_type",
+        "description": (
+            "Type text into one editable element by ref from the latest snapshot. Permission-gated "
+            "(the user is asked first, and a token without the computer.type permission is refused), "
+            "then the screen is re-read to verify: pass expect with value or value_contains to say "
+            "what the element should hold afterwards. Returns performed separately from verified."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ref": {
+                    "type": "string",
+                    "description": "Element ref from computer_snapshot, e.g. 'n5'.",
+                },
+                "text": {"type": "string", "description": "Text to type into the element."},
+                "expect": _EXPECT_SCHEMA,
+            },
+            "required": ["ref", "text"],
+        },
+    },
+    {
+        "name": "computer_shortcut",
+        "description": (
+            "Press a keyboard chord like 'ctrl+a' (keys joined with '+'). With ref the chord targets "
+            "that element; without one it targets the focused element. Permission-gated, then the "
+            "screen is re-read to verify. Returns performed separately from verified."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "keys": {"type": "string", "description": "Chord to press, e.g. 'ctrl+a'."},
+                "ref": {
+                    "type": "string",
+                    "description": "Element ref to target; without one, the focused element.",
+                },
+                "expect": _EXPECT_SCHEMA,
+            },
+            "required": ["keys"],
+        },
+    },
+    {
+        "name": "computer_scroll",
+        "description": (
+            "Scroll at one element by ref from the latest snapshot. Permission-gated, then the screen "
+            "is re-read to verify: without an expect the result is only verified when the re-read "
+            "shows a visible change, so pass expect (name, state, value, or value_contains) when the "
+            "scroll should reveal something specific."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ref": {
+                    "type": "string",
+                    "description": "Element ref from computer_snapshot, e.g. 'n5'.",
+                },
+                "direction": {
+                    "type": "string",
+                    "enum": ["up", "down", "left", "right"],
+                    "default": "down",
+                    "description": "Scroll direction (default down).",
+                },
+                "amount": {
+                    "type": "integer",
+                    "default": 3,
+                    "description": "Scroll clicks (default 3).",
+                },
+                "expect": _EXPECT_SCHEMA,
+            },
+            "required": ["ref"],
+        },
+    },
+    {
+        "name": "computer_drag",
+        "description": (
+            "Drag the element at ref_from onto the element at ref_to. Permission-gated, then the "
+            "drop target is re-read to verify. Returns performed separately from verified."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ref_from": {"type": "string", "description": "Element ref to drag, e.g. 'n7'."},
+                "ref_to": {"type": "string", "description": "Element ref to drop onto, e.g. 'n8'."},
+                "expect": _EXPECT_SCHEMA,
+            },
+            "required": ["ref_from", "ref_to"],
+        },
+    },
+    {
+        "name": "computer_clipboard_read",
+        "description": (
+            "Read the session clipboard. Permission-gated (the user is asked first). The content is "
+            "returned to the calling agent only; it is never written to a log, a file, or the CLI."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "computer_clipboard_write",
+        "description": (
+            "Replace the session clipboard with the given text, then read it back to verify. "
+            "Permission-gated (the user is asked first). The result reports only the length, never "
+            "the content."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "Text to put on the clipboard."},
+            },
+            "required": ["text"],
+        },
+    },
+    {
+        "name": "computer_list_windows",
+        "description": (
+            "List the open windows (id, app, title, focused). Read-only: never asks the user. "
+            "Use the ids with computer_focus_window and computer_switch_window."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "computer_open_app",
+        "description": (
+            "Open an app by executable name (or desktop entry), then re-read the tree to verify a "
+            "window for it appeared. Permission-gated. Returns performed separately from verified."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "App to open, e.g. 'gedit'."},
                 "expect": {
                     "type": "object",
-                    "description": "What the re-read should find: name, state, role, or absent=true.",
+                    "description": "What the new window should be: app (application name) or title.",
                     "properties": {
-                        "name": {"type": "string"},
-                        "state": {"type": "string"},
-                        "role": {"type": "string"},
-                        "absent": {"type": "boolean"},
+                        "app": {"type": "string"},
+                        "title": {"type": "string"},
                     },
                     "additionalProperties": False,
                 },
             },
-            "required": ["ref"],
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "computer_focus_window",
+        "description": (
+            "Bring one window to the front by id from computer_list_windows, then re-read the window "
+            "list to verify it is the focused one. Permission-gated."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "window_id": {"type": "string", "description": "Window id, e.g. '0.1'."},
+            },
+            "required": ["window_id"],
+        },
+    },
+    {
+        "name": "computer_switch_window",
+        "description": (
+            "Switch to the next window after the focused one (cycling), then re-read to verify the "
+            "focus moved. Permission-gated. Refused when only one window is open."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "computer_run_task",
+        "description": (
+            "Run a multi-step task end to end: a list of steps (type, shortcut, scroll, drag, click, "
+            "verify, clipboard_read, clipboard_write, open_app, focus_window, switch_window, "
+            "list_windows, snapshot), each with that action's arguments and an optional expect. "
+            "Stops at the first step that did not perform or did not verify. Clipboard content never "
+            "appears in the results."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "steps": {
+                    "type": "array",
+                    "description": "Steps to run in order; each step is an object with an 'action' field.",
+                    "items": {"type": "object"},
+                },
+            },
+            "required": ["steps"],
         },
     },
     {
@@ -229,7 +421,8 @@ TOOL_DEFINITIONS: list[dict] = [
 
 
 def tool_definitions() -> list[dict]:
-    """A fresh copy of the seven tool definitions."""
+    """A fresh copy of the eighteen tool definitions."""
+
     return copy.deepcopy(TOOL_DEFINITIONS)
 
 
@@ -243,8 +436,8 @@ def mcp_server_definition() -> dict:
         "version": "0.1.0",
         "description": (
             "Drive the local desktop through its accessibility tree (snapshot, click, verify), "
-            "fall back to screenshot + OCR when the tree is too poor, and drive web pages in "
-            "headless Chromium."
+            "type, shortcuts, scroll, drag, clipboard, and window management, fall back to "
+            "screenshot + OCR when the tree is too poor, and drive web pages in headless Chromium."
         ),
         "server": {"command": "puspa", "args": ["mcp"], "transport": "stdio", "env": {}},
         "tools": tool_definitions(),
@@ -299,6 +492,71 @@ def handle_tool(
         if not isinstance(ref, str) or not ref:
             raise ValueError("computer_verify needs a string 'ref'")
         return _verification_to_dict(hands.verify(ref, expect=arguments.get("expect")))
+
+    if name == "computer_type":
+        ref = arguments.get("ref")
+        text = arguments.get("text")
+        if not isinstance(ref, str) or not ref:
+            raise ValueError("computer_type needs a string 'ref'")
+        if not isinstance(text, str):
+            raise ValueError("computer_type needs a string 'text'")
+        return hands.type_text(ref, text, expect=arguments.get("expect")).to_dict()
+    if name == "computer_shortcut":
+        keys = arguments.get("keys")
+        if not isinstance(keys, str) or not keys:
+            raise ValueError("computer_shortcut needs a string 'keys'")
+        ref = arguments.get("ref")
+        if ref is not None and not isinstance(ref, str):
+            raise ValueError("computer_shortcut 'ref' must be a string")
+        return hands.shortcut(keys, ref, expect=arguments.get("expect")).to_dict()
+    if name == "computer_scroll":
+        ref = arguments.get("ref")
+        if not isinstance(ref, str) or not ref:
+            raise ValueError("computer_scroll needs a string 'ref'")
+        direction = arguments.get("direction", "down")
+        if direction not in ("up", "down", "left", "right"):
+            raise ValueError(
+                f"computer_scroll direction must be up/down/left/right, got {direction!r}"
+            )
+        return hands.scroll(
+            ref, direction, int(arguments.get("amount", 3)), expect=arguments.get("expect")
+        ).to_dict()
+    if name == "computer_drag":
+        ref_from = arguments.get("ref_from")
+        ref_to = arguments.get("ref_to")
+        if not isinstance(ref_from, str) or not ref_from:
+            raise ValueError("computer_drag needs a string 'ref_from'")
+        if not isinstance(ref_to, str) or not ref_to:
+            raise ValueError("computer_drag needs a string 'ref_to'")
+        return hands.drag(ref_from, ref_to, expect=arguments.get("expect")).to_dict()
+    if name == "computer_clipboard_read":
+        clip = hands.clipboard_read()
+        return {"length": clip.length, "content": clip.content}
+    if name == "computer_clipboard_write":
+        text = arguments.get("text")
+        if not isinstance(text, str):
+            raise ValueError("computer_clipboard_write needs a string 'text'")
+        return hands.clipboard_write(text).to_dict()
+    if name == "computer_list_windows":
+        return {"windows": [window.to_dict() for window in hands.list_windows()]}
+    if name == "computer_open_app":
+        app_name = arguments.get("name")
+        if not isinstance(app_name, str) or not app_name:
+            raise ValueError("computer_open_app needs a string 'name'")
+        return hands.open_app(app_name, expect=arguments.get("expect")).to_dict()
+    if name == "computer_focus_window":
+        window_id = arguments.get("window_id")
+        if not isinstance(window_id, str) or not window_id:
+            raise ValueError("computer_focus_window needs a string 'window_id'")
+        return hands.focus_window(window_id).to_dict()
+    if name == "computer_switch_window":
+        return hands.switch_window().to_dict()
+    if name == "computer_run_task":
+        steps = arguments.get("steps")
+        if not isinstance(steps, list):
+            raise ValueError("computer_run_task needs a list 'steps'")
+        return hands.run_task(steps)
+
     if name == "computer_visual_locate":
         if fallback is None:
             raise ValueError("computer_visual_locate needs a VisualFallback (no fallback wired up)")
@@ -332,4 +590,5 @@ def handle_tool(
             raise ValueError("computer_web_click needs a string 'text'")
         web_result: WebClickResult = web.click_text(text, expect=arguments.get("expect"))
         return web_result.to_dict()
+
     raise ValueError(f"unknown computer tool {name!r}")

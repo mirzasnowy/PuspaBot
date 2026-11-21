@@ -39,6 +39,7 @@ __all__ = [
     "BackendUnavailableError",
     "FakeBackend",
     "demo_tree",
+    "find_live_accessible",
     "make_backend",
 ]
 
@@ -93,6 +94,25 @@ class AccessibilityBackend(Protocol):
         ...
 
 
+def find_live_accessible(libs: _AtspiLibs, path: tuple[int, ...]) -> int | None:
+    """Walk the live tree along ``path``; returns the raw pointer
+    (owned, caller must unref) or None. Shared by the click path
+    and the V2-33 input/window backends so the walk lives in one
+    place."""
+    if not path:
+        return None
+    current = libs.atspi.atspi_get_desktop(path[0])
+    if not current:
+        return None
+    for index in path[1:]:
+        child = libs.atspi.atspi_accessible_get_child_at_index(current, index)
+        libs.gobject.g_object_unref(current)
+        if not child:
+            return None
+        current = child
+    return current
+
+
 # ------------------------------------------------------------------
 # Fake backend (tests + demos)
 # ------------------------------------------------------------------
@@ -115,6 +135,17 @@ def demo_tree() -> list[dict]:
                             "name": "Pin note",
                             "actions": ["click"],
                             "after_click": {"states_add": ["checked"]},
+                        },
+                        {
+                            "role": "text",
+                            "name": "Note body",
+                            "editable": True,
+                            "value": "",
+                            "states": ["focused", "enabled"],
+                            "shortcuts": {"ctrl+a": {"states_add": ["selected"]}},
+                            "scrollable": True,
+                            "scroll": 0,
+                            "after_scroll": {"states_add": ["scrolled"]},
                         },
                     ],
                 }
@@ -159,6 +190,7 @@ def _spec_to_node(spec: dict, path: tuple[int, ...]) -> AccessibleNode:
         actions=tuple(spec.get("actions", ())),
         children=children,
         child_count=len(children),
+        value=str(spec.get("value", "")),
     )
 
 
@@ -188,6 +220,13 @@ class FakeBackend:
 
     def __init__(self, spec: list[dict] | None = None) -> None:
         self._spec: list[dict] = spec if spec is not None else demo_tree()
+
+    @property
+    def spec(self) -> list[dict]:
+        """The live spec list, shared with the V2-33 fake input
+        and window backends so one tree is the single source of
+        truth for reads and writes."""
+        return self._spec
 
     def is_available(self) -> bool:
         return True
@@ -295,6 +334,15 @@ def _load_atspi_libs() -> _AtspiLibs:
         atspi.atspi_action_get_action_name.argtypes = [void_p, int_p]
         atspi.atspi_action_do_action.restype = ctypes.c_bool
         atspi.atspi_action_do_action.argtypes = [void_p, int_p]
+        # Text interface (V2-33): read an element's current text
+        # so typed text is visible in the re-read, and find the
+        # editable-text interface for typing.
+        atspi.atspi_accessible_get_text.restype = void_p
+        atspi.atspi_accessible_get_text.argtypes = [void_p]
+        atspi.atspi_text_get_text.restype = void_p
+        atspi.atspi_text_get_text.argtypes = [void_p, int_p, int_p]
+        atspi.atspi_text_get_character_count.restype = int_p
+        atspi.atspi_text_get_character_count.argtypes = [void_p]
         libs["gobject"].g_object_unref.restype = None
         libs["gobject"].g_object_unref.argtypes = [void_p]
         libs["glib"].g_free.restype = None
@@ -413,6 +461,22 @@ class AtspiBackend:
         finally:
             libs.gobject.g_object_unref(action)
 
+    def _text_value(self, libs: _AtspiLibs, accessible: int) -> str:
+        """Current text of an element through the AT-SPI text
+        interface (V2-33); "" when the element has no text."""
+        text = libs.atspi.atspi_accessible_get_text(accessible)
+        if not text:
+            return ""
+        try:
+            count = libs.atspi.atspi_text_get_character_count(text)
+            if count <= 0:
+                return ""
+            return self._read_string(libs, libs.atspi.atspi_text_get_text(text, 0, -1))
+        except Exception:
+            return ""
+        finally:
+            libs.gobject.g_object_unref(text)
+
     def _walk(
         self,
         libs: _AtspiLibs,
@@ -431,6 +495,7 @@ class AtspiBackend:
         states = self._states(libs, accessible)
         x, y, width, height = self._bounds(libs, accessible)
         actions = self._actions(libs, accessible)
+        value = self._text_value(libs, accessible)
         child_count = max(libs.atspi.atspi_accessible_get_child_count(accessible), 0)
         children: list[AccessibleNode] = []
         collapsed = False
@@ -468,6 +533,7 @@ class AtspiBackend:
             children=tuple(children),
             child_count=child_count,
             collapsed=collapsed,
+            value=value,
         )
 
     def snapshot(
@@ -498,18 +564,7 @@ class AtspiBackend:
     def _find_live(self, libs: _AtspiLibs, path: tuple[int, ...]) -> int | None:
         """Walk the live tree along ``path``; returns the raw
         pointer (owned, caller must unref) or None."""
-        if not path:
-            return None
-        current = libs.atspi.atspi_get_desktop(path[0])
-        if not current:
-            return None
-        for index in path[1:]:
-            child = libs.atspi.atspi_accessible_get_child_at_index(current, index)
-            libs.gobject.g_object_unref(current)
-            if not child:
-                return None
-            current = child
-        return current
+        return find_live_accessible(libs, path)
 
     def click(self, node: AccessibleNode) -> bool:
         libs = self._libs_or_raise()
