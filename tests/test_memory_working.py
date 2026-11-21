@@ -56,13 +56,11 @@ class FakeClock:
 def _store(**kwargs) -> WorkingMemory:
     """A working memory over a fresh in-memory fact store."""
     facts = MemoryFactStore()
-    memory = WorkingMemory(USER_ID, fact_store=facts, **kwargs)
-    memory._facts = facts  # test handle: the promotion sink
-    return memory
+    return WorkingMemory(USER_ID, fact_store=facts, **kwargs)
 
 
 def _facts_of(memory: WorkingMemory) -> MemoryFactStore:
-    return memory._facts
+    return memory._fact_store
 
 
 # ----------------------------------------------------------------------
