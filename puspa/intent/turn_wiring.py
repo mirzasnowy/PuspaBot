@@ -78,7 +78,16 @@ class IntentTurnAdvisor:
     and a custom inferrer. ``context_provider`` replaces the
     stored profile/world when given: a ``message -> IntentContext``
     callable, for callers whose profile or world changes between
-    turns and want it read fresh each time.
+    turns and want it read fresh each time. ``plan_provider`` is
+    the recall-first seam: a ``message -> RecallPlan`` callable
+    (see :func:`puspa.memory.recall_plan.recall_plan`) that is
+    run inside :meth:`_context`, before intent inference, so a
+    cold session recalls pinned items, semantic facts, linked
+    episodes, and person models before any intent is read. The
+    plan of the last call is kept on ``last_plan`` for the
+    caller to inspect. The recalled profile fills in under the
+    stored profile: a key the constructor was given wins over a
+    recalled one.
     """
 
     def __init__(
@@ -90,6 +99,7 @@ class IntentTurnAdvisor:
         action_specs: dict[str, ActionSpec] | None = None,
         approval_policy: ApprovalPolicy | None = None,
         context_provider=None,
+        plan_provider=None,
     ) -> None:
         self._profile = dict(profile) if profile else {}
         self._world = world
@@ -97,6 +107,8 @@ class IntentTurnAdvisor:
         self._specs = dict(action_specs) if action_specs else {}
         self._approval_policy = approval_policy
         self._context_provider = context_provider
+        self._plan_provider = plan_provider
+        self.last_plan = None
 
     @property
     def action_specs(self) -> dict[str, ActionSpec]:
@@ -106,6 +118,11 @@ class IntentTurnAdvisor:
     def _context(self, message: str) -> IntentContext:
         if self._context_provider is not None:
             return self._context_provider(message)
+        if self._plan_provider is not None:
+            plan = self._plan_provider(message)
+            self.last_plan = plan
+            recalled = plan.intent_context(world=self._world).profile
+            return IntentContext(profile={**recalled, **self._profile}, world=self._world)
         return IntentContext(profile=dict(self._profile), world=self._world)
 
     def advise(self, message: str, tool_name: str, arguments: dict | None = None) -> ActAskDecision:
