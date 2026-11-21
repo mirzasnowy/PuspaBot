@@ -6,7 +6,7 @@ bersama tanpa identitas. Persetujuan dicatat di Buku Kerja (jenis
 kejadian `persetujuan_data` SUDAH ADA di ledger Fase 0) + tabel
 `persetujuan_data`.
 
-TEKS DI BAWAH INI VERSI `v1-2026-11-17` — perlu ditinjau ahli hukum
+TEKS DI BAWAH INI VERSI `v2-2026-11-21` — perlu ditinjau ahli hukum
 sebelum pengguna di luar lingkaran dekat (keputusan 20). Dokumen ini
 BUKAN nasihat hukum; tinjauan hukum dicatat sebagai langkah tertunda
 di STATUS_FASE1.md, bukan dikerjakan di sini.
@@ -19,15 +19,15 @@ from psycopg.rows import dict_row
 
 from ..memory.schema import resolve_dsn
 
-TEKS_VERSI = "v1-2026-11-17"
+TEKS_VERSI = "v2-2026-11-21"
 
-TEXT_APPROVAL = """Puspa data consent (version v1-2026-11-17)
+TEXT_APPROVAL = """PuspaBot data consent (version v2-2026-11-21)
 
 What data is stored: chats with your agent, memory (profile, history,
 procedures), the customer numbers you grant, and your Gmail, Drive,
 and Calendar tokens.
 
-Where: on the Puspa server (PostgreSQL + encrypted vault). Tokens are
+Where: on the PuspaBot server (PostgreSQL + encrypted vault). Tokens are
 stored encrypted; the master key does not exist in the database.
 
 How long: for as long as your account is active. Backups are kept for
@@ -44,7 +44,7 @@ deleted with it; audit records remain as tombstones without content).
 Shared graph: public price facts from your comparisons go into the
 shared graph WITHOUT your identity.
 
-By agreeing, you allow Puspa to store and use the data above to run
+By agreeing, you allow PuspaBot to store and use the data above to run
 your tasks.
 """
 
