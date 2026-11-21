@@ -6,7 +6,7 @@ not define new tools; it adapts two existing ones, with no edits to
 their home packages:
 
 - ``run_code`` -- :class:`puspa.chassis.sandbox_tool.SandboxTool`
-  (code execution in the Docker sandbox). Its ``execute`` is async,
+  (code execution through the local runner). Its ``execute`` is async,
   so the adapter handler is async too and dispatch goes through
   ``handle_function_call_async`` (or the sync path, which drives it
   with ``asyncio.run`` outside a running loop).

@@ -54,7 +54,7 @@ class PuspaChassis:
     ledger: Any = None  # puspa.ledger.Ledger atau None (tanpa audit persisten)
     gate: Any = None  # puspa.policy.Gate atau None (tanpa gerbang -> aksi keluar ditolak)
     public_key: Any = None  # verifikasi token + skill (Ed25519 public key)
-    sandbox: Any = None  # puspa.sandbox.Sandbox atau None (dibuat default di tool)
+    executor: Any = None  # puspa.localexec.Executor atau None (dibuat default di tool)
     skill_manifests: dict = field(default_factory=dict)  # nama tool -> manifes
     log: Any = None  # callable log(jenis, isi); kalau None dan ledger ada, dibuat dari ledger
     world_model: Any = None  # puspa.world.WorldModel atau None (tanpa otak)
@@ -106,7 +106,7 @@ def build_registry(chassis: PuspaChassis) -> PuspaRegistry:
         public_key=chassis.public_key,
         skill_manifests=chassis.skill_manifests,
     )
-    registry.register(SandboxTool(chassis.sandbox))
+    registry.register(SandboxTool(chassis.executor))
     if chassis.plugins:
         from puspa.plugins.adapters import attach_plugin_tools
 
