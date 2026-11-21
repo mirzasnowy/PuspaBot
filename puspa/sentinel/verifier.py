@@ -36,6 +36,7 @@ from datetime import UTC, datetime
 
 from puspa.sentinel.detectors import (
     detect_cost_overruns,
+    detect_outcome_failures,
     detect_queue_waits,
     detect_retry_loops,
     detect_tool_errors,
@@ -52,6 +53,7 @@ _DETECTOR_BY_NAME = {
     "queue_wait": detect_queue_waits,
     "cost": detect_cost_overruns,
     "retry_loop": detect_retry_loops,
+    "outcome_failure": detect_outcome_failures,
 }
 
 

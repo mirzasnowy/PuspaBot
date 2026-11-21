@@ -58,6 +58,7 @@ from puspa.sentinel.decision_log import DailyDecisionLog
 from puspa.sentinel.detectors import (
     DETECTORS,
     detect_cost_overruns,
+    detect_outcome_failures,
     detect_queue_waits,
     detect_retry_loops,
     detect_tool_errors,
@@ -108,6 +109,7 @@ __all__ = [
     "VerificationVerdict",
     "acknowledge_issue",
     "detect_cost_overruns",
+    "detect_outcome_failures",
     "detect_queue_waits",
     "detect_retry_loops",
     "detect_tool_errors",
