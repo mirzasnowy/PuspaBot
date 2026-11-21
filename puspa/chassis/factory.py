@@ -11,12 +11,16 @@ resmi nanobot:
 - ``Nanobot.run(..., hooks=[...], attributes={"puspa_token": payload})``
   — attributes adalah slot resmi "caller-owned request data".
 
-``assemble`` membangun loop lengkap; butuh ``Config`` nanobot + provider
-(model) yang valid, jadi uji end-to-end loop penuh ditunda ke fase 2
-(lihat STATUS.md). Yang diuji di fase 0: ``build_registry`` dan
-``build_hook_factory`` (komponen nyata) + ``assemble`` dengan
-``AgentLoop.from_config`` yang di-stub (membuktikan kwarg komposisi
-yang benar diteruskan, tanpa membangun loop sungguhan).
+``assemble`` builds the full loop; it needs a nanobot ``Config`` plus a
+valid provider (model). Callers that run offline pass a scripted
+provider through ``assemble(..., provider=...)``; the loop then runs
+for real with canned model answers, and no network call is made.
+What phase 0 tests: ``build_registry`` and ``build_hook_factory``
+(real components) plus ``assemble`` with a stubbed
+``AgentLoop.from_config`` (proving the right composition kwargs are
+passed, without building a real loop). The full-loop test lives in
+``tests/test_chassis_full_loop.py``: it runs the real ``AgentLoop``
+through ``assemble`` end to end.
 
 Urutan pendaftaran tool: tool Puspa (``SandboxTool``) didaftarkan dulu ke
 registry, sebelum ``AgentLoop`` dibuat — karena ``ToolLoader`` nanobot
@@ -169,11 +173,17 @@ def build_hook(chassis: PuspaChassis, *, rail_set=None) -> PuspaHook:
     )
 
 
-def assemble(chassis: PuspaChassis, config, *, bus=None):
-    """Bangun ``AgentLoop`` nanobot dengan wiring Puspa terpasang.
+def assemble(chassis: PuspaChassis, config, *, bus=None, provider=None):
+    """Build the nanobot ``AgentLoop`` with the Puspa wiring attached.
 
-    Lazy import: modul ini (dan paket ``puspa.chassis``) tetap bisa
-    diimpor tanpa nanobot; hanya ``assemble`` yang butuh nanobot.
+    Lazy import: this module (and the ``puspa.chassis`` package) stays
+    importable without nanobot; only ``assemble`` needs nanobot.
+
+    ``provider`` is an optional already-built LLM provider. When it is
+    given it is passed straight to ``AgentLoop.from_config`` instead
+    of building one from the config, so offline callers (tests) can
+    run the real loop with a scripted provider and no network call.
+    When it is None, the provider comes from the config as before.
     """
     from nanobot.agent.loop import AgentLoop
 
@@ -199,4 +209,5 @@ def assemble(chassis: PuspaChassis, config, *, bus=None):
         tool_registry=registry,
         hooks=hooks,
         hook_factories=[build_hook_factory(chassis, rail_set=rail_set)],
+        provider=provider,
     )
