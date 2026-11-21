@@ -46,6 +46,17 @@ from puspa.policy.agent_scan import (
 BUILD_DIR = Path(__file__).resolve().parent.parent
 NANOBOT_SKILLS = BUILD_DIR / "nanobot" / "nanobot" / "skills"
 
+# The nanobot checkout is local-only (never committed to the repo), so
+# the real-skill fixtures exist on a developer machine but not in CI.
+# The three tests below skip there instead of failing on a missing file.
+_REAL_SKILLS_AVAILABLE = (NANOBOT_SKILLS / "weather" / "SKILL.md").exists() and (
+    NANOBOT_SKILLS / "summarize" / "SKILL.md"
+).exists()
+_REQUIRES_REAL_SKILLS = pytest.mark.skipif(
+    not _REAL_SKILLS_AVAILABLE,
+    reason="nanobot checkout absent; real-skill fixtures are local-only",
+)
+
 
 # ---------------------------------------------------------------------------
 # Fixture builders
@@ -545,6 +556,7 @@ def test_dotted_domain_like_name_is_not_the_sh_tool():
     assert {f.rule for f in findings} == {RULE_GATE_BYPASS}
 
 
+@_REQUIRES_REAL_SKILLS
 def test_real_weather_skill_passes_with_declared_domains(tmp_path):
     skill_md = (NANOBOT_SKILLS / "weather" / "SKILL.md").read_text(encoding="utf-8")
     manifest = {
@@ -560,6 +572,7 @@ def test_real_weather_skill_passes_with_declared_domains(tmp_path):
     assert result.passed, result.format_report()
 
 
+@_REQUIRES_REAL_SKILLS
 def test_real_summarize_skill_passes(tmp_path):
     skill_md = (NANOBOT_SKILLS / "summarize" / "SKILL.md").read_text(encoding="utf-8")
     manifest = {
@@ -575,6 +588,7 @@ def test_real_summarize_skill_passes(tmp_path):
     assert result.passed, result.format_report()
 
 
+@_REQUIRES_REAL_SKILLS
 def test_real_builtin_skills_false_positive_count(tmp_path):
     """Measured false positives on real skills: weather and summarize
     with honest manifests must both pass, 0 of 2 flagged."""
