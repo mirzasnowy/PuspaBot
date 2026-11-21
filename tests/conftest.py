@@ -218,6 +218,10 @@ MEMORY_TABLES = (
     "durable_memory",
     "narrative_journal",
     "turn_commit_retries",
+    "memory_import_batches",
+    "memory_import_items",
+    "memory_import_quarantine",
+    "memory_forget_list",
 )
 
 

@@ -13,5 +13,5 @@ DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 
 def create_schema(dsn=None):
-    """Apply the Phase 1 memory tables (migration 0030_turn_commit_retries)."""
-    apply_migrations(resolve_dsn(dsn), target="0030")
+    """Apply the Phase 1 memory tables (migration 0031_memory_import)."""
+    apply_migrations(resolve_dsn(dsn), target="0031")
