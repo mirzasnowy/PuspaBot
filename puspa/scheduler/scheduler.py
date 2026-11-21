@@ -45,6 +45,7 @@ TRIGGER_TYPES = (
     "ontology_review",
     "amnesia_check",
     "longterm_consolidation",
+    "initiative_digest",
 )
 
 #: Proactive trigger types pay from the interruption budget (K10):
@@ -670,6 +671,25 @@ def schedule_amnesia_check(user_id: str, *, hour: int = 3, dsn=None) -> Trigger:
     )
 
 
+def schedule_initiative_digest(user_id: str, *, hour: int = 7, dsn=None) -> Trigger:
+    """Register the daily initiative digest (K14) as a trigger.
+
+    Running this trigger calls ``puspa.self.initiative.
+    run_daily_digest_job`` through ``run_scheduled_job`` below:
+    the standing goals and pending commitments are read from
+    durable memory, candidates are derived, and the digest is
+    rendered. The job has no executor, so it only ever
+    proposes — nothing runs silently from the scheduled job.
+    The scheduler moves the trigger one day forward on each
+    run (see ``run_trigger``), so this registration gives one
+    digest a morning at the given hour.
+    """
+    tomorrow = (_now() + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
+    return create_trigger(
+        user_id, "initiative_digest", tomorrow, schedule=f"daily {hour:02d}:00", dsn=dsn
+    )
+
+
 def schedule_longterm_consolidation(user_id: str, *, hour: int = 4, dsn=None) -> Trigger:
     """Register the nightly long-term consolidation (K16) as a trigger.
 
@@ -786,4 +806,9 @@ def run_scheduled_job(run: dict, *, dsn=None) -> dict:
 
         result = run_sentinel_scan(user_id=str(user_id), dsn=dsn)
         return {"job": "sentinel_scan", "result": result}
+    if event_type == "initiative_digest":
+        from puspa.self.initiative import run_daily_digest_job
+
+        result = run_daily_digest_job(str(user_id), dsn=dsn)
+        return {"job": "initiative_digest", "result": result}
     return {"job": "regular_task", "result": run["task_id"]}
