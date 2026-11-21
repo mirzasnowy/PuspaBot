@@ -6,6 +6,13 @@ cost are deliberately NOT compared: time varies between runs and
 cost is always 0.0 here. A replay re-runs the tasks and compares
 outcome and steps per task. The gate target is 9 of 10 identical;
 the tasks are deterministic, so a healthy run replays 10 of 10.
+
+K8 follow-up: a task recorded as passing that newly fails on
+replay is a late failure, not just a differing line. When a
+watcher is bound, ``replay_run`` registers each such task with
+it, and the watcher's recheck re-executes the task with fresh
+data before anything is recorded (the verifier pattern: never
+trust the scan that produced the candidate).
 """
 
 from __future__ import annotations
@@ -15,6 +22,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from puspa.evidence.eval_harness import watch_eval_outcome
+
 from .reference_tasks import REFERENCE_TASK_IDS, reference_tasks, run_reference_tasks
 
 CASSETTE_VERSION = 1
@@ -23,6 +32,20 @@ CASSETTE_VERSION = 1
 def _outcome_hash(ok: bool, steps: int) -> str:
     payload = json.dumps({"ok": ok, "steps": steps}, sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _fresh_observed(task_id: str) -> str:
+    """Re-execute one reference task and report pass/fail.
+
+    The watcher's recheck for a newly-failing task: it re-reads
+    fresh data instead of trusting the replay that flagged the
+    flip. A task that no longer exists reports ``"failed"`` —
+    a missing task is a failure, never a pass.
+    """
+    for task in reference_tasks():
+        if task.id == task_id:
+            return "passed" if task.execute().ok else "failed"
+    return "failed"
 
 
 @dataclass(frozen=True)
@@ -63,8 +86,16 @@ def record_run(path: str | Path, *, repetitions: int = 1) -> Path:
     return out_path
 
 
-def replay_run(path: str | Path, *, repetitions: int = 1) -> ReplayComparison:
-    """Re-run the tasks and compare outcome and steps to a cassette."""
+def replay_run(path: str | Path, *, repetitions: int = 1, watcher=None) -> ReplayComparison:
+    """Re-run the tasks and compare outcome and steps to a cassette.
+
+    With a watcher bound, every task recorded as passing that
+    newly fails is registered with it (K8 follow-up): the
+    watcher's recheck re-executes the task before the flip is
+    recorded as a late failure. A task that still passes is
+    never registered, and a task that was already failing when
+    recorded is not a late failure — it never passed.
+    """
     cassette_path = Path(path)
     recorded = {}
     for line in cassette_path.read_text(encoding="utf-8").splitlines():
@@ -72,7 +103,9 @@ def replay_run(path: str | Path, *, repetitions: int = 1) -> ReplayComparison:
             continue
         record = json.loads(line)
         recorded[record["task_id"]] = record
-    fresh = {task.id: task.execute() for task in reference_tasks()}
+    tasks = reference_tasks()
+    by_id = {task.id: task for task in tasks}
+    fresh = {task.id: task.execute() for task in tasks}
     differing: list[str] = []
     identical = 0
     for task_id in REFERENCE_TASK_IDS:
@@ -92,4 +125,13 @@ def replay_run(path: str | Path, *, repetitions: int = 1) -> ReplayComparison:
                 f"{task_id}: recorded ok={old['ok']} steps={old['steps']}, "
                 f"replayed ok={new.ok} steps={new.steps}"
             )
+            if old["ok"] and not new.ok and watcher is not None:
+                watch_eval_outcome(
+                    watcher,
+                    outcome_id=f"replay:{task_id}",
+                    task_name=by_id[task_id].name,
+                    task_id=task_id,
+                    predicted=f"recorded ok steps={old['steps']}",
+                    recheck=lambda task_id=task_id: _fresh_observed(task_id),
+                )
     return ReplayComparison(total=len(REFERENCE_TASK_IDS), identical=identical, differing=differing)

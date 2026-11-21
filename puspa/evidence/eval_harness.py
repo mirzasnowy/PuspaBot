@@ -27,6 +27,12 @@ Puspa's harness, in Puspa's own code:
   The cassette price is tampered with, the solver replays it, and the
   existing ``puspa/evidence/verifier.py`` must refuse to verify the
   tampered value against a reread of the true value.
+- ``watcher``: an optional outcome watcher bound to ``EvalHarness``
+  (K8 follow-up). A task that passes is registered with the watcher,
+  which re-verifies it later by re-running it: a task that passed
+  and later fails is a late failure, recorded and fed to the
+  learning loop. ``puspa/eval/replay.py`` registers the other
+  direction: a task recorded as passing that newly fails on replay.
 
 Numbers in a report are computed by code from scored states, never
 typed by a model. Where a report needs an evidence-backed number it
@@ -56,6 +62,7 @@ from puspa.cassette.cassette import (
 from puspa.evidence.renderer import render as render_markers
 
 __all__ = [
+    "EVAL_WATCH_USER_ID",
     "EvalHarness",
     "EvalReport",
     "EvalResult",
@@ -69,10 +76,40 @@ __all__ = [
     "run_reference_eval",
     "sandbox_available",
     "score_state",
+    "watch_eval_outcome",
 ]
 
 #: Harness version, pinned on every report so runs are comparable.
 HARNESS_VERSION = "1.0.0"
+
+#: The user id eval runs are watched under (K8 follow-up). The
+#: harness is a system actor, not a person, so its watches are
+#: named as such and never attributed to a real user.
+EVAL_WATCH_USER_ID = "eval-harness"
+
+
+def watch_eval_outcome(watcher, *, outcome_id, task_name, task_id, predicted, recheck):
+    """Register one passing eval outcome with the outcome watcher.
+
+    The watcher re-verifies it later by calling ``recheck``; a
+    recheck that no longer returns ``"passed"`` is a late failure
+    (recorded and fed to the learning loop by the watcher). The
+    watcher is duck-typed — any object with ``watch(outcome, *,
+    recheck)`` — so the harness never imports the sentinel
+    package. ``predicted`` is the expected state the task was
+    scored against, kept on the watch for the record.
+    """
+    watcher.watch(
+        {
+            "outcome_id": outcome_id,
+            "task": task_name,
+            "predicted": predicted,
+            "observed": "passed",
+            "user_id": EVAL_WATCH_USER_ID,
+            "task_id": task_id,
+        },
+        recheck=recheck,
+    )
 
 
 @dataclass
@@ -238,15 +275,29 @@ def load_reference_tasks(cassette_dir: Path | str | None = None) -> list[EvalTas
 
 
 class EvalHarness:
-    """Run tasks with a solver, score them with a scorer."""
+    """Run tasks with a solver, score them with a scorer.
+
+    ``watcher`` is an optional outcome watcher (K8 follow-up):
+    a task that passes is registered with it for later
+    re-verification. The watcher is duck-typed (any object with
+    ``watch(outcome, *, recheck)``); with none bound, runs are
+    scored and reported exactly as before.
+    """
 
     def __init__(
-        self, *, solver=None, scorer=None, sink=None, cassette_dir: Path | str | None = None
+        self,
+        *,
+        solver=None,
+        scorer=None,
+        sink=None,
+        cassette_dir: Path | str | None = None,
+        watcher=None,
     ) -> None:
         self.solver = solver or cassette_solver
         self.scorer = scorer or score_state
         self.cassette_dir = Path(cassette_dir or CASSETTE_DIR_DEFAULT)
         self._events: list[dict] = []
+        self.watcher = watcher
         self.sink = sink or (
             lambda event_type, content: self._events.append(
                 {"type": event_type, "content": content}
@@ -265,6 +316,23 @@ class EvalHarness:
         how the AgentBench held-out tasks run. The score comes from
         the scorer's details when it reports one (the held-out scorer
         reports partial credit), otherwise 1.0 on pass and 0.0 on fail.
+        A passing task is registered with the watcher when one is
+        bound, so a task that passed and later fails is caught as a
+        late failure instead of staying "done" forever.
+        """
+        result = self._run_once(task)
+        if result.passed and self.watcher is not None:
+            self._watch_passing(task)
+        return result
+
+    def _run_once(self, task: EvalTask) -> EvalResult:
+        """Run one task once (replay, score, sink), without registering.
+
+        The watcher's recheck calls this: a re-verification re-runs
+        the task, but it must not re-register the watch — a check
+        that finds "ok" would silently re-arm it forever. A recheck
+        is itself a verification run, so it still emits the sink
+        event like any other run.
         """
         if task.cassette is not None:
             cassette = task.cassette
@@ -292,6 +360,28 @@ class EvalHarness:
                 },
             )
         return result
+
+    def _watch_passing(self, task: EvalTask) -> None:
+        """Register a passing task with the watcher for re-verification.
+
+        The recheck re-runs the task through the same solver and
+        scorer and reports ``"passed"`` only when it still passes;
+        anything else is a late failure. Watching the same task
+        again replaces the old watch (a fresh delay from now), so a
+        task re-run after a fix is watched from the new pass.
+        """
+
+        def recheck() -> str:
+            return "passed" if self._run_once(task).passed else "failed"
+
+        watch_eval_outcome(
+            self.watcher,
+            outcome_id=f"eval:{task.task_id}",
+            task_name=task.name,
+            task_id=task.task_id,
+            predicted=str(task.expected_state),
+            recheck=recheck,
+        )
 
     def run(self, tasks: list[EvalTask]) -> EvalReport:
         """Run a task set and return the scored report."""
