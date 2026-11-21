@@ -24,6 +24,7 @@ A user pastes an API token for some app. The flow is:
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -249,17 +250,43 @@ def refresh_token_app(app: TokenApp, refresher, seal_store, *, now=None) -> dict
     return {"refreshed": True, "app": app}
 
 
-def token_app_to_mcp_definition(app: TokenApp, tools: list[dict]) -> dict:
+def token_app_to_mcp_definition(
+    app: TokenApp, tools: list[dict], *, user_id=None, dsn=None, key_file=None
+) -> dict:
     """An MCP definition (G27 format) serving one token app.
 
-    The definition carries the app's tools and a server command
-    placeholder; the token itself is never in the definition (the
-    transport injects the Authorization header from the sealed
-    token at call time). ``tools`` must be a non-empty list of
-    ``{"name", "description"}`` dicts.
+    The definition carries the app's tools and the server command
+    ``puspa-token-app``. That command is a real console script
+    shipped by this package (``puspa.connectors.token_app_server``):
+    V2-39 chose to ship the script rather than repoint the
+    definition, because repointing at ``puspa`` would make readiness
+    pass while no subcommand serves the app. The server's second
+    argument is the tool list as JSON, so the server process can
+    list exactly the tools declared here. The token itself is never
+    in the definition (the server unseals it from the vault at
+    startup). ``tools`` must be a non-empty list of ``{"name",
+    "description"}`` dicts.
+
+    Launch: the MCP stdio transport scrubs the environment, so a
+    definition that will be spawned by the engine should pass
+    ``user_id``, ``dsn`` and ``key_file``: they are appended to the
+    server's arguments as ``--user`` / ``--dsn`` / ``--key-file``
+    flags (none of them is a secret: the user id and DSN carry no
+    credential, and the key file holds the master key while only
+    its path travels). When they are omitted, the server falls back
+    to its environment (``PUSPA_USER_ID``, the vault DSN vars, the
+    vault master-key vars), which is how it runs from a shell.
     """
     if not tools:
         raise TokenAppError("a token app needs at least one tool")
+    tool_list = [{"name": tool["name"], "description": tool["description"]} for tool in tools]
+    args = [app.app_id, json.dumps(tool_list)]
+    if user_id is not None:
+        args += ["--user", str(user_id)]
+    if dsn is not None:
+        args += ["--dsn", dsn]
+    if key_file is not None:
+        args += ["--key-file", str(key_file)]
     return {
         "id": f"token-app-{app.app_id}",
         "name": f"{app.display_name} (token app)",
@@ -267,10 +294,10 @@ def token_app_to_mcp_definition(app: TokenApp, tools: list[dict]) -> dict:
         "description": f"MCP server for token app {app.display_name}.",
         "server": {
             "command": "puspa-token-app",
-            "args": [app.app_id],
+            "args": args,
             "env": {},
             "transport": "stdio",
         },
-        "tools": [{"name": tool["name"], "description": tool["description"]} for tool in tools],
+        "tools": tool_list,
         "dependencies": [],
     }

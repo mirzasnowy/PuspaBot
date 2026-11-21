@@ -70,6 +70,7 @@ dependencies = [
 [project.scripts]
 puspa = "puspa.cli:main"
 puspa-cli = "puspa.cli:main"
+puspa-token-app = "puspa.connectors.token_app_server:main"
 
 # Only the `puspa` package ships in the distribution: the repo root
 # also holds sibling trees (cli/, apps/, demo/, ...) that are not
