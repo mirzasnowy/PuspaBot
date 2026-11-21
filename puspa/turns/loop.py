@@ -47,6 +47,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from psycopg import Error as PsycopgError
@@ -208,7 +209,19 @@ class TurnLoop:
         conflict_gate=None,
         takeover_hold=None,
         turn_committer=None,
+        persona_home=None,
     ) -> None:
+        """Build a turn loop.
+
+        ``persona_home`` is the Puspa home holding the user's
+        editable persona files (SOUL.md, IDENTITY.md, USER.md;
+        see ``puspa.persona.files``). When given, the files are
+        created with defaults if missing, and the leading system
+        message is rebuilt from them fresh on every turn, so an
+        edit takes effect on the next turn. When None (the
+        default) the loop never touches the persona files and
+        behaves exactly as before.
+        """
         self.config = config or TurnConfig()
         self.model_call = model_call
         self.tool_call = tool_call
@@ -228,6 +241,20 @@ class TurnLoop:
         self.turn_committer = turn_committer
         self._refusal_message = ""
         self._event: list[dict] = []
+        self.persona_home = Path(persona_home).expanduser() if persona_home is not None else None
+        #: The persona block this loop injected on the previous
+        #: turn, so the next turn can strip it before rebuilding
+        #: (the caller's own system text is kept exactly once).
+        self._persona_block = ""
+        if self.persona_home is not None:
+            # First use creates the files with defaults so the
+            # user has something to edit. Fail-open: a home that
+            # cannot be written must not stop the loop from
+            # starting; the per-turn load falls back to defaults.
+            with contextlib.suppress(Exception):
+                from puspa.persona.files import ensure_persona_files
+
+                ensure_persona_files(home=self.persona_home)
         self.sink = sink or (
             lambda event_type, content: self._event.append({"type": event_type, "content": content})
         )
@@ -282,6 +309,12 @@ class TurnLoop:
         ``turn`` span, and its latency, cost, and abandoned cost
         are recorded in the observability metrics. Observability
         never changes the result: a metrics failure is swallowed.
+
+        When this loop was built with ``persona_home``, the leading
+        system message is rebuilt from the user's persona files
+        fresh on every turn (see :meth:`_refresh_persona_system`):
+        an edit to SOUL.md, IDENTITY.md, or USER.md changes what
+        the model sees on the very next turn.
         """
         trace_id = task_id or f"turn-{uuid.uuid4().hex[:12]}"
         started = time.monotonic()
@@ -379,6 +412,38 @@ class TurnLoop:
             budget=budget,
         )
 
+    def _refresh_persona_system(self, history: list[InternalMessage]) -> list[InternalMessage]:
+        """Rebuild the leading system message from the persona files.
+
+        The files are read fresh on every turn (no cache), so an
+        edit to SOUL.md, IDENTITY.md, or USER.md takes effect on
+        the next turn. The block this loop injected on the
+        previous turn is stripped first, so the caller's own
+        system text survives exactly once and the block never
+        accumulates across turns. A malformed file falls back to
+        its default and is recorded on the sink as a
+        ``persona_file_warning`` event; the turn still runs.
+        """
+        from puspa.persona.files import load_persona_files, render_persona_block
+
+        persona = load_persona_files(home=self.persona_home)
+        for warning in persona.warnings:
+            self._record("persona_file_warning", {"warning": warning})
+        block = render_persona_block(persona)
+        previous = self._persona_block
+        self._persona_block = block
+        if history and history[0].role == "system":
+            text = history[0].text
+            if previous and text.startswith(previous):
+                base = text[len(previous) :].lstrip("\n")
+            else:
+                base = text
+            new_text = block + ("\n\n" + base if base else "") if block else base
+            history[0] = InternalMessage.system(new_text)
+        elif block:
+            history = [InternalMessage.system(block), *history]
+        return history
+
     def _prepare_run_tools(self, messages, *, agent_id, task_id):
         """Narrow the loop's tool catalog for one run (G17).
 
@@ -445,6 +510,8 @@ class TurnLoop:
             budget if budget is not None else IterationBudget(self.config.max_iterations)
         )
         history = list(messages)
+        if self.persona_home is not None:
+            history = self._refresh_persona_system(history)
         repairs: list[str] = []
         notes: list[str] = []
         attempts: list = []
