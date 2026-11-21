@@ -1,4 +1,4 @@
-# Puspa: Indonesia's own personal AI agent
+# PuspaBot: Indonesia's own personal AI agent
 
 <p align="center">
   <img src="docs/assets/puspa-logo.png" alt="Puspa logo" width="180">
