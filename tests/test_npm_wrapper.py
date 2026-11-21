@@ -74,7 +74,11 @@ def test_shim_skips_itself_when_its_own_bin_dir_is_first_on_path(tmp_path):
     env = dict(os.environ)
     # Only the two fake dirs plus the system dirs node needs; nothing
     # else on PATH, so the only `puspa` entries are the shim and the fake.
-    env["PATH"] = os.pathsep.join([str(bin_dir), str(real_bin), "/usr/bin", "/bin"])
+    # Node's own directory comes from shutil.which: CI installs node via
+    # setup-node into a tool-cache dir, not /usr/bin (hardcoding /usr/bin
+    # made this test fail in CI with exit 127, command not found).
+    node_dir = str(Path(NODE).resolve().parent)
+    env["PATH"] = os.pathsep.join([str(bin_dir), str(real_bin), node_dir, "/usr/bin", "/bin"])
     result = subprocess.run(
         ["puspa", "--help"],
         capture_output=True,
