@@ -33,10 +33,11 @@ typed by a model. Where a report needs an evidence-backed number it
 goes through ``puspa/evidence/renderer.py`` (``render_report``).
 
 Sandbox note: cassette replay needs no sandbox because no code and
-no network runs. ``sandbox_available`` only reports whether the
-Docker sandbox in ``puspa/sandbox/runner.py`` is up, for solvers
-that choose to execute code; a solver that needs the sandbox and
-finds it unavailable must fail closed, never run code on the host.
+no network runs. ``sandbox_available`` only reports whether code
+execution is available through the bound local runner
+(:mod:`puspa.localexec`), for solvers that choose to execute code;
+a solver that needs execution and finds it unavailable must fail
+closed, never run code outside the runner.
 """
 
 from __future__ import annotations
@@ -411,15 +412,20 @@ def run_price_injection_eval(
 
 
 def sandbox_available() -> bool:
-    """True if the Docker sandbox in ``puspa/sandbox/runner.py`` is up.
+    """True when code execution is available through the local runner.
 
-    Reports only; the harness itself never executes code, so a False
-    here never falls back to host execution.
+    The local runner is a subprocess on the user's own machine, so
+    it is available as a mechanism; the user may still deny any
+    single run at the permission prompt, which the executor then
+    reports as unavailable instead of running the code. Reports
+    only; the harness itself never executes code, so a False here
+    never falls back to execution outside the runner.
     """
     try:
-        from puspa.sandbox.runner import Sandbox
+        from puspa.localexec import LocalExecutor
 
-        return bool(Sandbox().check_available())
+        LocalExecutor(Path.cwd())
+        return True
     except Exception:
         return False
 

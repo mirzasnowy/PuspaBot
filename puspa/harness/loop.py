@@ -39,12 +39,15 @@ How it works:
 
 Safety rules enforced here:
 
-- Production runs use :class:`SandboxExecutor` only. Passing any
-  other executor with ``production=True`` raises
-  :class:`HarnessError` at construction time.
+- Production runs use :class:`SandboxExecutor` only, which runs
+  code solely through the bound :class:`puspa.localexec.Executor`
+  (the local runner in a local install, the Docker sandbox on the
+  hosted server). Passing any other executor with
+  ``production=True`` raises :class:`HarnessError` at construction
+  time.
 - A :class:`SandboxUnavailable` from the executor ends the run with
-  status ``sandbox_unavailable``. The loop never retries on the
-  host and never falls back to :class:`LocalTestExecutor`.
+  status ``sandbox_unavailable``. The loop never retries on another
+  executor and never falls back to :class:`LocalTestExecutor`.
 - Attempt and cost ceilings use the existing ceiling pattern
   (:class:`puspa.runtime.budget.BudgetTracker`,
   ``CEILING_RP_PER_TASK``). Exceeding either stops the loop and
@@ -121,15 +124,20 @@ import inspect
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from puspa.computer.errors import BackendUnavailable
 from puspa.ledger.kill_switch import is_kill_switch_active
 from puspa.policy import Gate
 from puspa.policy.tokens import tool_permission
 from puspa.runtime.budget import CEILING_RP_PER_TASK, BudgetExhausted, BudgetTracker
-from puspa.sandbox import SandboxUnavailable
 
 from .diff import DiffApplyError, apply_diff, is_diff
-from .executor import ExecutionResult, Executor, LocalTestExecutor, SandboxExecutor
+from .executor import (
+    BackendUnavailable,
+    ExecutionResult,
+    Executor,
+    LocalTestExecutor,
+    SandboxExecutor,
+    SandboxUnavailable,
+)
 from .modes import (
     MODE_ARCHITECT,
     MODE_ASK,
@@ -791,16 +799,21 @@ def create_production_harness(
     generator,
     gate: Gate,
     token_payload: dict,
-    sandbox=None,
+    executor=None,
     **kwargs,
 ) -> CodingHarness:
     """Build a production harness: sandbox executor only, always.
 
     ``LocalTestExecutor`` cannot reach this factory at all, so a
-    production harness can never execute generated code on the host.
+    production harness can never execute generated code on the host
+    without going through the bound port. ``executor`` is an
+    :class:`puspa.localexec.Executor` bound to the execution
+    backend (the local runner in a local install, the Docker
+    sandbox on the hosted server); with none given the executor
+    defaults to the local runner.
     """
     return CodingHarness(
-        executor=SandboxExecutor(sandbox),
+        executor=SandboxExecutor(executor),
         generator=generator,
         gate=gate,
         token_payload=token_payload,
