@@ -39,12 +39,14 @@ def test_sixteen_screens_exist_including_rooms():
     it, the server did not), Personas is the fifteenth
     (multiple switchable personas, one active at a time),
     and Artifacts is the sixteenth
-    (the artifacts + run-logs browser from CowAgent research).
+    (the artifacts + run-logs browser from CowAgent research),
+    and Diagnostics is the seventeenth (the redacted
+    diagnostics export for bug reports).
 
-    The count is pinned on purpose: a seventeenth screen must be a
+    The count is pinned on purpose: an eighteenth screen must be a
     deliberate decision with its own ticket, not an accident.
     """
-    assert len(SCREENS) == 16
+    assert len(SCREENS) == 17
     assert set(SCREENS) == {
         "chat",
         "tasks",
@@ -67,6 +69,8 @@ def test_sixteen_screens_exist_including_rooms():
         "personas",
         # Artifacts + run-logs browser (CowAgent research).
         "artifacts",
+        # Redacted diagnostics export for bug reports.
+        "diagnostics",
     }
 
 

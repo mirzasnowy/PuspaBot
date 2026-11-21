@@ -8,7 +8,8 @@ import`` / ``rollback`` / ``forget`` (memory import, V2-10), ``puspa
 conversation export`` / ``import`` (conversation export, V2-11), ``puspa
 mcp`` (serve Puspa's tools to outside agents over MCP stdio), ``puspa
 service`` (lifecycle of the local agent service: start, stop, restart,
-status, logs, update), plus help. The full one-shot CLI lands in a later step of the split;
+status, logs, update), ``puspa diagnostics export`` (a redacted diagnostics
+bundle for bug reports), plus help. The full one-shot CLI lands in a later step of the split;
 until then any other subcommand prints help and says so.
 """
 
@@ -20,6 +21,7 @@ import json
 import os
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
 from puspa.computer.cli import add_computer_parser, run_computer
 from puspa.mcp_server.cli import add_mcp_parser, run_mcp
@@ -28,7 +30,7 @@ from puspa.service.cli import add_service_parser, run_service
 FULL_CLI_NOTE = (
     "The full PuspaBot CLI lands in a later step of the public/private "
     "split; this build ships `puspa web` / `puspa serve`, `puspa memory "
-    "export` / `import`, `puspa mcp`, `puspa service`, plus help."
+    "export` / `import`, `puspa mcp`, `puspa service`, `puspa diagnostics export`, plus help."
 )
 
 _KNOWN_COMMANDS = (
@@ -40,6 +42,7 @@ _KNOWN_COMMANDS = (
     "computer",
     "mcp",
     "service",
+    "diagnostics",
 )
 
 #: Environment variable holding the export passphrase (never a
@@ -221,6 +224,48 @@ def build_parser() -> argparse.ArgumentParser:
     )
     conversation_import.add_argument(
         "--approve", action="store_true", help="Apply the import (without it, dry-run only)."
+    )
+    diagnostics = sub.add_parser(
+        "diagnostics",
+        help="Redacted diagnostics export for bug reports.",
+        description=(
+            "Export a redacted diagnostics bundle (recent log lines, "
+            "the message trace, recent ledger events) that is safe to "
+            "paste into a bug report: tokens, API keys, passwords, "
+            "Authorization headers, and email addresses are scrubbed "
+            "before the file is written."
+        ),
+    )
+    diagnostics_sub = diagnostics.add_subparsers(
+        dest="diagnostics_command", metavar="DIAGNOSTICS_COMMAND"
+    )
+    diagnostics_export = diagnostics_sub.add_parser(
+        "export",
+        help="Write a redacted diagnostics bundle to a JSON file.",
+        description=(
+            "Write one user's redacted diagnostics bundle to a JSON "
+            "file: recent log lines (from --log-file, when given), the "
+            "message trace (spans for the user's recent tasks, or for "
+            "--task when given), and the recent ledger events for the "
+            "user's agents. The export is recorded in the audit export "
+            "log under --audit-dir (default ~/.puspa/audit)."
+        ),
+    )
+    diagnostics_export.add_argument("--user", required=True, help="User id to export.")
+    diagnostics_export.add_argument("--out", required=True, help="JSON file to write.")
+    diagnostics_export.add_argument("--task", default=None, help="Scope the bundle to one task id.")
+    diagnostics_export.add_argument(
+        "--log-file", default=None, help="Log file to include (omit for no log lines)."
+    )
+    diagnostics_export.add_argument(
+        "--since",
+        default=None,
+        help="Only ledger events from this ISO date/datetime onward.",
+    )
+    diagnostics_export.add_argument(
+        "--audit-dir",
+        default=None,
+        help="Directory for the audit export log (default ~/.puspa/audit).",
     )
     provider = sub.add_parser(
         "provider",
@@ -440,6 +485,49 @@ def _run_conversation_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_diagnostics_export(args: argparse.Namespace) -> int:
+    """Run ``puspa diagnostics export`` (lazy import: ``--help`` stays fast)."""
+    from puspa.diagnostics.export import export_diagnostics
+
+    audit_dir = args.audit_dir
+    if audit_dir is None:
+        audit_dir = str(Path.home() / ".puspa" / "audit")
+    try:
+        result = export_diagnostics(
+            args.user,
+            args.out,
+            task_id=args.task,
+            log_file=args.log_file,
+            since=args.since,
+            audit_dir=audit_dir,
+        )
+    except Exception as exc:
+        print(f"puspa diagnostics export: failed: {exc}")
+        return 1
+    print(
+        json.dumps(
+            {
+                "path": str(result.path),
+                "user_id": result.user_id,
+                "exported_at": result.exported_at.isoformat(),
+                "counts": result.counts,
+                "total_rows": result.total_rows,
+                "redactions_applied": result.redactions_applied,
+                "truncated": result.truncated,
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def _run_diagnostics(args: argparse.Namespace) -> int:
+    if args.diagnostics_command == "export":
+        return _run_diagnostics_export(args)
+    build_parser().parse_args(["diagnostics", "--help"])
+    return 0
+
+
 def _run_conversation(args: argparse.Namespace) -> int:
     if args.conversation_command == "export":
         return _run_conversation_export(args)
@@ -597,6 +685,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_memory(parsed)
     if parsed.command == "conversation":
         return _run_conversation(parsed)
+    if parsed.command == "diagnostics":
+        return _run_diagnostics(parsed)
     if parsed.command == "computer":
         if parsed.computer_command is None:
             parser.print_help()
