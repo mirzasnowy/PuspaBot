@@ -490,6 +490,16 @@ paths:
     $ref: './openapi-controls.yaml#/paths/~1api~1autonomy-dial~1{area}~1ceiling'
   /api/weekly-report:
     $ref: './openapi-controls.yaml#/paths/~1api~1weekly-report'
+  /api/computer/allowlist:
+    $ref: './openapi-computer.yaml#/paths/~1api~1computer~1allowlist'
+  /api/computer/allowlist/{app}:
+    $ref: './openapi-computer.yaml#/paths/~1api~1computer~1allowlist~1{app}'
+  /api/computer/stop:
+    $ref: './openapi-computer.yaml#/paths/~1api~1computer~1stop'
+  /api/computer/stop/clear:
+    $ref: './openapi-computer.yaml#/paths/~1api~1computer~1stop~1clear'
+  /api/computer/audit:
+    $ref: './openapi-computer.yaml#/paths/~1api~1computer~1audit'
   /api/live-view/{agent_id}:
     $ref: './openapi-live-view.yaml#/paths/~1api~1live-view~1{agent_id}'
   /api/live-view/{agent_id}/takeover:
@@ -1856,6 +1866,20 @@ components:
       $ref: './openapi-controls.yaml#/components/schemas/WeeklyLinkedEvent'
     WeeklyReport:
       $ref: './openapi-controls.yaml#/components/schemas/WeeklyReport'
+    ComputerAllowlist:
+      $ref: './openapi-computer.yaml#/components/schemas/ComputerAllowlist'
+    ComputerAllowlistRequest:
+      $ref: './openapi-computer.yaml#/components/schemas/ComputerAllowlistRequest'
+    ComputerAllowlistChange:
+      $ref: './openapi-computer.yaml#/components/schemas/ComputerAllowlistChange'
+    ComputerStopState:
+      $ref: './openapi-computer.yaml#/components/schemas/ComputerStopState'
+    ComputerStopRequest:
+      $ref: './openapi-computer.yaml#/components/schemas/ComputerStopRequest'
+    ComputerAuditEntry:
+      $ref: './openapi-computer.yaml#/components/schemas/ComputerAuditEntry'
+    ComputerAuditList:
+      $ref: './openapi-computer.yaml#/components/schemas/ComputerAuditList'
     TakeoverHold:
       $ref: './openapi-live-view.yaml#/components/schemas/TakeoverHold'
     LiveFrameEvent:

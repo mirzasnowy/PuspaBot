@@ -27,15 +27,18 @@ pixel until a real input path exists.
 
 from __future__ import annotations
 
+import contextlib
 import ctypes.util
 from dataclasses import dataclass
 from typing import Protocol
 
-from puspa.localexec.executor import PermissionDecision
+from puspa.localexec.executor import PermissionDecision, PermissionDenied
 
+from .audit import InMemoryComputerAudit, LedgerComputerAudit, audit_entry
 from .gating import ask_user, check_token_gate
 from .hands import DesktopHands
 from .screenshot import FakeScreenshotBackend, ScreenshotBackend, make_screenshot_backend
+from .stop import ComputerStop, ComputerStopped
 from .sync import (
     DEFAULT_POLL_INTERVAL_S,
     DEFAULT_SETTLE_TIMEOUT_S,
@@ -45,6 +48,7 @@ from .sync import (
     wait_for_settle,
     words_signature,
 )
+from .tiers import Tier
 from .vision import (
     FakeOcrBackend,
     OcrBackend,
@@ -218,7 +222,13 @@ class VisualFallback:
     the seams; ``"auto"`` picks the real ones and fails closed
     when they are missing, ``"fake"`` builds the in-memory ones.
     ``prompt`` / ``gate`` / ``token_payload`` are the same double
-    gate V2-31 uses (see :mod:`puspa.computer.gating`).
+    gate V2-31 uses (see :mod:`puspa.computer.gating`). ``stop``
+    is the V2-35 emergency stop (checked before the prompt, so a
+    stopped hands never asks); ``audit`` is the V2-35 audit sink
+    (every locate and click is written to the ledger when one is
+    wired in). A coordinate click is tier NORMAL with no known
+    app, so it always asks: the allowlist cannot cover a click
+    whose app the fallback cannot see.
     """
 
     def __init__(
@@ -234,6 +244,8 @@ class VisualFallback:
         settle_timeout: float = DEFAULT_SETTLE_TIMEOUT_S,
         settle_stable_rounds: int = DEFAULT_STABLE_ROUNDS,
         settle_poll_interval: float = DEFAULT_POLL_INTERVAL_S,
+        stop: ComputerStop | None = None,
+        audit: LedgerComputerAudit | InMemoryComputerAudit | None = None,
     ) -> None:
         if isinstance(screenshot_backend, str):
             screenshot_backend = make_screenshot_backend(screenshot_backend)
@@ -252,6 +264,8 @@ class VisualFallback:
         self._settle_timeout = settle_timeout
         self._settle_stable_rounds = settle_stable_rounds
         self._settle_poll_interval = settle_poll_interval
+        self.stop = stop if stop is not None else ComputerStop()
+        self.audit = audit
 
     # -- reads ------------------------------------------------------
     def read_screen(self) -> list[OcrWord]:
@@ -276,8 +290,18 @@ class VisualFallback:
 
     def locate_text(self, query: str) -> VisualElement | None:
         """Locate ``query`` on the screen by OCR text, or None
-        when it is not there. Read-only: never clicks."""
-        return ground_text(self.read_screen(), query)
+        when it is not there. Read-only: never clicks. Tier
+        READ: never asks, but still audited."""
+        element = ground_text(self.read_screen(), query)
+        self._audit(
+            "visual_locate",
+            target=query,
+            tier=Tier.READ,
+            decision="allow",
+            outcome="performed" if element is not None else "not_performed",
+            reason="text found on the screen" if element is not None else "text not on the screen",
+        )
+        return element
 
     def tree_needs_visual(self) -> bool:
         """True when the accessibility tree is too poor to act on
@@ -290,10 +314,58 @@ class VisualFallback:
             return True
 
     # -- permission -------------------------------------------------
+    def _audit(
+        self,
+        action: str,
+        *,
+        target: str,
+        tier: Tier,
+        decision: str,
+        outcome: str,
+        reason: str = "",
+    ) -> None:
+        """Write one audit entry when a sink is wired in.
+        Best-effort: a sink that cannot write never fails the
+        action itself."""
+        if self.audit is None:
+            return
+        with contextlib.suppress(Exception):
+            self.audit.record(
+                audit_entry(
+                    action,
+                    target=target,
+                    tier=tier.value,
+                    decision=decision,
+                    outcome=outcome,
+                    reason=reason,
+                )
+            )
+
     def _ask(self, element: VisualElement) -> None:
         label = f"computer click_at {element.label!r} at ({element.center[0]}, {element.center[1]})"
+        if self.stop.is_active():
+            self._audit(
+                "visual_click",
+                target=element.label,
+                tier=Tier.NORMAL,
+                decision="stop",
+                outcome="stopped",
+                reason="computer hands are stopped by the user",
+            )
+            self.stop.check()
         check_token_gate(self._gate, self._token_payload, TOOL_CLICK_AT)
-        decision = ask_user(label, self._prompt, session_approved=self._session_approved)
+        try:
+            decision = ask_user(label, self._prompt, session_approved=self._session_approved)
+        except PermissionDenied as exc:
+            self._audit(
+                "visual_click",
+                target=element.label,
+                tier=Tier.NORMAL,
+                decision="deny",
+                outcome="denied",
+                reason=str(exc),
+            )
+            raise
         if decision is PermissionDecision.APPROVE_SESSION:
             self._session_approved = True
 
@@ -315,8 +387,37 @@ class VisualFallback:
         None (any change in the words on the screen counts).
         With no change the result is performed=true,
         verified=false, exactly like a V2-31 ref click that left
-        the screen unchanged.
+        the screen unchanged. The click is audited with its
+        outcome; the label clicked is screen text, never typed
+        text or clipboard content.
         """
+        try:
+            result = self._click_text_inner(query, expect=expect)
+        except (ComputerStopped, PermissionDenied):
+            raise  # already audited in _ask
+        except VisualFallbackError as exc:
+            self._audit(
+                "visual_click",
+                target=query,
+                tier=Tier.NORMAL,
+                decision="allow",
+                outcome="failed",
+                reason=str(exc),
+            )
+            raise
+        self._audit(
+            "visual_click",
+            target=query,
+            tier=Tier.NORMAL,
+            decision="allow",
+            outcome="performed" if result.performed else "not_performed",
+            reason=result.reason,
+        )
+        return result
+
+    def _click_text_inner(self, query: str, *, expect: dict | None = None) -> VisualClickResult:
+        """The locate + gated click + re-read loop behind
+        :meth:`click_text` (which adds the audit entry)."""
         before_words, _report = self.wait_settle()
         element = ground_text(before_words, query)
         if element is None:

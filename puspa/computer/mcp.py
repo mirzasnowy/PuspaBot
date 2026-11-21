@@ -1,8 +1,9 @@
 """MCP tool definitions for desktop hands (V2-31, core; V2-32
 visual fallback + web bridge; V2-33 full input + window
-management; V2-34 settle + non-stale refs).
+management; V2-34 settle + non-stale refs; V2-35 tiers +
+allowlist + stop + audit).
 
-Nineteen tools, in the same shape as the rest of Puspa's MCP
+Twenty-three tools, in the same shape as the rest of Puspa's MCP
 definitions (``name`` / ``description`` / ``inputSchema``):
 ``computer_snapshot`` (read the screen), ``computer_click`` (the
 gated act + re-read loop), ``computer_verify`` (re-read one ref
@@ -17,9 +18,16 @@ stop changing), plus the V2-32 tools ``computer_visual_locate``
 ``computer_clipboard_write``, ``computer_list_windows``,
 ``computer_open_app``, ``computer_focus_window``,
 ``computer_switch_window``, and ``computer_run_task`` (a
-multi-step task run end to end). :func:`handle_tool` dispatches
-one call to a :class:`~puspa.computer.hands.DesktopHands`
-instance (and, for the V2-32 tools, to a
+multi-step task run end to end), plus V2-35:
+``computer_close_window`` (close one window, destructive),
+``computer_allowlist`` (list, add, or revoke allowlisted apps),
+``computer_stop`` (request, clear, or read the emergency stop),
+and ``computer_audit`` (list recent computer audit entries from
+the ledger).
+
+:func:`handle_tool` dispatches one call to a
+:class:`~puspa.computer.hands.DesktopHands` instance (and, for
+the V2-32 tools, to a
 :class:`~puspa.computer.fallback.VisualFallback` /
 :class:`~puspa.computer.web.WebBridge` passed as ``fallback`` /
 ``web``) and returns a plain JSON-ready dict.
@@ -47,6 +55,7 @@ from __future__ import annotations
 
 import copy
 
+from .audit import InMemoryComputerAudit, LedgerComputerAudit
 from .fallback import VisualClickResult, VisualFallback
 from .hands import ClickResult, DesktopHands, Verification
 from .sync import SettleTimeoutError
@@ -152,7 +161,9 @@ TOOL_DEFINITIONS: list[dict] = [
             "Type text into one editable element by ref from the latest snapshot. Permission-gated "
             "(the user is asked first, and a token without the computer.type permission is refused), "
             "then the screen is re-read to verify: pass expect with value or value_contains to say "
-            "what the element should hold afterwards. Returns performed separately from verified."
+            "what the element should hold afterwards. Returns performed separately from verified. "
+            "Pass submits=true when the field submits on typing (a search box, a chat input): "
+            "that is destructive and always asks, even in an allowlisted app."
         ),
         "inputSchema": {
             "type": "object",
@@ -162,6 +173,11 @@ TOOL_DEFINITIONS: list[dict] = [
                     "description": "Element ref from computer_snapshot, e.g. 'n5'.",
                 },
                 "text": {"type": "string", "description": "Text to type into the element."},
+                "submits": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "True when typing here submits (destructive, always asks).",
+                },
                 "expect": _EXPECT_SCHEMA,
             },
             "required": ["ref", "text"],
@@ -459,11 +475,93 @@ TOOL_DEFINITIONS: list[dict] = [
             "required": ["text"],
         },
     },
+    {
+        "name": "computer_close_window",
+        "description": (
+            "Close one window by id from computer_list_windows, then re-read the window list to "
+            "verify it is gone. Destructive: it always asks the user first, even when the app is "
+            "allowlisted, and a token without the computer.close_window permission is refused. "
+            "Closing an app is closing its windows: there is no separate close-app action."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "window_id": {"type": "string", "description": "Window id, e.g. '0.1'."},
+            },
+            "required": ["window_id"],
+        },
+    },
+    {
+        "name": "computer_allowlist",
+        "description": (
+            "Manage the per-app allowlist: an allowlisted app's normal clicks run without asking. "
+            "Op 'list' returns the allowlisted apps; 'add' allowlists one app by name; 'remove' "
+            "revokes it. The allowlist never covers destructive actions: clipboard write, drag, "
+            "and closing a window always ask, even in an allowlisted app."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "op": {
+                    "type": "string",
+                    "enum": ["list", "add", "remove"],
+                    "description": "What to do with the allowlist.",
+                },
+                "app": {"type": "string", "description": "App name for 'add' and 'remove'."},
+            },
+            "required": ["op"],
+        },
+    },
+    {
+        "name": "computer_stop",
+        "description": (
+            "The emergency stop for the desktop hands. Op 'request' halts the hands immediately: "
+            "a running computer_run_task stops at the next step boundary at the latest, and any "
+            "single action is refused once the stop is set. Op 'status' reads the flag (active, "
+            "who set it, why). Op 'clear' lets the hands run again. The stop is visible in the "
+            "PWA and clearable there too."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "op": {
+                    "type": "string",
+                    "enum": ["request", "clear", "status"],
+                    "description": "What to do with the stop flag.",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Why the stop was requested or cleared.",
+                },
+            },
+            "required": ["op"],
+        },
+    },
+    {
+        "name": "computer_audit",
+        "description": (
+            "List recent computer audit entries from the Puspa ledger, newest first: what action, "
+            "which target (ref, window id, or app name), which tier and decision, and the "
+            "allow/deny/stop outcome with a timestamp. Never carries clipboard content or typed "
+            "text, only their lengths. Empty when no ledger is reachable."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "default": 50,
+                    "description": "How many newest entries to return (default 50).",
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
 def tool_definitions() -> list[dict]:
-    """A fresh copy of the nineteen tool definitions."""
+    """A fresh copy of the twenty-three tool definitions."""
     return copy.deepcopy(TOOL_DEFINITIONS)
 
 
@@ -479,7 +577,8 @@ def mcp_server_definition() -> dict:
             "Drive the local desktop through its accessibility tree (snapshot, click, verify), "
             "type, shortcuts, scroll, drag, clipboard, and window management, wait for the "
             "tree to settle before acting, fall back to screenshot + OCR when the "
-            "tree is too poor, and drive web pages in headless Chromium."
+            "tree is too poor, drive web pages in headless Chromium, and manage the "
+            "V2-35 tiers: per-app allowlist, emergency stop, and the ledger audit log."
         ),
         "server": {"command": "puspa", "args": ["mcp"], "transport": "stdio", "env": {}},
         "tools": tool_definitions(),
@@ -504,6 +603,7 @@ def handle_tool(
     *,
     fallback: VisualFallback | None = None,
     web: WebBridge | None = None,
+    audit: LedgerComputerAudit | InMemoryComputerAudit | None = None,
 ) -> dict:
     """Dispatch one MCP tool call to ``hands`` (and, for the
     V2-32 tools, to ``fallback`` / ``web``).
@@ -513,7 +613,9 @@ def handle_tool(
     error); permission denials and unknown refs raise from the
     hands layer unchanged. A visual or web tool called without
     its ``fallback`` / ``web`` object raises ValueError with a
-    plain message instead of crashing.
+    plain message instead of crashing. ``audit`` is the audit
+    sink ``computer_audit`` reads; it defaults to the one wired
+    into ``hands``.
     """
     if not isinstance(arguments, dict):
         raise ValueError("tool arguments must be an object")
@@ -542,7 +644,9 @@ def handle_tool(
             raise ValueError("computer_type needs a string 'ref'")
         if not isinstance(text, str):
             raise ValueError("computer_type needs a string 'text'")
-        return hands.type_text(ref, text, expect=arguments.get("expect")).to_dict()
+        return hands.type_text(
+            ref, text, expect=arguments.get("expect"), submits=bool(arguments.get("submits", False))
+        ).to_dict()
     if name == "computer_shortcut":
         keys = arguments.get("keys")
         if not isinstance(keys, str) or not keys:
@@ -593,6 +697,54 @@ def handle_tool(
         return hands.focus_window(window_id).to_dict()
     if name == "computer_switch_window":
         return hands.switch_window().to_dict()
+    if name == "computer_close_window":
+        window_id = arguments.get("window_id")
+        if not isinstance(window_id, str) or not window_id:
+            raise ValueError("computer_close_window needs a string 'window_id'")
+        return hands.close_window(window_id).to_dict()
+    if name == "computer_allowlist":
+        op = arguments.get("op")
+        if op not in ("list", "add", "remove"):
+            raise ValueError("computer_allowlist op must be list, add, or remove")
+        if op == "list":
+            return {"apps": hands.allowlist.apps()}
+        app = arguments.get("app")
+        if not isinstance(app, str) or not app.strip():
+            raise ValueError(f"computer_allowlist {op} needs a non-empty string 'app'")
+        if op == "add":
+            return {"app": app.strip(), "allowed": hands.allowlist.allow(app)}
+        return {"app": app.strip(), "allowed": not hands.allowlist.revoke(app)}
+    if name == "computer_stop":
+        op = arguments.get("op")
+        if op not in ("request", "clear", "status"):
+            raise ValueError("computer_stop op must be request, clear, or status")
+        reason = arguments.get("reason", "")
+        if not isinstance(reason, str):
+            raise ValueError("computer_stop 'reason' must be a string")
+        sink = audit if audit is not None else hands.audit
+        if op == "request":
+            state = hands.stop.request(reason=reason)
+            if sink is not None:
+                sink.record_stop_requested(reason=reason)
+            return state
+        if op == "clear":
+            state = hands.stop.clear(reason=reason)
+            if sink is not None:
+                sink.record_stop_cleared(reason=reason)
+            return state
+        return hands.stop.state()
+    if name == "computer_audit":
+        sink = audit if audit is not None else hands.audit
+        if sink is None:
+            return {"entries": [], "ledger_available": False}
+        limit = arguments.get("limit", 50)
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 0:
+            raise ValueError("computer_audit 'limit' must be a non-negative integer")
+        entries = sink.recent(limit)
+        available = True
+        if isinstance(sink, LedgerComputerAudit):
+            available = sink.last_error is None
+        return {"entries": entries, "ledger_available": available}
     if name == "computer_run_task":
         steps = arguments.get("steps")
         if not isinstance(steps, list):

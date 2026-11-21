@@ -11,8 +11,15 @@ This package is new in V2-31: no ``puspa/computer/local.py``
 existed at this base, so the module was built from scratch here
 instead of extending one. The local runner it stands next to is
 :mod:`puspa.localexec` (subprocess commands, not the desktop).
+
+V2-35 adds tiers (:mod:`puspa.computer.tiers`), the per-app
+allowlist (:mod:`puspa.computer.allowlist`), the emergency stop
+(:mod:`puspa.computer.stop`), and the ledger audit sink
+(:mod:`puspa.computer.audit`).
 """
 
+from .allowlist import Allowlist, default_allowlist_path
+from .audit import InMemoryComputerAudit, LedgerComputerAudit, audit_entry
 from .backend import AtspiBackend, BackendUnavailableError, FakeBackend, make_backend
 from .fallback import (
     TOOL_CLICK_AT,
@@ -49,6 +56,7 @@ from .screenshot import (
     X11ScreenshotBackend,
     make_screenshot_backend,
 )
+from .stop import ComputerStop, ComputerStopped, default_stop_path
 from .sync import (
     ElementIdentity,
     SettleReport,
@@ -59,6 +67,7 @@ from .sync import (
     wait_for_settle,
     words_signature,
 )
+from .tiers import Tier, classify, is_submit_shortcut
 from .tree import AccessibleNode, Snapshot
 from .vision import (
     FakeOcrBackend,
@@ -87,11 +96,14 @@ __all__ = [
     "TOOL_CLICK_AT",
     "TOOL_WEB_CLICK",
     "AccessibleNode",
+    "Allowlist",
     "AtspiBackend",
     "AtspiWindowBackend",
     "BackendUnavailableError",
     "ClickResult",
     "ClipboardResult",
+    "ComputerStop",
+    "ComputerStopped",
     "CoordinateClicker",
     "DesktopHands",
     "DesktopHandsError",
@@ -103,7 +115,9 @@ __all__ = [
     "FakeScreenshotBackend",
     "FakeWebBackend",
     "FakeWindowBackend",
+    "InMemoryComputerAudit",
     "InputResult",
+    "LedgerComputerAudit",
     "OcrBackend",
     "OcrWord",
     "PlaywrightWebBackend",
@@ -115,6 +129,7 @@ __all__ = [
     "StaleRefError",
     "StaleVisualTargetError",
     "TesseractBackend",
+    "Tier",
     "UnavailableVisionBackend",
     "UnknownRefError",
     "Verification",
@@ -133,10 +148,15 @@ __all__ = [
     "XTestClicker",
     "XTestInputBackend",
     "ask_user",
+    "audit_entry",
     "check_token_gate",
+    "classify",
+    "default_allowlist_path",
+    "default_stop_path",
     "fingerprint",
     "ground_text",
     "handle_tool",
+    "is_submit_shortcut",
     "is_web_target",
     "make_backend",
     "make_clicker",

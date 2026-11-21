@@ -1,0 +1,288 @@
+# Computer tiers API contract (V2-35: per-app allowlist, emergency stop, audit log).
+#
+# Split out of docs/openapi-pwa.yaml the same way the controls
+# contract was: the main spec references this file with $ref
+# stubs; the generated client is produced from the main spec
+# with openapi-typescript, which resolves external $refs. The
+# Error schema stays in the main spec and is referenced back
+# from here.
+openapi: 3.0.3
+info:
+  title: PuspaBot computer tiers API
+  version: 1.0.0
+paths:
+  /api/computer/allowlist:
+    get:
+      tags: [computer]
+      summary: Allowlisted apps for desktop hands
+      description: |
+        V2-35 tiers: the apps whose normal clicks run without
+        asking. Destructive actions always ask, even in an
+        allowlisted app.
+      responses:
+        "200":
+          description: The allowlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputerAllowlist"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    post:
+      tags: [computer]
+      summary: Allowlist one app
+      description: |
+        V2-35 tiers: allowlist one app by name, so normal clicks
+        inside it run without asking.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ComputerAllowlistRequest"
+      responses:
+        "200":
+          description: The app and whether it was new
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputerAllowlistChange"
+        "400":
+          description: Empty app name
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/computer/allowlist/{app}:
+    delete:
+      tags: [computer]
+      summary: Revoke one app from the allowlist
+      description: |
+        V2-35 tiers: take one app off the allowlist, so its
+        normal clicks ask again.
+      parameters:
+        - name: app
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The app and whether it was listed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputerAllowlistChange"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/computer/stop:
+    get:
+      tags: [computer]
+      summary: Emergency stop flag for the desktop hands
+      description: |
+        V2-35 stop: whether the hands are stopped, who set the
+        flag, why, and when.
+      responses:
+        "200":
+          description: The stop flag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputerStopState"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    post:
+      tags: [computer]
+      summary: Request the emergency stop
+      description: |
+        V2-35 stop: halts the desktop hands immediately. A
+        running task stops at the next step boundary at the
+        latest; a single action is refused once the flag is set.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ComputerStopRequest"
+      responses:
+        "200":
+          description: The stop flag after the request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputerStopState"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/computer/stop/clear:
+    post:
+      tags: [computer]
+      summary: Clear the emergency stop
+      description: |
+        V2-35 stop: lets the desktop hands run again.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ComputerStopRequest"
+      responses:
+        "200":
+          description: The stop flag after clearing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputerStopState"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/computer/audit:
+    get:
+      tags: [computer]
+      summary: Recent computer audit entries
+      description: |
+        V2-35 audit: newest-first computer actions from the
+        ledger (what action, which target, which tier and
+        decision, allow/deny/stop outcome, timestamp). Never
+        carries clipboard content or typed text, only lengths.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: The audit entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputerAuditList"
+        "400":
+          description: Limit out of range
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    ComputerAllowlist:
+      type: object
+      required: [apps]
+      properties:
+        apps:
+          type: array
+          items:
+            type: string
+    ComputerAllowlistRequest:
+      type: object
+      required: [app]
+      properties:
+        app:
+          type: string
+    ComputerAllowlistChange:
+      type: object
+      required: [app, allowed, changed]
+      properties:
+        app:
+          type: string
+        allowed:
+          type: boolean
+        changed:
+          type: boolean
+    ComputerStopState:
+      type: object
+      required: [active, actor, reason, updated_at]
+      properties:
+        active:
+          type: boolean
+        actor:
+          type: string
+        reason:
+          type: string
+        updated_at:
+          type: string
+          nullable: true
+    ComputerStopRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+    ComputerAuditEntry:
+      type: object
+      description: |
+        One computer audit entry. `target` is a ref, window id,
+        or app name, never typed text or clipboard content;
+        `length` is the only trace of typed or clipboard text.
+      properties:
+        id:
+          type: string
+        created_at:
+          type: string
+        type:
+          type: string
+        tool:
+          type: string
+        computer_action:
+          type: string
+        computer_stop:
+          type: string
+        target:
+          type: string
+        app:
+          type: string
+        tier:
+          type: string
+          enum: [read, normal, destructive]
+        decision:
+          type: string
+          enum: [allow, deny, stop]
+        outcome:
+          type: string
+        length:
+          type: integer
+        reason:
+          type: string
+        actor:
+          type: string
+    ComputerAuditList:
+      type: object
+      required: [entries, ledger_available]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ComputerAuditEntry"
+        ledger_available:
+          type: boolean

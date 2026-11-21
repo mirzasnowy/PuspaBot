@@ -1,7 +1,8 @@
 """Window management for Puspa desktop hands (V2-33).
 
 List windows, open an app, focus a window, switch between
-apps. Linux first, through the same AT-SPI tree V2-31 reads:
+apps, close a window (V2-35, destructive: it always asks).
+Linux first, through the same AT-SPI tree V2-31 reads:
 top-level applications and their frames are the windows. A
 window id is its frame's path in the tree (``"0.1"``: first
 application, second frame), so a future backend can keep the
@@ -140,6 +141,11 @@ class WindowBackend(Protocol):
         unknown id."""
         ...
 
+    def close_window(self, window_id: str) -> bool:
+        """Close ``window_id``. False for an unknown id, or
+        when the window offers no close action. The caller
+        verifies by re-reading the window list."""
+
 
 # ------------------------------------------------------------------
 # Fake backend (tests + demos)
@@ -217,6 +223,22 @@ class FakeWindowBackend:
         if "focused" not in states:
             states.append("focused")
         frame["states"] = states
+        return True
+
+    def close_window(self, window_id: str) -> bool:
+        try:
+            app_index, frame_index = (int(part) for part in window_id.split("."))
+        except ValueError:
+            return False
+        app = _find_spec(self._spec, (app_index,))
+        if app is None:
+            return False
+        frames = app.get("children", [])
+        if frame_index >= len(frames) or frames[frame_index].get("role") != "frame":
+            return False
+        del frames[frame_index]
+        if not frames:
+            del self._spec[app_index]
         return True
 
 
@@ -322,6 +344,48 @@ class AtspiWindowBackend:
                 libs.gobject.g_object_unref(component)
         finally:
             libs.gobject.g_object_unref(live)
+
+    def close_window(self, window_id: str) -> bool:
+        """Close a window through its AT-SPI "close" action.
+        Returns False when the window has no close action (not
+        every frame offers one): the caller verifies by
+        re-reading the window list, so a False here never reads
+        as a close that happened."""
+        libs = self._libs_or_raise()
+        try:
+            path = tuple(int(part) for part in window_id.split("."))
+        except ValueError:
+            return False
+        live = find_live_accessible(libs, path)
+        if live is None:
+            return False
+        try:
+            action = libs.atspi.atspi_accessible_get_action(live)
+            if not action:
+                return False
+            try:
+                count = libs.atspi.atspi_action_get_n_actions(action)
+                names = [
+                    _read_string(libs, libs.atspi.atspi_action_get_action_name(action, index))
+                    for index in range(max(count, 0))
+                ]
+                if "close" not in names:
+                    return False
+                return bool(libs.atspi.atspi_action_do_action(action, names.index("close")))
+            finally:
+                libs.gobject.g_object_unref(action)
+        finally:
+            libs.gobject.g_object_unref(live)
+
+
+def _read_string(libs: Any, raw: int | None) -> str:
+    """One AT-SPI string (owned, freed after reading)."""
+    if not raw:
+        return ""
+    try:
+        return ctypes.string_at(raw).decode("utf-8", "replace")
+    finally:
+        libs.glib.g_free(raw)
 
 
 # ------------------------------------------------------------------

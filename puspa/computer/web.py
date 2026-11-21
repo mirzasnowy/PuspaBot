@@ -33,14 +33,18 @@ finding text are reads and need no prompt.
 
 from __future__ import annotations
 
+import contextlib
 import os
 from dataclasses import dataclass
 from typing import Protocol
 
-from puspa.localexec.executor import PermissionDecision
+from puspa.localexec.executor import PermissionDecision, PermissionDenied
 
+from .audit import InMemoryComputerAudit, LedgerComputerAudit, audit_entry
 from .gating import ask_user, check_token_gate
 from .screenshot import Screenshot
+from .stop import ComputerStop, ComputerStopped
+from .tiers import Tier
 from .vision import (
     FakeOcrBackend,
     OcrBackend,
@@ -388,6 +392,9 @@ class WebBridge:
     and verify. ``expect`` is ``{"text": ...}`` (this text must
     be on the page afterwards), ``{"absent_text": ...}`` (it must
     be gone), or None (any change in the page text counts).
+    ``stop`` is the V2-35 emergency stop (checked before the
+    prompt); ``audit`` is the V2-35 audit sink. A web click is
+    tier NORMAL with no known app, so it always asks.
     """
 
     def __init__(
@@ -397,6 +404,8 @@ class WebBridge:
         prompt=None,
         gate=None,
         token_payload: dict | None = None,
+        stop: ComputerStop | None = None,
+        audit: LedgerComputerAudit | InMemoryComputerAudit | None = None,
     ) -> None:
         if isinstance(backend, str):
             if backend == "fake":
@@ -412,27 +421,125 @@ class WebBridge:
         self._gate = gate
         self._token_payload = token_payload
         self._session_approved = False
+        self.stop = stop if stop is not None else ComputerStop()
+        self.audit = audit
 
     def open(self, target: str) -> WebPage:
-        """Open a web target (``web:`` prefix stripped)."""
-        return self.backend.open(_strip_web_prefix(target))
+        """Open a web target (``web:`` prefix stripped). Tier
+        READ: never asks, but still audited."""
+        page = self.backend.open(_strip_web_prefix(target))
+        self._audit(
+            "web_open",
+            target=_strip_web_prefix(target),
+            tier=Tier.READ,
+            decision="allow",
+            outcome="performed",
+            reason=f"opened {page.url}",
+        )
+        return page
 
     def find_text(self, query: str) -> VisualElement | None:
-        """Locate ``query`` on the open page. Read-only."""
-        return self.backend.find_text(query)
+        """Locate ``query`` on the open page. Read-only. Tier
+        READ: never asks, but still audited."""
+        element = self.backend.find_text(query)
+        self._audit(
+            "web_find",
+            target=query,
+            tier=Tier.READ,
+            decision="allow",
+            outcome="performed" if element is not None else "not_performed",
+            reason="text found on the page" if element is not None else "text not on the page",
+        )
+        return element
+
+    def _audit(
+        self,
+        action: str,
+        *,
+        target: str,
+        tier: Tier,
+        decision: str,
+        outcome: str,
+        reason: str = "",
+    ) -> None:
+        """Write one audit entry when a sink is wired in.
+        Best-effort: a sink that cannot write never fails the
+        action itself."""
+        if self.audit is None:
+            return
+        with contextlib.suppress(Exception):
+            self.audit.record(
+                audit_entry(
+                    action,
+                    target=target,
+                    tier=tier.value,
+                    decision=decision,
+                    outcome=outcome,
+                    reason=reason,
+                )
+            )
 
     def _ask(self, element: VisualElement) -> None:
         label = (
             f"computer web_click {element.label!r} at ({element.center[0]}, {element.center[1]})"
         )
+        if self.stop.is_active():
+            self._audit(
+                "web_click",
+                target=element.label,
+                tier=Tier.NORMAL,
+                decision="stop",
+                outcome="stopped",
+                reason="computer hands are stopped by the user",
+            )
+            self.stop.check()
         check_token_gate(self._gate, self._token_payload, TOOL_WEB_CLICK)
-        decision = ask_user(label, self._prompt, session_approved=self._session_approved)
+        try:
+            decision = ask_user(label, self._prompt, session_approved=self._session_approved)
+        except PermissionDenied as exc:
+            self._audit(
+                "web_click",
+                target=element.label,
+                tier=Tier.NORMAL,
+                decision="deny",
+                outcome="denied",
+                reason=str(exc),
+            )
+            raise
         if decision is PermissionDecision.APPROVE_SESSION:
             self._session_approved = True
 
     def click_text(self, query: str, *, expect: dict | None = None) -> WebClickResult:
         """Locate ``query`` on the open page, click its centre
-        (gated), then re-read to verify."""
+        (gated), then re-read to verify. The click is audited
+        with its outcome."""
+        try:
+            result = self._click_text_inner(query, expect=expect)
+        except (ComputerStopped, PermissionDenied):
+            raise  # already audited in _ask
+        except VisualFallbackError as exc:
+            self._audit(
+                "web_click",
+                target=query,
+                tier=Tier.NORMAL,
+                decision="allow",
+                outcome="failed",
+                reason=str(exc),
+            )
+            raise
+        self._audit(
+            "web_click",
+            target=query,
+            tier=Tier.NORMAL,
+            decision="allow",
+            outcome="performed" if result.performed else "not_performed",
+            reason=result.reason,
+        )
+        return result
+
+    def _click_text_inner(self, query: str, *, expect: dict | None = None) -> WebClickResult:
+        """The locate + gated click + re-read loop behind
+        :meth:`click_text` (which adds the audit entry)."""
         element = self.backend.find_text(query)
         if element is None:
             raise VisualFallbackError(f"cannot locate {query!r} on the open page")
