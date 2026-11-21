@@ -65,6 +65,17 @@ from puspa.sentinel.detectors import (
     detect_turn_stops,
     run_detectors,
 )
+from puspa.sentinel.failure_taxonomy import (
+    MAX_AUTO_REPAIR_ATTEMPTS,
+    REPAIR_BY_CLASS,
+    Classification,
+    FailureClass,
+    FailureEvent,
+    FailureSignal,
+    RepairAction,
+    classify,
+    from_late_failure,
+)
 from puspa.sentinel.insights import (
     SessionInsights,
     format_usd,
@@ -96,9 +107,16 @@ from puspa.sentinel.verifier import VerificationVerdict, verify_issue
 
 __all__ = [
     "DETECTORS",
+    "MAX_AUTO_REPAIR_ATTEMPTS",
+    "REPAIR_BY_CLASS",
     "Analytics",
     "BatchTrajectoryRunner",
+    "Classification",
     "DailyDecisionLog",
+    "FailureClass",
+    "FailureEvent",
+    "FailureSignal",
+    "RepairAction",
     "Sentinel",
     "SentinelThresholds",
     "SessionInsights",
@@ -108,6 +126,7 @@ __all__ = [
     "TrajectoryStep",
     "VerificationVerdict",
     "acknowledge_issue",
+    "classify",
     "detect_cost_overruns",
     "detect_outcome_failures",
     "detect_queue_waits",
@@ -115,6 +134,7 @@ __all__ = [
     "detect_tool_errors",
     "detect_turn_stops",
     "format_usd",
+    "from_late_failure",
     "insights_from_events",
     "insights_from_state_db",
     "load_prompt_dataset",
