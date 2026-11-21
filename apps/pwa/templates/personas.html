@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Persona</h1>
+<p class="pesan-sub">Satu agen, beberapa peran: misalnya satu persona untuk kerja dan satu untuk personal. Persona yang aktif dipakai agen di giliran berikutnya. Persona lama tetap tersimpan dan bisa diaktifkan lagi kapan saja.</p>
+
+<p id="persona-status" class="pesan-sub" role="status"></p>
+
+<h2>Persona aktif</h2>
+<form id="form-aktif" aria-labelledby="judul-aktif">
+  <fieldset id="judul-aktif">
+    <legend>Pilih persona yang aktif</legend>
+    <div id="daftar-persona"><p class="pesan-sub">Memuat daftar persona...</p></div>
+    <button type="submit">Aktifkan persona</button>
+  </fieldset>
+</form>
+
+<h2>Buat persona baru</h2>
+<form id="form-buat" aria-labelledby="judul-buat">
+  <fieldset id="judul-buat">
+    <legend>Persona baru</legend>
+    <div>
+      <label for="nama-baru">Nama persona <span aria-hidden="true">*</span></label>
+      <input id="nama-baru" name="name" type="text" required minlength="1" maxlength="64" autocomplete="off" autocapitalize="words" spellcheck="false" aria-describedby="bantuan-nama">
+      <p id="bantuan-nama" class="pesan-sub">Contoh: Kerja, Personal. Nama jadi pengenal folder persona.</p>
+    </div>
+    <div>
+      <label for="prompt-baru">Prompt: cara agen bicara dan bersikap</label>
+      <textarea id="prompt-baru" name="soul" rows="4" aria-describedby="bantuan-prompt"></textarea>
+      <p id="bantuan-prompt" class="pesan-sub">Kosongkan untuk memakai prompt bawaan. Contoh: jawab singkat, langsung ke intinya.</p>
+    </div>
+    <div>
+      <label for="gaya-baru">Gaya balasan</label>
+      <select id="gaya-baru" name="style">
+        <option value="santai">Santai</option>
+        <option value="rapi">Rapi</option>
+        <option value="campur">Campur kode</option>
+      </select>
+    </div>
+    <div>
+      <label for="tentang-baru">Tentang kamu (untuk persona ini)</label>
+      <textarea id="tentang-baru" name="user" rows="3"></textarea>
+    </div>
+    <button type="submit">Buat persona</button>
+  </fieldset>
+</form>
+
+<h2>Ubah persona</h2>
+<div id="daftar-ubah"><p class="pesan-sub">Memuat daftar persona...</p></div>
+
+<script>
+var statusEl = document.getElementById("persona-status");
+function setStatus(text) { statusEl.textContent = text; }
+async function callApi(url, options) {
+  var response = await fetch(url, options);
+  if (!response.ok) {
+    var body = await response.json().catch(function () { return {}; });
+    setStatus(body.error || ("Request failed: " + response.status));
+    return null;
+  }
+  return response.json();
+}
+function radioRow(persona, active) {
+  var label = document.createElement("label");
+  var radio = document.createElement("input");
+  radio.type = "radio";
+  radio.name = "active";
+  radio.value = persona.slug;
+  radio.checked = persona.slug === active;
+  label.appendChild(radio);
+  label.appendChild(document.createTextNode(" " + persona.name + (persona.is_default ? " (bawaan)" : "") + (persona.style ? " - " + persona.style : "")));
+  var wrap = document.createElement("div");
+  wrap.appendChild(label);
+  return wrap;
+}
+function editCard(persona) {
+  var card = document.createElement("div");
+  card.className = "kartu";
+  var title = document.createElement("strong");
+  title.textContent = persona.name;
+  card.appendChild(title);
+  if (persona.is_default) {
+    var note = document.createElement("p");
+    note.className = "pesan-sub";
+    note.textContent = "Persona bawaan (file di folder utama Puspa).";
+    card.appendChild(note);
+  }
+  var form = document.createElement("form");
+  form.setAttribute("aria-label", "Ubah persona " + persona.name);
+  var promptLabel = document.createElement("label");
+  promptLabel.textContent = "Prompt";
+  promptLabel.htmlFor = "prompt-" + persona.slug;
+  var prompt = document.createElement("textarea");
+  prompt.id = "prompt-" + persona.slug;
+  prompt.name = "soul";
+  prompt.rows = 3;
+  form.appendChild(promptLabel);
+  form.appendChild(prompt);
+  var styleLabel = document.createElement("label");
+  styleLabel.textContent = "Gaya balasan";
+  styleLabel.htmlFor = "gaya-" + persona.slug;
+  var style = document.createElement("select");
+  style.id = "gaya-" + persona.slug;
+  style.name = "style";
+  ["santai", "rapi", "campur"].forEach(function (value) {
+    var option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    style.appendChild(option);
+  });
+  form.appendChild(styleLabel);
+  form.appendChild(style);
+  var save = document.createElement("button");
+  save.type = "submit";
+  save.textContent = "Simpan perubahan";
+  form.appendChild(save);
+  form.addEventListener("submit", async function (event) {
+    event.preventDefault();
+    var result = await callApi("/api/personas/" + encodeURIComponent(persona.slug), {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({soul: prompt.value, style: style.value}),
+    });
+    if (result) { setStatus("Persona " + result.name + " disimpan."); await loadPersonas(); }
+  });
+  card.appendChild(form);
+  if (!persona.is_default) {
+    var del = document.createElement("button");
+    del.type = "button";
+    del.textContent = "Hapus persona " + persona.name;
+    del.addEventListener("click", async function () {
+      if (!confirm("Hapus persona " + persona.name + "? File persona ini dihapus dan tidak bisa dikembalikan.")) { return; }
+      var result = await callApi("/api/personas/" + encodeURIComponent(persona.slug), {method: "DELETE"});
+      if (result) { setStatus("Persona " + persona.name + " dihapus."); await loadPersonas(); }
+    });
+    card.appendChild(del);
+  }
+  var detail = fetch("/api/personas/" + encodeURIComponent(persona.slug)).then(function (r) { return r.json(); });
+  detail.then(function (data) {
+    prompt.value = data.soul || "";
+    if (data.style) { style.value = data.style; }
+  });
+  return card;
+}
+async function loadPersonas() {
+  var data = await callApi("/api/personas");
+  if (!data) { return; }
+  var list = document.getElementById("daftar-persona");
+  list.innerHTML = "";
+  data.personas.forEach(function (persona) {
+    list.appendChild(radioRow(persona, data.active));
+  });
+  var editList = document.getElementById("daftar-ubah");
+  editList.innerHTML = "";
+  data.personas.forEach(function (persona) {
+    editList.appendChild(editCard(persona));
+  });
+}
+document.getElementById("form-aktif").addEventListener("submit", async function (event) {
+  event.preventDefault();
+  var checked = document.querySelector('input[name="active"]:checked');
+  if (!checked) { setStatus("Pilih dulu persona yang mau diaktifkan."); return; }
+  var result = await callApi("/api/personas/" + encodeURIComponent(checked.value) + "/activate", {method: "POST"});
+  if (result) { setStatus("Persona aktif sekarang: " + checked.value + ". Berlaku mulai giliran berikutnya."); await loadPersonas(); }
+});
+document.getElementById("form-buat").addEventListener("submit", async function (event) {
+  event.preventDefault();
+  var form = event.target;
+  var result = await callApi("/api/personas", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      name: form.elements["name"].value,
+      soul: form.elements["soul"].value || undefined,
+      user: form.elements["user"].value || undefined,
+      style: form.elements["style"].value,
+    }),
+  });
+  if (result) {
+    setStatus("Persona " + result.name + " dibuat.");
+    form.reset();
+    await loadPersonas();
+  }
+});
+loadPersonas();
+</script>
+{% endblock %}

@@ -112,7 +112,13 @@ BASELINE_LINES = {
     # TurnInterrupted catch at both sites, the takeover reason
     # through _finish_interrupted). The ratchet resumes from 1163
     # (1162 + 1 line from `ruff format`).
-    "puspa/turns/loop.py": 1163,
+    # Multiple switchable personas (22 Nov 2026): +4 lines — the
+    # active-persona load in _refresh_persona_system (plus the
+    # docstring line naming the switcher). Recorded re-baseline:
+    # main already carried 1292 against the 1163 baseline before
+    # this item; the ratchet resumes from the tree as it stands,
+    # 1296, so this item's own +4 is deliberate, not silent.
+    "puspa/turns/loop.py": 1296,
     # PWA app factory (G28 wiring + P-01/P-02/P-03): the FastAPI
     # app, the screen context + bootstrap, and every API module's
     # route registration in one place. Crossed 1000 lines in
@@ -154,15 +160,15 @@ BASELINE_LINES = {
     # the chat_widgets_api import and route registration plus
     # the comment (same seam as the cards: no new screen, no
     # new table). Resumes from 1144.
-    # Broken-rooms fix (22 Nov 2026): +10 lines on top of the 1183 the
-    # tree already carried — the "rooms" screen in SCREENS, the
-    # rooms_api route registration, and the docstring lines that
-    # name it. The ratchet resumes from 1193.
     # Artifacts + run-logs browser (22 Nov 2026): +11 lines — the
     # "artifacts" screen in SCREENS, its agents context (shared
     # with replay), and the artifacts route registration.
-    # Resumes from 1204.
-    "puspa/pwa/app.py": 1204,
+    # Multiple switchable personas (22 Nov 2026): +14 lines — the
+    # "personas" screen in SCREENS, the persona_home test seam on
+    # create_app, and the personas route registration (13 lines of
+    # code + 1 from `ruff format`), plus 1 line from the merged
+    # docstring naming both screens. Resumes from 1219.
+    "puspa/pwa/app.py": 1219,
     # PWA typed API client: every screen's fetch wrapper plus
     # the generated-types aliases in one file. Crossed 1000
     # lines in P-10 (21 Nov 2026): the replay fetchers (tasks,
@@ -184,13 +190,14 @@ BASELINE_LINES = {
     # types). Split candidate when it grows again: one fetch
     # module per feature area, keeping the type aliases in
     # client.ts. The ratchet resumes from 1186.
-    # NOTE (22 Nov 2026): the file already measured 1,481 lines
-    # at this item's base — the 1186 baseline above is stale
-    # against merged work, not against this item. This item
-    # adds +46 lines only: the ArtifactSummary interface (21)
-    # plus the fetchArtifacts + artifactDownloadUrl fetchers
-    # (25). The ratchet resumes from 1527.
-    "apps/pwa/src/api/client.ts": 1527,
+    # Artifacts + run-logs browser (22 Nov 2026): +46 lines — the
+    # ArtifactSummary interface (21) plus the fetchArtifacts +
+    # artifactDownloadUrl fetchers (25).
+    # Multiple switchable personas (22 Nov 2026): +96 lines — the
+    # persona fetchers (list, read, create, update, delete,
+    # activate) and their five type aliases. Both items' growth
+    # is deliberate, not silent. The ratchet resumes from 1623.
+    "apps/pwa/src/api/client.ts": 1623,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Shared-room delegation (B6): the delegation board, task
@@ -355,13 +362,15 @@ BASELINE_LINES = {
     # NOTE (22 Nov 2026): the file already measured 2,295 lines
     # at this item's base — the 1926 baseline above is stale
     # against merged work (the spec is already past the
-    # 2000-line hard cap before this item), not against this
-    # item. This item adds +8 lines only: the `artifacts` tag
-    # (2), $ref stubs for 2 artifact paths + the ArtifactSummary
+    # 2000-line hard cap before this item), not against either
+    # item. Artifacts adds +8 lines: the `artifacts` tag (2),
+    # $ref stubs for 2 artifact paths + the ArtifactSummary
     # schema (6), and "artifacts" in the Bootstrap screen enum
-    # (same line). The contract itself lives in
-    # docs/openapi-artifacts.yaml. The ratchet resumes from 2303.
-    "docs/openapi-pwa.yaml": 2303,
+    # (same line); the contract itself lives in
+    # docs/openapi-artifacts.yaml. Personas adds +6 lines: $ref
+    # stubs for the 3 personas paths (contract split out to
+    # docs/openapi-personas.yaml). The ratchet resumes from 2309.
+    "docs/openapi-pwa.yaml": 2309,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:

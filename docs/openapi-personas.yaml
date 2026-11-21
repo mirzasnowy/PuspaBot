@@ -1,0 +1,309 @@
+# Multiple switchable personas API contract.
+#
+# Split out of docs/openapi-pwa.yaml on 22 Nov 2026 (multiple
+# switchable personas): the personas contract (6 endpoints + 5
+# schemas) would have pushed the main spec further past the
+# 2000-line hard cap, so it earned its own file, following the
+# morning split. The main spec references this file with $ref
+# stubs; the generated client is produced from the main spec with
+# openapi-typescript, which resolves external $refs. The Error
+# schema stays in the main spec and is referenced back from here.
+openapi: 3.0.3
+info:
+  title: PuspaBot switchable personas API
+  version: 1.0.0
+paths:
+  /api/personas:
+    get:
+      tags: [personas]
+      summary: List every persona with the active slug
+      description: |
+        The default persona (the home's own SOUL.md / IDENTITY.md /
+        USER.md) is always first; extra personas follow by name.
+        Each entry carries slug, name, reply style, is_active and
+        is_default — no file text; read one persona for that.
+      responses:
+        "200":
+          description: Persona list with the active slug
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonaList"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    post:
+      tags: [personas]
+      summary: Create a persona
+      description: |
+        Only `name` is required; the folder slug comes from it
+        ("Kerja Harian" -> "kerja-harian"). Omitted file text
+        starts from the defaults, with the `Name:` line set to
+        the new name. `style` must be one of the speaking styles
+        (santai, rapi, campur).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersonaInput"
+      responses:
+        "200":
+          description: The created persona, file text included
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonaDetail"
+        "400":
+          description: Invalid name, style, or field type
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "409":
+          description: A persona with this slug already exists
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/personas/{slug}:
+    get:
+      tags: [personas]
+      summary: Read one persona, file text included
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: Persona slug, or "default" for the home's own files
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The persona, file text included
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonaDetail"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown persona slug
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    patch:
+      tags: [personas]
+      summary: Edit a persona; only the given fields change
+      description: |
+        A new `name` rewrites the `Name:` line of IDENTITY.md;
+        the folder slug never moves — it is the stable id.
+        The default persona can be edited the same way; it
+        writes the home's root files.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: Persona slug, or "default" for the home's own files
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersonaInput"
+      responses:
+        "200":
+          description: The updated persona, file text included
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonaDetail"
+        "400":
+          description: Invalid name, style, or field type
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown persona slug
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    delete:
+      tags: [personas]
+      summary: Delete a persona
+      description: |
+        The default persona cannot be deleted. Deleting the
+        active persona falls back to the default on the next
+        turn; the response carries the new active slug.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: Persona slug to delete
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The deleted slug and the new active slug
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonaDeleted"
+        "400":
+          description: The default persona cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown persona slug
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/personas/{slug}/activate:
+    post:
+      tags: [personas]
+      summary: Make a persona active
+      description: |
+        The turn loop reads the active persona fresh on every
+        turn, so the switch applies from the next turn with no
+        restart. The old persona's files stay stored untouched.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: Persona slug to activate, or "default"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The new active slug with the persona list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonaList"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown persona slug
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    PersonaSummary:
+      type: object
+      required: [slug, name, style, is_active, is_default]
+      properties:
+        slug:
+          type: string
+          description: Folder slug, or "default" for the home's own files
+        name:
+          type: string
+          description: Agent name, from the IDENTITY.md Name line
+        style:
+          type: string
+          nullable: true
+          description: Reply style key (santai, rapi, campur), null when unset
+        is_active:
+          type: boolean
+        is_default:
+          type: boolean
+    PersonaList:
+      type: object
+      required: [personas, active]
+      properties:
+        personas:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonaSummary"
+        active:
+          type: string
+          description: Slug of the active persona
+    PersonaDetail:
+      type: object
+      required: [slug, name, soul, identity, user, style, is_active, is_default]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        soul:
+          type: string
+          description: "SOUL.md text — the prompt: how the agent talks"
+        identity:
+          type: string
+          description: IDENTITY.md text
+        user:
+          type: string
+          description: USER.md text — what the agent knows about the user
+        style:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        is_default:
+          type: boolean
+    PersonaInput:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Persona name; required on create, optional on edit
+        soul:
+          type: string
+          description: SOUL.md text
+        identity:
+          type: string
+          description: IDENTITY.md text
+        user:
+          type: string
+          description: USER.md text
+        style:
+          type: string
+          description: Reply style key (santai, rapi, campur)
+    PersonaDeleted:
+      type: object
+      required: [deleted, active]
+      properties:
+        deleted:
+          type: string
+          description: Slug of the deleted persona
+        active:
+          type: string
+          description: Slug of the persona now active

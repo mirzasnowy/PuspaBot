@@ -22,6 +22,7 @@ export type ScreenName =
   | "connectors"
   | "memory"
   | "settings"
+  | "personas"
   | "office"
   | "live"
   | "replay"
@@ -40,6 +41,7 @@ export const SCREENS: { name: ScreenName; path: string; label: string }[] = [
   { name: "connectors", path: "/connectors", label: "Konektor" },
   { name: "memory", path: "/memory", label: "Memori" },
   { name: "settings", path: "/settings", label: "Pengaturan" },
+  { name: "personas", path: "/personas", label: "Persona" },
   { name: "office", path: "/office", label: "Kantor" },
   { name: "live", path: "/live", label: "Live" },
   { name: "replay", path: "/replay", label: "Replay" },

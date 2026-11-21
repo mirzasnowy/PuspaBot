@@ -217,10 +217,12 @@ class TurnLoop:
         editable persona files (SOUL.md, IDENTITY.md, USER.md;
         see ``puspa.persona.files``). When given, the files are
         created with defaults if missing, and the leading system
-        message is rebuilt from them fresh on every turn, so an
-        edit takes effect on the next turn. When None (the
-        default) the loop never touches the persona files and
-        behaves exactly as before.
+        message is rebuilt from the *active* persona fresh on every
+        turn (see ``puspa.persona.switcher``: several personas can
+        live under ``<home>/personas/``, one active at a time; with
+        no extra persona the home's own files are the persona).
+        When None (the default) the loop never touches the persona
+        files and behaves exactly as before.
         """
         self.config = config or TurnConfig()
         self.model_call = model_call
@@ -413,20 +415,22 @@ class TurnLoop:
         )
 
     def _refresh_persona_system(self, history: list[InternalMessage]) -> list[InternalMessage]:
-        """Rebuild the leading system message from the persona files.
+        """Rebuild the leading system message from the active persona.
 
-        The files are read fresh on every turn (no cache), so an
-        edit to SOUL.md, IDENTITY.md, or USER.md takes effect on
-        the next turn. The block this loop injected on the
-        previous turn is stripped first, so the caller's own
-        system text survives exactly once and the block never
-        accumulates across turns. A malformed file falls back to
-        its default and is recorded on the sink as a
-        ``persona_file_warning`` event; the turn still runs.
+        The active persona's files are read fresh on every turn (no
+        cache), so an edit to SOUL.md, IDENTITY.md, or USER.md — or
+        a switch to another persona — takes effect on the next turn.
+        The block this loop injected on the previous turn is
+        stripped first, so the caller's own system text survives
+        exactly once and the block never accumulates across turns.
+        A malformed file falls back to its default and is recorded
+        on the sink as a ``persona_file_warning`` event; the turn
+        still runs.
         """
-        from puspa.persona.files import load_persona_files, render_persona_block
+        from puspa.persona.files import render_persona_block
+        from puspa.persona.switcher import load_active_persona_files
 
-        persona = load_persona_files(home=self.persona_home)
+        persona = load_active_persona_files(home=self.persona_home)
         for warning in persona.warnings:
             self._record("persona_file_warning", {"warning": warning})
         block = render_persona_block(persona)

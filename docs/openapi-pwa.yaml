@@ -186,6 +186,12 @@ paths:
     $ref: './openapi-morning.yaml#/paths/~1api~1morning~1notes'
   /api/morning/notes/{note_id}:
     $ref: './openapi-morning.yaml#/paths/~1api~1morning~1notes~1{note_id}'
+  /api/personas:
+    $ref: './openapi-personas.yaml#/paths/~1api~1personas'
+  /api/personas/{slug}:
+    $ref: './openapi-personas.yaml#/paths/~1api~1personas~1{slug}'
+  /api/personas/{slug}/activate:
+    $ref: './openapi-personas.yaml#/paths/~1api~1personas~1{slug}~1activate'
   /api/agen:
     post:
       tags: [agents]

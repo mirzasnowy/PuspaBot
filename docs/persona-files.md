@@ -69,9 +69,6 @@ The turn never crashes on these files:
 
 ## What this does not cover
 
-- There is no PWA editor for these files yet: editing is done
-  with any text editor, in the Puspa home directory. A PWA
-  editor is a follow-up, not part of this item.
 - The files are prompt text, not learned memory: they do not
   change what the agent remembers (that is the memory system),
   only how it presents itself and what it knows about the user
@@ -80,3 +77,27 @@ The turn never crashes on these files:
   style learned from examples and corrections) is a separate
   mechanism and still works as before; the files layer composes
   with it instead of replacing it.
+
+## Several personas, one active
+
+The home's own three files above are the `default` persona.
+Extra personas are the same three files in their own folder,
+plus an optional reply style — see `puspa.persona.switcher`:
+
+- `<home>/personas/<slug>/SOUL.md` — the prompt for that role.
+- `<home>/personas/<slug>/IDENTITY.md` — the agent's name in
+  that role (the `Name:` line, same parser as the default).
+- `<home>/personas/<slug>/USER.md` — what the agent knows
+  about the user in that role.
+- `<home>/personas/<slug>/meta.json` — `{"style": "santai"}`,
+  one of the speaking styles; it renders as a `# Reply style`
+  section in the prompt block.
+- `<home>/personas/active.json` — `{"active": "<slug>"}`;
+  missing, unreadable, or pointing at a deleted persona means
+  the default.
+
+The turn loop reads the active persona fresh on every turn, so
+switching takes effect on the next turn and the old persona
+stays stored untouched. The Personas screen in the PWA creates,
+edits, deletes, and switches personas; editing the files with
+any text editor in the Puspa home still works the same way.
