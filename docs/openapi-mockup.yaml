@@ -1,4 +1,4 @@
-# Mockup editor API contract (B7 prompt to visual mockup, drag and drop).
+# Mockup editor API contract (prompt-to-visual-mockup prompt to visual mockup, drag and drop).
 #
 # Split out of docs/openapi-pwa.yaml the way the graph contract was:
 # the main spec references this file with $ref stubs; the generated
@@ -9,7 +9,7 @@
 # generated file.
 openapi: 3.0.3
 info:
-  title: Puspa mockup editor API
+  title: PuspaBot mockup editor API
   version: 1.0.0
 paths:
   /api/mockups/templates:
@@ -34,7 +34,7 @@ paths:
       tags: [mockup]
       summary: Build 2-3 mockup variants from a text prompt
       description: |
-        B7: deterministic template filling (no live model call).
+        prompt-to-visual-mockup: deterministic template filling (no live model call).
         Intent keywords pick the template; quoted text becomes the
         headline, the first Rp... becomes the price. Each variant is
         self-critiqued (clipped text, contrast, collisions) and
@@ -89,7 +89,7 @@ paths:
       tags: [mockup]
       summary: Store a mockup doc, or build one from a template
       description: |
-        B7: either {"doc": <design doc>} or {"template": ..., "fields": {...}}.
+        prompt-to-visual-mockup: either {"doc": <design doc>} or {"template": ..., "fields": {...}}.
         The doc is validated (whitelisted components, no scripts) before
         it is stored.
       requestBody:
@@ -170,7 +170,7 @@ paths:
       tags: [mockup]
       summary: Apply one numbered op to a mockup
       description: |
-        B7: the drag-and-drop editor and the LLM patcher both write
+        prompt-to-visual-mockup: the drag-and-drop editor and the LLM patcher both write
         ops here. The op is numbered, appended to the op log, and the
         doc version bumps by one.
       parameters:
@@ -207,7 +207,7 @@ paths:
       tags: [mockup]
       summary: Apply a word-change instruction as ops
       description: |
-        B7: "besarkan harga, ganti warna jadi hijau" becomes ops on
+        prompt-to-visual-mockup: "besarkan harga, ganti warna jadi hijau" becomes ops on
         the doc. Unparseable instructions are 400, never guessed.
       parameters:
         - name: mockup_id
@@ -289,9 +289,9 @@ paths:
       tags: [mockup]
       summary: Add an image asset (data URI only) to a mockup
       description: |
-        P-06: the upload writes a numbered `add_asset` op, so the
+        mockup canvas v1: the upload writes a numbered `add_asset` op, so the
         doc version bumps and the op log stays the single history.
-        Before P-06 the endpoint mutated the stored doc without an
+        Before mockup canvas v1 the endpoint mutated the stored doc without an
         op, and the next edit silently dropped the uploaded asset.
       parameters:
         - name: mockup_id

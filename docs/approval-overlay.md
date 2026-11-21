@@ -1,6 +1,6 @@
-# Visual approval overlay (P-11, plan section 12.10)
+# Visual approval overlay (plan section 12.10)
 
-The visual layer over the G4 approval gate: before the bot clicks
+The visual layer over the approvals-taxonomy approval gate: before the bot clicks
 or acts, the element it is about to act on is highlighted in the
 live view, and the user approves or rejects that one action.
 Approved actions run; rejected ones are cancelled and recorded.
@@ -17,7 +17,7 @@ content-hash binding all stay where they are.
   card (structured arguments only — never a model narrative).
   The proposal is recorded in the ledger as `approval_requested`.
 - **Highlight.** The overlay resolves a highlight against the
-  P-09 live frame: the frame's last tool call (when it is this
+  live bot-screen view and takeover live frame: the frame's last tool call (when it is this
   action's tool), the open task (when it is this action's task),
   or the matching `approval_requested` ledger event — or `none`
   when the target is not visible in the current frame yet. The
@@ -28,19 +28,19 @@ content-hash binding all stay where they are.
   A decided overlay cannot be decided again (409).
 - **Cancellation is real.** When the store is constructed with
   the turn loop's `Gate`, a rejection marks the gate request
-  rejected (`Gate.reject`, added by P-11 as the complement of
+  rejected (`Gate.reject`, added by visual approval overlay as the complement of
   `Gate.approve`), so `Gate.execute` can never run it afterwards
   — and a rejected request cannot be approved later either.
   The same call path is covered by tests with a real gate.
 
 ## What it is not (honest limits)
 
-- **No screenshot, no pixel highlight.** Puspa has no real
-  desktop to watch (P-09): the frame is built from ledger
+- **No screenshot, no pixel highlight.** PuspaBot has no real
+  desktop to watch (live bot-screen view and takeover): the frame is built from ledger
   events, and the overlay highlights a *row* of that frame, not
   a position on a screen image. `screenshot` stays null. A real
   desktop/backend highlight needs the `FrameSource` capture seam
-  P-09 left open, and is out of scope here.
+  live bot-screen view and takeover left open, and is out of scope here.
 - **The PWA holds no gate.** The PWA process has no `Gate`
   instance (same as `app.state.approval`), so a rejection made
   in the PWA is the ledger event plus the overlay status; the
@@ -54,9 +54,9 @@ content-hash binding all stay where they are.
   lives in the ledger, not in the store.
 - **No migration.** The ledger event types used
   (`approval_requested`, `approval_granted`,
-  `approval_rejected`) already exist in the closed set, so P-11
+  `approval_rejected`) already exist in the closed set, so visual approval overlay
   adds no migration — and no numbering collision with the
-  parallel P-10 work.
+  parallel replay timeline work.
 
 ## Files
 

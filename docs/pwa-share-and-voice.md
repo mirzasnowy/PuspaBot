@@ -1,6 +1,6 @@
-# PWA share target and voice messages (P-03, plan section 12.4)
+# PWA share target and voice messages (PWA share target and voice messages, plan section 12.4)
 
-Two ways to get content into Puspa from outside the chat box: share
+Two ways to get content into PuspaBot from outside the chat box: share
 from another app, and talk instead of type. Both land as a chat
 message only after the user confirms — nothing is ever sent from a
 share or a recording alone.
@@ -28,7 +28,7 @@ Landing, by share kind:
 A share with no text, no URL, and no files redirects to `/chat`.
 Anonymous shares redirect to `/masuk`, like every other screen.
 
-This is the "forward to Puspa" flow the plan keeps alive. It is
+This is the "forward to PuspaBot" flow the plan keeps alive. It is
 **not** WhatsApp integration: Meta's WhatsApp Business API terms
 (effective 15 Jan 2026) bar general-purpose AI assistants, and the
 plan puts beta on Telegram + PWA instead. WhatsApp is out of scope

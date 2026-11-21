@@ -1,4 +1,4 @@
-# README — Phase 2 MVP Puspa (Team runtime + PWA + Connectors + Scheduler)
+# README — Phase 2 MVP PuspaBot (Team runtime + PWA + Connectors + Scheduler)
 
 Definition: revision 7 (approved by Nero 17 Nov 2026 ~17:42 WIB).
 Timeline ignored on Nero's order, 21:53 WIB. Full detail:
@@ -8,7 +8,7 @@ Timeline ignored on Nero's order, 21:53 WIB. Full detail:
 
 ```
 build/fase-2/
-  puspa/                 # Puspa namespace (extend_path, shared with Phase 0/1)
+  puspa/                 # PuspaBot namespace (extend_path, shared with Phase 0/1)
     runtime/             # agents, handoffs, budgets, subagent pool, task lifecycle
     evidence/            # evidence book, verifier, orphan-number renderer, projections
     router/              # tiered model router (on top of Phase 0 BYOK)
@@ -18,7 +18,7 @@ build/fase-2/
     cassette/            # cassette tests
     pwa/                 # FastAPI app (7 screens)
   apps/pwa/              # Jinja templates + static (service worker, manifest)
-  infra/schema_runtime.sql # Phase 2 tables + RLS + trigger rejecting Puspa deletion
+  infra/schema_runtime.sql # Phase 2 tables + RLS + trigger rejecting PuspaBot deletion
   cassettes/             # 10 reference cassettes (generator: create_reference_cassettes.py)
   tests/                 # Phase 2 suite (73 tests)
 ```

@@ -1,7 +1,7 @@
-# REUSE — Cross-phase reuse log for Puspa
+# REUSE — Cross-phase reuse log for PuspaBot
 
 Rules (all phases, Nero's order): study the BIG PATTERNS/IDEAS
-from surveyed repos, then REWRITE them as Puspa's own code adapted
+from surveyed repos, then REWRITE them as PuspaBot's own code adapted
 to the revision 7 architecture + English domain terms. NEVER copy
 code verbatim. NEVER use code licensed GPL, AGPL, SSPL, PolyForm,
 CC BY-NC, or a custom non-OSI license. NEVER create a GitHub fork
@@ -40,7 +40,7 @@ adapted (rewritten, not copied):
 | Vector index for memory search | pgvector (PostgreSQL, PostgreSQL license — free to use) | The idea of a vector-similarity index | Schema `episodic.embedding vector(384)` + HNSW index; the `HashEmbedding` embedding written by hand (token hash, Rp0) — a replacement seam prepared for a local/cheap paid embedding model |
 
 **Not used in Phase 1 (recorded so it isn't repeated):**
-- mem0 as a LIBRARY (not installed): Puspa needs revision 7 three-valued
+- mem0 as a LIBRARY (not installed): PuspaBot needs revision 7 three-valued
   provenance + Proposals + version history — mem0's behaviour does not fit
   directly; only its pattern was used.
 - Graphiti as a LIBRARY (needs Neo4j/FalkorDB): too heavy
@@ -68,7 +68,7 @@ Only PATTERNS were adapted (rewritten, not copied):
 | Read-only browser for reading pages (not clicking/filling forms) | Playwright (MIT) | The idea of an automated browser as a read-only reader | `puspa/pricing/readers.py`: `PlaywrightReader` (fail-closed if the browser is unavailable) + `HttpReader` (httpx, generic JSON-LD/meta parser) — without copying anyone's selectors |
 
 **Not used in Phase 3 (recorded so it isn't repeated):**
-- LadybugDB as a LIBRARY (not installed): Puspa's graph runs on
+- LadybugDB as a LIBRARY (not installed): PuspaBot's graph runs on
   Postgres + pgvector (§7) — only its pattern was used.
 - RAGFlow as a LIBRARY (not installed): too heavy for an
   11-user MVP; only its pattern of storing steps as data was
@@ -78,9 +78,9 @@ Only PATTERNS were adapted (rewritten, not copied):
 - Pipecat / LiveKit (voice) → the Voice module is NOT in the
   revision 7 definition; recorded as post-MVP, not built.
 - LangGraph → NOT used and NOT claimed anywhere in Phase 3
-  (correction: the survey sentence "Puspa already uses LangGraph for
+  (correction: the survey sentence "PuspaBot already uses LangGraph for
   orchestration" is wrong — zero LangGraph imports in the code; orchestration =
-  nanobot's AgentLoop + Puspa's own task cycle).
+  nanobot's AgentLoop + PuspaBot's own task cycle).
 - Shopee Open Platform / official marketplace APIs → the OFFICIAL route
   that complies with the terms of service, but it needs a partner account + approval —
   not part of the MVP; awaiting Nero's decision (decision 15).
@@ -97,7 +97,7 @@ adapted (rewritten, not copied):
 | Approval + scheduled-action expiry pattern | agno-agi/agno — AgentOS (Apache-2.0, pattern already used in Phase 2) | The idea of an approval queue as a gate before outbound actions | `puspa/workflow/approvals.py`: content-bound approval (hash) + expiry after 24 hours then CANCELLED (not executed late) — a special §2.12 rule, not an agno default |
 
 **Not used in Phase 4 (recorded so it isn't repeated):**
-- Langflow as a LIBRARY (not installed): Puspa's builder needs
+- Langflow as a LIBRARY (not installed): PuspaBot's builder needs
   certified blocks + a derived permission manifest + an approval gate —
   Langflow's behaviour (a builder for developers, no approval gate)
   does not fit directly; only its pattern was used.
@@ -105,10 +105,10 @@ adapted (rewritten, not copied):
   survey's trap list): NOT used, its pattern not adapted either.
 - Flowise (archived 13 August 2026, end of life 31 August 2026):
   NOT used — already dead; the lesson (don't depend on a
-  single builder vendor) is what was used: Puspa's manifest is its own format.
+  single builder vendor) is what was used: PuspaBot's manifest is its own format.
 - Pipecat / LiveKit (voice) → post-MVP, deliberately not built.
 - LangGraph → NOT used and NOT claimed anywhere in Phase 4
-  (zero LangGraph imports in the code; orchestration = Puspa's task cycle +
+  (zero LangGraph imports in the code; orchestration = PuspaBot's task cycle +
   its own workflow runner).
 
 ## Glossary of new Phase 4 terms (not from revision 7)
@@ -152,7 +152,7 @@ PATTERNS were adapted (rewritten, not copied):
 | Cloud pattern: RLS + auth + realtime | Supabase (Apache-2.0) | The idea of per-user row isolation + change subscriptions | Phase 2 RLS (`infra/schema_runtime.sql`, `current_setting('app.current_user_id')` policies) + SSE (`/sse`) instead of realtime — Supabase as a LIBRARY is not used |
 
 **Not used in Phase 2 (recorded so it isn't repeated):**
-- LiteLLM as a LIBRARY (not installed): Puspa's router needs
+- LiteLLM as a LIBRARY (not installed): PuspaBot's router needs
   revision 7 roles + the Verifier family rule + Rupiah rates —
   LiteLLM's behaviour does not fit directly; only its pattern was used.
 - agno/AgentOS as a LIBRARY (not installed): too heavy
@@ -240,11 +240,11 @@ Test: `test_prediction_accuracy_improves_across_episodes` in
 | --- | --- | --- | --- |
 | Coding agent loop: write code, run tests, read the failure, fix it, repeat until green or a limit | anomalyco/opencode (MIT) | The loop shape itself: attempt, execute, grade by test exit code, feed the failure back to the next attempt | `puspa/harness/loop.py`: `CodingHarness.run()`, `AttemptRecord` (code plus its test result per attempt), `default_verdict()` (grades the exit code only, never the agent's words) |
 | Per-tool permission model: allow / ask / deny per tool, not one blanket allow per turn | anomalyco/opencode (MIT) | The three levels and the rule that a child token may only narrow a permission, never widen it | `puspa/policy/tokens.py`: optional `tool_permissions` map on the token payload, `tool_permission()`, `is_subset()` extended with the deny < ask < allow ordering; `puspa/policy/gate.py`: `Gate.authorize_tool()` |
-| Per-tool permission model and approval before acting | anthropics/claude-code (PROPRIETARY, DO NOT USE ITS CODE) | The idea only: permissions per tool, and a hard approval step before a consequential action (here: deploy) | Same Puspa code as the opencode row above, plus kind `"deploy"` in `puspa/policy/gate.py` and `CodingHarness.request_deploy()` / `deploy()` (approval, then exactly-once execution through the gate) |
+| Per-tool permission model and approval before acting | anthropics/claude-code (PROPRIETARY, DO NOT USE ITS CODE) | The idea only: permissions per tool, and a hard approval step before a consequential action (here: deploy) | Same PuspaBot code as the opencode row above, plus kind `"deploy"` in `puspa/policy/gate.py` and `CodingHarness.request_deploy()` / `deploy()` (approval, then exactly-once execution through the gate) |
 | Harness shape: fixed FAIL_TO_PASS tests decide pass/fail; a task is an issue plus a repo snapshot plus its tests | SWE-bench/SWE-bench (MIT) | The task shape: fixed acceptance tests carried by the task, graded by running them | `puspa/harness/loop.py`: `CodingTask` (description plus fixed `test_code`), pass defined as the generated program (implementation plus those tests) exiting 0; no PASS_TO_PASS set yet, that is future work for the self-develop module evaluation |
 | Self-verification: generated code is trusted only after it is actually run | MineDojo/Voyager (MIT, dormant research archive, DO NOT USE AS A DEPENDENCY) | The self-verification step only: test generated code by running it in the sandbox before trusting it | `puspa/harness/executor.py`: `SandboxExecutor` runs every attempt through `puspa/sandbox/runner.py`; the Minecraft code, the curriculum, and the skill library are NOT part of this workstream |
 | Readable handoffs between steps: each step leaves a record the next step can read | OpenBMB/ChatDev (Apache-2.0) | The handoff idea: every attempt leaves its code and its test result behind, so the next attempt (and a human reader) can see exactly what failed | `puspa/harness/loop.py`: `AttemptRecord` plus the in-memory event log (`harness_started`, `attempt_started`, `attempt_finished`, `harness_passed`, `harness_failed`, `budget_exhausted`, `sandbox_unavailable`, `deploy_requested`) |
-| Fail-closed sandbox execution: no host fallback, ever | puspa/sandbox/runner.py (Puspa's own, Phase 0) | The existing fail-closed contract: `SandboxUnavailable` means nothing runs anywhere | `puspa/harness/executor.py` and `loop.py`: `SandboxUnavailable` ends the run with status `sandbox_unavailable`; `production=True` rejects any executor that is not a `SandboxExecutor`; `create_production_harness()` can only build a sandbox executor |
+| Fail-closed sandbox execution: no host fallback, ever | puspa/sandbox/runner.py (PuspaBot's own, Phase 0) | The existing fail-closed contract: `SandboxUnavailable` means nothing runs anywhere | `puspa/harness/executor.py` and `loop.py`: `SandboxUnavailable` ends the run with status `sandbox_unavailable`; `production=True` rejects any executor that is not a `SandboxExecutor`; `create_production_harness()` can only build a sandbox executor |
 
 Environment note (honest limitation): on this dev VM the real
 Docker sandbox cannot start (the kernel rejects the `setns`
@@ -341,7 +341,7 @@ change was adopted.
 - langgraph / langchain as libraries (not installed, by explicit
   decision): only the checkpointed-orchestration idea was noted.
 - strands-agents SDK (not installed): only its approval-policy idea
-  was noted; Puspa's own gate already implements it.
+  was noted; PuspaBot's own gate already implements it.
 - LightRAG as a library (not installed): only the dual-level
   retrieval idea was adapted on top of Postgres + pgvector.
 - No GPL, AGPL, SSPL, PolyForm, or CC BY-NC code was used.
@@ -371,11 +371,11 @@ Brain phase section above, and `requirements.txt` is unchanged.
   simulator is a second, separate world with the same interface.
 - No GPL, AGPL, SSPL, PolyForm, or CC BY-NC code was used.
 
-## Brain deepening phase - Wave 1 (18 Nov 2026)
+## Brain deepening phase, first pass (18 Nov 2026)
 
 ## Skill Signing (sigstore-shaped, local) - fragment for REUSE.md
 
-Pattern studied, rewritten as Puspa's own code, no verbatim copy,
+Pattern studied, rewritten as PuspaBot's own code, no verbatim copy,
 no fork, no new dependency (uses `cryptography`, already in the venv):
 
 - **sigstore** (sigstore/sigstore, Apache-2.0): keyless signing with
@@ -391,7 +391,7 @@ no fork, no new dependency (uses `cryptography`, already in the venv):
   proof generation and verification, no delete or update path).
   Honest scope: this is NOT the public sigstore service. There is no
   Fulcio certificate authority, no Rekor server, and no network call.
-  Identity is a Puspa user identity string, trusted through Puspa's
+  Identity is a PuspaBot user identity string, trusted through PuspaBot's
   own authentication, not through an OIDC certificate.
 - **DSSE specification** (dsse-lf/dsse, Apache-2.0): envelope shape
   `{payloadType, payload, signatures: [{keyid, sig}]}` and the PAE
@@ -440,12 +440,12 @@ Workstream: one harness, not three (see `docs/brain-depth-triage.md`,
 surgical edit + reproduce-first + sandbox profiles). Built 18 Nov
 2026 by the Coding Harness worker. Rules followed (Nero's order, see
 `REUSE.md`): study the BIG PATTERNS/IDEAS from surveyed repos, then
-REWRITE them as Puspa's own code adapted to the revision 7
+REWRITE them as PuspaBot's own code adapted to the revision 7
 architecture, with English identifiers, stored values, and prose.
 NEVER copy code verbatim. NEVER use code licensed GPL, AGPL, SSPL,
 PolyForm, CC BY-NC, or a custom non-OSI license. NEVER create a
 GitHub fork of any repo. No new dependencies were added: this
-workstream uses only the standard library plus the existing Puspa
+workstream uses only the standard library plus the existing PuspaBot
 policy and sandbox modules. `puspa/policy/` was NOT edited;
 enforcement runs through the existing `Gate.authorize_tool` API.
 
@@ -496,7 +496,7 @@ sandbox applies to every spawned command, `.git` / `.codex` /
   `check_write_path` refuses writes under `read_only`, writes
   outside the workspace root, and writes inside protected paths
   (`.git`, `.codex`, `.agents`, `.aws`). `requires_approval` models
-  approval before a write outside the profile boundary. Puspa's
+  approval before a write outside the profile boundary. PuspaBot's
   `full` is NOT Codex `danger-full-access`: it still runs only
   through the sandbox executor, still needs gate approval for
   deploy, and never enables network access.
@@ -527,7 +527,7 @@ sandbox applies to every spawned command, `.git` / `.codex` /
 | Repo map: concise map of the whole codebase with the most important classes and functions plus types and signatures, fitted to a token budget | Aider-AI/aider (Apache-2.0) | The map shape (file header plus one line per symbol) and the budget idea (default 1k tokens, most relevant parts first) | `puspa/harness/repo_map.py`: `ast` extraction of classes, functions, and methods with full signatures, `render_repo_map` with whole-file budget drops, `estimate_tokens` (chars / 4). No tree-sitter, no PageRank ranking yet: files render in sorted path order, which is the honest gap recorded below |
 | Surgical edits as unified diffs, then lint and test after the edit | Aider-AI/aider (Apache-2.0) | The diff as the unit of change instead of a whole-file rewrite, so the change stays reviewable | `puspa/harness/diff.py`: `generate_diff` on stdlib `difflib`, `parse_diff`, `apply_diff` with all-hunks-validated-first and no partial apply, `is_diff` detection in `puspa/harness/loop.py` |
 | Reproduce-first: write the failing test before fixing, fix, run the tests, prove the fix | SWE-agent/SWE-agent (MIT) and the SWE-bench task shape (MIT) | The FAIL_TO_PASS discipline: a fix counts only when the same test fails before it and passes after it, and the failure must match the reported symptom | `puspa/harness/reproduce.py`: `ReproduceFirst` state machine with frozen reproduction test, `expected_failure` matching, `mark_fixed` refusal; `puspa/harness/loop.py`: starter probe plus first-failing-attempt rule, `reproduction_missing` outcome |
-| Sandbox profiles plus approval before acting outside the boundary | openai/codex (Apache-2.0) | The two-layer split (sandbox mode as the technical boundary, approval policy as when to stop and ask) and the three modes, plus protected paths under writable roots | `puspa/harness/sandbox_profiles.py`: `read_only` / `workspace_write` / `full` mapped onto the existing Puspa token levels, effective level as the narrower of profile and token, `check_tool` through `Gate.authorize_tool`, `check_write_path`, `requires_approval`; `puspa/harness/executor.py`: profile-enforced `write_file` |
+| Sandbox profiles plus approval before acting outside the boundary | openai/codex (Apache-2.0) | The two-layer split (sandbox mode as the technical boundary, approval policy as when to stop and ask) and the three modes, plus protected paths under writable roots | `puspa/harness/sandbox_profiles.py`: `read_only` / `workspace_write` / `full` mapped onto the existing PuspaBot token levels, effective level as the narrower of profile and token, `check_tool` through `Gate.authorize_tool`, `check_write_path`, `requires_approval`; `puspa/harness/executor.py`: profile-enforced `write_file` |
 
 ## Not used in this workstream (recorded so it is not repeated)
 
@@ -542,7 +542,7 @@ sandbox applies to every spawned command, `.git` / `.codex` /
 - openai/codex source code (Apache-2.0): pattern study only, from the
   public README and docs. No codex code was read, copied, or
   installed. Codex `danger-full-access` was deliberately NOT
-  reproduced: Puspa's `full` profile stays inside the sandbox with
+  reproduced: PuspaBot's `full` profile stays inside the sandbox with
   gate approval for deploy and no network in any profile.
 - No PASS_TO_PASS regression set yet: the loop grades the acceptance
   tests only, as before. A regression set is future work for the
@@ -664,29 +664,29 @@ is about 800 MB, larger than the 512 MB tmpfs) and
 # google/adk-python (hierarchical multi-agent) - REUSE fragment
 
 Pattern studied from google/adk-python (Apache License 2.0), reimplemented
-as Puspa's own code from the documented behavior. No code was copied
+as PuspaBot's own code from the documented behavior. No code was copied
 verbatim; no fork was made; no new dependency was added.
 
 ## What was taken (pattern level only)
 
 - Agent hierarchy: root agent with sub-agents, one parent per agent,
   delegation by role (ADK `LlmAgent.sub_agents` + transfer, single
-  parent rule). Puspa: `AgentNode` in `puspa/runtime/hierarchy.py`.
+  parent rule). PuspaBot: `AgentNode` in `puspa/runtime/hierarchy.py`.
 - Workflow compositions: sequential, parallel, loop (ADK
   `SequentialAgent` / `ParallelAgent` / `LoopAgent`; ADK 2.0 also
-  offers graph `Workflow`, which Puspa does not adopt). Puspa:
+  offers graph `Workflow`, which PuspaBot does not adopt). PuspaBot:
   `HierarchicalPlan.composition` + `HierarchicalRunner`.
 - Sessions and state: `SessionService` + `session.state` with
   namespaced keys (plain session keys, `user:`, `app:`, `temp:`
-  never persisted). Puspa: `SessionState` + `SessionStore`.
-- Memory: `MemoryService` search across sessions. Puspa keeps its
+  never persisted). PuspaBot: `SessionState` + `SessionStore`.
+- Memory: `MemoryService` search across sessions. PuspaBot keeps its
   own rule instead: a node never touches memory storage directly;
   it receives a slice through `puspa.memory.slices.grant_slice`.
-  Puspa: `MemoryAccess`.
+  PuspaBot: `MemoryAccess`.
 - Tool confirmation and callbacks: ADK HITL tool confirmation
   (`require_confirmation`) and `before_tool_callback` /
   `after_tool_callback` / `before_model_callback` /
-  `after_model_callback`. Puspa: `ToolConfirmation` goes through
+  `after_model_callback`. PuspaBot: `ToolConfirmation` goes through
   the existing `puspa.policy.Gate` approval flow, and
   `CallbackRegistry` holds the four hooks.
 - Handoff: every parent/child delegation goes through the existing
@@ -732,7 +732,7 @@ Pattern source: NVIDIA NeMo Guardrails, Apache License 2.0
 branch, and https://docs.nvidia.com/nemo/guardrails, read 18 Nov
 2026). No NeMo Guardrails code was copied, the library is not a
 dependency, and no fork was created. The pattern was rewritten from
-scratch as Puspa code from the documented behavior: five rail types
+scratch as PuspaBot code from the documented behavior: five rail types
 (input, retrieval, dialog, execution, output), rails as testable
 rules that run before, during, and after the model call, Colang as
 the dialog-flow language, and the rule that the application runs
@@ -846,13 +846,13 @@ passage first (orphans without a source are removed) then merge
 the new text; `remove_passage` / `remove_document`;
 `snapshot()` / `added_since()` prove the merge. Tests:
 `tests/test_retrieval_incremental.py`, 15 tests. Measured recall
-on the 8 Wave 1 multi-hop queries: main update keeps recall@10
+on the 8 first-pass multi-hop queries: main update keeps recall@10
 at 1.0 and recall@5 at 0.375, but recall@3 drops 0.375 to 0.25
 (a ranking effect, not data loss; the determining passage ranked
-6-9 in Wave 1); a second case (new promo on a seller with a
+6-9 in the first pass); a second case (new promo on a seller with a
 fraud report) drops recall@10 from 1.0 to 0.875. Both drops are
 locked in tests. Honest limits: extraction is still the
-deterministic regex stand-in inherited from Wave 1 (follow-up
+deterministic regex stand-in inherited from the first pass (follow-up
 via the `JsonTripleExtractor` seam, no schedule yet); dedup is
 exact-text only; weights are passage counts, not LLM weights; no
 community detection or summary regeneration on update; no
@@ -927,8 +927,8 @@ checks order (same set in different order is `wrong_order`),
 missing and extra calls; per task it scores turn accuracy and
 call accuracy, and a task only passes when every turn matches
 exactly (the BFCL rule). `puspa/evidence/bfcl_tasks.py` (new,
-645 lines): a catalog of 11 real Puspa tools with JSON schemas
-plus 8 held-out tasks written by Puspa itself (12 turns, 16
+645 lines): a catalog of 11 real PuspaBot tools with JSON schemas
+plus 8 held-out tasks written by PuspaBot itself (12 turns, 16
 reference calls), including a 3-turn multi-turn task, a user
 correction in turn 2, omitted optional arguments, an empty
 string argument, a digit-string customer number, a float
@@ -996,7 +996,7 @@ and the fail-safe returns raw text, which is the correct
 behavior, not a failure; tree saves only 0.2% tokens (box-
 drawing characters cost almost the same tokenized); this is
 tool_result only, no conversation-history compression or prompt
-caching (that is G20, separate work). Two real bugs were found
+caching (that is layered prompt assembly and prompt caching, separate work). Two real bugs were found
 and fixed by the tests (the `ls` filter dropped the link-count
 column, the `tree` filter had a global dedup that dropped
 `model.py` in different modules). No new dependency: tiktoken
@@ -1066,7 +1066,7 @@ limits: the quota store is in-memory (dict + lock), it does
 not survive restart and is not written to the ledger or
 Postgres (follow-up: Postgres persistence with a quota
 snapshot + reconciliation against ledger cost events);
-subscription and free tiers are cost bands over Puspa's own
+subscription and free tiers are cost bands over PuspaBot's own
 OpenRouter catalog, not different billing relations (no
 flat-rate subscription provider in the Claude Code/Codex
 OAuth style and no zero-cost provider is wired in the
@@ -1217,4 +1217,4 @@ NOT flagged on its own. Tests: `tests/test_agent_scan.py`,
 not an LLM judge; the scanner cannot prove intent, only the
 pattern, and that boundary is deliberate and covered by tests.
 No CI workflow file was added (the repo has no `.github/workflows/`
-yet; CI is maturity-phase item G15).
+yet; CI is maturity-phase item CI, verification discipline and documentation).

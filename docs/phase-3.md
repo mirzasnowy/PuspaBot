@@ -1,4 +1,4 @@
-# Phase 3 — Dual wedge + Moat (Puspa MVP, revision 7)
+# Phase 3 — Dual wedge + Moat (PuspaBot MVP, revision 7)
 
 Definition: revision 7 (approved by Nero 17 Nov 2026 ~17:42 WIB).
 The 17-week timeline IGNORED on Nero's order, 21:53 WIB (dates are
@@ -70,5 +70,5 @@ env); Phase 0 248 passed + 4 skipped; Phase 1 58 passed; Phase 2
   (Playwright CDN download blocked by the egress proxy — see
   status-phase-3.md). Without the env, the reader fails visibly
   (`browser_gagal`).
-- Puspa orchestration = nanobot's AgentLoop + Puspa's own task
+- PuspaBot orchestration = nanobot's AgentLoop + PuspaBot's own task
   lifecycle. LangGraph is NOT used and is not claimed anywhere.

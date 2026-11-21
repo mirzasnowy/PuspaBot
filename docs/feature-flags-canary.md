@@ -1,4 +1,4 @@
-# Feature flags and canary releases (E-21, plan section 9.6)
+# Feature flags and canary releases (feature flags and canary releases, plan section 9.6)
 
 One central flags file, one beta profile, one canary procedure, one
 rollback command, and one migration shape. This document is the
@@ -8,9 +8,9 @@ plus the gate at each surface's entry point).
 ## 1. The flags
 
 All flags live in `puspa/feature_flags.py` — one source of truth.
-Before E-21 the only flag lived inside
+Before feature flags and canary releases the only flag lived inside
 `puspa/marketplace/discovery.py` (the skills.sh install flag from
-E-12, plan 6.7); that flag now lives here too and the discovery
+skill revocation, hashed dependencies, secrets and git history, plan 6.7); that flag now lives here too and the discovery
 module delegates to it, so there is exactly one place that decides
 what is on. A flag is read on every call (nothing is cached), so
 an operator or a test can flip one without a restart.
@@ -83,7 +83,7 @@ image while the rest stay on the old one, and the rollout only
 continues when the canary proves itself. The nanobot pin bump
 follows the same shape for the chassis pin alone
 (`docs/nanobot-canary-rollback.md`); this section is the same
-procedure for a whole Puspa release.
+procedure for a whole PuspaBot release.
 
 Terms: **old tag** — the pinned image tag in production before
 the release; **new tag** — the pinned image tag being released;
@@ -220,7 +220,7 @@ Rules the runner already enforces (`docs/migrations.md`): one
 transaction per migration, a recorded migration is never
 re-applied, a `down` section marked `cannot be reversed` refuses
 to roll back, and an applied version with no file on disk fails
-loudly. E-21 adds the shape rule on top: **no `up` section may
+loudly. feature flags and canary releases adds the shape rule on top: **no `up` section may
 drop a column or a table.** `tests/test_feature_flags.py`
 checks every migration file in `puspa/migrations/versions/`
 for that — a release whose migration drops something in `up`

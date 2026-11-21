@@ -1,7 +1,7 @@
-# B13 — Co-drafting with context memory
+# Co-drafting with context memory
 
-Source: plan section 8.8; ticket `docs/tickets-beta-plan.md` (B13).
-Depends on / overlaps: G7 + G24 (memory), G4 (approvals — send is
+Source: plan section 8.8; the co-drafting item in `docs/tickets-beta-plan.md`.
+Depends on / overlaps: memory tightening + pluggable memory providers with background review and skill curation (memory), approvals taxonomy (approvals — send is
 always an approval), learning loop.
 
 ## What it does
@@ -10,7 +10,7 @@ The agent drafts messages, documents, or emails in the user's
 voice and remembers past decisions and preferences.
 
 - `puspa/drafting/voice.py` — `VoiceProfile`, built from the
-  user's existing memory facts (G7/G24 `puspa.memory.facts`).
+  user's existing memory facts (memory tightening/pluggable memory providers with background review and skill curation `puspa.memory.facts`).
   It reads only the `voice.*`, `preference.*`, and `decision.*`
   fact namespaces. A correction is parsed into a rule when it
   uses a recognised shape (`never use X`, `always start with X`,
@@ -41,17 +41,17 @@ voice and remembers past decisions and preferences.
 | --- | --- | --- |
 | Drafts match the user's recorded voice and past decisions | Voice profile reads `voice.*` / `preference.*` facts; the draft opens with the recorded greeting, applies parsed rules, and surfaces `related_decisions` | `test_draft_reflects_recorded_preference`, `test_related_decision_is_surfaces_but_not_flagged` |
 | A draft never sends without approval | `send_draft` is the only send path and requires a recorded approval id; no approval, wrong draft, expired, or already-used approval raises `DraftNotApprovedError` and nothing is delivered; the API maps it to 403 | `test_send_without_approval_is_refused`, `test_send_with_approval_for_another_draft_is_refused`, `test_approve_then_send_with_sender` |
-| The user can correct the voice and the correction persists | `correct_voice` records a `voice.correction.<id>` fact (source `user_confirmed`) through the existing G7 fact machinery; the next draft applies it | `test_voice_correction_persists_and_changes_later_draft`, `test_voice_correction_changes_next_draft` (API) |
+| The user can correct the voice and the correction persists | `correct_voice` records a `voice.correction.<id>` fact (source `user_confirmed`) through the existing memory tightening fact machinery; the next draft applies it | `test_voice_correction_persists_and_changes_later_draft`, `test_voice_correction_changes_next_draft` (API) |
 | A draft that contradicts a past decision is flagged | `flag_decisions` matches a recorded `never …` decision against the brief and returns it in `decision_flags`; the draft is still created — the flag is a warning, not a silent rewrite | `test_draft_contradicting_recorded_decision_is_flagged` |
 
 Extra guarantees (beyond the ticket text):
 
 - An approval binds to the SHA-256 of the draft text at
-  approval time, expires after 24 hours (the G4 window), and
+  approval time, expires after 24 hours (the approvals taxonomy window), and
   is consumed by the one send it authorises.
   `revise_draft` returns the draft to `draft` status, so an
   approval granted for the old text is void for the new text.
-- With a G4 `ApprovalPolicy` wired in,
+- With a approvals taxonomy `ApprovalPolicy` wired in,
   `request_send_approval` records the approval at once when
   the policy returns `allow` (a stored tiered answer covers
   sending); with no policy, every send waits for the user's
@@ -99,7 +99,7 @@ Extra guarantees (beyond the ticket text):
   side with a marker word, which may not be the side the
   user meant.
 
-## B14 Indonesian-context notes
+## Indonesian context pass Indonesian-context notes
 
 - Default register is everyday Indonesian, never formal:
   a message or email opens with `Halo,` and closes with

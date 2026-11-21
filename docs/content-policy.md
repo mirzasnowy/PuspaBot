@@ -2,22 +2,22 @@
 
 > **Status: minimal draft, version 0.1, 21 November 2026.**
 > This document has NOT been reviewed by a lawyer. The legal review
-> (ticket L-01) is still open. See `docs/legal.md`. This policy
+> (ticket legal consultation) is still open. See `docs/legal.md`. This policy
 > states rules for the closed beta; it does not claim any automated
 > content-moderation system exists beyond the technical rails named
 > in section 4.
 
 ## 1. What this policy covers
 
-What you may ask Puspa to do, what the agent will refuse, and what
+What you may ask PuspaBot to do, what the agent will refuse, and what
 happens when content is reported. It covers your instructions to
-the agent, the agent's outputs to you, and content Puspa publishes
+the agent, the agent's outputs to you, and content PuspaBot publishes
 or shares on your behalf (messages, drafts, marketplace listings,
 community gallery entries).
 
 ## 2. Prohibited uses
 
-You must not use Puspa to:
+You must not use PuspaBot to:
 
 - **Defraud or deceive.** Fake payment proofs, wrong-transfer
   ("salah transfer, kirim balik") schemes, impersonation of banks,
@@ -76,15 +76,15 @@ What exists in the product today:
   action-content rails, evidence-number rails, secret-output rails,
   and a spending rail. Rails are fail-closed: a broken rail blocks
   instead of passing.
-- **Approval gates** (G4): consequential actions need your approval
+- **Approval gates** (approvals taxonomy): consequential actions need your approval
   first, recorded in the ledger (`docs/approvals.md`).
 - **Conflict gate** (`puspa/policy/conflicts.py`): actions that
   benefit another party more than you are surfaced, not hidden.
-- **Attack testing** (E-16): a frozen corpus of attack payloads and
+- **Attack testing** (attack corpus, benchmark, mutation and scorecard): a frozen corpus of attack payloads and
   a scorecard run against the rails (`docs/eval-e16.md`). A zero
   attack-success rate on that corpus means no payload in that corpus
   got through — not that the system is safe in general.
-- **Fraud vocabulary** (B14): a starting table of fraud patterns,
+- **Fraud vocabulary** (Indonesian context pass): a starting table of fraud patterns,
   not a verdict. It flags; a human decides.
 
 What does NOT exist yet:
@@ -109,18 +109,18 @@ cultural content is handled:
 - Motifs whose use is restricted by custom (for example forbidden
   keraton motifs) are marked as restricted and are never sold or
   shown as generic decoration.
-- In the community gallery (B16, post-beta), each user may rate a
+- In the community gallery (community gallery (publish and rate cultural works), post-beta), each user may rate a
   work once.
 
 ## 6. Reporting content
 
 Until an in-product report flow exists: contact the operator
 directly about content that breaks this policy — content the agent
-produced, content another user published through Puspa, or a
+produced, content another user published through PuspaBot, or a
 marketplace listing or gallery entry. Include what happened, where
 you saw it, and when. Reports are handled by a human (the
 operator); there is no automated takedown. The incident runbook
-from plan §14.10 does not exist yet and is a follow-up for L-01.
+from plan §14.10 does not exist yet and is a follow-up for legal consultation.
 
 ## 7. Consequences
 

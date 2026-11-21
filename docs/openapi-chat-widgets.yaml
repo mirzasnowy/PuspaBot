@@ -1,8 +1,8 @@
-# Interactive widgets in Chat API contract (P-14, plan section 12.10).
+# Interactive widgets in Chat API contract (interactive components in chat, plan section 12.10).
 #
-# Split out of docs/openapi-pwa.yaml on 21 Nov 2026 (P-14): the
+# Split out of docs/openapi-pwa.yaml on 21 Nov 2026 (interactive components in chat): the
 # widget contract (6 endpoints + 18 schemas) would have pushed the
-# main spec past the 2000-line hard cap (Wave 30 precedent:
+# main spec past the 2000-line hard cap (earlier precedent:
 # rooms, graph, mockup, payments, controls, voice, receipts,
 # live-view, replay, approval-overlay, and chat-cards split the
 # same way). The main spec references this file with $ref stubs
@@ -13,7 +13,7 @@
 #
 # Honest scope, in the contract: a widget is declarative JSON on
 # a chat message — data describes the widget, the renderer decides
-# how to show it (the same split as the B7 mockup doc and the P-12
+# how to show it (the same split as the prompt-to-visual-mockup doc and the rich cards in chat
 # rich cards). A widget has state: it responds to the user's
 # input instead of only being looked at. The calculator formula is
 # a small safe expression evaluated by an AST whitelist, never
@@ -27,7 +27,7 @@
 # plus vitest/jsdom interaction tests.
 openapi: 3.0.3
 info:
-  title: Puspa interactive widgets in Chat API
+  title: PuspaBot interactive widgets in Chat API
   version: 1.0.0
 paths:
   /api/chat/widgets:
@@ -35,7 +35,7 @@ paths:
       tags: [chat-widgets]
       summary: Post an interactive widget into the chat
       description: |
-        P-14: validate one widget payload (calculator / form /
+        interactive components in chat: validate one widget payload (calculator / form /
         comparison / diagram / simulation) and append it as a
         `puspa` message carrying the widget, so the Chat screen
         shows it in the thread. A bad widget is a 400: unknown
@@ -72,7 +72,7 @@ paths:
       tags: [chat-widgets]
       summary: Compute a calculator widget's result
       description: |
-        P-14: evaluate a calculator widget's formula for the
+        interactive components in chat: evaluate a calculator widget's formula for the
         given input values and return the result. The client
         evaluates the same formula locally for the live result
         as the user types; this endpoint is the authoritative
@@ -108,7 +108,7 @@ paths:
       tags: [chat-widgets]
       summary: Submit a form widget's answers
       description: |
-        P-14: validate a form widget's answers server-side
+        interactive components in chat: validate a form widget's answers server-side
         (required fields, number answers, select answers within
         the field's options) and append a chat message listing
         them, so the thread keeps a readable record of what the
@@ -143,7 +143,7 @@ paths:
       tags: [chat-widgets]
       summary: Step a simulation widget forward
       description: |
-        P-14: apply one action (`advance_day`, `pay_bill`,
+        interactive components in chat: apply one action (`advance_day`, `pay_bill`,
         `buy_from_store`) to a simulation widget. The server
         re-derives the world from the widget's day and bill
         state, applies the action through the deterministic
@@ -180,7 +180,7 @@ paths:
       tags: [chat-widgets]
       summary: Show the simulated phone prices as a comparison widget
       description: |
-        P-14: build a comparison widget from the world
+        interactive components in chat: build a comparison widget from the world
         simulator's day-15 prices (one row per store) and
         append it as a `puspa` chat message. The prices are
         simulated, not live market data; the widget title says
@@ -203,7 +203,7 @@ paths:
       tags: [chat-widgets]
       summary: Show a fresh simulation widget in chat
       description: |
-        P-14: build a day-15 simulation widget from the world
+        interactive components in chat: build a day-15 simulation widget from the world
         simulator (prices per store, the PLN bill, price
         history from the episode start) and append it as a
         `puspa` chat message.

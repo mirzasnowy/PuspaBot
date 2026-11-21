@@ -1,10 +1,10 @@
-# Interactive widgets in Chat (P-14, plan section 12.10)
+# Interactive widgets in Chat (plan section 12.10)
 
 Chat can show five kinds of interactive widget, all as declarative
 JSON payloads attached to a chat message under its `widget` key.
 Data describes the widget, the renderer decides how to show it
-(the same split as the B7 mockup doc and the P-12 rich cards).
-The difference from a P-12 card is state: a widget responds to
+(the same split as the prompt-to-visual-mockup doc and the rich cards in chat).
+The difference from a rich cards in chat card is state: a widget responds to
 the user's input instead of only being looked at. The widgets
 live inside Chat — no new screen, no new table, no migration.
 
@@ -48,7 +48,7 @@ refused instead of trusted. The actions are `advance_day`
 and `buy_from_store` (buys at the current simulated price;
 the widget itself does not change). Each step appends a new
 chat message carrying the rebuilt widget, the same append
-pattern as the P-12 cards.
+pattern as the rich cards in chat cards.
 
 The prices are simulated, not live market data: the widget
 title and the chart caption say so, and no claim is made that

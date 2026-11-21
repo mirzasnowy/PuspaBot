@@ -2,18 +2,18 @@
 
 > **Status: minimal draft, version 0.1, 21 November 2026.**
 > This document has NOT been reviewed by a lawyer. The legal review
-> (ticket L-01) is still open. No specific data-protection law
+> (ticket legal consultation) is still open. No specific data-protection law
 > compliance is claimed anywhere in this document: it describes what
-> the product actually does, and leaves the legal judgement to L-01.
+> the product actually does, and leaves the legal judgement to legal consultation.
 > See `docs/legal.md`. If any statement here conflicts with the
 > code, the code is the truth and this document must be fixed.
 
 ## 1. Who controls your data: self-hosted vs hosted
 
-Puspa has one codebase and two ways of running it
+PuspaBot has one codebase and two ways of running it
 (`docs/modes-decision.md`):
 
-- **Self-hosted (Free plan).** You run Puspa on your own computer or
+- **Self-hosted (Free plan).** You run PuspaBot on your own computer or
   VPS. Your data lives on hardware you control. The operator has no
   access to it.
 - **Hosted (Plus, Pro, Team).** The operator runs a cloud machine
@@ -37,7 +37,7 @@ Either way, the same code runs, and the same consent text applies
 | Usage and cost metadata (messages, credits, model cost) | Billing, limits, and operator visibility | The system |
 | Public price facts from your comparisons | The shared price graph | Public marketplace pages, stored WITHOUT your identity |
 
-Puspa does not collect data from any other source. It does not buy,
+PuspaBot does not collect data from any other source. It does not buy,
 scrape, or infer data about you from third parties, and it does not
 sell your data.
 
@@ -129,7 +129,7 @@ These are implemented in the product, not just promised here
   (`puspa/consent/account.py` module docstring).
 
 There is no per-feature consent withdrawal in the product yet: the
-way to withdraw consent today is to stop using Puspa and delete
+way to withdraw consent today is to stop using PuspaBot and delete
 your account (see `docs/data-consent.md`).
 
 ## 8. Changes to this policy
@@ -138,7 +138,7 @@ The version number and date at the top change with the policy, and
 the change is recorded. Material changes are also told to you
 directly while the beta is small and closed.
 
-## 9. Open questions for the legal review (L-01)
+## 9. Open questions for the legal review (legal consultation)
 
 - Whether this beta needs any registration, notice, or filing
   before users outside the close circle are admitted (plan §14.10,

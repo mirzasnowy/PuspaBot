@@ -1,8 +1,8 @@
-# Replay timeline API contract (P-10, plan section 12.10).
+# Replay timeline API contract (replay timeline, plan section 12.10).
 #
-# Split out of docs/openapi-pwa.yaml on 21 Nov 2026 (P-10): the
+# Split out of docs/openapi-pwa.yaml on 21 Nov 2026 (replay timeline): the
 # replay contract (4 endpoints + 3 schemas) would have pushed
-# the main spec toward the 2000-line hard cap (Wave 30 precedent:
+# the main spec toward the 2000-line hard cap (earlier precedent:
 # rooms, graph, mockup, payments, controls, voice, receipts,
 # morning, and live-view split the same way). The main spec
 # references this file with $ref stubs; the generated client is
@@ -20,7 +20,7 @@
 # desktop recording.
 openapi: 3.0.3
 info:
-  title: Puspa replay timeline API
+  title: PuspaBot replay timeline API
   version: 1.0.0
 paths:
   /api/replay/{agent_id}/tasks:
@@ -28,7 +28,7 @@ paths:
       tags: [replay]
       summary: Tasks of one agent that can be replayed
       description: |
-        P-10: the agent's tasks that have ledger events, newest
+        replay timeline: the agent's tasks that have ledger events, newest
         first — step count, first and last event time, and the
         status from the newest event. The screen replays from
         this list.
@@ -64,7 +64,7 @@ paths:
       tags: [replay]
       summary: Replay timeline for one task
       description: |
-        P-10: every step of one task, oldest first — each step
+        replay timeline: every step of one task, oldest first — each step
         with its reason, result, and hash-chain link — plus the
         chain verification (`chain_ok` + `broken_event_ids`)
         and the task status. `screenshot` is always null: no
@@ -116,7 +116,7 @@ paths:
       tags: [replay]
       summary: One step of a replay, by index
       description: |
-        P-10: a single step (0-based) of the task's replay, for
+        replay timeline: a single step (0-based) of the task's replay, for
         scrubbing to an exact position — forward or back — without
         re-fetching the whole timeline.
       parameters:
@@ -173,7 +173,7 @@ paths:
       tags: [replay]
       summary: Export a replay as an animated GIF
       description: |
-        P-10: the whole timeline as an animated GIF, one rendered
+        replay timeline: the whole timeline as an animated GIF, one rendered
         frame per step (800 ms each, looping). The frames are
         drawn from the steps' own data — step number, event type,
         tool, reason, result — not from a desktop recording, and

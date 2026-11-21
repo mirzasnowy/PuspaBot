@@ -1,8 +1,8 @@
-# Visual approval overlay API contract (P-11, plan section 12.10).
+# Visual approval overlay API contract (visual approval overlay, plan section 12.10).
 #
-# Split out of docs/openapi-pwa.yaml on 21 Nov 2026 (P-11): the
+# Split out of docs/openapi-pwa.yaml on 21 Nov 2026 (visual approval overlay): the
 # overlay contract (4 endpoints + 8 schemas) would have pushed
-# the main spec past the 2000-line hard cap (Wave 30 precedent:
+# the main spec past the 2000-line hard cap (earlier precedent:
 # rooms, graph, mockup, payments, controls, voice, receipts,
 # and live-view split the same way). The main spec references
 # this file with $ref stubs; the generated client is produced
@@ -11,7 +11,7 @@
 # is referenced back from here.
 #
 # Honest scope, in the contract: the overlay is a visual layer
-# over the G4 approval gate — it highlights the target element
+# over the approvals taxonomy approval gate — it highlights the target element
 # of a pending action in the live view and records the per-
 # action approve/reject decision. The highlight is a pointer
 # into the event-based live frame (last tool call, open task,
@@ -23,7 +23,7 @@
 # recorded in the ledger as `approval_rejected`.
 openapi: 3.0.3
 info:
-  title: Puspa visual approval overlay API
+  title: PuspaBot visual approval overlay API
   version: 1.0.0
 paths:
   /api/live-view/{agent_id}/approvals:
@@ -31,7 +31,7 @@ paths:
       tags: [approval-overlay]
       summary: Pending + decided overlays for one agent
       description: |
-        P-11: the approval overlays for one of the logged-in
+        visual approval overlay: the approval overlays for one of the logged-in
         user's agents — pending actions first, then decided
         ones. Each overlay carries its target element and its
         highlight resolved against the agent's current live
@@ -65,7 +65,7 @@ paths:
       tags: [approval-overlay]
       summary: Propose one action for approval
       description: |
-        P-11: builds the overlay for one action the bot is
+        visual approval overlay: builds the overlay for one action the bot is
         about to take — its target element (the button to click
         or the tool to run) and its server-rendered card — and
         records `approval_requested` in the ledger. A
@@ -120,7 +120,7 @@ paths:
       tags: [approval-overlay]
       summary: Approve one pending overlay
       description: |
-        P-11: approves that one action — records
+        visual approval overlay: approves that one action — records
         `approval_granted` in the ledger. When the store is
         constructed with the turn loop's gate, the gate request
         is approved there too, so the action may run.
@@ -183,7 +183,7 @@ paths:
       tags: [approval-overlay]
       summary: Reject one pending overlay
       description: |
-        P-11: rejects that one action — cancels it and records
+        visual approval overlay: rejects that one action — cancels it and records
         `approval_rejected` in the ledger with the reason. When
         the store is constructed with the turn loop's gate the
         gate request is marked rejected, so the action can never

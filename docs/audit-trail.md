@@ -1,10 +1,10 @@
-# Audit trail with initiator (G6)
+# Audit trail with initiator (audit trail with initiator)
 
 The audit trail is the ledger (Buku Kerja) plus three additions in
 `puspa/ledger/audit.py`. None of them adds a 32nd event type — the
 closed set of 31 types is untouched.
 
-Pattern source (studied, rewritten as Puspa code, never copied
+Pattern source (studied, rewritten as PuspaBot code, never copied
 verbatim — see `NOTICE.md` and `REUSE.md`): OpenBot
 `app/src/lib/audit/` + `api/openapi/audit-events.yaml` +
 `shared/audit-words.ts` (MIT).
@@ -65,7 +65,7 @@ dropped; nothing holds it for later.
 `export_events_csv(events, *, exporter, filters, log)`:
 
 - **At most 5,000 rows** (`MAX_EXPORT_ROWS`). A cut export starts
-  with the marker header `# Puspa-Export-Truncated: true` and the
+  with the marker header `# PuspaBot-Export-Truncated: true` and the
   result reports `truncated=True`, `rows` written and `total_rows`
   matched.
 - **Formula-injection guard.** Any cell starting with `=`, `+`,
@@ -92,7 +92,7 @@ a separate append-only export log, `AuditExportLog`: one JSONL
 file (`audit-exports.jsonl`) in a directory, each record chained
 to the previous one by hash (`GENESIS` for the first), verifiable
 with `verify_chain()`. The core ledger stays the single source of
-truth for what Puspa did; the export log is the record of who
+truth for what PuspaBot did; the export log is the record of who
 looked at it.
 
 ## Retention

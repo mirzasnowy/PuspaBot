@@ -1,8 +1,8 @@
-# Turn loop: interruptible, fallback-layered, budgeted (G21)
+# Turn loop: interruptible, fallback-layered, budgeted (interruptible turn loop with layered fallback and budget)
 
-The turn loop is the conversational engine inside Puspa's task
+The turn loop is the conversational engine inside PuspaBot's task
 lifecycle. One loop serves every surface (PWA, Telegram/WhatsApp
-channels, scheduler): the loop that was split is Puspa's
+channels, scheduler): the loop that was split is PuspaBot's
 `TaskRunner` (`puspa/runtime/tasks.py`), and the split keeps the
 task lifecycle where it is (accept -> plan -> run -> verify ->
 present) while the model work inside the `run` stage goes
@@ -15,8 +15,8 @@ internal message format for three API modes, layered fallback,
 per-agent and per-subagent iteration budgets, alternation
 enforced in code, tools intercepted before the registry) is
 studied from NousResearch/hermes-agent (MIT) and rewritten as
-Puspa's own code. No hermes-agent code was copied. See `REUSE.md`
-and `NOTICE.md` (maturity phase, G21).
+PuspaBot's own code. No hermes-agent code was copied. See `REUSE.md`
+and `NOTICE.md` (maturity phase, interruptible turn loop with layered fallback and budget).
 
 ## Layout
 
@@ -170,7 +170,7 @@ three tiers are dropped and reported; an unlisted model's cost
 is unknown (rate 0), never invented.
 
 Execution is the existing `puspa.router.fallback.call_with_fallback`
-(3-tier chain, quota-aware, Rupiah-budget enforcing). What G21
+(3-tier chain, quota-aware, Rupiah-budget enforcing). What interruptible turn loop with layered fallback and budget
 added to it: `auth_error` is a retryable kind (401, or 403 with
 an auth signal), so an auth failure moves to the next tier —
 but only after a credential refresh has been tried first.
@@ -224,7 +224,7 @@ return synthetic results, so they never reach the registry:
 | --- | --- |
 | `todo` | `turns/todos.TodoStore` (in-memory per turn — see limit below) |
 | `memory` | `puspa.memory.facts` (`record_fact` / `list_active_facts` / `hybrid_recall`; the trust gate runs on record) |
-| `session_search` | `SessionGateway.search_messages` (SQLite FTS5, G7 mechanism) |
+| `session_search` | `SessionGateway.search_messages` (SQLite FTS5, memory tightening mechanism) |
 | `delegate_task` | injected `delegate` callable, or the real `SubagentPool.spawn` (one level only, pool-enforced) |
 
 Actions: `todo` takes `add` / `list` / `complete` / `remove`;
@@ -269,7 +269,7 @@ result = loop.run_subagent_turn(
 )
 ```
 
-## Intent advisor (K1)
+## Intent advisor (intent engine)
 
 An optional `IntentTurnAdvisor` (`puspa.intent.turn_wiring`,
 see `docs/intent-engine.md`) can be passed as `intent_advisor`:
@@ -298,7 +298,7 @@ runner = TaskRunner(executor=make_task_executor(model_call=...))
   package touches the network (all model calls in tests are
   injected fakes) and no live turn has been run. A live turn
   needs a key in the BYOK path and a real run.
-- **No durable todo store exists in Puspa.** `todo` is backed
+- **No durable todo store exists in PuspaBot.** `todo` is backed
   by an in-memory store scoped to one turn loop instance: it
   works inside a turn and is forgotten when the process ends. A
   durable store (a table next to the session store, or a

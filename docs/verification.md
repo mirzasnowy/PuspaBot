@@ -3,7 +3,7 @@
 How a claim of "tested" is earned in this repo. A claim that cannot be
 checked against this document is not a verification, it is an opinion.
 
-## Parallel runs: one database per worker (E-17)
+## Parallel runs: one database per worker (per-worker database and PR lane)
 
 The full test suite runs on 4 pytest-xdist workers, each with its
 own Postgres database cloned from a migrated template
@@ -37,7 +37,7 @@ Never use `pkill` with a broad pattern (for example `pkill -f pytest`):
 it kills other workers' suite runs. Kill only a process you started
 yourself, by its exact PID.
 
-## Test markers (E-17)
+## Test markers (per-worker database and PR lane)
 
 Every test carries exactly one of three markers, assigned in
 `tests/conftest.py` from the test's fixture closure (a test that
@@ -155,7 +155,7 @@ test, not a reminder.
 ## Size discipline
 
 `tests/test_file_size_ratchet.py` enforces the file-size ratchet
-(adapted from DuskBot): no Puspa-owned file over 2000 lines; a file
+(adapted from DuskBot): no PuspaBot-owned file over 2000 lines; a file
 over 1000 lines may only shrink against its recorded baseline, and a
 new file over 1000 lines needs an explicit baseline entry with a
 reason. The vendored `nanobot/` reference copy, the frozen
@@ -196,7 +196,7 @@ Lanes:
   `pyproject.toml` `[tool.mypy]`).
 
 Ruff and mypy are pinned in `requirements-dev.txt` (dev tools only,
-never imported by Puspa code). The lint and format lanes install only
+never imported by PuspaBot code). The lint and format lanes install only
 that file (fast: no torch); the typecheck lane installs
 `requirements.txt` too, because mypy needs the runtime dependencies to
 resolve imports. The same three commands run locally from the repo root
@@ -211,13 +211,13 @@ follow-up task with its reason recorded in the config comments.
 
 ## Sentinel self-checks
 
-The sentinel (`puspa/sentinel/`, G12) watches Puspa's own
+The sentinel (`puspa/sentinel/`, self-observability (Sentinel and decision log)) watches PuspaBot's own
 records, so its own verification follows the same rule as
 everything else here — as a written rule, not an exhortation:
 
 - A sentinel finding is a claim about the ledger, and it is
   verified the same way: the independent verifier
-  (`puspa/sentinel/verifier.py`, K8) re-reads fresh ledger
+  (`puspa/sentinel/verifier.py`, outcome watcher) re-reads fresh ledger
   events and re-runs the single detector for the issue's scope.
   A detector result that cannot be reproduced from a fresh read
   is `stale`, never confirmed.

@@ -1,8 +1,8 @@
-# Indonesian context pass (B14)
+# Indonesian context pass
 
 Scope: plan section 15, items 15.1-15.12, applied only to the
-tickets built in this queue — B1, B2, B3, B4, B5, B7, B8. B6
-and B9-B13/B18 are out of this queue and were not re-passed.
+tickets built in this queue — price-check beta slice, verified outcome records, shared anti-fraud and price graphs, trust and proof surface, local Indonesian data layer, prompt-to-visual-mockup, agent payments (prepare-only phase). group chat
+and delegated tasks through co-drafting, and the second-brain graph view are out of this queue and were not re-passed.
 Every "met" claim below points at code or a test that was read
 during this pass; "not applicable" means the item belongs to
 another ticket, a product decision, or a human panel, not that
@@ -12,19 +12,19 @@ Four real gaps were found and fixed in this pass:
 
 1. No code parsed the 15.1 money forms (`50rb`, `1,5 jt`,
    `seratus ribu`, `dua jeti`) — new `puspa/local_data/money.py`.
-2. The B1 reply rendered Rupiah with comma separators
+2. The price-check beta slice reply rendered Rupiah with comma separators
    (`Rp12,999,000`) — now dot separators (`Rp12.999.000`).
 3. The 15.5 local fraud patterns existed nowhere in code — new
-   `puspa/graphs/fraud_patterns.py`, wired into the B1 answer.
-4. The B8 approval surface showed no consequences (15.2) —
+   `puspa/graphs/fraud_patterns.py`, wired into the price-check beta slice answer.
+4. The agent payments (prepare-only phase) approval surface showed no consequences (15.2) —
    consequences now ride in the approval record and the render.
 
 Out of scope by the brief, recorded as such below: 15.8
 device/offline mode and HP-OTP login, the 15.12 20-person test
 panel, Hijriah dates (15.7 option), parent-companion mode
-(15.11), and anything touching culture (B15/B16/B17).
+(15.11), and anything touching culture (Indonesian culture capability module/community gallery (publish and rate cultural works)/creator support purchases (credit-only revenue share)).
 
-## B1 — "Cek Sebelum Beli" beta slice
+## Price-check beta slice ("Check Before You Buy")
 
 - **15.1 language.** Met. Everyday Indonesian and mixed
   Indonesian-English input is normalised by
@@ -54,14 +54,14 @@ panel, Hijriah dates (15.7 option), parent-companion mode
 - **15.1 register per contact.** Not applicable to this ticket.
   No salutation/register storage exists in memory yet; storing
   Pak/Bu/Kak/Mas/Mbak per contact with confidence is memory
-  work (G7/G24 area), not a B1 change. Recorded as future.
+  work (memory tightening/pluggable memory providers with background review and skill curation area), not a price-check beta slice change. Recorded as future.
 - **15.2 sungkan / approval consequences.** Met in part. The
   answer never claims a go-ahead it cannot prove: anything
   unverified is `cannot_advise` with the missing pieces listed
   (`puspa/check_before_buy/answer.py`, `_decide_advice`), and
   the reply states gaps rather than hiding them
   (`render_text`). The approval-card half of 15.2 belongs to
-  B8; see below.
+  agent payments (prepare-only phase); see below.
 - **15.5 local fraud patterns.** Gap found and fixed. The
   patterns existed nowhere in code. New
   `puspa/graphs/fraud_patterns.py:251`
@@ -69,7 +69,7 @@ panel, Hijriah dates (15.7 option), parent-companion mode
   (courier APK, bank/OJK impersonation, `mama minta pulsa`,
   new number, like/subscribe part-time work, illegal
   investment/lending, wrong-transfer refund, mule account,
-  fake COD, account trading, online gambling). B1 consumes it:
+  fake COD, account trading, online gambling). price-check beta slice consumes it:
   a forwarded text matching a pattern gives `do_not_act` with
   the pattern named and its plain-language warning in the
   reply (`puspa/check_before_buy/answer.py`, fraud block in
@@ -102,18 +102,18 @@ panel, Hijriah dates (15.7 option), parent-companion mode
   warning for online gambling (15.5) is the part that lives
   here, and it is met above.
 - **15.3, 15.4, 15.7, 15.8, 15.11, 15.12.** Not applicable:
-  group decisions belong to B6/B11, trust-through-proof to B4,
+  group decisions belong to group chat/shared bill splitting, trust-through-proof to trust and proof surface,
   calendar rhythms to the scheduler, offline/HP-OTP and the
   test panel and parent-companion mode are out of scope for
   this pass (see the header).
 
-**Sign-off B1: pass.** Two gaps found and fixed (money
+**Sign-off for the price-check beta slice: pass.** Two gaps found and fixed (money
 parsing, fraud patterns, Rupiah display — three fixes, two
 checklist items plus display).
 
-## B2 — Verified outcome records
+## Verified outcome records
 
-B2 is a write path, not a user-facing surface, so most of
+verified outcome records is a write path, not a user-facing surface, so most of
 section 15 does not touch it directly. What applies:
 
 - **15.3 gotong royong / collective decisions.** Met.
@@ -124,20 +124,20 @@ section 15 does not touch it directly. What applies:
   to, and a record without evidence is rejected by the writer
   (`_require_evidence`), so a group decision always rests on
   proof. Tests: `tests/test_outcome_records_b2.py`.
-- **15.4 trust.** Met in the B2 sense: the record carries its
+- **15.4 trust.** Met in the verified outcome records sense: the record carries its
   evidence and receipts, and the writer refuses evidence-free
   records — a claim without proof cannot enter the shared
   record at all.
 - **15.1, 15.2, 15.5, 15.6, 15.7, 15.8, 15.9, 15.10, 15.11,
   15.12.** Not applicable: the writer stores whatever the
   caller passes; language, money forms, fraud patterns, and
-  approval wording live in the calling tickets (B1, B5, B8),
+  approval wording live in the calling tickets (price-check beta slice, local Indonesian data layer, agent payments (prepare-only phase)),
   and no outcome type in this ticket names a calendar,
   device, or family mode.
 
-**Sign-off B2: pass.** No gap found; no code changed.
+**Sign-off for the verified outcome records: pass.** No gap found; no code changed.
 
-## B3 — Shared anti-fraud and price graphs
+## Shared anti-fraud and price graphs
 
 - **15.5 local fraud patterns.** Gap found and fixed. The
   shared graph had no fraud-pattern vocabulary at all:
@@ -147,7 +147,7 @@ section 15 does not touch it directly. What applies:
   patterns, Indonesian trigger phrases, plain-language
   warnings) with `match_fraud_patterns` and
   `classify_flag_reason` for tagging a free-text reason
-  against the known patterns. B1 is the first consumer (see
+  against the known patterns. price-check beta slice is the first consumer (see
   above); the shared flag tables themselves were left
   untouched, because changing stored flag shapes is a schema
   decision, not a checklist fix. Tests:
@@ -176,10 +176,10 @@ section 15 does not touch it directly. What applies:
   private records are namespaced by `user_id` and shared
   tables carry no user id at all.
 
-**Sign-off B3: pass.** One gap found and fixed (fraud-pattern
+**Sign-off for the shared anti-fraud and price graphs: pass.** One gap found and fixed (fraud-pattern
 vocabulary).
 
-## B4 — Trust / proof surface
+## Trust and proof surface
 
 - **15.4 trust through proof.** Met — this ticket is the
   mechanism. Every money or send action gets a human-readable
@@ -200,22 +200,22 @@ vocabulary).
   receipt proves the event is on the ledger unchanged, never
   that the claim behind it is true (stated in the export
   notes). The 14.5 fraud-label rule (neutral, factual labels,
-  never "scammer" as fact) is honoured by construction: B4
+  never "scammer" as fact) is honoured by construction: trust and proof surface
   shows flag counts, never a verdict word.
-- **15.2 approval consequences.** Met in the B4 sense: the
+- **15.2 approval consequences.** Met in the trust and proof surface sense: the
   receipt shows what happened and its evidence; the
   consequences of approving live on the approval surface
-  itself (B8, see below).
+  itself (agent payments (prepare-only phase), see below).
 - **15.1, 15.3, 15.5, 15.6, 15.7, 15.8, 15.10, 15.11, 15.12.**
-  Not applicable: B4 renders the ledger, it does not parse
+  Not applicable: trust and proof surface renders the ledger, it does not parse
   language, money, or fraud patterns, and it owns no calendar,
   device, or family surface. (Receipt copy is English; an
   Indonesian copy of the proof surface is i18n work for a
-  later ticket, not a B4 fix.)
+  later ticket, not a trust and proof surface fix.)
 
-**Sign-off B4: pass.** No gap found; no code changed.
+**Sign-off for the trust and proof surface: pass.** No gap found; no code changed.
 
-## B5 — Local Indonesian data layer
+## Local Indonesian data layer
 
 - **15.1 language and register.** Met. `normalize_id_text`
   (`puspa/local_data/language.py:151`) handles everyday
@@ -227,14 +227,14 @@ vocabulary).
   `COURIER_ALIASES`, including `jkt`, `bdg`, `jogja`,
   `tangsel`, `jnt`, `sicepat`). Register storage (Pak/Bu/Kak
   per contact) is not in this layer — recorded as future under
-  B1 above. Tests: `tests/test_local_data.py`.
+  price-check beta slice above. Tests: `tests/test_local_data.py`.
 - **15.1 money parsing.** Gap found and fixed — new
-  `puspa/local_data/money.py` (see B1). `parse_rupiah_amount`
+  `puspa/local_data/money.py` (see price-check beta slice). `parse_rupiah_amount`
   and `format_rupiah` are exported from `puspa.local_data`.
   Tests: `test_parse_rupiah_amount_*`,
   `test_format_rupiah_uses_dot_thousands`.
 - **15.1 timezones.** Not applicable to this ticket. No
-  profile timezone storage exists; see B1.
+  profile timezone storage exists; see price-check beta slice.
 - **15.6 money and payments.** Met. Rail naming covers QRIS,
   virtual account, bank transfer, GoPay, OVO, DANA, and COD
   (`puspa/local_data/rails.py:116`), with banks carried on VA
@@ -244,23 +244,23 @@ vocabulary).
   (`puspa/local_data/rates.py`, `SEED_SOURCE_LABEL`, seed date
   2026-11-19, origin Jakarta) and fail loud on unknown city or
   courier instead of guessing. Admin fees (15.6: "don't hide
-  admin fees") are not modelled anywhere in B5/B8 — there is
+  admin fees") are not modelled anywhere in local Indonesian data layer/agent payments (prepare-only phase) — there is
   no fee data to show; recorded as future, needing a fee data
   source and a product decision, not a parser fix.
 - **15.7 calendar rhythms.** Not applicable to this ticket:
-  B5 owns no calendar. (The seasonal half of 15.7 that touches
-  B5's consumers — Ramadan as peak fake-seller season — is
-  covered by the 15.5 fraud warnings in B1.)
+  local Indonesian data layer owns no calendar. (The seasonal half of 15.7 that touches
+  local Indonesian data layer's consumers — Ramadan as peak fake-seller season — is
+  covered by the 15.5 fraud warnings in price-check beta slice.)
 - **15.2, 15.3, 15.4, 15.5, 15.8, 15.9, 15.10, 15.11, 15.12.**
-  Not applicable: B5 is data (rates, rails, language); it
+  Not applicable: local Indonesian data layer is data (rates, rails, language); it
   neither asks questions, nor approves, nor stores group or
   family state. The 15.5 patterns live next to the graph
-  (B3), not in this layer.
+  (shared anti-fraud and price graphs), not in this layer.
 
-**Sign-off B5: pass.** One gap found and fixed (money
+**Sign-off for the local Indonesian data layer: pass.** One gap found and fixed (money
 parsing/formatting).
 
-## B7 — Prompt to visual mockup, drag and drop
+## Prompt-to-visual-mockup, drag and drop
 
 - **15.1 everyday Indonesian prompts.** Met. Template
   detection keys on Indonesian words (`undangan`, `hajatan`,
@@ -294,15 +294,15 @@ parsing/formatting).
   fraud warnings — the 15.5 patterns belong to forwarded
   chats and payments, not to a poster prompt.)
 
-**Sign-off B7: pass.** One gap found and fixed (shorthand
+**Sign-off for the prompt-to-visual-mockup: pass.** One gap found and fixed (shorthand
 money in prompt price extraction).
 
-## B8 — Agent payments, phase 1: prepare only
+## Agent payments, phase 1: prepare only
 
 - **15.2 approval shows consequences.** Gap found and fixed.
   The approval record carried recipient, amount, rail, and a
   note, but no consequences; the render stated status and
-  "Puspa never pays" but not what approving means. Now the
+  "PuspaBot never pays" but not what approving means. Now the
   `approval_requested` ledger content carries a
   `consequences` list (approving makes the payment payable;
   it never moves money by itself; the user pays in their own
@@ -325,40 +325,40 @@ money in prompt price extraction).
   `format_rupiah_amount`, `models.py:169`). Nothing executes:
   the Rp0 limit is architectural, and every preparation is
   approval-gated and ledger-recorded. Admin fees are not
-  modelled — see B5, recorded as future.
+  modelled — see local Indonesian data layer, recorded as future.
 - **15.4 gradual trust.** Met by construction: phase 1
   prepares only; the user pays in their own app, so the agent
   earns trust one prepared payment at a time and never moves
   money itself (`PAY_NOTICE`, `models.py`).
 - **15.1, 15.3, 15.5, 15.7, 15.8, 15.9, 15.10, 15.11, 15.12.**
-  Not applicable: B8 takes a verified recipient, an integer
+  Not applicable: agent payments (prepare-only phase) takes a verified recipient, an integer
   amount, and a rail — it does not parse free text (money
-  forms are B5's job), own a calendar or device, or store
+  forms are local Indonesian data layer's job), own a calendar or device, or store
   family state. Room preparations (`room_id`) support the
   15.3 group-payment shape at the record level; the group
-  approval flow itself belongs to B6/B9, not to this ticket.
+  approval flow itself belongs to group chat/delegated tasks, not to this ticket.
 
-**Sign-off B8: pass.** One gap found and fixed (approval
+**Sign-off for the agent payments (prepare-only phase): pass.** One gap found and fixed (approval
 consequences).
 
 ## Recorded as future (not built here)
 
 - Per-contact register (Pak/Bu/Kak/Mas/Mbak) with confidence,
   and profile timezone (WIB/WITA/WIT) — need memory/profile
-  schema work; owner: memory tickets (G7/G24 area).
+  schema work; owner: memory tickets (memory tightening/pluggable memory providers with background review and skill curation area).
 - Admin-fee display — needs a fee data source and a product
-  decision; owner: B5/B8 follow-up.
-- Harbolnas / THR / mudik mockup templates — new B7 templates.
+  decision; owner: local Indonesian data layer/agent payments (prepare-only phase) follow-up.
+- Harbolnas / THR / mudik mockup templates — new prompt-to-visual-mockup templates.
 - Hijriah date option (15.7), 15.8 device/offline mode and
   HP-OTP login, 15.12 20-person test panel, 15.11
   parent-companion mode — out of scope for this pass by the
   brief; parent-companion mode needs its own ticket.
-- Indonesian copy for the B4 proof surface — i18n work, later
+- Indonesian copy for the trust and proof surface proof surface — i18n work, later
   ticket.
 - Concrete-question wording on approval cards (15.2: "send now
   or tomorrow morning?" instead of closed yes/no questions) —
   the approval content now states consequences; rewording the
-  card's question itself is a PWA copy decision, not a B8
+  card's question itself is a PWA copy decision, not a agent payments (prepare-only phase)
   code fix.
 - The 15.5 pattern table is a starting vocabulary, not a
   verdict: a text matching no pattern is not "safe", and the

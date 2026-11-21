@@ -1,4 +1,4 @@
-# Channels: Telegram + WhatsApp (G14)
+# Channels: Telegram + WhatsApp (Telegram and WhatsApp channels)
 
 Channels are **access channels, not the home**. The home stays the
 PWA. A channel is a door the user can knock on — Telegram first,
@@ -19,7 +19,7 @@ WhatsApp second — and the same agent answers behind every door.
 ## Architecture
 
 One core, many adapters (the hermes-agent gateway pattern,
-rewritten as Puspa code — nothing copied verbatim):
+rewritten as PuspaBot code — nothing copied verbatim):
 
 ```
 Telegram update / WhatsApp webhook
@@ -57,7 +57,7 @@ Module map (`puspa/channels/`):
 | `agent.py` | `TaskRunnerAgent`: one message = one `Task` with a single `respond` step on the existing `TaskRunner`. The production executor is a named follow-up. |
 | `notify.py` | Content-free notifications: the text is the bot name only, never message content (the DuskBot rule). |
 | `heartbeat.py` | `HeartbeatStore`: last beat + last polling offset in one JSON file per profile; restored at start. |
-| `run.py` | `GatewayRunner`: the facade. One live runner per profile (G26 single writer, process-wide registry). |
+| `run.py` | `GatewayRunner`: the facade. One live runner per profile (sessions and persistence (single-writer, full-text search, lineage) single writer, process-wide registry). |
 | `config.py` | `ChannelConfig` from env. Tokens only from env, never hardcoded. |
 | `schema.py` | Applies migration `0008_channels.sql`. |
 
@@ -67,9 +67,9 @@ Module map (`puspa/channels/`):
    `getUpdates`. WhatsApp sends a webhook POST. The adapter turns
    the payload into `MessageEvent`s.
 2. The pipeline drops bot messages and the bot's own messages.
-   Group messages go to the optional `group_handler` hook (B6,
+   Group messages go to the optional `group_handler` hook (group chat,
    `puspa/rooms/routing.py`): a group chat linked to a room
-   answers @Puspa messages with the room as principal; unlinked
+   answers @PuspaBot messages with the room as principal; unlinked
    groups, and group chatter without a mention, are dropped.
 3. A bare 6-digit code in a DM is a pairing attempt (see below).
 4. The ledger is checked by `dedup_key`: a redelivered update is
@@ -91,7 +91,7 @@ code there, reads it off the PWA, and sends it to the bot in a DM:
 2. The user sends the 6-digit code in a DM. The pipeline verifies
    it and binds `platform:chat_id -> user_id`.
 3. The bot answers "Paired. This chat is now connected to your
-   Puspa account." Every later message from that chat resolves to
+   PuspaBot account." Every later message from that chat resolves to
    that user.
 
 Rules (same shape as `puspa.hosting.pairing`): 6 digits, single
@@ -139,7 +139,7 @@ Or from Python: `puspa.channels.schema.create_schema()` (the test
 suite calls it; `conftest` does not apply it — same pattern as the
 teams schema).
 
-## Sessions: single writer (G26)
+## Sessions: single writer (sessions and persistence (single-writer, full-text search, lineage))
 
 One live `GatewayRunner` per profile, enforced process-wide:
 `GatewayRunner.open()` raises `SingleWriterError` when a runner
@@ -165,7 +165,7 @@ offset" (poll from the beginning).
 
 The DuskBot rule: a push/notification from a channel carries
 ONLY the bot name — never message content. `notify.notify()`
-sends exactly `bot_name` (default `"Puspa"`). The user opens the
+sends exactly `bot_name` (default `"PuspaBot"`). The user opens the
 PWA to read what happened; the channel is the doorbell, not the
 letter.
 
@@ -183,7 +183,7 @@ All tokens from the environment, never hardcoded, never logged:
 | `WHATSAPP_APP_SECRET` | App secret for the `X-Hub-Signature-256` check (recommended). |
 | `PUSPA_CHANNEL_ALLOWLIST` | `platform:chat_id,...` pairs answered without pairing. |
 | `PUSPA_CHANNEL_STATE_DIR` | Heartbeat/offset state dir (default `.puspa-channels`). |
-| `PUSPA_BOT_NAME` | Bot name in content-free notifications (default `Puspa`). |
+| `PUSPA_BOT_NAME` | Bot name in content-free notifications (default `PuspaBot`). |
 
 No new dependency was added: both adapters use the already-pinned
 `httpx==0.28.1`. (python-telegram-bot is LGPL and is not used; the
@@ -206,8 +206,8 @@ fabricated answer). No second agent is built here.
   real DM answered, no real message sent. Tests use
   `httpx.MockTransport` only.
 - **DM-only by default.** Group messages are dropped unless a
-  room is linked to the group chat (B6, `docs/rooms-b6.md`):
-  the link plus an @Puspa mention routes the message to the room.
+  room is linked to the group chat (group chat, `docs/rooms-b6.md`):
+  the link plus an @PuspaBot mention routes the message to the room.
   Group support is otherwise a follow-up.
 - **Pairing bindings are in-memory.** They die with the process;
   the durable binding table is a follow-up.
@@ -218,4 +218,4 @@ fabricated answer). No second agent is built here.
   messages outside the window are a follow-up.
 - **No multiplex yet.** One runner serves one profile; serving
   many profiles from one process (hermes multiplex) is a
-  follow-up on top of the multi-tenant hosting foundation (G13).
+  follow-up on top of the multi-tenant hosting foundation (multi-tenant hosting and teams).

@@ -1,8 +1,8 @@
-# Stop-all, autonomy dial, and weekly report API contract (P-02, plan 12.7).
+# Stop-all, autonomy dial, and weekly report API contract (stop-all and autonomy dial, plan 12.7).
 #
-# Split out of docs/openapi-pwa.yaml on 20 Nov 2026 (P-02): the
+# Split out of docs/openapi-pwa.yaml on 20 Nov 2026 (stop-all and autonomy dial): the
 # controls contract (4 endpoints + 8 schemas) would have pushed
-# the main spec past the 2000-line hard cap (Wave 30 precedent:
+# the main spec past the 2000-line hard cap (earlier precedent:
 # rooms, graph, mockup, and payments split the same way). The
 # main spec references this file with $ref stubs; the generated
 # client is produced from the main spec with openapi-typescript,
@@ -10,7 +10,7 @@
 # main spec and is referenced back from here.
 openapi: 3.0.3
 info:
-  title: Puspa stop-all, autonomy dial, and weekly report API
+  title: PuspaBot stop-all, autonomy dial, and weekly report API
   version: 1.0.0
 paths:
   /api/stop-all:
@@ -18,7 +18,7 @@ paths:
       tags: [controls]
       summary: Stop everything for the logged-in user
       description: |
-        P-02: stops every agent the user owns (revoke-all, token
+        stop-all and autonomy dial: stops every agent the user owns (revoke-all, token
         refresh proved dead, live subagents interrupted) and
         every live subagent task in the PWA pool for those
         agents. One `task_stopped` ledger event per agent is
@@ -49,7 +49,7 @@ paths:
       tags: [controls]
       summary: Autonomy dial state for the logged-in user
       description: |
-        P-02: the five dial areas (Money, Outgoing messages,
+        stop-all and autonomy dial: the five dial areas (Money, Outgoing messages,
         Delete, Schedule, Shopping) with their evidence scores,
         ceilings, consecutive-accepted-draft streaks, and raise
         suggestions. Money is locked to Ask first. A suggestion
@@ -72,7 +72,7 @@ paths:
       tags: [controls]
       summary: Move one dial area's ceiling
       description: |
-        P-02: moves one area's ceiling to Ask first, Balanced,
+        stop-all and autonomy dial: moves one area's ceiling to Ask first, Balanced,
         or Autonomous. Lowering is always allowed. Raising moves
         one step at a time and needs an active suggestion (10
         accepted drafts in a row); Money refuses any raise.
@@ -125,7 +125,7 @@ paths:
       tags: [controls]
       summary: Weekly report for the logged-in user
       description: |
-        P-02: tasks completed, tasks corrected, and cost incurred
+        stop-all and autonomy dial: tasks completed, tasks corrected, and cost incurred
         over the last N calendar days ending today (default 7,
         allowed 1..90), with links to the audit log. Time and
         money saved are null: no savings baseline is recorded
@@ -161,7 +161,7 @@ components:
   schemas:
     StopAllAgentEntry:
       type: object
-      description: What stopping one agent did (P-02 stop-all report entry).
+      description: What stopping one agent did (stop-all and autonomy dial stop-all report entry).
       required: [agent_id, interrupted_subagents, refresh_blocked, elapsed_seconds]
       properties:
         agent_id:
@@ -175,7 +175,7 @@ components:
     StopAllReport:
       type: object
       description: |
-        P-02: what one stop-all press did. `task_id` is the shared
+        stop-all and autonomy dial: what one stop-all press did. `task_id` is the shared
         id every per-agent `task_stopped` ledger event of this
         press hangs off, so the press reads as one action in the
         audit log.
@@ -211,7 +211,7 @@ components:
     DialSuggestion:
       type: object
       description: |
-        P-02: an offer to raise one area's ceiling one step,
+        stop-all and autonomy dial: an offer to raise one area's ceiling one step,
         earned by 10 accepted drafts in a row. Absent (null)
         when the area is locked, already Autonomous, or short
         of evidence.
@@ -234,7 +234,7 @@ components:
     DialAreaState:
       type: object
       description: |
-        P-02: one dial area as the user sees it. `stage` is the
+        stop-all and autonomy dial: one dial area as the user sees it. `stage` is the
         evidence score stage; `effective_stage` is what an
         action may actually do (the lower of the score stage
         and the ceiling). `ceiling` is Ask first, Balanced, or
@@ -273,7 +273,7 @@ components:
           nullable: true
     DialState:
       type: object
-      description: "P-02: the five dial areas with their raise threshold."
+      description: "stop-all and autonomy dial: the five dial areas with their raise threshold."
       required: [areas, threshold, threshold_text]
       properties:
         areas:
@@ -293,7 +293,7 @@ components:
           enum: [ask_first, balanced, autonomous]
     WeeklyLinkedEvent:
       type: object
-      description: "P-02: one counted event with its audit receipt link."
+      description: "stop-all and autonomy dial: one counted event with its audit receipt link."
       required: [event_id, type, task_id, created_at, receipt_url]
       properties:
         event_id:
@@ -310,7 +310,7 @@ components:
     WeeklyReport:
       type: object
       description: |
-        P-02: tasks completed, tasks corrected, and cost incurred
+        stop-all and autonomy dial: tasks completed, tasks corrected, and cost incurred
         over the window, with audit links. `time_saved_minutes`
         and `money_saved_idr` are null: no savings baseline is
         recorded yet, so no savings figure is claimed (see

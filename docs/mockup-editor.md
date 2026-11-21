@@ -1,4 +1,4 @@
-# Mockup editor (B7)
+# Mockup editor (prompt-to-visual-mockup)
 
 Prompt to visual mockup with drag-and-drop, plan §12.2. The user
 describes what they want in words, the agent makes a visual
@@ -6,8 +6,8 @@ mockup, the user drags elements to rearrange it, and the agent
 updates the design. Built for UMKM and online sellers: shop page
 mockup, promo poster, product catalogue.
 
-This ticket also covers the later P-06 ticket (mockup canvas v1,
-same plan section): P-06 was a delta-only verification on top of
+This ticket also covers the later mockup canvas v1 ticket (mockup canvas v1,
+same plan section): mockup canvas v1 was a delta-only verification on top of
 this, not a rebuild. The delta it found and built: uploading an
 image used to mutate the stored doc without an op, so the next
 edit silently dropped the asset (now a numbered `add_asset` op);
@@ -64,7 +64,7 @@ ops, so undo, redo, and version history work on one log.
 
 Numbered from 1, one per edit, in order: `add_node`,
 `remove_node`, `move_node`, `set_text`, `set_style`, `set_image`,
-`reorder`, `set_theme`, `set_title`, `add_asset` (P-06: an image
+`reorder`, `set_theme`, `set_title`, `add_asset` (mockup canvas v1: an image
 upload is an op too, so the version bumps and the cached undo
 session never goes stale on an asset the store already has). An
 op may carry a `note`: the note is the design-decision record, so
@@ -184,7 +184,7 @@ One row per mockup in the `mockups` table: owner, template, and
 the whole doc as JSONB (doc + numbered op log + design
 decisions). Assets and decisions therefore accumulate in the
 user's workspace simply by editing. `GET /api/mockups` lists a
-user's mockups, newest first. The published-work shape B16 will
+user's mockups, newest first. The published-work shape community gallery (publish and rate cultural works) will
 build on later (doc + version + provenance) is already there:
 the stored doc carries its id, template, version, op log, and
 decision list. Publish/rate itself is NOT built here (parked

@@ -1,16 +1,15 @@
-# Second-brain graph API contract (B18 graph view).
+# Second-brain graph API contract (second-brain graph view).
 #
-# Split out of docs/openapi-pwa.yaml on 19 Nov 2026 (Wave 32 ratchet
-# fix): the graph contract (5 endpoints + 9 schemas) would have
+# Split out of docs/openapi-pwa.yaml on 19 Nov 2026 (size-limit split): the graph contract (5 endpoints + 9 schemas) would have
 # pushed the main spec past the 2000-line hard cap, so it earned
-# its own file, following the rooms split of Wave 30. The main
+# its own file, following the earlier rooms split. The main
 # spec references this file with $ref stubs; the generated client
 # is produced from the main spec with openapi-typescript, which
 # resolves external $refs. The Error schema stays in the main
 # spec and is referenced back from here.
 openapi: 3.0.3
 info:
-  title: Puspa second-brain graph API
+  title: PuspaBot second-brain graph API
   version: 1.0.0
 paths:
   /api/graph:
@@ -18,7 +17,7 @@ paths:
       tags: [graph]
       summary: Bounded knowledge-graph page for the logged-in user
       description: |
-        B18: one page of the user's knowledge graph, read from the
+        second-brain graph view: one page of the user's knowledge graph, read from the
         real KnowledgeGraph (seeded from episodic memory, then the
         user's ledger corrections replayed). Nodes are sorted by
         name; `limit` is capped at 100, `offset` pages through
@@ -100,7 +99,7 @@ paths:
       tags: [graph]
       summary: Rename a graph node
       description: |
-        B18: renames the node and rewrites every edge and passage
+        second-brain graph view: renames the node and rewrites every edge and passage
         link that mentions it; recorded in the ledger as a user
         correction. Renaming a code-graph node is refused with 403.
       parameters:
@@ -154,7 +153,7 @@ paths:
       tags: [graph]
       summary: Delete a graph node and its edges
       description: |
-        B18: deletes the node and every edge touching it;
+        second-brain graph view: deletes the node and every edge touching it;
         recorded in the ledger as a user correction. Deleting a
         code-graph node is refused with 403.
       parameters:
@@ -197,7 +196,7 @@ paths:
       tags: [graph]
       summary: Add a node to the user's graph
       description: |
-        B18: the node is written to the KnowledgeGraph and the
+        second-brain graph view: the node is written to the KnowledgeGraph and the
         edit is recorded in the ledger as a user correction
         (`evidence_recorded`, kind `user_correction`). A
         code-graph kind (file, function, class, module, table,
@@ -238,7 +237,7 @@ paths:
       tags: [graph]
       summary: Add an edge to the user's graph
       description: |
-        B18: missing endpoint nodes are created (kind unknown);
+        second-brain graph view: missing endpoint nodes are created (kind unknown);
         recorded in the ledger as a user correction. An edge
         touching a code-graph node is refused with 403.
       requestBody:
@@ -276,7 +275,7 @@ paths:
       tags: [graph]
       summary: Change an edge, or correct a fact
       description: |
-        B18: changes an edge's relation and/or object. With
+        second-brain graph view: changes an edge's relation and/or object. With
         `operation: correct_fact` the ledger records the edit as
         a fact correction rather than a rewording. Recorded in
         the ledger as a user correction either way. An edge
@@ -322,7 +321,7 @@ paths:
       tags: [graph]
       summary: Delete an edge from the user's graph
       description: |
-        B18: recorded in the ledger as a user correction. An
+        second-brain graph view: recorded in the ledger as a user correction. An
         edge touching a code-graph node is refused with 403.
       parameters:
         - name: subject
@@ -374,7 +373,7 @@ paths:
       tags: [graph]
       summary: Retrieve passages from the user's graph (HippoRAG)
       description: |
-        B18: runs the HippoRAG retriever over the same graph
+        second-brain graph view: runs the HippoRAG retriever over the same graph
         object the view edits, so a correction changes the next
         answer. `graph_score` is 0 and `seed_nodes` is empty when
         the query matched no node and the answer fell back to
@@ -415,11 +414,11 @@ components:
     GraphNode:
       type: object
       description: |
-        B18: one knowledge-graph node. `sources` are the passage
+        second-brain graph view: one knowledge-graph node. `sources` are the passage
         ids (or `user_correction`) the node came from; `seen_at`
         is the newest episode time that mentions the node, or the
         correction time for a user-added node; `is_code_node`
-        marks G29 code-graph nodes, which are read-only here.
+        marks code graph code-graph nodes, which are read-only here.
       required: [name, sources, fact_count, is_code_node]
       properties:
         name:
@@ -443,7 +442,7 @@ components:
           type: boolean
     GraphEdge:
       type: object
-      description: "B18: one directed knowledge-graph edge (triple)."
+      description: "second-brain graph view: one directed knowledge-graph edge (triple)."
       required: [subject, relation, object, sources]
       properties:
         subject:
@@ -459,7 +458,7 @@ components:
     GraphPage:
       type: object
       description: |
-        B18: one bounded page of the graph. `nodes` are at most
+        second-brain graph view: one bounded page of the graph. `nodes` are at most
         `limit` (capped at 100); `edges` are only the ones
         touching a returned node, also capped at `limit`.
       required: [nodes, edges, total_nodes, total_edges, limit, offset]
@@ -483,7 +482,7 @@ components:
     GraphNodeDetail:
       type: object
       description: |
-        B18: one node with its facts (triples touching it) and
+        second-brain graph view: one node with its facts (triples touching it) and
         provenance (the passages the facts came from, with text).
       required: [name, sources, fact_count, is_code_node, facts, provenance]
       properties:
@@ -544,7 +543,7 @@ components:
     GraphEdgeChangeInput:
       type: object
       description: |
-        B18: change one edge. `operation` is `change_edge` or
+        second-brain graph view: change one edge. `operation` is `change_edge` or
         `correct_fact` (a fact correction, recorded as such).
       required: [subject, relation, object]
       properties:

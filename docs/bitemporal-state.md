@@ -1,4 +1,4 @@
-# Bitemporal State (Kosmos K3)
+# Bitemporal State (Kosmos bitemporal state)
 
 Two times for everything the brain remembers
 (`docs/kosmos-design.md` section C point 3: "Bitemporal state:
@@ -184,7 +184,7 @@ alongside, in its own column, outside the hashed payload.
 
 This is deliberate, and it is the only decision that keeps the
 existing chain verifiable: if `valid_at` entered the hash,
-every entry written before K3 would recompute to a different
+every entry written before bitemporal state would recompute to a different
 hash (the old entries have no separately recorded valid time,
 so any value assigned to them in the hash would be invented),
 and `verify_chain` would report the whole history as broken.
@@ -209,7 +209,7 @@ Consequences, stated plainly:
   valid time. "The event was true when it was recorded" is
   the only claim the record supports for old entries.
 - No 32nd event type was added. The closed set of 31
-  revision-7 types stays closed (G6 precedent: new
+  revision-7 types stays closed (audit trail with initiator precedent: new
   information rides as data, not as a new type).
 
 ## Migration
@@ -255,7 +255,7 @@ time recorded" instead of failing the write.
 - **No deletion.** There is deliberately no delete API for
   versions: history is append-only. Erasing a belief and its
   derivatives (the user asked to delete something) belongs
-  to the data-deletion work (K12), not to this module.
+  to the data-deletion work (external audit log, kill switch and export), not to this module.
 - **One valid instant per ledger event.** An event that spans
   a period (a task that ran for three days) is recorded with
   a single `valid_at` — by convention its start, unless the

@@ -1,4 +1,4 @@
-# Naming Audit — Puspa Phase 0
+# Naming Audit — PuspaBot Phase 0
 
 Date: 17 November 2026. Auditor: Luna (naming-audit subagent).
 Nero's order: make sure the naming of files, README, variables, and
@@ -18,7 +18,7 @@ one name in all files.
 - **Fixed directly: 47** (typos, document wording, comments,
   docstrings, internal variable/constant/function renames — all verified
   by pytest + demo dry-run, see § Evidence).
-- **Rename proposals awaiting Nero's decision: 22 items** (P-1 to P-22;
+- **Rename proposals awaiting Nero's decision: 22 items** (proposals 1 to 22;
   each item bundles several raw findings) — modules/files/public APIs/
   table names/event names are not changed without approval.
 - **Rejected after verification (not findings): 8** (auditor miscount,
@@ -45,11 +45,11 @@ one name in all files.
    > [Superseded 18 Nov 2026: Nero ordered an English-only refactor —
    > code identifiers, stored domain values, and prose are all English
    > now; see `docs/GLOSSARY.md`.]
-2. **Big public renames** (see § Proposals, P-1 to P-12): duplicate
+2. **Big public renames** (see § Proposals, proposals 1 to 12): duplicate
    `canonical_json`, the `EVENT_TYPES` alias, `append_event`/`events`, two
    `skills.py`, two `session` modules, and mixed-language SQL names. All need
    Nero's word because they touch the public API / the already-pushed repo.
-3. **Mock `baca_file` vs the real tool `read_file`** (F-11): the mock harness
+3. **Mock `baca_file` vs the real tool `read_file`** (finding 11): the mock harness
    uses a dummy tool `baca_file` while the demo uses `read_file`.
    The protocol evidence stays valid (tool names in the mock are free), but the evidence
    becomes less direct by comparison. Changing it means regenerating 9
@@ -88,7 +88,7 @@ one name in all files.
 - `README.md` — test count 203 → **244** + breakdown +41 BYOK tests; the
   line "push hanya setelah parent mengonfirmasi" (stale, the push already
   happened 17 Nov 2026) → commits `8e91a92` + `657ee78`; added the
-  **Istilah** section (Puspa, MVP, Buku Kerja, Pembaca terkarantina,
+  **Istilah** section (PuspaBot, MVP, Buku Kerja, Pembaca terkarantina,
   token izin, gerbang, Ed25519, Argon2id, Fernet, RLS, DSN, HKUDS, chassis).
 - `CONTRACTS.md` — layout tree completed (`test_byok_provider.py`,
   `demo/`, `NOTICE.md`, `nanobot-INVENTORY.md`); the sentence "Semua tabel
@@ -157,41 +157,41 @@ files, tables, or the already-pushed repo.
 
 | # | Proposal | Reason | Impact |
 | --- | --- | --- | --- |
-| P-1 | Duplicate `canonical_json`: `ledger.py:84` (-> `str`) vs `tokens.py:75` (-> `bytes`) | one name, two return types; both exported in `__all__` | rename one (e.g. `canonical_json_bytes` in tokens) + 9 call sites (ledger 2, tokens 4, gate 1, skills 2) |
-| P-2 | Remove the alias `EVENT_TYPES = JENIS_KEJADIAN` (`ledger.py:81`) | one concept, two names | 1 line + all importers of the alias |
-| P-3 | `append_event`/`events`/`InvalidEventTypeError`/`compute_event_hash` → `tambah_kejadian`/`kejadian`/... OR the other way: unify to English | `kejadian` vs `event` mixed in the public ledger API | public ledger API + all users (chassis, tests, demo) |
-| P-4 | `read_ledger_events_for_task` vs `revoke_all_for_tugas` | `task` vs `tugas` in public function names | 2 functions + users |
-| P-5 | `create_agent_schema`/`register_agent` vs `agen_id` | `agent` vs `agen` in the public accounts API | 2 functions + users + SQL |
-| P-6 | Money: `rupiah`/`nominal`/`amount`/`jumlah` (4 names) | one concept, four names | token payload, gate, spending, tests |
-| P-7 | `KIND_TOOLS`/`KIND_SCOPES` + tool statuses (`ok`/`error` vs `ditolak`/`menunggu_persetujuan`) | mixed languages in stored values | values stored in the ledger — needs migration/compat |
-| P-8 | Two `skills.py` (policy vs chassis) + two session modules (accounts/sessions.py vs chassis/session.py) | same file name, different contents | rename files + all imports |
-| P-9 | Duplicate `is_allowed` (method + module function), `owner_of` vs `owner_of_token`, `validate` vs `verify` | similar names, different meanings | public policy/accounts API |
-| P-10 | SQL: mixed columns (`vault.name`/`ciphertext` English vs `dibuat`/`diubah` Indonesian; `sesi.device_label`/`token_hash` vs `terakhir_dilihat`/`dicabut`) + the `kejadian_jenis_check` constraint | one table, two languages | SQL migration + all queries |
-| P-11 | MD files: `nanobot-INVENTORY.md`, `demo/byok_provider_proof.md` (lowercase) vs the uppercase convention (README, STATUS, CONTRACTS, NOTICE) | file-name casing consistency | rename files + all references |
-| P-12 | `RlsError` → `RLSError`; `_TINGKAT_RANK` (leftover — `_POLAS` and `_NUM_RE` already fixed, `void` already fixed) | PEP 8 acronyms (CapWords) | exception class + tests; `_TINGKAT_RANK` needs a decision together with the `tingkat` field |
-| P-13 | Test names: Indonesian/English mixed across files + the `j1`-`j8` prefix + `A`/`B` in `test_attacks.py` + three wordings for the same unknown-type test | one test-naming convention | 219 test functions — wait for the language policy (§ Decision 1) |
-| P-14 | `_payload` defined 4x with different `rupiah_max` (0 / 2,000 / 1,000,000 / 10,000,000) + duplicate helpers (`stub_log` 3x, `_token`/`_gate` 2x, `KirimTool` 2x) | duplicate fixtures, inconsistent values | test refactor (not just a rename) |
-| P-15 | Duplicate `DEFAULT_DSN` (`ledger.py:40`, `users.py:14`) + 3 DSN names + duplicate DSN literals in tests | one constant, one place | small refactor |
-| P-16 | `MAX_CHARS` (reader, 200) vs `_MAX_SPAN` (injection, 200) | two names for the same limit | unify the name + document it |
-| P-17 | `spent_in_period` in `spending.py` delegates to a ledger that lacks the method (in-memory fallback via `hasattr`) | behaviour correct but architecture dangling | decide: add `spent_in_period` to Ledger, or remove the delegation |
-| P-18 | `is_subset`, `owner_of`, `build_hook` are not exported in `__init__` even though they're used across packages | `__init__` exports don't match usage | add exports / document as private |
-| P-19 | `turn`, `sink`/`make_ledger_sink`, `chassis`/`PuspaChassis`, `Galat` (docstring) vs `*Error` (class), `salinan`, `hilang`, `awalan`, `judul`/`angka`/`konteks`, `ringkasan`, `jalankan_kode`, `_tolak`/`alasan`/`daftar_scope`, `pola`/`tingkat`/`span` | new terms not in revision 7 and not standard technical terms | each needs: add to the revision 8 glossary, or replace with a standard term |
-| P-20 | `BYOK` is not in revision 7 (never expanded in the demo files before this audit) + `surrogate` (`hsurr:...`) unexplained | new terms in the demo | already explained in MATRIKS_BYOK.md + LAPORAN_DEMO.md by this audit; add to the revision 8 glossary if BYOK becomes part of the product |
-| P-21 | `baca_file` (mock) vs `read_file` (real) — F-11 | mock evidence is less direct by comparison | regenerate 9 `mock_logs/` + 2 documents + tests |
-| P-22 | JSON keys in `biaya_demo.json` mix languages + check ids mix languages (`cek_a` vs `check_b`) + `kalengan` vs `canned` in class names | language consistency in demo artefacts | regenerate demo evidence / rename classes (wait for the language policy) |
+| proposal 1 | Duplicate `canonical_json`: `ledger.py:84` (-> `str`) vs `tokens.py:75` (-> `bytes`) | one name, two return types; both exported in `__all__` | rename one (e.g. `canonical_json_bytes` in tokens) + 9 call sites (ledger 2, tokens 4, gate 1, skills 2) |
+| proposal 2 | Remove the alias `EVENT_TYPES = JENIS_KEJADIAN` (`ledger.py:81`) | one concept, two names | 1 line + all importers of the alias |
+| proposal 3 | `append_event`/`events`/`InvalidEventTypeError`/`compute_event_hash` → `tambah_kejadian`/`kejadian`/... OR the other way: unify to English | `kejadian` vs `event` mixed in the public ledger API | public ledger API + all users (chassis, tests, demo) |
+| proposal 4 | `read_ledger_events_for_task` vs `revoke_all_for_tugas` | `task` vs `tugas` in public function names | 2 functions + users |
+| proposal 5 | `create_agent_schema`/`register_agent` vs `agen_id` | `agent` vs `agen` in the public accounts API | 2 functions + users + SQL |
+| proposal 6 | Money: `rupiah`/`nominal`/`amount`/`jumlah` (4 names) | one concept, four names | token payload, gate, spending, tests |
+| proposal 7 | `KIND_TOOLS`/`KIND_SCOPES` + tool statuses (`ok`/`error` vs `ditolak`/`menunggu_persetujuan`) | mixed languages in stored values | values stored in the ledger — needs migration/compat |
+| proposal 8 | Two `skills.py` (policy vs chassis) + two session modules (accounts/sessions.py vs chassis/session.py) | same file name, different contents | rename files + all imports |
+| proposal 9 | Duplicate `is_allowed` (method + module function), `owner_of` vs `owner_of_token`, `validate` vs `verify` | similar names, different meanings | public policy/accounts API |
+| proposal 10 | SQL: mixed columns (`vault.name`/`ciphertext` English vs `dibuat`/`diubah` Indonesian; `sesi.device_label`/`token_hash` vs `terakhir_dilihat`/`dicabut`) + the `kejadian_jenis_check` constraint | one table, two languages | SQL migration + all queries |
+| proposal 11 | MD files: `nanobot-INVENTORY.md`, `demo/byok_provider_proof.md` (lowercase) vs the uppercase convention (README, STATUS, CONTRACTS, NOTICE) | file-name casing consistency | rename files + all references |
+| proposal 12 | `RlsError` → `RLSError`; `_TINGKAT_RANK` (leftover — `_POLAS` and `_NUM_RE` already fixed, `void` already fixed) | PEP 8 acronyms (CapWords) | exception class + tests; `_TINGKAT_RANK` needs a decision together with the `tingkat` field |
+| proposal 13 | Test names: Indonesian/English mixed across files + the `j1`-`j8` prefix + `A`/`B` in `test_attacks.py` + three wordings for the same unknown-type test | one test-naming convention | 219 test functions — wait for the language policy (§ Decision 1) |
+| proposal 14 | `_payload` defined 4x with different `rupiah_max` (0 / 2,000 / 1,000,000 / 10,000,000) + duplicate helpers (`stub_log` 3x, `_token`/`_gate` 2x, `KirimTool` 2x) | duplicate fixtures, inconsistent values | test refactor (not just a rename) |
+| proposal 15 | Duplicate `DEFAULT_DSN` (`ledger.py:40`, `users.py:14`) + 3 DSN names + duplicate DSN literals in tests | one constant, one place | small refactor |
+| proposal 16 | `MAX_CHARS` (reader, 200) vs `_MAX_SPAN` (injection, 200) | two names for the same limit | unify the name + document it |
+| proposal 17 | `spent_in_period` in `spending.py` delegates to a ledger that lacks the method (in-memory fallback via `hasattr`) | behaviour correct but architecture dangling | decide: add `spent_in_period` to Ledger, or remove the delegation |
+| proposal 18 | `is_subset`, `owner_of`, `build_hook` are not exported in `__init__` even though they're used across packages | `__init__` exports don't match usage | add exports / document as private |
+| proposal 19 | `turn`, `sink`/`make_ledger_sink`, `chassis`/`PuspaChassis`, `Galat` (docstring) vs `*Error` (class), `salinan`, `hilang`, `awalan`, `judul`/`angka`/`konteks`, `ringkasan`, `jalankan_kode`, `_tolak`/`alasan`/`daftar_scope`, `pola`/`tingkat`/`span` | new terms not in revision 7 and not standard technical terms | each needs: add to the revision 8 glossary, or replace with a standard term |
+| proposal 20 | `BYOK` is not in revision 7 (never expanded in the demo files before this audit) + `surrogate` (`hsurr:...`) unexplained | new terms in the demo | already explained in MATRIKS_BYOK.md + LAPORAN_DEMO.md by this audit; add to the revision 8 glossary if BYOK becomes part of the product |
+| proposal 21 | `baca_file` (mock) vs `read_file` (real) — finding 11 | mock evidence is less direct by comparison | regenerate 9 `mock_logs/` + 2 documents + tests |
+| proposal 22 | JSON keys in `biaya_demo.json` mix languages + check ids mix languages (`cek_a` vs `check_b`) + `kalengan` vs `canned` in class names | language consistency in demo artefacts | regenerate demo evidence / rename classes (wait for the language policy) |
 
 ## Findings REJECTED after verification (not findings)
 
 | # | Auditor's claim | Verification result |
 | --- | --- | --- |
-| R-1 | F-26: "41 tests / 244 passed" is wrong; the correct numbers are 32 functions / 219 functions | WRONG. `pytest --collect-only` collects **41 tests** from `test_byok_provider.py` (32 functions, 2 of them parameterised) and **248 total** (244 passed + 4 skipped). LAPORAN_DEMO is right. |
-| R-2 | `spent_in_period` calls a Ledger method that doesn't exist (`spending.py:233-239`) | WRONG. The file is only 105 lines; the code at `:72-80` uses an `hasattr` guard + in-memory fallback. Behaviour is correct. See P-17 for the architecture side. |
-| R-3 | README mentions the Verifier and the Office without definitions | WRONG. `grep` proves the README doesn't contain either word at all. Both appear in CONTRACTS/STATUS/code per the revision 7 definition. |
-| R-4 | STATUS / README / CONTRACTS contradict each other on 7 vs 8 attack paths | NOT a contradiction. Line 6 of STATUS is a historical note (the first 7 paths, by subagent F); path 8 is recorded on line 11. Given an explanatory annotation; the historical numbers were not changed. |
-| R-5 | `tombstone`/`fail-closed` are new terms | REJECTED. Both are defined in revision 7. |
-| R-6 | The 31 event types don't match the definition | REJECTED. A script compared `ledger.py`, both CHECK blocks in `schema.sql`, CONTRACTS.md, and definition 2.3 — exactly 31 types match. |
-| R-7 | The 6 RLS policies don't match the claim | REJECTED. Counted directly from `schema.sql` — 6 policies, matching. |
-| R-8 | The 203-test arithmetic is wrong | REJECTED. 105+5+26+21+12+7+26+1 = 203, correct at the time; now 244 (+41 BYOK). |
+| review note 1 | finding 26: "41 tests / 244 passed" is wrong; the correct numbers are 32 functions / 219 functions | WRONG. `pytest --collect-only` collects **41 tests** from `test_byok_provider.py` (32 functions, 2 of them parameterised) and **248 total** (244 passed + 4 skipped). LAPORAN_DEMO is right. |
+| review note 2 | `spent_in_period` calls a Ledger method that doesn't exist (`spending.py:233-239`) | WRONG. The file is only 105 lines; the code at `:72-80` uses an `hasattr` guard + in-memory fallback. Behaviour is correct. See proposal 17 for the architecture side. |
+| review note 3 | README mentions the Verifier and the Office without definitions | WRONG. `grep` proves the README doesn't contain either word at all. Both appear in CONTRACTS/STATUS/code per the revision 7 definition. |
+| review note 4 | STATUS / README / CONTRACTS contradict each other on 7 vs 8 attack paths | NOT a contradiction. Line 6 of STATUS is a historical note (the first 7 paths, by subagent F); path 8 is recorded on line 11. Given an explanatory annotation; the historical numbers were not changed. |
+| review note 5 | `tombstone`/`fail-closed` are new terms | REJECTED. Both are defined in revision 7. |
+| review note 6 | The 31 event types don't match the definition | REJECTED. A script compared `ledger.py`, both CHECK blocks in `schema.sql`, CONTRACTS.md, and definition 2.3 — exactly 31 types match. |
+| review note 7 | The 6 RLS policies don't match the claim | REJECTED. Counted directly from `schema.sql` — 6 policies, matching. |
+| review note 8 | The 203-test arithmetic is wrong | REJECTED. 105+5+26+21+12+7+26+1 = 203, correct at the time; now 244 (+41 BYOK). |
 
 ## Accepted patterns (not changed)
 
@@ -201,7 +201,7 @@ files, tables, or the already-pushed repo.
   (`CannedProvider`, `canned-...`, `menunggu_persetujuan` as an internal
   demo status value, `isi` vs `content` in different domains.)
 - **Revision 7 terms used as-is:** Buku Kerja, Pemeriksa, Pembaca
-  terkarantina, alur, modul, Kantor, Puspa, Rekor Otonomi, kejadian, tugas,
+  terkarantina, alur, modul, Kantor, PuspaBot, Rekor Otonomi, kejadian, tugas,
   token izin, gerbang, batas belanja, angka yatim, vonis, kaset, pemicu,
   handoff, detak. Don't propose replacing them — what matters is
   consistent usage.
@@ -244,7 +244,7 @@ policy this audit assumes — Indonesian prose and stored domain values,
 English only for standard technical code names — is superseded by the
 English-only refactor ordered by Nero on 18 Nov 2026, which resolves
 the § Decisions-needed item 1 in the English direction (see
-`docs/GLOSSARY.md`); several P-1 to P-12 proposals were implemented by
+`docs/GLOSSARY.md`); several proposals 1 to 12 were implemented by
 that refactor (e.g. the two `skills.py` → `skill_signing.py` /
 `skill_loader.py`, the two session modules → `user_sessions.py` /
 `agent_session.py`, mixed SQL columns renamed). (2) Audit-time paths

@@ -1,4 +1,4 @@
-# Replay timeline (P-10, plan section 12.10)
+# Replay timeline (replay timeline, plan section 12.10)
 
 ## What it is
 
@@ -25,7 +25,7 @@ like a video.
 
 ## What it is not (honest limits)
 
-- **No real screenshot.** Puspa has no desktop/browser/CDP to
+- **No real screenshot.** PuspaBot has no desktop/browser/CDP to
   watch, so the `screenshot` of every step stays `null` and
   the GIF frames are *rendered* from the step's own data (step
   number, event type, time, tool, reason, result) on a fixed

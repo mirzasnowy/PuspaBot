@@ -1,9 +1,9 @@
-# Insights: hints + cost/token insights (G28)
+# Insights: hints + cost/token insights (onboarding and cost insights)
 
 First-run onboarding in the PWA, plus a cost/token insights page fed
 from the usage ledger. Two features, one idea: the user sees a nudge
 exactly when they first reach a behaviour, and they can always look
-up what Puspa actually spent.
+up what PuspaBot actually spent.
 
 ## Hints model
 
@@ -60,7 +60,7 @@ Routes live in `puspa/pwa/insights_api.py` and
 `puspa/pwa/onboarding_api.py` as plain handler functions plus
 `register_routes(app, need_user)`; they are wired into
 `puspa/pwa/app.py` (`create_app` calls both `register_routes`
-after the G33 model-settings block).
+after the own-model selection in PWA settings model-settings block).
 
 ### Insights
 
@@ -107,7 +107,7 @@ flow itself.
   types (`InsightsReport`, `OnboardingStatus`, `FirstTaskResult`,
   `Hint`) from `docs/openapi-pwa.yaml`. The temporary
   `apps/pwa/src/state/http.ts` duplicate was deleted at wiring
-  time (G31 discipline: one JSON helper).
+  time (PWA serve modes (local operator vs hosted) discipline: one JSON helper).
 
 The screens are registered in `App.tsx` / `bootstrap.ts` and
 the routes are wired into `puspa/pwa/app.py`

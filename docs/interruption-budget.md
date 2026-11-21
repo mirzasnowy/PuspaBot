@@ -1,4 +1,4 @@
-# Interruption Budget (Kosmos K10)
+# Interruption Budget (Kosmos interruption budget)
 
 Default is silence. Kosmos "pays" for the user's attention from a
 limited daily interruption budget and only moves on its own when
@@ -141,10 +141,10 @@ process that owns the budget (the scheduler tick caller, the
 channel gateway runner). A restart resets the day's spend, so
 a restart can let through pings the old process would have
 suppressed. That is the known limit of this first version
-(the same in-memory choice as the K6 ignorance map): the
+(the same in-memory choice as the ignorance map ignorance map): the
 budget is rebuilt by the next day's spending, and nothing is
 silently treated as known. Persisting the spend log (a
-Postgres table + idempotent migration, the K3/K4/K5 pattern)
+Postgres table + idempotent migration, the bitemporal state/causal ledger/other-agent goal models pattern)
 is the follow-up when the budget needs to survive restarts.
 
 ## Tests

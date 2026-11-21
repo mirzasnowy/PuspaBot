@@ -1,6 +1,6 @@
-# E-20 audit: blind-except handlers, bandit baseline, mypy strict next steps
+# Blind-except, bandit and mypy ratchet audit: blind-except handlers, bandit baseline, mypy strict next steps
 
-Recorded 20 Nov 2026 (E-20, plan section 9.5). This document is the audit
+Recorded 20 Nov 2026 (blind-except, bandit and mypy ratchets, plan section 9.5). This document is the audit
 behind the two ratchets in `tests/test_blind_except_ratchet.py` (ruff BLE001)
 and `tests/test_bandit_baseline.py` (bandit over `puspa/`, sandbox excluded)
 and behind the mypy strict plan for `policy`, `ledger`, `accounts`,
@@ -25,9 +25,9 @@ Counts, measured 20 Nov 2026:
 | --- | --- |
 | Blind handlers in scope by AST (`except Exception`, `except BaseException`, bare `except`, or a tuple containing `Exception`) | 248 |
 | Of those, re-raising translators (not flagged by ruff) | 56 |
-| Of those, swallowing handlers (ruff BLE001) before E-20 | 203 |
-| Narrowed during E-20 (section 3) | 11 |
-| Swallowing handlers (ruff BLE001) after E-20 — the ratchet baseline | 192 |
+| Of those, swallowing handlers (ruff BLE001) before blind-except, bandit and mypy ratchets | 203 |
+| Narrowed during blind-except, bandit and mypy ratchets (section 3) | 11 |
+| Swallowing handlers (ruff BLE001) after blind-except, bandit and mypy ratchets — the ratchet baseline | 192 |
 | Of the baseline, `except Exception` | 189 |
 | Of the baseline, `except BaseException` | 3 |
 
@@ -94,14 +94,14 @@ it never grants money, access, or approval by default.
   `puspa/chassis/tools.py:318` (package metadata lookup) and
   `puspa/chassis/tools.py:568, 581` (MCP transport call, compression
   fallback — both return an error dict or the uncompressed result).
-* **Room job runner** (`puspa/rooms/job_queue.py`, P-05, 20 Nov 2026):
+* **Room job runner** (`puspa/rooms/job_queue.py`, shared rooms lite, 20 Nov 2026):
   a claimed job runs a caller-supplied handler, so any exception type
   can escape it. The handler marks the job `failed` and the queue
   moves on; a failed job must never kill the queue. Narrowing to a
   fixed exception list would let an unexpected handler failure
   propagate and stop every later job for that room.
 
-### 2.2 Narrowed during E-20 (11 sites, baseline 203 -> 192)
+### 2.2 Narrowed during blind-except, bandit and mypy ratchets (11 sites, baseline 203 -> 192)
 
 Each of these had a provably narrow failure mode, verified by reading
 the called code, and each keeps the same fallback on the narrowed
@@ -200,7 +200,7 @@ Target packages: `puspa/policy`, `puspa/ledger`, `puspa/accounts`,
 `python -m mypy --strict puspa/policy puspa/ledger puspa/accounts
 puspa/chassis puspa/credentials` (mypy 2.4.1).
 
-Status at the end of E-20: **not strict yet, and not faked.** No
+Status at the end of blind-except, bandit and mypy ratchets: **not strict yet, and not faked.** No
 `strict = true` override was added for these packages, because the run
 does not pass, and no blanket `ignore_errors` or `type: ignore` was
 added to make it pass.
@@ -214,7 +214,7 @@ exactly the five target packages: **602 errors** — `policy` 237,
 `chassis` 105, `credentials` 103, `ledger` 90, `accounts` 67. By error
 code inside the targets: `no-untyped-def` 260, `type-arg` 193,
 `no-untyped-call` 121, `no-any-return` 18, plus 10 others (`misc`,
-`str`, `assignment`, `attr-defined`). Before the E-20 fixes the same
+`str`, `assignment`, `attr-defined`). Before the blind-except, bandit and mypy ratchets fixes the same
 run reported 1,726 errors (615 inside the targets), so the fixes below
 removed 13. Overall the same four codes dominate: `no-untyped-def`
 680, `type-arg` 532, `no-untyped-call` 413, `no-any-return` 54. The
@@ -222,7 +222,7 @@ strict run takes several minutes on a cold cache (it follows imports
 into `demo/` and the nanobot boundary) and seconds warm; the default
 non-strict run is unaffected.
 
-Fixed during E-20 (cheap, mechanical, each verified by the strict run
+Fixed during blind-except, bandit and mypy ratchets (cheap, mechanical, each verified by the strict run
 and the neighbour tests):
 
 * `puspa/policy/revocations.py` is now fully strict-clean (4 errors
@@ -258,7 +258,7 @@ Next steps, in order (each is a small, reviewable change):
    give the bare `dict` / `list` annotations type arguments
    (`type-arg`). These are mechanical and need no behaviour change.
    (`puspa/policy/revocations.py` and `puspa/accounts/__init__.py`
-   are already strict-clean after E-20; see above.)
+   are already strict-clean after blind-except, bandit and mypy ratchets; see above.)
 2. Fix the `no-any-return` sites by narrowing the `Any` at the source
    (JSON loads, `getattr`) instead of casting at the return.
 3. Annotate or type the untyped helpers behind the `no-untyped-call`
@@ -272,6 +272,6 @@ Next steps, in order (each is a small, reviewable change):
    green. `policy` is the best first candidate (smallest surface after
    step 1); `chassis` is last (widest third-party boundary).
 
-What is NOT strict after E-20: all five packages, and everything else
+What is NOT strict after blind-except, bandit and mypy ratchets: all five packages, and everything else
 in the repo. The existing non-strict mypy run (`python -m mypy puspa
 tests demo`, CI `typecheck` lane) is unchanged and still green.

@@ -1,9 +1,9 @@
-# Rich cards in Chat (P-12, plan section 12.10)
+# Rich cards in Chat (plan section 12.10)
 
 Chat can show four kinds of rich card, all as declarative JSON
 payloads attached to a chat message under its `card` key. Data
 describes the card; the renderer decides how to show it (the
-same split as the B7 mockup doc: the payload is data, not
+same split as the prompt-to-visual-mockup doc: the payload is data, not
 code). The cards live inside Chat — no new screen, no new
 table, no migration.
 
@@ -18,15 +18,15 @@ table, no migration.
 
 ## Where the data comes from
 
-- **Draft** — the B13 draft store. `POST /api/chat/cards/draft/{draft_id}`
+- **Draft** — the co-drafting draft store. `POST /api/chat/cards/draft/{draft_id}`
   builds the card from the stored draft (`Draft.to_dict`): an
   email draft becomes the email channel (with a `mailto:` link),
   a message or document draft becomes the message channel
-  (copy only). The B13 draft has no subject field, so the card
+  (copy only). The co-drafting draft has no subject field, so the card
   carries none — the mailto link opens Mail with the body
   filled in and the user writes the subject. The draft text is
   never edited here: the card shows the draft as stored.
-- **Chart** — the G28 Insights report. `GET
+- **Chart** — the onboarding and cost insights Insights report. `GET
   /api/chat/cards/insights?days=N&metric=M` reads
   `activity_per_day` (every day in the window, including zero
   days, so the chart has no gaps) and the report's
@@ -58,7 +58,7 @@ keys survive. The refusals, all `ValueError` (400 at the API):
 A non-UUID draft id on the draft endpoint is a 404, not a
 500: draft ids are UUIDs and the `drafts.id` column is
 UUID-typed, so a non-UUID id can never match a stored draft.
-(Adjacent gap, not P-12's scope: B13's own `GET
+(Adjacent gap, not rich cards in chat's scope: co-drafting's own `GET
 /api/drafts/{bad-id}` still returns 500 for a non-UUID id.)
 
 ## Map tiles
@@ -91,12 +91,12 @@ a tile the server does not have.
 
 ## What is NOT built (deliberate scope)
 
-- No P-14 interactive components: no calculator, slider, or
+- No interactive components in chat interactive components: no calculator, slider, or
   form inside a card. The options card is a choice (tap sends
   a message), not a form.
 - No pan/zoom on the map: the card is a fixed 320x240 tile
   grid centred on the card's centre. Panning would be an
-  interactive component, which is P-14.
+  interactive component, which is interactive components in chat.
 - No tile proxying on the server: the client fetches OSM tiles
   directly. The server never proxies tile bytes.
 

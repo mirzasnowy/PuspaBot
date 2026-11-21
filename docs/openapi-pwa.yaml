@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
-  title: Puspa PWA API
+  title: PuspaBot PWA API
   version: 1.0.0
   description: |
-    Contract for the Puspa progressive web app (9 screens: 7 from
-    revision 7, plus Insights and Onboarding from the G28
+    Contract for the PuspaBot progressive web app (9 screens: 7 from
+    revision 7, plus Insights and Onboarding from the onboarding and cost insights
     maturity work). This spec is the source of truth for the
     TypeScript client in `apps/pwa/src/api/` (types generated
     with openapi-typescript; the thin fetch wrapper in
@@ -33,25 +33,25 @@ tags:
   - name: push
     description: Web Push subscription
   - name: onboarding
-    description: Onboarding flow (4 steps) and one-time hints (G28)
+    description: Onboarding flow (4 steps) and one-time hints (onboarding and cost insights)
   - name: insights
-    description: Cost and token insights from the usage ledger (G28)
+    description: Cost and token insights from the usage ledger (onboarding and cost insights)
   - name: controls
-    description: Stop-all, autonomy dial, and weekly report (P-02, plan 12.7)
+    description: Stop-all, autonomy dial, and weekly report (stop-all and autonomy dial, plan 12.7)
   - name: live-view
-    description: Live view of a bot + human takeover (P-09, plan 12.9)
+    description: Live view of a bot + human takeover (live bot-screen view and takeover, plan 12.9)
   - name: approval-overlay
-    description: Visual approval overlay over the G4 gate (P-11, plan 12.10)
+    description: Visual approval overlay over the approvals taxonomy gate (visual approval overlay, plan 12.10)
   - name: replay
-    description: Replay timeline of a bot's steps + GIF export (P-10, plan 12.10)
+    description: Replay timeline of a bot's steps + GIF export (replay timeline, plan 12.10)
   - name: chat-cards
-    description: Rich cards in Chat (P-12, plan 12.10)
+    description: Rich cards in Chat (rich cards in chat, plan 12.10)
   - name: chat-widgets
-    description: Interactive widgets in Chat (P-14, plan 12.10)
+    description: Interactive widgets in Chat (interactive components in chat, plan 12.10)
   - name: office
-    description: Office screen and operator panels (G31 serve modes)
+    description: Office screen and operator panels (PWA serve modes (local operator vs hosted) serve modes)
   - name: settings
-    description: Own-model selection (G33)
+    description: Own-model selection (own-model selection in PWA settings)
 paths:
   /:
     $ref: './openapi-pages.yaml#/paths/~1'
@@ -178,7 +178,7 @@ paths:
     post:
       tags: [agents]
       summary: Create an agent
-      description: Max 3 agents per user (Puspa + 2 user agents).
+      description: Max 3 agents per user (PuspaBot + 2 user agents).
       requestBody:
         required: true
         content:
@@ -216,7 +216,7 @@ paths:
     delete:
       tags: [agents]
       summary: Delete an agent
-      description: The mandatory Puspa agent cannot be deleted (400).
+      description: The mandatory PuspaBot agent cannot be deleted (400).
       parameters:
         - name: agent_id
           in: path
@@ -235,7 +235,7 @@ paths:
                   ok:
                     type: boolean
         "400":
-          description: Puspa agent or unknown agent
+          description: PuspaBot agent or unknown agent
           content:
             application/json:
               schema:
@@ -440,7 +440,7 @@ paths:
       tags: [insights]
       summary: Cost and token insights report for the logged-in user
       description: |
-        G28: summarises the usage ledger over the last N calendar
+        onboarding and cost insights: summarises the usage ledger over the last N calendar
         days ending today (default 7, allowed 1..90). All costs
         are exact integer Rupiah plus server-rendered labels; the
         client never re-derives a cost. A user with no recorded
@@ -587,7 +587,7 @@ paths:
       tags: [onboarding]
       summary: Read the user's onboarding status
       description: |
-        G28: returns the 4-step onboarding status, or
+        onboarding and cost insights: returns the 4-step onboarding status, or
         `{"started": false, "current_step": 0}` when the user
         never started onboarding.
       responses:
@@ -767,7 +767,7 @@ paths:
       tags: [onboarding]
       summary: Hints due right now for the reported branch
       description: |
-        G28: the client reports the branch it just reached as
+        onboarding and cost insights: the client reports the branch it just reached as
         query params — `screen`, `first_visit`,
         `approval_requested`, `memory_used`, `task_cost_idr`,
         `billing_rows` — and the server returns only the unseen
@@ -886,13 +886,13 @@ paths:
       tags: [office]
       summary: Operator status (serve mode, pairing, gateway, live log)
       description: |
-        G31: the Office screen polls this endpoint for its operator
+        PWA serve modes (local operator vs hosted): the Office screen polls this endpoint for its operator
         panels. In `local` serve mode the payload carries pairing
         status, gateway status, and the live log lines, all read from
         live server state. In `hosted` mode `operator_panels` is false
         and the panel fields are null: the operator surface of a
         hosted deployment lives in the cloud backend, not here.
-        E-14: in `local` mode the payload also carries the embedding
+        visible embedding degradation: in `local` mode the payload also carries the embedding
         snapshot and its operator banner (null when healthy).
         Requires a logged-in session cookie. Never returns pairing
         codes or session tokens.
@@ -1137,7 +1137,7 @@ components:
     ModelSettings:
       type: object
       description: |
-        The user's own-model selection (G33). Carries no key
+        The user's own-model selection (own-model selection in PWA settings). Carries no key
         material: `has_byok_key` only says whether a BYOK key
         exists in the vault.
       required: [source, has_byok_key]
@@ -1145,7 +1145,7 @@ components:
         source:
           type: string
           enum: [hosted, byok, local]
-          description: hosted = Puspa default; byok = own API key from the vault; local = local OpenAI-compatible model (Ollama).
+          description: hosted = PuspaBot default; byok = own API key from the vault; local = local OpenAI-compatible model (Ollama).
         base_url:
           type: string
           nullable: true
@@ -1166,7 +1166,7 @@ components:
     InsightsReport:
       type: object
       description: |
-        G28: cost and token totals from the usage ledger over the
+        onboarding and cost insights: cost and token totals from the usage ledger over the
         last N calendar days ending today. Costs are exact integer
         Rupiah plus server-rendered labels; the per-1k-token rate
         is null (not zero) when no tokens were recorded.
@@ -1320,7 +1320,7 @@ components:
     OnboardingStatus:
       type: object
       description: |
-        G28: the 4-step first-run onboarding status. Before start
+        onboarding and cost insights: the 4-step first-run onboarding status. Before start
         the server returns only `started: false` and
         `current_step: 0`.
       required: [started, current_step]
@@ -1371,7 +1371,7 @@ components:
     FirstTaskResult:
       type: object
       description: |
-        G28: the guided first task (step 4). Always `verified:
+        onboarding and cost insights: the guided first task (step 4). Always `verified:
         false` for now: the price-compare / bill wedges are not
         built yet, so the task is a measured stub.
       required: [status, task_id, type, target, verified, reason, task_duration_seconds, event_ids, offered_workflow_templates]
@@ -1402,7 +1402,7 @@ components:
     Hint:
       type: object
       description: |
-        G28: one contextual, one-time hint. Plain text plus the
+        onboarding and cost insights: one contextual, one-time hint. Plain text plus the
         target screen name; never a secret, never an action.
       required: [flag, trigger, title, body, screen, action_label]
       properties:
@@ -1451,10 +1451,10 @@ components:
           description: Unix timestamp (seconds)
         card:
           $ref: './openapi-chat-cards.yaml#/components/schemas/ChatCard'
-          description: Optional rich card (P-12) shown inside the chat message
+          description: Optional rich card (rich cards in chat) shown inside the chat message
         widget:
           $ref: './openapi-chat-widgets.yaml#/components/schemas/ChatWidget'
-          description: Optional interactive widget (P-14) shown inside the chat message
+          description: Optional interactive widget (interactive components in chat) shown inside the chat message
     Agent:
       type: object
       required: [agent_id, name]
@@ -1469,7 +1469,7 @@ components:
           type: string
         required:
           type: boolean
-          description: True for the mandatory Puspa agent
+          description: True for the mandatory PuspaBot agent
     TaskOutcome:
       type: object
       required: [task_id, status]
@@ -1684,7 +1684,7 @@ components:
         share_target:
           type: object
           description: |
-            P-03: Web Share Target — the installed PWA appears in
+            PWA share target and voice messages: Web Share Target — the installed PWA appears in
             Android's share menu; shares land on POST /share.
           properties:
             action:
@@ -1733,18 +1733,18 @@ components:
         shared_text:
           type: string
           description: |
-            P-03: text shared into the PWA from another app (GET/POST
+            PWA share target and voice messages: text shared into the PWA from another app (GET/POST
             /share). The Chat screen prefills its draft with it;
             absent on every other screen.
     OperatorStatus:
       type: object
       description: |
-        G31: the `GET /api/operator/status` payload. In `local` serve
+        PWA serve modes (local operator vs hosted): the `GET /api/operator/status` payload. In `local` serve
         mode `pairing`, `gateway`, and `log` are read from live server
         state; in `hosted` mode `operator_panels` is false and the
         panel fields are null. Pairing codes and session tokens are
         never included.
-        E-14: in `local` mode the payload also carries the embedding
+        visible embedding degradation: in `local` mode the payload also carries the embedding
         snapshot (`embedding`) and its operator banner
         (`embedding_banner`, null when healthy), so a degraded
         embedding is visible on the operator surface.
@@ -1771,7 +1771,7 @@ components:
     EmbeddingHealth:
       type: object
       description: |
-        E-14: one snapshot of embedding health, built at startup. `status`
+        visible embedding degradation: one snapshot of embedding health, built at startup. `status`
         is `degraded` in production when only the hash stand-in is
         available (or when a hash fallback happened); `alarm` is true
         when a production fallback was seen or canary recall fell more
@@ -1801,7 +1801,7 @@ components:
           nullable: true
     EmbeddingBanner:
       type: object
-      description: E-14 operator banner for a degraded embedding; null when healthy.
+      description: visible embedding degradation operator banner for a degraded embedding; null when healthy.
       properties:
         level:
           type: string
@@ -1812,7 +1812,7 @@ components:
           type: string
     HealthStatus:
       type: object
-      description: E-14 `GET /health` payload. Always 200 while the server is up; `status` carries ok / degraded.
+      description: visible embedding degradation `GET /health` payload. Always 200 while the server is up; `status` carries ok / degraded.
       required: [status]
       properties:
         status:
@@ -1825,7 +1825,7 @@ components:
           $ref: "#/components/schemas/EmbeddingHealth"
     PairingStatus:
       type: object
-      description: Live pairing-store snapshot (G31). No codes or tokens, only counts and session metadata.
+      description: Live pairing-store snapshot (PWA serve modes (local operator vs hosted)). No codes or tokens, only counts and session metadata.
       properties:
         active_codes:
           type: integer
@@ -1861,7 +1861,7 @@ components:
           type: number
     GatewayStatus:
       type: object
-      description: Live action-gateway state (G31). `last_decision` is null until the gateway decides its first action.
+      description: Live action-gateway state (PWA serve modes (local operator vs hosted)). `last_decision` is null until the gateway decides its first action.
       properties:
         policy:
           $ref: "#/components/schemas/GatewayPolicy"
@@ -1916,7 +1916,7 @@ components:
           type: number
     OperatorLogLine:
       type: object
-      description: One live log line from the app event log (G31).
+      description: One live log line from the app event log (PWA serve modes (local operator vs hosted)).
       properties:
         type:
           type: string

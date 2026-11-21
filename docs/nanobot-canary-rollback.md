@@ -1,4 +1,4 @@
-# Nanobot canary-first rollout and rollback (E-19, plan section 9.4)
+# Nanobot canary-first rollout and rollback (nanobot pin process, plan section 9.4)
 
 Every nanobot pin bump rolls out canary-first: one container runs the
 new pin while the rest stay on the old one, and the rollout only
@@ -120,5 +120,5 @@ no new code, and no data migration.
   are choices to validate on the first real rollout, not measurements
   from one.
 - The deploy image build referenced here is the one the CI sandbox
-  lane builds (`Dockerfile`, E-05); the container host itself (the
+  lane builds (`Dockerfile`, single-page app inside the image); the container host itself (the
   Contabo VPS decision) is still open.

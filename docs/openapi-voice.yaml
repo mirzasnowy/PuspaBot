@@ -1,16 +1,16 @@
-# PWA share target and voice messages API contract (P-03, plan 12.4).
+# PWA share target and voice messages API contract (PWA share target and voice messages, plan 12.4).
 #
-# Split out of docs/openapi-pwa.yaml on 20 Nov 2026 (P-03 ratchet
+# Split out of docs/openapi-pwa.yaml on 20 Nov 2026 (PWA share target and voice messages ratchet
 # fix): the share-target + voice contract (6 endpoints + 2 schemas)
 # would have pushed the main spec past the 2000-line hard cap, so it
-# earned its own file, following the rooms split of Wave 30. The main
+# earned its own file, following the earlier rooms split. The main
 # spec references this file with $ref stubs; the generated client is
 # produced from the main spec with openapi-typescript, which resolves
 # external $refs. The Error and ChatMessage schemas stay in the main
 # spec and are referenced back from here.
 openapi: 3.0.3
 info:
-  title: Puspa share target and voice messages API
+  title: PuspaBot share target and voice messages API
   version: 1.0.0
 paths:
   /share:
@@ -18,7 +18,7 @@ paths:
       tags: [chat]
       summary: Share-target landing page (text/URL shares)
       description: |
-        P-03: the Web Share Target landing page. Renders the Chat
+        PWA share target and voice messages: the Web Share Target landing page. Renders the Chat
         screen with the shared title/text/URL prefilled as a draft;
         nothing is sent until the user taps Send. A share with no
         content redirects to /chat.
@@ -48,7 +48,7 @@ paths:
       tags: [chat]
       summary: Share-target receiver (text/URL/files)
       description: |
-        P-03: receives a share from Android (multipart form, per the
+        PWA share target and voice messages: receives a share from Android (multipart form, per the
         manifest share_target). Text/URL shares render the Chat
         screen with a prefilled draft; file shares are stored in the
         per-user share inbox, announced in chat, and the response
@@ -94,7 +94,7 @@ paths:
       tags: [chat]
       summary: Upload a voice message for transcription
       description: |
-        P-03: transcribes one recording through the app's transcriber
+        PWA share target and voice messages: transcribes one recording through the app's transcriber
         seam and deletes the audio right away (unless keep_audio is
         true). Returns the transcript as a pending message: nothing
         is sent until POST /api/voice/confirm. 400 on a bad recording
@@ -138,7 +138,7 @@ paths:
       tags: [chat]
       summary: Confirm a voice transcript and send it as a chat message
       description: |
-        P-03: sends the pending transcript (or the user's edited text)
+        PWA share target and voice messages: sends the pending transcript (or the user's edited text)
         as a chat message, exactly as POST /api/chat would, and drops
         the pending record.
       requestBody:
@@ -227,7 +227,7 @@ paths:
       tags: [chat]
       summary: Voice transcription status (which engine, whether one is chosen)
       description: |
-        P-03: honest status. No speech-to-text engine is chosen until
+        PWA share target and voice messages: honest status. No speech-to-text engine is chosen until
         the 50-recording WER measurement (plan 12.4) exists; until
         then engine_selected is false and uploads are answered by the
         test-double transcriber.
@@ -248,7 +248,7 @@ components:
   schemas:
     VoiceUpload:
       type: object
-      description: P-03 — one transcribed voice upload, awaiting confirmation.
+      description: PWA share target and voice messages — one transcribed voice upload, awaiting confirmation.
       required: [ok, pending_id, transcript, engine, audio_deleted]
       properties:
         ok:
@@ -275,7 +275,7 @@ components:
           type: string
     VoiceStatus:
       type: object
-      description: P-03 — voice transcription status; engine_selected stays false until the 50-recording WER measurement picks an engine.
+      description: PWA share target and voice messages — voice transcription status; engine_selected stays false until the 50-recording WER measurement picks an engine.
       required: [engine, engine_selected, selection, required_recordings]
       properties:
         engine:

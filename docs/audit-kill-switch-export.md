@@ -1,8 +1,8 @@
-# Audit log outside the agent's reach + kill switch + export (K12)
+# Audit log outside the agent's reach + kill switch + export (external audit log, kill switch and export)
 
-Kosmos K12 hardens the ledger that already existed (the append-only,
+Kosmos external audit log, kill switch and export hardens the ledger that already existed (the append-only,
 hash-chained `events` table, `puspa/ledger/ledger.py`, 31 closed
-revision-7 event types). K12 adds no second ledger and no 32nd event
+revision-7 event types). external audit log, kill switch and export adds no second ledger and no 32nd event
 type. It adds three things on top of the ledger: role-based
 enforcement that the agent cannot modify the log, a kill switch that
 stops the agent, and a user-data export.

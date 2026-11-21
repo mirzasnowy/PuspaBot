@@ -1,4 +1,4 @@
-# Shared anti-fraud and price graphs, per-user privacy (B3)
+# Shared anti-fraud and price graphs, per-user privacy (shared anti-fraud and price graphs)
 
 Some graphs get stronger with more users: a bad seller flagged
 once protects everyone, and more price checks make fair-price
@@ -7,8 +7,8 @@ per-user visibility, never pooled.
 
 The implementation is `puspa.graphs.shared`, on the existing
 Postgres graph tables in migration `0004_graphs.sql` (created by
-`puspa.graphs.create_schema`). It reuses the B1 record types
-for its inputs and the B2 outcome records for its audit trail;
+`puspa.graphs.create_schema`). It reuses the price-check beta slice record types
+for its inputs and the verified outcome records outcome records for its audit trail;
 it does not build a second graph store.
 
 ## The boundary
@@ -102,10 +102,10 @@ get_private_record(dsn, record_id, budi)  # None: not Budi's
 
 Shared aggregates never read the private table.
 
-## Wiring into B1
+## Wiring into price-check beta slice
 
 `check_before_buy(..., shared_dsn=...)` consults the shared
-graphs; without `shared_dsn` the answer is exactly the B1
+graphs; without `shared_dsn` the answer is exactly the price-check beta slice
 recorded-only answer.
 
 - **Seller:** when the local store says nothing about the
@@ -134,7 +134,7 @@ treated as a clean seller.
 criteria:
 
 1. **Flag once, protect all:** Ana flags a seller; Budi's
-   `seller_reputation` sees it, and Budi's B1 answer flips
+   `seller_reputation` sees it, and Budi's price-check beta slice answer flips
    to `flagged` / `do_not_act` with no `shared_dsn`-free
    change in behaviour.
 2. **Estimates improve measurably:** with seeded noisy prices
@@ -160,13 +160,13 @@ criteria:
   enumerate flaggers, read private rows, or link
   contributions across subjects — but the membership test
   against a known UUID is real. True anonymity would need a
-  server-side secret (a pepper) that Puspa does not have yet.
+  server-side secret (a pepper) that PuspaBot does not have yet.
 - **No Sybil defence.** One account is one flagger. A user
   with many accounts could inflate a flag count; there is no
   reputation weighting, no flag expiry, and no dispute or
   un-flag path yet.
 - **No live data.** Contributions come from recorded checks
-  (B1) and explicit calls; nothing here fetches a live price
+  (price-check beta slice) and explicit calls; nothing here fetches a live price
   or a live seller report, and live price execution is still
   held under decision 15.
 - **No encryption at rest for private records.** Privacy is

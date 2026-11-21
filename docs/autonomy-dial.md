@@ -1,4 +1,4 @@
-# Autonomy dial (Kosmos K11)
+# Autonomy dial (Kosmos autonomy dial)
 
 One dial per action area, not one global dial. The dial moves with
 prediction calibration: it rises slowly while predictions in that
@@ -9,18 +9,18 @@ lowest stage at once.
 Implementation: `puspa/autonomy/dial.py` (`AutonomyDial`,
 `DialDecision`, `area_for_tool`, `dial_ask_payload`). The turn
 loop consults it in `puspa/turns/loop.py` (`TurnLoop`, parameter
-`autonomy_dial`). The user-facing controls are P-02
+`autonomy_dial`). The user-facing controls are stop-all and autonomy dial
 (`puspa/autonomy/controls.py`, `puspa/pwa/controls_api.py`,
 `puspa/pwa/stop_all.py`, `puspa/pwa/weekly_report.py`); see
-"User controls (P-02)" below. Tests: `tests/test_autonomy_dial.py`,
+"User controls (stop-all and autonomy dial)" below. Tests: `tests/test_autonomy_dial.py`,
 `tests/test_autonomy_controls.py`, `tests/test_pwa_controls_api.py`.
 
 ## Areas
 
 Seven areas, taken from the action kinds the system already
-recognises (the G4 taxonomy in `puspa/policy/approvals.py` plus
+recognises (the approvals taxonomy in `puspa/policy/approvals.py` plus
 the scheduling tools the turn loop dispatches), plus shopping
-(P-02, plan section 12.7):
+(stop-all and autonomy dial, plan section 12.7):
 
 | Area | Covers | Reversible? |
 |---|---|---|
@@ -32,13 +32,13 @@ the scheduling tools the turn loop dispatches), plus shopping
 | `accounts` | credential changes | No, and capped (see below) |
 | `shopping` | finding, comparing, and drafting a purchase | No — a placed order moves money (but the payment itself is a `money` action, so it still asks first) |
 
-The tool-to-area mapping (`area_for_tool`) reads the G4 taxonomy
+The tool-to-area mapping (`area_for_tool`) reads the approvals taxonomy
 first: `pay` maps to `money`; `send_to_other`, `share`, and `post`
 map to `messaging`; `delete` maps to `files`;
 `change_credentials` maps to `accounts`; `install` maps to
-`system`. No G4 kind maps to `shopping`: purchases stay
+`system`. No approvals taxonomy kind maps to `shopping`: purchases stay
 `money`-gated through the `pay` kind, so the turn loop never
-consults the shopping area for a tool call; the P-02 control
+consults the shopping area for a tool call; the stop-all and autonomy dial control
 layer feeds it from accepted shopping drafts instead. A tool
 the taxonomy does not recognise falls back to
 scheduling verbs (`schedule`, `remind`, `calendar`). A tool that
@@ -80,9 +80,9 @@ assumed.
   damage can be undone.
 - **`accounts` cap** — the accounts area is capped at a score of
   0.59, so correct outcomes there are recorded but the stage never
-  leaves `propose`. Credential changes always ask a human (the G4
+  leaves `propose`. Credential changes always ask a human (the approvals taxonomy
   rule stands on top); the dial can never promote them.
-- **`money` lock (P-02, plan 12.7)** — the money area is capped
+- **`money` lock (stop-all and autonomy dial, plan 12.7)** — the money area is capped
   at a score of 0.59 the same way, so it never leaves `propose`
   either: money always asks first, never autonomous, no matter
   how much evidence accumulates. The cap lives in the score
@@ -90,7 +90,7 @@ assumed.
   change — can promote it. `set_ceiling("money", ...)` above
   `propose` is refused as well.
 
-## Ceilings and user controls (P-02, plan 12.7)
+## Ceilings and user controls (stop-all and autonomy dial, plan 12.7)
 
 A ceiling is a user-set cap on one area (`AutonomyDial.set_ceiling`):
 the effective stage an action may reach is the lower of the score
@@ -124,11 +124,11 @@ PWA draft flow write no ledger event, so the drafts source exists
 because without it the messaging streak would never move for the
 flow users actually use.
 
-## Stop-all and the weekly report (P-02)
+## Stop-all and the weekly report (stop-all and autonomy dial)
 
 - **Stop-all** (`POST /api/stop-all`, `puspa/pwa/stop_all.py`):
   the red button in the PWA header, on every screen. One press
-  stops every agent the user owns through the E-11 stop package
+  stops every agent the user owns through the audit outside the agent's reach, daily anchor and kill switch stop package
   (`puspa.policy.stop_agent`: revoke-all, token refresh proved
   dead, live subagents interrupted) plus every live subagent task
   in the PWA pool for those agents, and records one `task_stopped`
@@ -171,7 +171,7 @@ outcome, not a serious failure.
 
 `TurnLoop` takes an optional `autonomy_dial`. Before dispatching a
 registry tool call it consults the dial for the tool's area, after
-the intent advisor (K1) — an intent `ask` wins and the dial is not
+the intent advisor (intent engine) — an intent `ask` wins and the dial is not
 consulted for that call:
 
 - `propose` — the tool is **not** run. The model gets a dial ask
@@ -196,20 +196,20 @@ the call. Without a dial the loop behaves exactly as before.
   types (revisi 7) has no "dial moved" type, and adding a 32nd is
   forbidden. Dial moves are audited in the dial's own per-area
   history (`AutonomyDial.history` / `summary`, capped at 100
-  entries per area) — the same pattern as the K10 interruption
+  entries per area) — the same pattern as the interruption budget interruption
   budget's spend log.
 - **In-memory.** A restart resets every area to the 0.50 start, so
   a restart can only make the agent more cautious, never bolder.
   Ceilings are in-memory too: a restart returns every shown area
   to Ask first, which is the safe direction. Persisting the
-  per-area scores (a Postgres table + migration, the K3/K4/K5
+  per-area scores (a Postgres table + migration, the bitemporal state/causal ledger/other-agent goal models
   pattern) is the follow-up when the dial needs to survive
   restarts.
 - **Execution success is a proxy, not prediction accuracy.** The
   turn loop feeds the dial with tool-execution outcomes (the tool
   ran, or it errored). That says the action did what was asked,
   not that the underlying prediction was right. The stronger
-  feeder is the K8 outcome watcher, which scores outcomes after
+  feeder is the outcome watcher outcome watcher, which scores outcomes after
   the fact; it feeds the same `record_outcome` entry point when it
   lands. Until then, treat the dial's climb as "actions in this
   area keep executing cleanly", not as "predictions in this area

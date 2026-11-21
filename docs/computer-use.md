@@ -1,6 +1,6 @@
-# Computer use / per-bot sandbox (G16)
+# Computer use / per-bot sandbox (per-bot sandbox (computer use))
 
-G16 is **BIG and deferred until after the MVP**. Puspa does not
+per-bot sandbox (computer use) is **BIG and deferred until after the MVP**. PuspaBot does not
 build computer use / live browser automation now: the price and
 bill wedges run through APIs, not browser clicks. What exists
 today is the principles plus the real seams, so the post-MVP
@@ -83,7 +83,7 @@ constructor refuses a local-backed executor when
   memory and is test-only. The real broker service (separate
   process, HTTP, per-process revocation on the host — the
   DuskBot port-18080 pattern) is a post-MVP follow-up.
-- Relation to the G22 credential pool (`puspa/credentials`):
+- Relation to the credential pool and per-profile secret scopes credential pool (`puspa/credentials`):
   the pool stores keys with per-model cooldown rotation and is
   the source of keys. The broker is the separate layer that
   hands a key to a spawned process. This package does not
@@ -132,12 +132,12 @@ constructor refuses a local-backed executor when
    skips with the reason above. No Docker work is faked green
    on this VM.
 2. **Real broker service.** Separate process, HTTP endpoint,
-   per-process token revocation on the host, wired to the G22
+   per-process token revocation on the host, wired to the credential pool and per-profile secret scopes
    pool as the key source.
 3. **Human-takeover UI.** The surface where a human takes over
    a browser session for sign-in / captcha / 2FA, then hands
    control back. Without it, no browser automation ships.
-   (Not the same as P-09's takeover button: P-09 pauses the
+   (Not the same as live bot-screen view and takeover's takeover button: live bot-screen view and takeover pauses the
    bot's autonomous work from the Live screen and records it
    in the ledger — see `docs/live-view.md` — but it does not
    hand a browser session to a human. That UI is still open.)

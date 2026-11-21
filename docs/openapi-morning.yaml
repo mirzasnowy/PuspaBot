@@ -1,16 +1,16 @@
-# Morning summary + notes-to-actions API contract (P-07, plan 12.8).
+# Morning summary + notes-to-actions API contract (morning summary and notes-to-action, plan 12.8).
 #
-# Split out of docs/openapi-pwa.yaml on 20 Nov 2026 (P-07): the
+# Split out of docs/openapi-pwa.yaml on 20 Nov 2026 (morning summary and notes-to-action): the
 # morning contract (6 endpoints + 10 schemas) would have pushed
 # the main spec past the 2000-line hard cap, so it earned its own
-# file, following the voice split of P-03. The main spec references
+# file, following the voice split of PWA share target and voice messages. The main spec references
 # this file with $ref stubs; the generated client is produced from
 # the main spec with openapi-typescript, which resolves external
 # $refs. The Error schema stays in the main spec and is referenced
 # back from here.
 openapi: 3.0.3
 info:
-  title: Puspa morning summary and notes-to-actions API
+  title: PuspaBot morning summary and notes-to-actions API
   version: 1.0.0
 paths:
   /api/morning/status:
@@ -18,7 +18,7 @@ paths:
       tags: [morning]
       summary: Per-source availability for the morning summary
       description: |
-        P-07: honest status, like /api/voice/status. Calendar and
+        morning summary and notes-to-action: honest status, like /api/voice/status. Calendar and
         Gmail report connected / not_connected / unknown from the
         stored Google token and its granted scopes (Calendar is not
         connected yet); the transcriber reports its stub engine;
@@ -41,7 +41,7 @@ paths:
       tags: [morning]
       summary: Morning summary for one day
       description: |
-        P-07: schedule, bill candidates, open tasks, national
+        morning summary and notes-to-action: schedule, bill candidates, open tasks, national
         holidays, and prayer times for one day. Each section
         carries its own status; a source that fails degrades its
         own section, never the whole summary. Imsak appears only
@@ -122,7 +122,7 @@ paths:
       tags: [morning]
       summary: Turn a voice note into a summary and tracked actions
       description: |
-        P-07: the audio is transcribed through the P-03 voice
+        morning summary and notes-to-action: the audio is transcribed through the PWA share target and voice messages voice
         pipeline (transcriber still a stub — see
         /api/voice/status) and deleted right after transcribing.
         The transcript is then extracted like a pasted note.
@@ -219,7 +219,7 @@ components:
   schemas:
     MorningSourceStatus:
       type: object
-      description: P-07 — one source's honest status (ok, connected, not_connected, unknown, unavailable).
+      description: morning summary and notes-to-action — one source's honest status (ok, connected, not_connected, unknown, unavailable).
       required: [status, detail]
       properties:
         status:
@@ -229,7 +229,7 @@ components:
           type: string
     MorningStatus:
       type: object
-      description: P-07 — per-source availability for the morning summary.
+      description: morning summary and notes-to-action — per-source availability for the morning summary.
       required: [calendar, gmail, transcriber, prayer, holidays]
       properties:
         calendar:
@@ -252,7 +252,7 @@ components:
           $ref: "#/components/schemas/MorningSourceStatus"
     MorningEvent:
       type: object
-      description: P-07 — one calendar event today.
+      description: morning summary and notes-to-action — one calendar event today.
       required: [summary, start, end]
       properties:
         summary:
@@ -266,7 +266,7 @@ components:
           type: string
     MorningBillCandidate:
       type: object
-      description: P-07 — a bill candidate from Gmail. A keyword match, never a confirmed bill (verified is always false).
+      description: morning summary and notes-to-action — a bill candidate from Gmail. A keyword match, never a confirmed bill (verified is always false).
       required: [message_id, subject, snippet, verified]
       properties:
         message_id:
@@ -292,7 +292,7 @@ components:
           type: string
     MorningTask:
       type: object
-      description: P-07 — one open task from the task store.
+      description: morning summary and notes-to-action — one open task from the task store.
       required: [task_id, purpose, status]
       properties:
         task_id:
@@ -306,7 +306,7 @@ components:
           nullable: true
     MorningHoliday:
       type: object
-      description: P-07 — one Indonesian public holiday.
+      description: morning summary and notes-to-action — one Indonesian public holiday.
       required: [date, local_name, name]
       properties:
         date:
@@ -318,7 +318,7 @@ components:
           type: string
     MorningPrayer:
       type: object
-      description: P-07 — prayer times for one city and day (Aladhan, method 20 Kementerian Agama RI). Imsak is null outside Ramadan.
+      description: morning summary and notes-to-action — prayer times for one city and day (Aladhan, method 20 Kementerian Agama RI). Imsak is null outside Ramadan.
       required: [city, date, timings, hijri, is_ramadan, method_name, source]
       properties:
         city:
@@ -367,7 +367,7 @@ components:
           type: string
     MorningSummary:
       type: object
-      description: P-07 — the morning summary for one day.
+      description: morning summary and notes-to-action — the morning summary for one day.
       required: [date, weekday, schedule, bills, tasks, holidays, prayer, source_status]
       properties:
         date:
@@ -430,7 +430,7 @@ components:
               $ref: "#/components/schemas/MorningSourceStatus"
     MorningNoteAction:
       type: object
-      description: P-07 — one action extracted from a note; task_id is its tracked task in the task store.
+      description: morning summary and notes-to-action — one action extracted from a note; task_id is its tracked task in the task store.
       required: [text, owner, due_hint, source_line, task_id]
       properties:
         text:
@@ -449,7 +449,7 @@ components:
           type: string
     MorningNote:
       type: object
-      description: P-07 — one stored note with its summary and actions.
+      description: morning summary and notes-to-action — one stored note with its summary and actions.
       required: [note_id, source, title, summary, actions]
       properties:
         note_id:
@@ -481,7 +481,7 @@ components:
             $ref: "#/components/schemas/MorningNote"
     MorningNoteCreated:
       type: object
-      description: P-07 — a note just stored from text.
+      description: morning summary and notes-to-action — a note just stored from text.
       required: [ok, note_id, summary, actions]
       properties:
         ok:
@@ -496,7 +496,7 @@ components:
             $ref: "#/components/schemas/MorningNoteAction"
     MorningVoiceNoteCreated:
       type: object
-      description: P-07 — a note just stored from a voice recording.
+      description: morning summary and notes-to-action — a note just stored from a voice recording.
       required: [ok, note_id, transcript, engine, audio_deleted, summary, actions]
       properties:
         ok:

@@ -1,8 +1,8 @@
-# Nanobot pin process (E-19, plan section 9.4)
+# Nanobot pin process (nanobot pin process, plan section 9.4)
 
-Puspa uses nanobot (HKUDS/nanobot, MIT) as its agent chassis through a
+PuspaBot uses nanobot (HKUDS/nanobot, MIT) as its agent chassis through a
 git pin, not a fork: zero lines of nanobot upstream code are changed,
-and all Puspa behaviour lives in the wrapper interface in
+and all PuspaBot behaviour lives in the wrapper interface in
 `puspa/chassis/` (`PuspaTool`, `PuspaRegistry`, `PuspaHook`,
 `PuspaSkillsLoader`, `SandboxTool`, `assemble`). This document is the
 process that keeps that pin honest: how it moves, what must pass
@@ -18,7 +18,7 @@ a fork.
   and the weekly advisory watch
   (`.github/workflows/nanobot-advisory-watch.yml`) have never run on
   GitHub yet. **No live bump PR exists.** The upstream state in
-  `pin.json` was fetched live once, by hand, while E-19 was built
+  `pin.json` was fetched live once, by hand, while nanobot pin process was built
   (2026-11-20): latest upstream commit
   `3e9024ea043e30b7e5e40167f6b69b194247c822`, so a bump is available,
   and one open advisory affects the pin, `GHSA-434r-7c99-hwf3`
@@ -149,7 +149,7 @@ when either condition holds:
 2. **The wrapper needs monkeypatches in more than 5 places.** A
    monkeypatch is runtime patching of a nanobot object (attribute
    assignment on an imported nanobot module, class, or instance) from
-   Puspa code — as opposed to a documented extension point. Five is
+   PuspaBot code — as opposed to a documented extension point. Five is
    deliberately small: a chassis that needs six separate patches is
    no longer a clean dependency, it is a fork hiding behind a pin.
    The bump script counts sites heuristically

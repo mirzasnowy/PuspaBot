@@ -1,18 +1,18 @@
-# Fail-closed gateway with CEL-style rules (G5)
+# Fail-closed gateway with CEL-style rules (fail-closed gateway with CEL-style rules)
 
 The gateway is the single action boundary for computer actions
 (browser / desktop control). The code lives in
 `puspa/policy/gateway.py` (the boundary, the snapshot, the
 templates) and `puspa/policy/rules.py` (the rule language).
 
-Pattern source (studied, rewritten as Puspa code from the
+Pattern source (studied, rewritten as PuspaBot code from the
 documentation, never copied verbatim — see `NOTICE.md` and
 `REUSE.md`): OpenBot `docs/architecture.md` +
 `app/src/lib/boundaries/rules.ts` (MIT). Warning, carried over from
 the comparison report: the enforcing CEL code is **not** in the
 OpenBot repo (its enforcement server image is closed), so the
 pattern below is from documentation, not verified code — and this
-evaluator is Puspa's own, written from the documented semantics.
+evaluator is PuspaBot's own, written from the documented semantics.
 
 ## The five steps
 
@@ -108,7 +108,7 @@ Postgres `LISTEN`/`NOTIFY` is the wake-up signal:
 channel and `wait_for_change(timeout)` reports when a notification
 arrived. It only signals *that* the policy changed; how the new
 policy is fetched stays with the injected loader, so the watcher
-never depends on a policy table Puspa does not own. The connection
+never depends on a policy table PuspaBot does not own. The connection
 factory is injectable for tests (a fake connection is used; no live
 Postgres is needed).
 
@@ -126,8 +126,8 @@ added:
 | --- | --- | --- |
 | `never_submit_form` | `not (key == "Enter" or key == "Space" or element.type == "submit")` | Also blocks pressing Enter and Space anywhere, including plain text fields and chat boxes — not only form submits. |
 | `block_host_substring` | `not contains(page.host, "x.com")` | `contains()` is a substring match: this also blocks dropbox.com and netflix.com, which both contain `x.com`. Prefer `matches(page.host, "(^\|\\.)x\\.com$")`. |
-| `block_payment_tools` | `not contains(tool.name, "pay")` | Catches pay, payment and payroll tools, but misses money-moving tools named transfer, order or subscription. Pair with the G4 payment taxonomy. |
-| `deny_credential_changes` | `not (contains(tool.name, "password") or contains(tool.name, "credential"))` | Misses credential changes named `rotate secret`, `update login` or `change api key`. The G4 taxonomy is the backstop, not this rule. |
+| `block_payment_tools` | `not contains(tool.name, "pay")` | Catches pay, payment and payroll tools, but misses money-moving tools named transfer, order or subscription. Pair with the approvals taxonomy payment taxonomy. |
+| `deny_credential_changes` | `not (contains(tool.name, "password") or contains(tool.name, "credential"))` | Misses credential changes named `rotate secret`, `update login` or `change api key`. The approvals taxonomy is the backstop, not this rule. |
 | `allow_own_bot_only` | `bot.id == "puspa"` | Only allows actions from the bot id `puspa`; replace the id with the deployment's real bot id. |
 
 Every template rule parses (tested). Templates are documentation +
@@ -142,7 +142,7 @@ agent_id, initiator=None)` adapts it to a ledger `log` callable
 (`log(event_type, content)`, the shape `Gate` and `PuspaTool`
 use): decision lines become `tool_called` events, forwarded-action
 failures become `tool_completed` events with status `error`. No new
-ledger event type is used. The initiator attribute (G6) rides in
+ledger event type is used. The initiator attribute (audit trail with initiator) rides in
 the content when given.
 
 ## Acknowledged limits (also OpenBot's)
@@ -157,7 +157,7 @@ the content when given.
   addresses are not special-cased — a policy must block them if
   the deployment needs it.
 - **No live computer is wired yet.** The gateway guards the
-  `computer_call` the caller injects. Puspa has no
+  `computer_call` the caller injects. PuspaBot has no
   browser/desktop-driving call site today, so the gateway is the
   boundary waiting for that seam (the ledger sink and the decision
   audit are wired; the computer call itself is the caller's). A

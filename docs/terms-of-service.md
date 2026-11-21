@@ -2,21 +2,21 @@
 
 > **Status: minimal draft, version 0.1, 21 November 2026.**
 > This document has NOT been reviewed by a lawyer. The legal review
-> (ticket L-01) is still open, and several decisions it depends on are
+> (ticket legal consultation) is still open, and several decisions it depends on are
 > still open — see `docs/legal.md`. Do not treat this text as legal
 > advice or as a finished contract. If any statement here conflicts
 > with the code, the code is the truth and this document must be fixed.
 
-## 1. What Puspa is
+## 1. What PuspaBot is
 
-Puspa is a personal AI agent, delivered as a progressive web app
+PuspaBot is a personal AI agent, delivered as a progressive web app
 (PWA), for users in Indonesia. Its two wedges are:
 
 - comparing new-product prices across Tokopedia, Shopee, and Blibli;
 - bill autopilot: checking PLN, PDAM, mobile credit, and data bills,
   reminding you before the due date, and preparing the payment.
 
-Puspa is built and run by one operator for a small closed beta. There
+PuspaBot is built and run by one operator for a small closed beta. There
 is no company behind it yet and no published support contact yet
 (see `docs/legal.md`, open decision: support contact).
 
@@ -27,17 +27,17 @@ consent text the product itself records (`puspa/consent/consent.py`,
 version `v1-2026-11-17`) states that it needs a lawyer's review
 before users outside the close circle are admitted. There is no age
 rule in the product yet; that is an open decision for the legal
-review (L-01).
+review (legal consultation).
 
 You sign in with Google. You are responsible for keeping your Google
 account and your devices secure, and for the accuracy of the bill
-customer numbers you give Puspa.
+customer numbers you give PuspaBot.
 
 ## 3. What the agent does, and what it never does
 
 - The agent acts only on your instructions, inside the autonomy level
   you set. You can stop all agent activity at any time (the stop-all
-  control, P-02) and take over the bot's live screen (P-09).
+  control, stop-all and autonomy dial) and take over the bot's live screen (live bot-screen view and takeover).
 - Before any consequential action — sending a message, preparing a
   payment, changing a setting — the agent asks for your approval on
   an approval card, and records the request and your answer in the
@@ -78,7 +78,7 @@ before charging.
 versus subscription versus selling compute — is a config value
 (`billing_model` in `puspa/billing/config.py`) and is NOT decided:
 the default in code is `"subscription"`, and the choice belongs to
-the product owner (decision D-03, still open). The trial length in
+the product owner (decision billing model, still open). The trial length in
 code is 14 days (`trial_days: 14`); the owner leans to 3 or 7 days
 and has not locked it. Annual billing in code is 12 months charged
 as 10 (2 months free). A monthly task cost ceiling of Rp2,000 is
@@ -87,14 +87,14 @@ enforced on top of the usage ledger (`TASK_COST_CEILING_IDR`).
 Payment collection itself is not built: payment providers are
 swappable modules and the local gateway is a stub
 (`puspa/billing/config.py` module docstring). Until a real provider
-is connected, no real money can be charged through Puspa at all.
+is connected, no real money can be charged through PuspaBot at all.
 
 ## 5. Your responsibilities
 
 - Give accurate information: your own bill customer numbers, your
   own accounts, your own instructions. Do not enter someone else's
   customer numbers, accounts, or personal data.
-- Use Puspa lawfully and only for your own tasks. Do not use it to
+- Use PuspaBot lawfully and only for your own tasks. Do not use it to
   defraud, impersonate, harass, or harm anyone, to break into
   systems, or to evade any platform's rules. The detailed rules are
   in `docs/content-policy.md`.
@@ -119,11 +119,11 @@ append-only ledger records of actions already taken (see
 
 ## 7. Availability and liability
 
-Puspa is beta software run by one person. It may be unavailable,
+PuspaBot is beta software run by one person. It may be unavailable,
 slow, or wrong, and features may change or disappear. The hosted
 cloud machines sleep when idle on the Free/Plus shape described in
 the code. This draft states no warranty and no liability cap: both
-are questions for the legal review (L-01) and are deliberately left
+are questions for the legal review (legal consultation) and are deliberately left
 open here rather than written as if already decided.
 
 ## 8. Changes to these terms
@@ -137,6 +137,6 @@ closed, the operator will also tell you directly.
 
 No governing law, dispute forum, or licence for the project is
 stated in this draft: the project has no `LICENSE` file, and
-choosing a licence is the owner's decision (D-01, still open). These
-are questions for the legal review (L-01), not things this draft
+choosing a licence is the owner's decision (license choice, still open). These
+are questions for the legal review (legal consultation), not things this draft
 pretends to settle. See `docs/legal.md`.

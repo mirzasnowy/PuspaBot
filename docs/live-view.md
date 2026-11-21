@@ -1,4 +1,4 @@
-# Live view + takeover (P-09, plan section 12.9)
+# Live view and takeover (plan section 12.9)
 
 ## What it is
 
@@ -14,8 +14,8 @@ Two things, one screen (`/live` in the PWA):
 
 ## What it is not (honest limits)
 
-- **No video stream of a desktop.** Puspa has no real
-  computer/desktop to watch: G16 built only the execution
+- **No video stream of a desktop.** PuspaBot has no real
+  computer/desktop to watch: per-bot sandbox (computer use) built only the execution
   backend and its contract, the Docker sandbox never ran a
   container on this VM, and there is no CDP browser driving
   anywhere. The frame's `screenshot` field stays `null` until
@@ -36,7 +36,7 @@ Pressing "take over" runs, in order:
    Another user's bot can never be taken over.
 2. **Interrupt live work** — the subagent lifecycle cancels
    the agent's live children, and the PWA pool stops its
-   subagents (children only). Unlike P-02's stop-all, the
+   subagents (children only). Unlike stop-all and autonomy dial's stop-all, the
    agent's own tokens are NOT revoked, so release can resume
    it. The in-flight turn ends as `interrupted`; history is
    kept, so the next turn can continue.
@@ -57,7 +57,7 @@ and the autonomy dial: a broken signal must never block the
 turn. The press itself (hold + interrupt + ledger) is what
 enforces the pause; the loop gate is defense in depth.
 
-## The frame, and the P-10 seam
+## The frame, and the replay timeline seam
 
 `GET /api/live-view/{agent_id}` returns a `LiveFrame`:
 
@@ -67,7 +67,7 @@ enforces the pause; the loop gate is defense in depth.
   quiet is shown as idle with its last activity time, never
   as working.
 - `events` — the agent's recent ledger events, oldest first,
-  with the hash chain. **P-10 replays these**: the frame is
+  with the hash chain. **replay timeline replays these**: the frame is
   replayable by construction.
 - `live_tail` — the PWA's in-memory events for the agent
   (newest last), marked `source: "live"`, never part of a
@@ -114,7 +114,7 @@ polls the GET every 5 seconds for fresh frames.
   release, frames), `tests/test_takeover_turn_gate.py`
   (the loop gate), `tests/test_live_view_api.py` (HTTP).
 
-## Relation to P-02 (stop-all)
+## Relation to stop-all and autonomy dial (stop-all)
 
 Takeover is composed from the same machinery, not a copy:
 lifecycle cancel + pool stop, like stop-all — but without
