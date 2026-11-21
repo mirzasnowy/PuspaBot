@@ -19,15 +19,13 @@ import os
 import sys
 from datetime import UTC, datetime
 
-from puspa.computer.cli import add_computer_parser, run_computer
-
 FULL_CLI_NOTE = (
     "The full PuspaBot CLI lands in a later step of the public/private "
     "split; this build ships `puspa web` / `puspa serve`, `puspa memory "
     "export` / `import` plus help."
 )
 
-_KNOWN_COMMANDS = ("web", "serve", "memory", "conversation", "provider", "computer")
+_KNOWN_COMMANDS = ("web", "serve", "memory", "conversation", "provider")
 
 #: Environment variable holding the export passphrase (never a
 #: command-line argument: arguments are visible in the process list).
@@ -211,13 +209,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     provider = sub.add_parser(
         "provider",
-        help="Log in to a subscription provider (V2-28).",
+        help="Log in to a subscription provider (V2-28, V2-29).",
         description=(
             "Puspa-native subscription login: `puspa provider login <provider>` "
-            "logs in without nanobot. PKCE providers (xai) print an authorize URL "
-            "and ask for the pasted code; device-flow providers (github_copilot) "
-            "print a user code and a verification URL to approve in a browser. "
-            "Tokens live only in the per-user vault, never printed or logged."
+            "logs in without nanobot. PKCE providers (xai, codex, antigravity, "
+            "gemini_cli) print an authorize URL and ask for the pasted code; "
+            "device-flow providers (github_copilot, kimi, kiro, grok_cli, nous, "
+            "muse, minimax_code, kilocode, qoder) print a user code and a "
+            "verification URL to approve in a browser; polling providers (glm, "
+            "codebuddy) print a sign-in URL to open and wait; pasted-token "
+            "providers (claude setup token, cursor import, cline blob) ask for "
+            "the token to paste. Tokens live only in the per-user vault, never "
+            "printed or logged. Plan-credential logins are local-only: on a "
+            "hosted deployment they are refused."
         ),
     )
     provider_sub = provider.add_subparsers(dest="provider_command", metavar="PROVIDER_COMMAND")
@@ -229,8 +233,8 @@ def build_parser() -> argparse.ArgumentParser:
     provider_login.add_argument(
         "provider_name",
         metavar="PROVIDER",
-        choices=("xai", "github_copilot", "openai_codex"),
-        help="Provider to log in to (xai, github_copilot, openai_codex).",
+        choices=_provider_names(),
+        help="Provider to log in to.",
     )
     provider_login.add_argument("--user", required=True, help="User id the tokens belong to.")
     provider_logout = provider_sub.add_parser(
@@ -241,7 +245,7 @@ def build_parser() -> argparse.ArgumentParser:
     provider_logout.add_argument(
         "provider_name",
         metavar="PROVIDER",
-        choices=("xai", "github_copilot", "openai_codex"),
+        choices=_provider_names(),
         help="Provider to log out of.",
     )
     provider_logout.add_argument("--user", required=True, help="User id the tokens belong to.")
@@ -255,7 +259,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="User id to check (defaults to PUSPA_USER_ID or 'local-user').",
     )
-    add_computer_parser(sub)
     return parser
 
 
@@ -435,6 +438,13 @@ def _provider_service():
     return ProviderLoginService()
 
 
+def _provider_names() -> tuple[str, ...]:
+    """All known subscription providers, for the CLI choices."""
+    from puspa.router.provider_login import known_provider_configs
+
+    return tuple(sorted(known_provider_configs()))
+
+
 #: Loopback redirect used by the terminal PKCE flow: the user opens
 #: the authorize URL, approves, and pastes the returned code back
 #: here (the same paste-back shape as `claude setup-token`).
@@ -459,6 +469,28 @@ def _run_provider_login(args, *, service=None, input_fn=None, print_fn=None) -> 
             print_fn(f"Open {started['verification_uri']} and enter code: {started['user_code']}")
             print_fn("Waiting for approval in your browser...")
             service.wait_for_device_login(args.user, args.provider_name, started["poll_key"])
+        elif config.flow == "polling":
+            started = service.start_polling(args.provider_name)
+            print_fn(f"Open this URL and sign in:\n{started['verification_uri']}")
+            print_fn("Waiting for the sign-in to finish...")
+            service.wait_for_polling_login(args.user, args.provider_name, started["poll_key"])
+        elif config.flow in ("setup_token", "import_token"):
+            started = service.start_pasted_token(args.provider_name)
+            if started["help"]:
+                print_fn(started["help"])
+            token = input_fn("Paste the token: ").strip()
+            if not token:
+                print_fn("No token pasted; login cancelled.")
+                return 1
+            service.finish_pasted_token(args.user, args.provider_name, token)
+        elif config.flow == "encoded_token":
+            if config.setup_token_help:
+                print_fn(config.setup_token_help)
+            code = input_fn("Paste the token code: ").strip()
+            if not code:
+                print_fn("No code pasted; login cancelled.")
+                return 1
+            service.finish_encoded_token(args.user, args.provider_name, code)
         else:
             started = service.start_pkce(args.provider_name, _PROVIDER_LOOPBACK_REDIRECT)
             print_fn(f"Open this URL and approve the login:\n{started['url']}")
@@ -547,11 +579,6 @@ def main(argv: list[str] | None = None) -> int:
         return _run_memory(parsed)
     if parsed.command == "conversation":
         return _run_conversation(parsed)
-    if parsed.command == "computer":
-        if parsed.computer_command is None:
-            parser.print_help()
-            return 0
-        return run_computer(parsed)
     parser.print_help()
     return 0
 

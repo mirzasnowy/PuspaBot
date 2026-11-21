@@ -691,15 +691,24 @@ export async function deleteByokKey(
   return (await response.json()) as { ok: boolean };
 }
 
-/** Login state of one subscription provider (V2-28). No token ever appears here. */
+/** Login state of one subscription provider (V2-28, V2-29). No token ever appears here. */
 export type ProviderLoginState = "logged_in" | "expiring" | "expired" | "not_logged_in";
+
+export type ProviderLoginFlow =
+  | "pkce"
+  | "device"
+  | "polling"
+  | "setup_token"
+  | "import_token"
+  | "encoded_token";
 
 export interface ProviderStatus {
   provider: string;
-  flow: "pkce" | "device";
+  flow: ProviderLoginFlow;
   state: ProviderLoginState;
   expires_at: string | null;
   login_ready: boolean;
+  local_only?: boolean;
 }
 
 export type ProviderLoginStart =
@@ -711,20 +720,45 @@ export type ProviderLoginStart =
       expires_in: number;
       interval: number;
       poll_key: string;
-    };
+    }
+  | {
+      flow: "polling";
+      verification_uri: string;
+      expires_in: number;
+      interval: number;
+      poll_key: string;
+    }
+  | {
+      flow: "setup_token" | "import_token";
+      help: string;
+      token_prefix: string | null;
+    }
+  | { flow: "encoded_token"; help: string };
 
 /** List every subscription provider with its login state (V2-28). */
 export function getProviders(fetchFn: FetchFn = fetch): Promise<{ providers: ProviderStatus[] }> {
   return getJson("/api/providers", fetchFn);
 }
 
-/** Start a subscription login (V2-28): PKCE returns an authorize URL, device returns a user code. */
+/** Start a subscription login (V2-28, V2-29): PKCE returns an authorize URL,
+ * device returns a user code, polling returns a sign-in URL, and pasted-token
+ * flows return the help text for what to paste. */
 export function startProviderLogin(
   provider: string,
   redirectUri?: string,
   fetchFn: FetchFn = fetch,
 ): Promise<ProviderLoginStart> {
   return postJson(`/api/providers/${encodeURIComponent(provider)}/login/start`, { redirect_uri: redirectUri ?? null }, fetchFn);
+}
+
+/** Finish a pasted-token login (V2-29): Claude setup token, Cursor import,
+ * or the Cline base64 blob. The token is sent once and never returned. */
+export function finishProviderTokenLogin(
+  provider: string,
+  token: string,
+  fetchFn: FetchFn = fetch,
+): Promise<ProviderStatus> {
+  return postJson(`/api/providers/${encodeURIComponent(provider)}/login/finish-token`, { token }, fetchFn);
 }
 
 /** Poll one device login started by startProviderLogin (V2-28). */

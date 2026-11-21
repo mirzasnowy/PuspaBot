@@ -1047,11 +1047,12 @@ paths:
   /api/providers:
     get:
       tags: [settings]
-      summary: List subscription providers with login state (V2-28)
+      summary: List subscription providers with login state (V2-28, V2-29)
       description: |
-        One entry per known subscription provider (xai, github_copilot,
-        openai_codex) with its login state. Never returns token material:
-        only the state and the expiry time.
+        One entry per known subscription provider (23 providers: the
+        V2-28 three plus the 9Router list) with its login state.
+        Never returns token material: only the state and the expiry
+        time.
       responses:
         "200":
           description: Provider login states
@@ -1068,18 +1069,22 @@ paths:
   /api/providers/{provider}/login/start:
     post:
       tags: [settings]
-      summary: Start a subscription login (V2-28)
+      summary: Start a subscription login (V2-28, V2-29)
       description: |
         PKCE providers return an authorize URL to open in a tab;
-        device-flow providers return a user code and verification URL.
-        The pending login lives server-side in memory for ten minutes.
+        device-flow providers return a user code and verification URL;
+        polling providers (GLM, CodeBuddy) return a sign-in URL and a
+        poll key; pasted-token providers (Claude setup token, Cursor
+        import) and the encoded-token provider (Cline) return the help
+        text for what to paste. The pending login lives server-side
+        in memory for ten minutes.
       parameters:
         - name: provider
           in: path
           required: true
           schema:
             type: string
-            enum: [xai, github_copilot, openai_codex]
+            enum: [antigravity, claude, cline, codebuddy_cn, codebuddy_intl, cursor, gemini_cli, github_copilot, gitlab, glm, grok_cli, iflow, kilocode, kimi, kiro, minimax_code, minimax_code_global, muse, nous, openai_codex, qoder, qoder_cn, xai]
       requestBody:
         required: false
         content:
@@ -1099,6 +1104,59 @@ paths:
                 $ref: "#/components/schemas/ProviderLoginStart"
         "400":
           description: Provider login is not wired yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Unknown provider
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/providers/{provider}/login/finish-token:
+    post:
+      tags: [settings]
+      summary: Finish a pasted-token subscription login (V2-29)
+      description: |
+        Finishes a pasted-token login (Claude setup token, Cursor
+        import) or an encoded-token login (Cline base64 blob):
+        checks the pasted token, stores it in the vault, and
+        returns the provider status. The token value is never in
+        the response.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [antigravity, claude, cline, codebuddy_cn, codebuddy_intl, cursor, gemini_cli, github_copilot, gitlab, glm, grok_cli, iflow, kilocode, kimi, kiro, minimax_code, minimax_code_global, muse, nous, openai_codex, qoder, qoder_cn, xai]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: Pasted setup token, imported token, or base64 token blob.
+      responses:
+        "200":
+          description: Provider status after login
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderStatus"
+        "400":
+          description: No token pasted, or the pasted token has the wrong shape
           content:
             application/json:
               schema:
@@ -1156,14 +1214,18 @@ paths:
   /api/providers/{provider}/device/poll:
     post:
       tags: [settings]
-      summary: Poll a device-flow subscription login (V2-28)
+      summary: Poll a device-flow or polling subscription login (V2-28, V2-29)
+      description: |
+        Serves the device flow and the polling flow (GLM, CodeBuddy)
+        alike: `pending` while the user has not approved yet,
+        `complete` with the provider status once stored.
       parameters:
         - name: provider
           in: path
           required: true
           schema:
             type: string
-            enum: [xai, github_copilot, openai_codex]
+            enum: [antigravity, claude, cline, codebuddy_cn, codebuddy_intl, cursor, gemini_cli, github_copilot, gitlab, glm, grok_cli, iflow, kilocode, kimi, kiro, minimax_code, minimax_code_global, muse, nous, openai_codex, qoder, qoder_cn, xai]
       requestBody:
         required: true
         content:
@@ -1214,7 +1276,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [xai, github_copilot, openai_codex]
+            enum: [antigravity, claude, cline, codebuddy_cn, codebuddy_intl, cursor, gemini_cli, github_copilot, gitlab, glm, grok_cli, iflow, kilocode, kimi, kiro, minimax_code, minimax_code_global, muse, nous, openai_codex, qoder, qoder_cn, xai]
       responses:
         "200":
           description: Provider status after logout
@@ -1374,16 +1436,17 @@ components:
     ProviderStatus:
       type: object
       description: |
-        Login state of one subscription provider (V2-28). Carries no
-        token material: only the state and the expiry time.
+        Login state of one subscription provider (V2-28, V2-29).
+        Carries no token material: only the state and the expiry
+        time.
       required: [provider, flow, state, expires_at, login_ready]
       properties:
         provider:
           type: string
-          enum: [xai, github_copilot, openai_codex]
+          enum: [antigravity, claude, cline, codebuddy_cn, codebuddy_intl, cursor, gemini_cli, github_copilot, gitlab, glm, grok_cli, iflow, kilocode, kimi, kiro, minimax_code, minimax_code_global, muse, nous, openai_codex, qoder, qoder_cn, xai]
         flow:
           type: string
-          enum: [pkce, device]
+          enum: [pkce, device, polling, setup_token, import_token, encoded_token]
         state:
           type: string
           enum: [logged_in, expiring, expired, not_logged_in]
@@ -1393,7 +1456,10 @@ components:
           description: ISO-8601 expiry of the access token, or null when not logged in.
         login_ready:
           type: boolean
-          description: False when the provider login is not wired yet (Codex today).
+          description: False when the provider login is not wired yet (for example a PKCE provider whose client secret env var is missing).
+        local_only:
+          type: boolean
+          description: True for every plan-credential provider. On a hosted deployment the login is refused.
     ProviderList:
       type: object
       required: [providers]
@@ -1405,13 +1471,15 @@ components:
     ProviderLoginStart:
       type: object
       description: |
-        What the user needs to finish a login (V2-28): an authorize URL
-        for PKCE, or a user code + verification URL for the device flow.
+        What the user needs to finish a login (V2-28, V2-29): an
+        authorize URL for PKCE, a user code + verification URL for
+        the device flow, a sign-in URL for the polling flow, or
+        help text for a pasted-token login.
       required: [flow]
       properties:
         flow:
           type: string
-          enum: [pkce, device]
+          enum: [pkce, device, polling, setup_token, import_token, encoded_token]
         url:
           type: string
           description: PKCE authorize URL to open in a tab.
@@ -1433,6 +1501,13 @@ components:
         poll_key:
           type: string
           description: Key to pass back when polling the device login.
+        help:
+          type: string
+          description: Pasted-token login help text (where the token comes from).
+        token_prefix:
+          type: string
+          nullable: true
+          description: Expected prefix of a pasted setup token (Claude `sk-ant-oat01-`), or null.
     InsightsReport:
       type: object
       description: |

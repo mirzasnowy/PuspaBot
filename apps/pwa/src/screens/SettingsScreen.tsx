@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   deleteByokKey,
   deleteVoiceKey,
+  finishProviderTokenLogin,
   getModelSettings,
   getProviders,
   getVoiceSettings,
@@ -678,6 +679,9 @@ export function SettingsScreen() {
           error={providersError}
           onStartLogin={(provider) => startProviderLogin(provider)}
           onPollDevice={(provider, pollKey) => pollProviderDeviceLogin(provider, pollKey)}
+          onFinishToken={async (provider, token) => {
+            await finishProviderTokenLogin(provider, token);
+          }}
           onLogout={async (provider) => {
             await logoutProvider(provider);
           }}
