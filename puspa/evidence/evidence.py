@@ -18,7 +18,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from puspa.sandbox.allowlist import is_allowed
+from puspa.policy.allowlist import is_allowed
 
 VONIS = ("Verified", "Uncertain", "Cannot be determined")
 AMBANG_KEANDALAN = 0.80
