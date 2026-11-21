@@ -652,6 +652,7 @@ def test_docs_checklist_covers_every_implemented_k_item():
         "act-or-ask rule",
         "three-speed simulator",
         "outcome watcher",
+        "daily sleep consolidation and monthly ontology review",
         "bitemporal state",
         "causal ledger",
         "other-agent goal models",

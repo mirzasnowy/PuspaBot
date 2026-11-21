@@ -42,6 +42,7 @@ TRIGGER_TYPES = (
     "revocation_list_refresh",
     "dream",
     "sentinel_scan",
+    "ontology_review",
 )
 
 #: Proactive trigger types pay from the interruption budget (K10):
@@ -435,6 +436,45 @@ def schedule_sentinel_scan(user_id: str, *, hour: int = 3, dsn=None) -> Trigger:
     )
 
 
+def schedule_consolidation(user_id: str, *, hour: int = 3, dsn=None) -> Trigger:
+    """Register the daily sleep consolidation (K9) as a trigger.
+
+    Running this trigger calls ``consolidate_idle`` through
+    ``run_scheduled_job`` below, which also prunes stale causal
+    hypotheses and records the run in the ledger. The scheduler
+    moves the trigger one day forward on each run (see
+    ``run_trigger``), so this registration gives one
+    consolidation a day at the given hour.
+    """
+    tomorrow = (_now() + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
+    return create_trigger(
+        user_id, "consolidation", tomorrow, schedule=f"daily {hour:02d}:00", dsn=dsn
+    )
+
+
+def schedule_ontology_review(user_id: str, *, day: int = 1, hour: int = 3, dsn=None) -> Trigger:
+    """Register the monthly ontology review (K9) as a trigger.
+
+    The trigger itself fires daily (``run_trigger`` moves it one
+    day forward on each run); the monthly cadence is a gate
+    inside ``run_scheduled_job``: the review only runs when the
+    current calendar month has no review recorded yet (see
+    ``reviewed_this_month``). ``day`` picks the first run: the
+    next date on or after tomorrow whose day of month is
+    ``day`` (1..28), so the default runs on the 1st of next
+    month. A full monthly trigger step is a Fase 4 improvement,
+    like the cron schedule noted in ``run_trigger``.
+    """
+    if not 1 <= day <= 28:
+        raise SchedulerError(f"day must be within 1..28, got {day!r}")
+    first = (_now() + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
+    while first.day != day:
+        first += timedelta(days=1)
+    return create_trigger(
+        user_id, "ontology_review", first, schedule=f"daily {hour:02d}:00", dsn=dsn
+    )
+
+
 def run_scheduled_job(run: dict, *, dsn=None) -> dict:
     """Eksekusi job sistem untuk satu jalan pemicu (backup/konsolidasi).
 
@@ -454,10 +494,39 @@ def run_scheduled_job(run: dict, *, dsn=None) -> dict:
         result = create_backup(dsn=dsn)
         return {"job": "backup_daily", "result": str(result)}
     if event_type == "consolidation":
+        from puspa.ledger.ledger import Ledger
         from puspa.memory.consolidate import consolidate_idle
+        from puspa.memory.ontology_review import prune_stale_hypotheses
 
         result = consolidate_idle(str(user_id), dsn=dsn)
-        return {"job": "consolidation", "result": result}
+        hypotheses_expired = prune_stale_hypotheses(str(user_id), dsn=dsn)
+        Ledger(dsn).append_event(
+            task_id=run["task_id"],
+            agent_id="puspa",
+            event_type="task_completed",
+            content={
+                "job": "consolidation",
+                "user_id": str(user_id),
+                "summaries_created": result["summaries_created"],
+                "procedures_promoted": result["procedures_promoted"],
+                "proposals_created": result["proposals_created"],
+                "hypotheses_expired": hypotheses_expired,
+            },
+        )
+        return {
+            "job": "consolidation",
+            "result": {**result, "hypotheses_expired": hypotheses_expired},
+        }
+    if event_type == "ontology_review":
+        from puspa.memory.ontology_review import reviewed_this_month, run_ontology_review
+
+        if reviewed_this_month(str(user_id), dsn=dsn):
+            return {
+                "job": "ontology_review",
+                "result": {"status": "skipped", "reason": "already reviewed this month"},
+            }
+        result = run_ontology_review(str(user_id), dsn=dsn, task_id=run["task_id"])
+        return {"job": "ontology_review", "result": result}
     if event_type == "trust_root_refresh":
         from puspa.policy.trust_root import run_trust_root_refresh_job
 
