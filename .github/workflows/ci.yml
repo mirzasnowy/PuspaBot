@@ -408,17 +408,18 @@ jobs:
 
       - name: Install what this lane actually runs
         # test_docs_drift.py imports puspa.ledger, which needs psycopg
-        # installed but opens no connection. The ratchet tests need only
-        # the standard library plus the tools they shell out to: the
-        # blind-except ratchet runs the ruff binary and the bandit
-        # baseline ratchet runs bandit (E-20, plan section 9.5; both
-        # pinned to the versions in requirements-dev.txt, against
-        # which their baselines were measured). pytest runs the tests,
-        # and PyYAML parses this workflow file below. (Before 18 Nov
-        # 2026 this step installed only psycopg, so the lane would
-        # have failed on GitHub with "No module named pytest" /
-        # "No module named yaml".)
-        run: python -m pip install "pytest==9.2.0" "psycopg[binary]==3.3.9" "pyyaml==6.0.3" "ruff==0.17.5" "bandit==1.8.6"
+        # installed but opens no connection; the ledger import chain
+        # also reaches puspa.vault, which needs cryptography, and the
+        # accounts ports, which need argon2. The ratchet tests need
+        # only the standard library plus the tools they shell out to: the blind-except ratchet runs the ruff
+        # binary and the bandit baseline ratchet runs bandit (E-20,
+        # plan section 9.5; both pinned to the versions in
+        # requirements-dev.txt, against which their baselines were
+        # measured). pytest runs the tests, and PyYAML parses this
+        # workflow file below. (Before 18 Nov 2026 this step installed
+        # only psycopg, so the lane would have failed on GitHub with
+        # "No module named pytest" / "No module named yaml".)
+        run: python -m pip install "pytest==9.2.0" "psycopg[binary]==3.3.9" "pyyaml==6.0.3" "ruff==0.17.5" "bandit==1.8.6" "cryptography==50.0.2" "argon2-cffi==25.1.0"
 
       - name: Run the ratchet and drift tests
         run: python -m pytest tests/test_file_size_ratchet.py tests/test_blind_except_ratchet.py tests/test_bandit_baseline.py tests/test_docs_drift.py --noconftest -q

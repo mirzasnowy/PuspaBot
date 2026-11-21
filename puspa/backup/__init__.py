@@ -1,16 +1,14 @@
-"""Encrypted backups, WAL archiving, and restore drills (E-09)."""
+"""Local state snapshots for the self-host product.
 
-from .backup import (
-    RETENTION_DAYS,
-    BackupError,
-    create_backup,
-    list_backups,
-    prune_backups,
-    restore_backup,
-    verify_restored_counts,
-)
-from .drill import TARGET_SECONDS, DrillError, render_drill_markdown, run_restore_drill
+The vault key escrow and state-database snapshots a single user runs
+locally. Server backups, WAL archiving, and restore drills live
+elsewhere.
+"""
+
+from __future__ import annotations
+
 from .local_state import (
+    BackupError,
     KeyEscrowError,
     StateSnapshotError,
     check_key_separation,
@@ -19,38 +17,14 @@ from .local_state import (
     snapshot_state_db,
     verify_escrowed_key,
 )
-from .wal import (
-    WalError,
-    archive_command,
-    check_archiving,
-    pgbackrest_config,
-    verify_wal_chain,
-    walg_env,
-)
 
 __all__ = [
-    "RETENTION_DAYS",
-    "TARGET_SECONDS",
     "BackupError",
-    "DrillError",
     "KeyEscrowError",
     "StateSnapshotError",
-    "WalError",
-    "archive_command",
-    "check_archiving",
     "check_key_separation",
-    "create_backup",
     "escrow_vault_key",
-    "list_backups",
-    "pgbackrest_config",
-    "prune_backups",
-    "render_drill_markdown",
-    "restore_backup",
-    "run_restore_drill",
     "sha256_file",
     "snapshot_state_db",
     "verify_escrowed_key",
-    "verify_restored_counts",
-    "verify_wal_chain",
-    "walg_env",
 ]

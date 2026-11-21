@@ -8,7 +8,7 @@ button (``templates/trial.html``), per the locked modes decision
 (``docs/modes-decision.md``).
 
 A trial is an entitlement, not a flag. The trial entitlement is
-the G2 billing entitlement (``puspa.billing.entitlements``):
+the billing entitlement port (``puspa.billing.ports``):
 HMAC-signed, time-boxed Pro access (``trial_days`` from
 ``BillingConfig``), carried in an httpOnly cookie and verified
 against the server secret on every request. The check is
@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from puspa.billing.config import BillingConfig, default_config
-from puspa.billing.entitlements import (
+from puspa.billing.ports import (
     Entitlement,
     entitlement_from_dict,
     issue_trial_entitlement,

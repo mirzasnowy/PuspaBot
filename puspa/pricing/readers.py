@@ -29,7 +29,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from puspa.sandbox.allowlist import is_allowed
+from puspa.policy.allowlist import is_allowed
 
 EXCERPT_MAX = 200
 

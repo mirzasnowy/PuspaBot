@@ -42,7 +42,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-from puspa.accounts.users import resolve_dsn
+from puspa.accounts.ports import _connect, resolve_dsn
 from puspa.migrations import apply_migrations
 
 __all__ = [
@@ -206,7 +206,6 @@ def save_selection(user_id, selection: ModelSelection | dict, dsn=None) -> Model
         raise ValueError("selection must be a ModelSelection or a dict")
     resolved = _normalize(resolved)
     create_schema(dsn)
-    from puspa.accounts.users import _connect
 
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
@@ -265,7 +264,6 @@ def get_selection(user_id, dsn=None) -> ModelSelection:
     picker gets the current default behaviour.
     """
     create_schema(dsn)
-    from puspa.accounts.users import _connect
 
     with _connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(

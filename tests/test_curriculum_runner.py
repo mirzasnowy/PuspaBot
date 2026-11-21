@@ -339,9 +339,10 @@ def test_budget_check_none_means_no_gate():
 
 
 def test_default_budget_check_resolves_to_the_ledger():
-    # The G2 worker landed puspa/billing/ledger.py with exactly the
-    # specified signature, so the default resolver now returns a
-    # real callable: no spend recorded means the full cap remains.
+    # The budget port (puspa/billing/ports.py) carries
+    # task_budget_remaining with exactly the specified signature,
+    # so the default resolver returns a real callable: no spend
+    # recorded means the full cap remains.
     from puspa.scheduler.curriculum import default_task_budget_check
 
     check = default_task_budget_check()
@@ -353,15 +354,22 @@ def test_default_budget_check_resolves_to_the_ledger():
     assert runner.run_once()["status"] == "completed"
 
 
-def test_default_budget_check_is_fail_soft_without_ledger(monkeypatch):
-    # Hide the ledger module: the resolver must return None
-    # instead of raising, and the runner must run ungated.
-    import sys
-
+def test_default_budget_check_is_fail_soft_when_ledger_breaks(monkeypatch):
+    # The budget port always exists now, so the resolver always
+    # returns a callable — there is no "ledger not there yet"
+    # case any more. The fail-soft property that remains is the
+    # call itself: a broken ledger call returns None and the
+    # runner runs ungated instead of raising.
+    from puspa.billing import ports
     from puspa.scheduler.curriculum import default_task_budget_check
 
-    monkeypatch.setitem(sys.modules, "puspa.billing.ledger", None)
-    assert default_task_budget_check() is None
+    def _broken(*args, **kwargs):
+        raise RuntimeError("ledger down")
+
+    monkeypatch.setattr(ports, "task_budget_remaining", _broken)
+    check = default_task_budget_check()
+    assert callable(check)
+    assert check("system", "a-fresh-task", cap_rp=2000) is None
 
 
 def test_budget_check_failure_is_fail_soft():

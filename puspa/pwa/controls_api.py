@@ -53,7 +53,7 @@ from ..autonomy.controls import (
     signals_from_events,
 )
 from ..autonomy.dial import AutonomyDial
-from ..billing.insights import validate_days
+from ..billing.ports import validate_days
 from ..drafting import PostgresDraftStore
 from ..evidence.proof import event_belongs_to_user, user_agent_ids
 from ..i18n.server_lines import render as render_server_line

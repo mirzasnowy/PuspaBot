@@ -9,7 +9,7 @@ generation: the brief supplies the content, the voice profile
 supplies the greeting, closing, and rules, and the recorded
 decisions are checked against the brief. There is no LLM call
 here — a draft is only ever as good as the brief and the
-recorded voice, and the design doc (``docs/drafting-b13.md``)
+recorded voice, and the design doc (``docs/drafting.md``)
 says so plainly.
 
 Sending is approval-gated by construction (G4 — send is always
@@ -45,7 +45,7 @@ from datetime import UTC, datetime, timedelta
 import psycopg
 from psycopg.rows import dict_row
 
-from puspa.accounts.users import resolve_dsn
+from puspa.accounts.ports import resolve_dsn
 from puspa.evidence.outcomes import write_outcome
 from puspa.ledger import Ledger
 from puspa.memory import facts as facts_module

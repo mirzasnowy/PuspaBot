@@ -8,7 +8,7 @@ maths, and the in-memory chat seam. The HTTP layer lives in
 No live tile is fetched here: the tile URL maths are checked
 against the slippy-map formulas, and the honest limit (no
 real browser in this VM to prove a tile renders) is recorded
-in ``docs/chat-cards-p12.md``.
+in ``docs/chat-cards.md``.
 """
 
 from __future__ import annotations

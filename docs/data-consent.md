@@ -10,7 +10,7 @@
 
 Before PuspaBot stores your data, you agree to a short consent screen.
 That screen is defined in code — `puspa/consent/consent.py`,
-`TEXT_APPROVAL`, version `v1-2026-11-17` — and this document quotes
+`TEXT_APPROVAL`, version `v2-2026-11-21` — and this document quotes
 it exactly. If the code text and this document ever disagree, the
 code text is the one you actually agreed to, and this document must
 be fixed.
@@ -18,7 +18,7 @@ be fixed.
 ## 2. The consent text (quoted verbatim from the product)
 
 ```text
-PuspaBot data consent (version v1-2026-11-17)
+PuspaBot data consent (version v2-2026-11-21)
 
 What data is stored: chats with your agent, memory (profile, history,
 procedures), the customer numbers you grant, and your Gmail, Drive,
@@ -65,7 +65,7 @@ Giving consent is recorded twice (`record_consent` in
 `puspa/consent/consent.py`):
 
 1. In the `data_consents` table: your user id, the text version
-   (`v1-2026-11-17`), the time, and the ledger event id.
+   (`v2-2026-11-21`), the time, and the ledger event id.
 2. In the append-only ledger as a `data_consent` event, so the fact
    and the version you agreed to cannot later be rewritten.
 
@@ -103,7 +103,7 @@ content is not deleted by account deletion yet.
 If you only want to correct or forget a single memory — rather than
 delete everything — use the Memory screen: correct a fact, or forget
 it, without withdrawing consent as a whole
-(`docs/memory-screen-p01.md`).
+(`docs/memory-screen.md`).
 
 ## 6. When this text changes
 

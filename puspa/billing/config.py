@@ -46,7 +46,7 @@ CONTRACT_VERSION = 1
 FREE_CREDITS_PER_MONTH = 15
 
 #: Monthly task cost ceiling enforced as a policy on top of the usage
-#: ledger (see ``ledger.task_budget_remaining``).
+#: ledger (see ``ports.task_budget_remaining``).
 TASK_COST_CEILING_IDR = 2000
 
 

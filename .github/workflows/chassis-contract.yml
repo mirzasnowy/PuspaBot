@@ -67,19 +67,19 @@ jobs:
         image: pgvector/pgvector:0.6.0-pg16
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: <redacted>
+          POSTGRES_PASSWORD: puspa-ci-test
           POSTGRES_DB: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready -U postgres
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     env:
       # Throwaway password for the ephemeral CI test database only; the
       # database is created fresh per run and destroyed with the runner.
-      PUSPA_TEST_DSN: dbname=puspa_test user=root password=<redacted> host=localhost port=5432
+      PUSPA_TEST_DSN: dbname=puspa_test user=root password=puspa-ci-test host=localhost port=5432
     steps:
       - uses: actions/checkout@v4
 
@@ -105,7 +105,7 @@ jobs:
 
       - name: Set up test database
         env:
-          PGPASSWORD: <redacted>
+          PGPASSWORD: puspa-ci-test
         run: |
           psql "host=localhost user=postgres dbname=postgres" -c "CREATE ROLE root LOGIN SUPERUSER;"
           psql "host=localhost user=postgres dbname=postgres" -c "ALTER ROLE root WITH PASSWORD 'puspa-ci-test';"

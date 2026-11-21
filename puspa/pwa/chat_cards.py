@@ -28,7 +28,7 @@ database table: drafts already live in the B13 drafting tables
 and Insights data already lives in the usage ledger. No
 migration is needed for P-12.
 
-Honest limit, stated here and in ``docs/chat-cards-p12.md``:
+Honest limit, stated here and in ``docs/chat-cards.md``:
 the map tiles load client-side from OpenStreetMap, and this
 VM has no live browser to prove a tile really renders — the
 verification here is the tile URL maths plus the rendered

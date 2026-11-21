@@ -39,7 +39,7 @@ DOCS = REPO_ROOT / "docs"
 
 LEGAL_DOCS = {
     "terms-of-service.md": (
-        "What Puspa is",
+        "What PuspaBot is",
         "What the agent does, and what it never does",
         "Plans and prices",
         "Your responsibilities",
@@ -135,7 +135,7 @@ def test_consent_version_matches_code() -> None:
         f"{version!r} from puspa/consent/consent.py — update the doc "
         "when the in-product consent text changes"
     )
-    assert "Puspa data consent (version" in text, (
+    assert "PuspaBot data consent (version" in text, (
         "docs/data-consent.md lost the verbatim quote of the in-product consent text"
     )
 

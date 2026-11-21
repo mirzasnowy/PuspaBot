@@ -57,6 +57,7 @@
 - Contributor-facing cleanup ORDERED by Nero, 21 Nov ~07:56 WIB: the public repo must read like a normal best-practice open-source repo. (a) The scrub ALSO rewrites commit messages to plain English — strip `Wave N` and ticket codes from every subject/body. (b) Purely internal tracking docs (`status-maturity.md` + archives, `status-phase-*.md`, `status-brain-*.md`, `ticket-codes.md`) move OUT of the public repo (their home is Notion/private); remaining public docs are de-coded to plain descriptions. (c) Add `CODE_OF_CONDUCT.md`, `SECURITY.md`, `.github/ISSUE_TEMPLATE/` and `PULL_REQUEST_TEMPLATE.md`. Internal tracking (Notion, GitHub issues) keeps its codes. Verification: grep the scrubbed public repo + its whole rewritten history for Wave/ticket-code patterns = zero hits. The first scrub attempt (messages preserved, old path list) was stopped ~07:57 WIB, ~30 min in, no ref updated; the scrub restarts as ONE combined rewrite (tree filter + message polish).
 - Distribution name LOCKED (Nero, 21 Nov ~08:41 WIB): the product is **PuspaBot** and the distribution name is **`puspa`** — `pip install puspa` from PyPI and `npm install -g puspa` / `npx puspa` from npm. `puspa` is free on both registries (404 verified on PyPI and npm, 21 Nov). Import name stays `puspa`. Fallback if `puspa` turns out taken at publish time (same name on BOTH registries, never split): `puspa-bot`, then `puspa-ai`, then `puspabot`. Name rules: PyPI normalizes names (case-insensitive, `-`/`_` / `.` equivalent); npm forbids uppercase in new package names — `puspa` is lowercase, so it is valid on both.
 - Branch naming (Nero, 21 Nov ~08:51 WIB): branches follow `feat/` / `fix/` / `hotfix/` / `docs/` / `chore/` + a short plain-English description — no ticket codes (no G/K/B/E/P) and no Wave numbers in branch names. Applies to the split work and the K builds. The extraction branch is therefore `feat/extract-private-modules`, not `split/extraction`. puspa-ai currently has only `main`; puspa-cloud's two Dependabot branches (`dependabot/github_actions/peter-evans/create-pull-request-8`, `dependabot/pip/rich-15.0.0`) are left alone until after the private restructure, then reviewed/merged or closed — not touched during the restructure.
+- New-repo checklist, STANDING RULE (Nero, 21 Nov ~08:58 WIB — a repo with only `main` is fatal, never again): every new repo/project has from day one: a `develop` branch; a tidy README; logo/social preview set; GitHub topics set; LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY.md present; issue + PR templates present; commit subjects and branch names clean plain English (`feat/`/`fix/`/`hotfix/`/`docs/` + description, no ticket codes, no Wave numbers). The scrub must carry `develop` through: after the force-push, re-point `refs/heads/develop` to the new scrubbed HEAD and verify no ref in the public repo points at any pre-scrub commit.
 - The pending CI fix (17 files, `fix(ci)` health-check / mypy / format) does
   NOT go first as a PR to the old history — that PR is now pointless. The
   17 files are re-applied as the first commit(s) on the REWRITTEN public
@@ -468,18 +469,15 @@ entire public history without the private paths.
 
 - Every commit on `main` is rebuilt with its tree filtered: all private paths
   (Section 3 move list, disposition PRIV) are removed from every tree,
-  recursively, bottom-up. File modes are preserved. Author, committer, and dates
-  are preserved; messages are rewritten to plain English (see next bullet).
+  recursively, bottom-up. File modes are preserved. Author, committer, dates,
+  and messages are preserved (messages are already code-free after the 20 Nov
+  message rewrite).
 - Messages are ALSO rewritten (Nero ~07:56 WIB): every subject/body is plain English — strip `Wave N` tokens and ticket codes (reuse the 20 Nov code-strip transform as a safety net). For commits whose subject becomes meaningless after stripping (the `docs: record Wave N` class), derive a plain subject from the commit's changed files + cleaned body (what the change actually did). Verify: grep ALL rewritten messages for `Wave\s+\d+` and ticket-code patterns = zero hits.
-- Scope (dry-run verified, 21 Nov, combined rewrite v2): HEAD tree is 1,215 blobs
-  (the 1,311 figure was blobs + 96 directories). The private-path rules remove
-  240 blobs, leaving 975. Of 216 commits, 173 are kept and 43 are dropped
-  (every dropped commit touched only private paths — mostly docs-only commits
-  recording sections in the internal status log, which moved out of public;
-  the old HEAD commit itself is among them, so the new HEAD is the Gen 3
-  rebuild of the last kept commit). 28 signed commits exist in Gen 2; the 20
-  that are kept lose their signatures in the rewrite
-  (author/committer/dates preserved).
+- Scope (dry-run verified, 21 Nov): HEAD tree is 1,215 blobs (the 1,311
+  figure was blobs + 96 directories). The private-path rules remove 222
+  blobs, leaving 993. Of 216 commits, 215 are kept and 1 is dropped
+  (`4d3129a9`, all-private files). 27 signed commits lose their
+  signatures in the rewrite (author/committer/dates/messages preserved).
   The move list is the authority; the dry-run mapping is
   `hidden_files/history-scrub-mapping.json`.
 - Three generations of SHAs exist after this: Gen 1 (original, pre-20-Nov),
@@ -544,6 +542,7 @@ RESTART (21 Nov ~07:57 WIB): the first execute attempt (messages preserved, old 
    Dependabot recreates them against Gen 3; rebasing them by hand is
    pointless. No queue/work PRs are open (verified 21 Nov). Branch
    protection is not enabled (verified 21 Nov, 404) — re-check at push time.
+5b. Carry `develop` through the scrub (CRITICAL — a `develop` left pointing at the old HEAD would keep the private files alive in the public repo and defeat the scrub): immediately after the force-push, re-point `refs/heads/develop` to the new scrubbed HEAD (same SHA as new `main`), then verify NO ref in the public repo points at any pre-scrub commit — list ALL refs (heads + tags) and check every SHA against the old mapping; every ref must point at a Gen-final commit. (The private repo's `develop` needs no re-pointing: it points at the seed HEAD, and the private repo keeps the full history by design.)
 6. Re-apply the 17 CI-fix files as the first commit(s) on Gen 3 (see
    Sequencing Step 0): 14 files onto public, 3 files
    (`puspa/rooms/research.py`, `tests/test_sandbox_e03_seccomp.py`,
@@ -795,10 +794,9 @@ in an intermediate broken state by the extraction work. There is no mid-extracti
 ## Appendix — verification notes
 
 - HEAD tree read from the GitHub API: 1,311 paths; 216 commits on `main`.
-  Private-path rules (Section 3) match 240 blobs of the 1,215-blob HEAD tree,
-  leaving 975 public blobs (dry-run verified, combined rewrite v2).
-  216 commits: 173 kept, 43 dropped (all dropped commits touched only
-  private paths).
+  Private-path rules (Section 3) match 222 blobs of the 1,215-blob HEAD tree,
+  leaving 993 public blobs (dry-run verified). 216 commits: 215 kept, 1
+  dropped (`4d3129a9`).
 - Import graph: `grep` over `puspa/` + `tests/` for
   `from puspa.(billing|hosting|teams|payments|channels|push|backup|
   observability|rooms|marketplace)` found 87 files (16 public-side `puspa/`

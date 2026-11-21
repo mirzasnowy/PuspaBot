@@ -1,31 +1,46 @@
-"""Tool nanobot untuk eksekusi kode di sandbox Puspa (definisi 2.6).
+"""Tool nanobot untuk eksekusi kode lewat local runner Puspa (definisi 2.6).
 
-``SandboxTool`` adalah ``Tool`` nanobot biasa yang eksekusinya didelegasikan
-ke ``puspa.sandbox.Sandbox`` (container Docker sekali pakai, tanpa jaringan,
-read-only, cap-drop ALL, user nobody) — BUKAN ke shell host nanobot.
-Tool shell bawaan nanobot TIDAK masuk daftar tool token Puspa, jadi satu-
-satunya jalan eksekusi kode di turn Puspa adalah tool ini, dan tool ini
-sendiri fail-closed: kalau Docker tidak tersedia, kembalikan
-``ToolResult.error`` (tidak pernah eksekusi di host).
+``SandboxTool`` adalah ``Tool`` nanobot biasa yang eksekusinya
+didelegasikan ke :class:`puspa.localexec.Executor` (port eksekusi):
+di instalasi lokal itu :class:`puspa.localexec.LocalExecutor`
+(izin dulu — setuju sekali, setuju untuk sesi ini, atau tolak,
+model Claude Code — lalu subprocess langsung di mesin pengguna
+sendiri, dibatasi ke workspace, dengan timeout dan cap output).
+Di server hosted, port yang sama diikat ke sandbox Docker. Tool
+ini TIDAK PERNAH mengeksekusi kode di luar executor yang diikat:
+izin ditolak berarti kode TIDAK dijalankan di mana pun, dan
+hasilnya ``ToolResult.error`` (bukan eksekusi diam-diam di host).
 
-Nama tool memakai Bahasa Indonesia (``jalankan_kode``) sesuai konvensi
-nama tool Puspa. ``concurrency_safe`` True: tiap pemanggilan memakai
-container sendiri yang terisolasi. ``Sandbox.run`` bersifat sinkron
-(subprocess); pemanggilan di sini memblokir event loop sebentar — itu
-diterima di fase 0, dan dicatat untuk dipindah ke executor di fase 2.
+Nama tool memakai Bahasa Indonesia (``jalankan_kode``) sesuai
+konvensi nama tool Puspa. ``concurrency_safe`` True: tiap
+pemanggilan memakai direktori run sendiri yang dihapus setelah
+selesai. ``execute`` bersifat async; eksekusi lewat executor
+bersifat sinkron (subprocess) dan memblokir event loop sebentar —
+itu diterima di fase 0, dan dicatat untuk dipindah ke executor
+di fase 2.
 
 Dipakai lewat ``PuspaRegistry`` (otomatis terbungkus ``PuspaTool``:
-cek token + audit) — daftarkan di factory sebelum ``AgentLoop`` dibuat,
-supaya ``ToolLoader`` nanobot tidak menimpanya (aturan "caller menang").
+cek token + audit) — daftarkan di factory sebelum ``AgentLoop``
+dibuat, supaya ``ToolLoader`` nanobot tidak menimpanya (aturan
+"caller menang").
 """
 
 from __future__ import annotations
 
+import shutil
+import sys
+import tempfile
+from pathlib import Path
 from typing import Any
 
 from nanobot.agent.tools.base import Tool, ToolResult, tool_parameters
 
-from puspa.sandbox.runner import Sandbox, SandboxUnavailable
+from puspa.localexec import (
+    Executor,
+    LocalExecutor,
+    OutsideWorkspaceError,
+    PermissionDenied,
+)
 
 __all__ = ["SandboxTool"]
 
@@ -39,7 +54,7 @@ _MAX_ERROR_CHARS = 2_000
         "properties": {
             "code": {
                 "type": "string",
-                "description": "Kode Python yang akan dijalankan di sandbox.",
+                "description": "Kode Python yang akan dijalankan di local runner.",
             },
             "timeout_s": {
                 "type": "number",
@@ -50,10 +65,30 @@ _MAX_ERROR_CHARS = 2_000
     }
 )
 class SandboxTool(Tool):
-    """Jalankan kode Python di sandbox Docker terisolasi."""
+    """Jalankan kode Python lewat local runner (izin dulu)."""
 
-    def __init__(self, sandbox: Sandbox | None = None) -> None:
-        self._sandbox = sandbox or Sandbox()
+    def __init__(
+        self,
+        executor: Executor | None = None,
+        *,
+        workspace: str | Path | None = None,
+    ) -> None:
+        if executor is None:
+            self._workspace = (
+                Path(workspace)
+                if workspace is not None
+                else Path(tempfile.mkdtemp(prefix="puspa-code-"))
+            )
+            self._workspace.mkdir(parents=True, exist_ok=True)
+            self._executor: Executor = LocalExecutor(self._workspace)
+        else:
+            self._executor = executor
+            if workspace is not None:
+                self._workspace = Path(workspace)
+            else:
+                bound = getattr(executor, "workspace", None)
+                self._workspace = Path(bound) if bound is not None else Path.cwd()
+            self._workspace.mkdir(parents=True, exist_ok=True)
 
     @property
     def name(self) -> str:
@@ -62,10 +97,11 @@ class SandboxTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Jalankan kode Python di sandbox terisolasi (container Docker "
-            "sekali pakai, tanpa jaringan dan tanpa akses host). Kembalikan "
-            "stdout, atau error bila kode gagal/timeout. Sandbox yang tidak "
-            "tersedia berarti kode TIDAK dijalankan di mana pun."
+            "Jalankan kode Python di mesin sendiri setelah pengguna "
+            "menyetujui (local runner: izin dulu, lalu subprocess, "
+            "dibatasi ke workspace). Kembalikan stdout, atau error "
+            "bila kode gagal/timeout/ditolak. Izin ditolak berarti "
+            "kode TIDAK dijalankan di mana pun."
         )
 
     @property
@@ -82,15 +118,27 @@ class SandboxTool(Tool):
             timeout_s = int(kwargs.get("timeout_s", 30))
         except (TypeError, ValueError):
             return ToolResult.error("timeout_s harus angka.")
+        run_dir = Path(tempfile.mkdtemp(prefix="puspa-code-", dir=str(self._workspace)))
         try:
-            result = self._sandbox.run(code, timeout_s=timeout_s)
-        except SandboxUnavailable as exc:
-            return ToolResult.error(f"Sandbox tidak tersedia: {exc}")
-        if result.get("timed_out"):
+            program = run_dir / "code.py"
+            program.write_text(code, encoding="utf-8")
+            try:
+                result = self._executor.execute(
+                    [sys.executable, str(program)],
+                    cwd=run_dir,
+                    timeout=float(timeout_s),
+                )
+            except PermissionDenied as exc:
+                return ToolResult.error(f"Eksekusi ditolak pengguna: {exc}")
+            except OutsideWorkspaceError as exc:
+                return ToolResult.error(f"Eksekusi tidak bisa jalan: {exc}")
+        finally:
+            shutil.rmtree(run_dir, ignore_errors=True)
+        if result.timed_out:
             return ToolResult.error("Timeout: eksekusi melewati batas.")
-        stdout = (result.get("stdout") or "")[:_MAX_OUTPUT_CHARS]
-        stderr = (result.get("stderr") or "")[:_MAX_ERROR_CHARS]
-        if not result.get("ok"):
-            detail = stderr or stdout or f"exit {result.get('exit_code')}"
-            return ToolResult.error(f"Kode gagal (exit {result.get('exit_code')}): {detail}")
+        stdout = result.stdout[:_MAX_OUTPUT_CHARS]
+        stderr = result.stderr[:_MAX_ERROR_CHARS]
+        if result.returncode != 0:
+            detail = stderr or stdout or f"exit {result.returncode}"
+            return ToolResult.error(f"Kode gagal (exit {result.returncode}): {detail}")
         return stdout or "(tidak ada output)"

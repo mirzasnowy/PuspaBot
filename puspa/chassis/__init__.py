@@ -1,16 +1,25 @@
-"""Integrasi paket keamanan Puspa dengan nanobot sebagai chassis.
+"""Puspa's security package integrated with nanobot as the chassis.
 
-Tanpa mengubah kode nanobot: semua kait memakai titik ekstensi resmi
-nanobot (parameter konstruktor ``AgentLoop`` / ``Nanobot.run``,
-``AgentHook``, ``ToolRegistry``, ``SkillsLoader``).
+Without changing a line of nanobot: every hook uses nanobot's
+official extension points (``AgentLoop`` / ``Nanobot.run``
+constructor parameters, ``AgentHook``, ``ToolRegistry``,
+``SkillsLoader``).
 
-- ``context`` — token izin turn ini (ContextVar + ``RequestContext``) + sink ledger.
-- ``tools`` — ``PuspaTool``: pembungkus tool dengan cek token, cek skill, gerbang aksi keluar, audit.
-- ``registry`` — ``PuspaRegistry``: semua tool otomatis terbungkus + backstop ``prepare_call``.
-- ``hooks`` — ``PuspaHook``: siklus tugas + pesan akhir ke Buku Kerja.
-- ``skills`` — ``PuspaSkillsLoader``: skill workspace/plugin wajib bertanda tangan.
-- ``session`` — ``bind_turn``: sesi login -> token izin agen.
-- ``sandbox_tool`` — ``SandboxTool``: eksekusi kode lewat sandbox Docker Puspa.
+- ``context`` — this turn's permission token (ContextVar +
+  ``RequestContext``) + ledger sink.
+- ``tools`` — ``PuspaTool``: tool wrapper with token check, skill
+  check, outbound-action gate, audit.
+- ``registry`` — ``PuspaRegistry``: every tool auto-wrapped +
+  ``prepare_call`` backstop.
+- ``hooks`` — ``PuspaHook``: task cycle + final message to the
+  Workbook.
+- ``skills`` — ``PuspaSkillsLoader``: workspace/plugin skills must
+  be signed.
+- ``session`` — ``bind_turn``: login session -> agent permission
+  token.
+- ``sandbox_tool`` — ``SandboxTool``: code execution through the
+  local runner (permission prompt first, then a subprocess on the
+  user's own machine).
 - ``factory`` — ``PuspaChassis`` + ``assemble``: composition root.
 """
 

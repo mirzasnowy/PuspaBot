@@ -18,7 +18,7 @@ Onboarding pertama kali (G28). Batas 7 layar itu sudah tidak
 berlaku lagi setelah penambahan kematangan; total sekarang 9.
 
 Login: Google (keputusan 16, fondasi Fase 1 `puspa.auth`); sesi
-cookie httpOnly via `puspa.accounts.user_sessions`. Di tes, `create_app`
+cookie httpOnly via `puspa.accounts.ports`. Di tes, `create_app`
 menerima `test_user_id` (seam tes saja; di produksi None dan cookie
 wajib). Pesan chat + kejadian demo disimpan di `app.state` (memori
 proses) untuk demo lokal; jalur produksi menulis ke Buku Kerja
@@ -235,7 +235,7 @@ def create_app(
         if not token:
             return None
         try:
-            from puspa.accounts.user_sessions import validate_session
+            from puspa.accounts.ports import validate_session
 
             return validate_session(token, dsn=app.state.dsn)
         except Exception:
@@ -864,7 +864,7 @@ def create_app(
                 {"error": render_server_line("error.not_logged_in")}, status_code=401
             )
         data = await request.json()
-        from puspa.push.push import save_subscription
+        from puspa.push.ports import save_subscription
 
         subscription_id = save_subscription(
             user_id,
@@ -1004,12 +1004,12 @@ def create_app(
         memory_api,
         mockup_api,
         onboarding_api,
-        payments_api,
         proof_api,
         replay_api,
-        rooms_api,
-        rooms_membership_api,
     )
+    # The hosted-only APIs (room sharing, room membership, payments)
+    # live in the hosted service and mount their routes there; the
+    # local app does not import them.
 
     app.state.graph_views = graph_api.GraphViewService(dsn=app.state.dsn)
     app.state.memory_service = memory_api.MemoryReadService(dsn=app.state.dsn)
@@ -1046,11 +1046,8 @@ def create_app(
     mockup_api.register_routes(app, need_user)
     insights_api.register_routes(app, need_user)
     onboarding_api.register_routes(app, need_user)
-    rooms_api.register_routes(app, need_user)
-    rooms_membership_api.register_routes(app, need_user)
     drafts_api.register_routes(app, need_user)
     proof_api.register_routes(app, need_user)
-    payments_api.register_routes(app, need_user)
     # P-03: Web Share Target (GET/POST /share) and voice messages
     # (POST /api/voice/*). The share handler renders the Chat screen
     # with the shared text prefilled as a draft; nothing is sent

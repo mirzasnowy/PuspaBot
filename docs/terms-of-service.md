@@ -24,7 +24,7 @@ is no company behind it yet and no published support contact yet
 
 The beta is limited to people in the operator's close circle. The
 consent text the product itself records (`puspa/consent/consent.py`,
-version `v1-2026-11-17`) states that it needs a lawyer's review
+version `v2-2026-11-21`) states that it needs a lawyer's review
 before users outside the close circle are admitted. There is no age
 rule in the product yet; that is an open decision for the legal
 review (legal consultation).

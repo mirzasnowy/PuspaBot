@@ -33,8 +33,6 @@ from worker_db import (
     new_run_id,
 )
 
-from puspa.accounts import create_schema as create_account_schema
-from puspa.accounts.access import create_agent_schema
 from puspa.graphs import create_schema as create_graphs_schema
 from puspa.graphs import reset_tables as reset_graphs
 from puspa.ledger import Ledger
@@ -268,6 +266,10 @@ def _reset_tables(request, test_dsn):
     if not _test_needs_db(request.node):
         yield
         return
+    # The account / agent schemas live behind the SessionStore
+    # port (puspa.accounts.ports), so these imports are lazy.
+    from puspa.accounts.ports import create_account_schema, create_agent_schema
+
     create_account_schema(test_dsn)
     Ledger(test_dsn).create_schema()
     create_agent_schema(test_dsn)
@@ -359,7 +361,7 @@ def tmp_skill_dir(tmp_path):
 @pytest.fixture
 def make_user(test_dsn):
     """Factory: create a user (+ its mandatory Puspa agent). Returns a dict."""
-    from puspa.accounts.users import create_user
+    from puspa.accounts.ports import create_user
     from puspa.runtime.agents import ensure_puspa_agent
 
     counter = {"n": 0}

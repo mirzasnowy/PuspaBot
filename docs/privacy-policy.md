@@ -79,7 +79,7 @@ engineering side).
 - **Access.** On hosted deployments, operators see metadata and
   cost only. Support access to your content needs your permission
   per case and is recorded (consent text
-  `v1-2026-11-17`). There is no bulk export of user data for the
+  `v2-2026-11-21`). There is no bulk export of user data for the
   operator.
 
 Honest limit: these are the protections the code implements. No
@@ -101,12 +101,12 @@ has been run. The beta is small and closed for exactly that reason.
 - For as long as your account is active.
 - Backups are kept for 14 days.
 - Evidence screenshots are deleted after 30 days.
-- (Consent text `v1-2026-11-17`, `puspa/consent/consent.py`.)
+- (Consent text `v2-2026-11-21`, `puspa/consent/consent.py`.)
 
 ## 7. Your rights: access, correction, export, deletion
 
 These are implemented in the product, not just promised here
-(`docs/memory-screen-p01.md`, `puspa/consent/account.py`):
+(`docs/memory-screen.md`, `puspa/consent/account.py`):
 
 - **Access and correction.** The Memory screen shows your stored
   facts with source and confidence. You can correct a fact, or

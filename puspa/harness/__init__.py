@@ -2,8 +2,10 @@
 
 See :mod:`puspa.harness.loop` for the loop and
 :mod:`puspa.harness.executor` for the executors. Production runs
-execute generated code ONLY in the Docker sandbox
-(:class:`SandboxExecutor`); the local executor is test-only.
+execute generated code ONLY through the bound execution port
+(:class:`SandboxExecutor` — the local runner in a local install,
+the Docker sandbox on the hosted server); the local executor is
+test-only.
 Surgical edits, reproduce-first, and sandbox profiles live in
 :mod:`puspa.harness.diff`, :mod:`puspa.harness.reproduce`,
 :mod:`puspa.harness.repo_map`, and

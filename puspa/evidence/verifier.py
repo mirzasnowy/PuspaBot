@@ -21,7 +21,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from puspa.evidence.evidence import EvidenceRecord
-from puspa.sandbox.allowlist import is_allowed
+from puspa.policy.allowlist import is_allowed
 
 
 def _normalize_name(name: str) -> str:

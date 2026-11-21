@@ -32,7 +32,7 @@ def _connect(dsn=None):
 
 def export_account(user_id, dsn=None):
     """Ekspor penuh data pengguna sebagai dict (siap JSON)."""
-    from puspa.accounts.user_sessions import list_sessions
+    from puspa.accounts.ports import list_sessions
 
     with _connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
@@ -103,7 +103,7 @@ def delete_account(user_id, dsn=None):
                 (user_id,),
             )
         conn.commit()
-    from puspa.accounts.users import delete_user
+    from puspa.accounts.ports import delete_user
 
     delete_user(user_id, dsn=dsn)
     counts["users"] = 1

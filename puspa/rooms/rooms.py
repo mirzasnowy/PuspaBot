@@ -65,7 +65,7 @@ from datetime import datetime
 import psycopg
 from psycopg.rows import dict_row
 
-from puspa.accounts.users import resolve_dsn
+from puspa.accounts.ports import resolve_dsn
 
 from .errors import (
     LastOwnerError,

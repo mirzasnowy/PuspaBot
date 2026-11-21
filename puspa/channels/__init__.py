@@ -53,7 +53,6 @@ from .ledger import (
 )
 from .notify import notification_text, notify
 from .run import GatewayRunner
-from .schema import create_schema, reset_tables, schema_path
 from .telegram import TelegramAdapter
 from .whatsapp import WhatsAppAdapter
 
@@ -83,13 +82,10 @@ __all__ = [
     "UnauthorizedChatError",
     "WebhookVerificationError",
     "WhatsAppAdapter",
-    "create_schema",
     "handle_inbound",
     "load_config",
     "mentions_puspa",
     "notification_text",
     "notify",
-    "reset_tables",
     "resolve_session_key",
-    "schema_path",
 ]

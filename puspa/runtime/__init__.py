@@ -16,7 +16,8 @@ New tables (all have a `user_id` column except `system_heartbeats`):
 - `system_heartbeats`: scheduler heartbeats (component `scheduler`).
 
 RLS: enabled on the `user_id` tables with the same policies as
-Phase 0/1 (`app.current_user_id`, see `puspa.accounts.rls`).
+Phase 0/1 (`app.current_user_id`, set by the account
+row-level-security helper).
 The table owner/superuser bypasses RLS (a Postgres property); real
 enforcement is only for connections as the `puspa_app` role (see the
 Phase 0 status log, decision 15). The `events` table deliberately has

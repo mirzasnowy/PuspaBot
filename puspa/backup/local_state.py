@@ -31,7 +31,10 @@ from pathlib import Path
 
 from ..accounts.vault import derive_user_key
 from ..memory.schema import resolve_dsn
-from .backup import BackupError
+
+
+class BackupError(Exception):
+    """Backup/restore failed."""
 
 
 class StateSnapshotError(BackupError):

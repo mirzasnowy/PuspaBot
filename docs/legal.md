@@ -13,7 +13,7 @@
 | --- | --- | --- |
 | `docs/terms-of-service.md` | Terms of use: what PuspaBot is, what the agent never does, plans and prices, your responsibilities, suspension. | 0.1, 21 Nov 2026 |
 | `docs/privacy-policy.md` | What data is collected, how it is used and protected, who can see it, retention, your rights. | 0.1, 21 Nov 2026 |
-| `docs/data-consent.md` | The consent text the product shows and records, quoted verbatim from `puspa/consent/consent.py` (`v1-2026-11-17`), plus how consent is recorded and withdrawn. | 0.1, 21 Nov 2026 |
+| `docs/data-consent.md` | The consent text the product shows and records, quoted verbatim from `puspa/consent/consent.py` (`v2-2026-11-21`), plus how consent is recorded and withdrawn. | 0.1, 21 Nov 2026 |
 | `docs/content-policy.md` | Prohibited uses, what the agent refuses, how the rules are enforced, and how to report content. | 0.1, 21 Nov 2026 |
 | `docs/legal.md` | This file: status of the set and the decisions still open. | 0.1, 21 Nov 2026 |
 

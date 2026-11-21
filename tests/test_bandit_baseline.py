@@ -9,7 +9,7 @@ Rules, following the file-size ratchet in ``tests/test_file_size_ratchet.py``:
   regrowth cannot hide behind a stale entry.
 
 Scope (each exclusion has a reason, recorded in
-``docs/e20-blind-except-audit.md``, section 3):
+``docs/blind-except-audit.md``, section 3):
 
 - Only ``puspa/`` is scanned. Scanning ``tests/`` adds 12,600 ``B101``
   (assert) findings — test asserts are the test mechanism, not a
@@ -47,8 +47,15 @@ import pytest
 #: (bandit 1.8.6). A count here may only ever go down. A test id may be
 #: removed from this table only when its count reaches zero; a count may
 #: only be lowered by fixing the finding (or proving it a false positive
-#: and recording why in docs/e20-blind-except-audit.md), never by
+#: and recording why in docs/blind-except-audit.md), never by
 #: editing this table to match a regrowth.
+#:
+#: 21 Nov 2026 (split Step 2): B103 and B607 removed — both reached
+#: zero in the public tree because their only sites moved to the
+#: private repo in the split (B103: puspa/backup/drill.py;
+#: B607: subprocess call sites in moved modules). The other counts
+#: are left at their 20 Nov values even though the current scan is
+#: lower (80 total): those drops are file moves, not fixes.
 BASELINE_BANDIT: dict[str, int] = {
     # Asserts in production code: real debt (they vanish under
     # python -O), replaced with explicit checks where the assert guards
@@ -74,20 +81,17 @@ BASELINE_BANDIT: dict[str, int] = {
     # urllib URL open — check the scheme allowlist first
     # (puspa/plugins/catalog.py).
     "B310": 4,
-    # Partial path in a subprocess call (fixed binary names).
-    "B607": 4,
     # tempfile.mktemp — move to mkstemp.
     "B108": 3,
     # random module imported (informational).
     "B106": 3,
-    # Permissive chmod 0o755 on a directory (puspa/backup/drill.py).
-    "B103": 1,
     # requests call without a timeout (puspa/memory/learning_loop.py).
     "B113": 1,
 }
 
-#: Total baseline: the sum of BASELINE_BANDIT (119 on 20 Nov 2026).
-BASELINE_TOTAL = 119
+#: Total baseline: the sum of BASELINE_BANDIT (114 after the 21 Nov 2026
+#: split-Step-2 removal of B103 + B607; 119 on 20 Nov 2026).
+BASELINE_TOTAL = 114
 
 
 def _repo_root() -> Path:

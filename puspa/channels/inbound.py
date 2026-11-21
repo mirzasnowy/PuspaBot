@@ -34,7 +34,7 @@ ledger=..., delivery=...) -> InboundOutcome | None``. When set,
 a group message is offered to it first; a non-None outcome is
 returned as-is, and None falls through to ``dropped_group``.
 Without it, every group message is dropped exactly as before.
-The room handler lives in ``puspa.rooms.routing`` and is wired in
+The room handler lives in the hosted service and is wired in
 by the caller — the pipeline itself knows nothing about rooms.
 
 Ledger writes are best-effort: a ledger failure must never drop

@@ -336,21 +336,16 @@ def test_known_live_tests_are_marked_live():
     live = _collect_only("-m", "live")
     assert live.returncode == 0, live.stderr[-2000:]
     nodeids = _nodeids(live.stdout)
+    # The sandbox and image-smoke live tests moved to the private
+    # suite with the sandbox and computer backends in the split;
+    # the public tree keeps only the reader and live-eval entries.
     expected = {
-        "tests/test_sandbox.py::test_run_print_ok_in_container",
-        "tests/test_sandbox.py::test_failed_run_code_still_returns_result_not_unavailable",
-        "tests/test_sandbox.py::test_run_network_to_domain_outside_allowlist_rejected",
-        "tests/test_sandbox.py::test_run_cannot_write_to_host",
-        "tests/test_image_smoke.py::test_image_smoke_live",
         "tests/test_readers.py::test_playwright_reader_reads_test_site_when_browser_exists",
         "tests/test_hipporag_judge_live_eval.py::test_live_judge_keeps_the_fraud_triples_on_query_1",
         "tests/test_hipporag_judge_live_eval.py::test_live_judge_chain_graph_agreement_with_the_stub",
         "tests/test_hipporag_judge_live_eval.py::test_live_judge_eval_recalls_cost_and_latency",
     }
     assert expected <= nodeids
-    docker = {n for n in nodeids if n.endswith("[docker]")}
-    assert docker, "no docker-param backend test is marked live"
-    assert all("[docker]" in n for n in docker)
 
 
 def test_unit_subset_runs_with_no_database_at_all():
@@ -379,7 +374,9 @@ def test_unit_subset_runs_with_no_database_at_all():
             "-p",
             "no:cacheprovider",
             "tests/test_docs_drift.py",
-            "tests/test_computer_backends.py",
+            # The public sandbox unit tests: the computer-backend file
+            # moved to the private suite with the sandbox in the split.
+            "tests/test_localexec.py",
         ],
         cwd=BUILD_ROOT,
         env=env,

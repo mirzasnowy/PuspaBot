@@ -40,7 +40,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from puspa.accounts.user_sessions import validate_session
+from puspa.accounts.ports import validate_session
 from puspa.policy.tokens import DEFAULT_TOKEN_TTL_SECONDS, issue_token, verify_token
 
 __all__ = [
