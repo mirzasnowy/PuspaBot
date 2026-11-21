@@ -8,6 +8,74 @@
 #   .venv/bin/python -m mypy puspa tests demo
 # (CI runs the same three commands; see .github/workflows/ci.yml.)
 
+# Public distribution (split Step 1, 21 Nov 2026): the `puspa` package.
+# Version is static "0.1.0" because setuptools-scm is not installed in
+# the dev venv; when it is available, switch to dynamic versioning from
+# the release tag. requirements.txt stays the pinned set; the list
+# below is the direct runtime dependencies (pytest stays out: it is
+# test-only and lives in requirements.txt).
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "puspa"
+version = "0.1.0"
+description = "PuspaBot — a personal AI agent you run yourself"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = [
+  "nanobot-ai @ git+https://github.com/HKUDS/nanobot@e767174",
+  "psycopg[binary]==3.3.9",
+  "argon2-cffi==25.1.0",
+  "cryptography==50.0.2",
+  "sigstore==4.5.0",
+  "pydantic==2.14.3",
+  "pydantic-settings==2.16.3",
+  "loguru==0.7.3",
+  "pyyaml==6.0.3",
+  "json_repair==0.64.9",
+  "tiktoken==0.14.0",
+  "jinja2==3.1.6",
+  "regex==2026.11.15",
+  "jsonschema==4.26.0",
+  "filelock==4.2.11",
+  "fastapi==0.163.1",
+  "httpx==0.28.1",
+  "uvicorn==0.54.0",
+  "playwright==1.65.2",
+  "Pillow==13.0.0",
+  "fastembed==0.9.1",
+  "sentence-transformers==6.3.0",
+  "transformers==5.23.0",
+  "torch==2.15.0",
+  "FlagEmbedding==1.4.2",
+  "datasets==5.2.0",
+  "accelerate==1.16.0",
+  "peft==0.21.3",
+  "ir-datasets==0.6.3",
+  "sentencepiece==0.2.3",
+  "pyarrow==26.0.1",
+  "pandas==3.1.1",
+  "dill==0.4.1",
+  "multiprocess==0.70.19",
+  "xxhash==4.1.0",
+  "lz4==4.4.5",
+  "psutil==7.2.2",
+  "opentelemetry-api==1.45.2",
+  "opentelemetry-sdk==1.45.2",
+]
+
+[project.scripts]
+puspa = "puspa.cli:main"
+puspa-cli = "puspa.cli:main"
+
+# Only the `puspa` package ships in the distribution: the repo root
+# also holds sibling trees (cli/, apps/, demo/, ...) that are not
+# packages of this distribution.
+[tool.setuptools.packages.find]
+include = ["puspa*"]
+
 [tool.ruff]
 # The codebase's natural width is around 100 columns (only 180 lines
 # exceed 100, versus 749 exceeding 88), so the formatter wraps at 100.
@@ -72,7 +140,7 @@ ignore = [
 #   domain error) are not flagged by ruff and are not counted: an AST
 #   count found 248 blind handlers in scope, 56 of them re-raising.
 #   Audit notes (which handlers must stay blind and why) are in
-#   docs/e20-blind-except-audit.md.
+#   docs/blind-except-audit.md.
 # - TRY (tryceratops): TRY004 fires on raises inside try blocks, which
 #   this codebase uses as its error-translation pattern. Follow-up: move
 #   the raises out of the try blocks where it is safe, then enable TRY.
