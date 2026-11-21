@@ -58,6 +58,35 @@ def test_shim_uses_the_installed_entry_point():
     assert "PuspaBot" in result.stdout
 
 
+def test_shim_skips_itself_when_its_own_bin_dir_is_first_on_path(tmp_path):
+    """npx/npm put the package bin dir first on PATH, so a bare `puspa`
+    lookup finds this shim itself. The shim must skip itself and run
+    the pip console script found later on PATH — never recurse (seen
+    21 Nov 2026: `npx puspa --help` grew a 268-deep node chain)."""
+    bin_dir = tmp_path / "node_modules" / ".bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "puspa").symlink_to(BUILD_DIR / "bin" / "puspa.js")
+    real_bin = tmp_path / "realbin"
+    real_bin.mkdir()
+    console_script = real_bin / "puspa"
+    console_script.write_text('#!/bin/sh\necho "REAL-CONSOLE-SCRIPT $@"\n', encoding="utf-8")
+    console_script.chmod(0o755)
+    env = dict(os.environ)
+    # Only the two fake dirs plus the system dirs node needs; nothing
+    # else on PATH, so the only `puspa` entries are the shim and the fake.
+    env["PATH"] = os.pathsep.join([str(bin_dir), str(real_bin), "/usr/bin", "/bin"])
+    result = subprocess.run(
+        ["puspa", "--help"],
+        capture_output=True,
+        check=False,
+        text=True,
+        env=env,
+        timeout=20,
+    )
+    assert result.returncode == 0
+    assert "REAL-CONSOLE-SCRIPT --help" in result.stdout
+
+
 def test_shim_falls_back_to_python_module(tmp_path):
     """With no `puspa` on PATH, the shim runs `python -m puspa`."""
     fake_python = tmp_path / "python"
