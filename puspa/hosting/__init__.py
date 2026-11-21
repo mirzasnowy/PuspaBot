@@ -18,12 +18,12 @@ from .pairing import (
 )
 
 __all__ = [
-    "AddressLockedError",
-    "HostingError",
     "PAIRING_CODE_TTL_SECONDS",
     "PAIRING_LOCKOUT_SECONDS",
     "PAIRING_MAX_FAILURES",
     "PAIRING_SESSION_TTL_SECONDS",
+    "AddressLockedError",
+    "HostingError",
     "PairingError",
     "PairingStore",
 ]
