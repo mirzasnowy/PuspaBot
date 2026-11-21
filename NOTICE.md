@@ -783,3 +783,27 @@ the standard library plus Puspa's existing sandbox modules
 (policy, quota, runner); tests use real sockets for the proxy,
 fake runtimes/binaries for Docker paths, and a fake UDP DNS
 server for the pinned resolver (no live containers).
+
+# NOTICE - Kosmos Phase 2, V2-31 (22 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **vercel-labs/agent-desktop** (https://github.com/vercel-labs/agent-desktop,
+  Apache License 2.0), pattern only, studied at version `v1.2.0`:
+  the accessibility-tree snapshot shape (JSON, one ref per
+  element), the act-on-a-ref then re-read-to-verify loop, the
+  skeleton-then-drill-down shape for huge trees, and the headless
+  default (no mouse move, no focus steal). No agent-desktop code
+  was copied, ported, vendored, or depended on: all Puspa code in
+  this item was written from scratch in Python (agent-desktop is
+  a Rust CLI + C library), in `puspa/computer/`. Full license
+  text: Apache License 2.0
+  (https://www.apache.org/licenses/LICENSE-2.0).
+
+## New dependency: none
+
+No new dependency was added for V2-31. All new modules use only
+the standard library (the AT-SPI backend uses ctypes against
+the system libatspi) plus Puspa's existing permission model
+(`puspa.localexec` prompt, `puspa.policy.gate` token check);
+tests use the in-memory fake backend (no live desktop).
