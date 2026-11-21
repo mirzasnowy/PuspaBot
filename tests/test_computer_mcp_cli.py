@@ -76,12 +76,16 @@ def _ref(hands, name):
 # -- MCP definitions ------------------------------------------------
 
 
-def test_three_tools_with_names_descriptions_and_schemas():
+def test_seven_tools_with_names_descriptions_and_schemas():
     tools = tool_definitions()
     assert [tool["name"] for tool in tools] == [
         "computer_snapshot",
         "computer_click",
         "computer_verify",
+        "computer_visual_locate",
+        "computer_visual_click",
+        "computer_web_open",
+        "computer_web_click",
     ]
     for tool in tools:
         assert tool["description"].strip()
@@ -89,6 +93,11 @@ def test_three_tools_with_names_descriptions_and_schemas():
         assert "properties" in tool["inputSchema"]
     assert tool_definitions()[1]["inputSchema"]["required"] == ["ref"]
     assert tool_definitions()[2]["inputSchema"]["required"] == ["ref"]
+    # The V2-32 tools keep the same shape: one required string each.
+    assert tool_definitions()[3]["inputSchema"]["required"] == ["text"]
+    assert tool_definitions()[4]["inputSchema"]["required"] == ["text"]
+    assert tool_definitions()[5]["inputSchema"]["required"] == ["url"]
+    assert tool_definitions()[6]["inputSchema"]["required"] == ["text"]
 
 
 def test_server_definition_validates():

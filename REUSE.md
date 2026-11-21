@@ -842,3 +842,13 @@ the fail-closed half is tested live; the first live check is on
 a Linux desktop session. Windows/macOS backends are not built
 (the seam raises for them). The MCP server itself (`puspa mcp`)
 is V2-37 work, not this item: only the definitions exist here.
+
+## Kosmos Phase 2 (V2-32: Visual fallback, screenshot + OCR/vision + web bridge)
+
+| Ide besar | Dari repo apa (lisensi) | Apa yang diadaptasi | Apa yang ditulis ulang dari nol |
+| --- | --- | --- | --- |
+| When the accessibility tree is empty or too poor, fall back to screenshot + OCR/vision grounding (locate elements by appearance, click by coordinates only as fallback, with verification by re-reading); route web targets to browser automation | vercel-labs/agent-desktop (Apache-2.0, v1.2.0), same pattern as V2-31 | The observe-act-verify loop applied to a screenshot instead of a tree, and the idea of grounding an element by appearance when no tree exists | `puspa/computer/vision.py` (OCR backend seam, fake + tesseract-CLI backends, TSV parsing, phrase/word grounding, poor-tree decision, vision-model seam), `puspa/computer/screenshot.py` (screenshot backend seam, fake backend, real X11 backend through ctypes XGetImage + Pillow, verified live under Xvfb), `puspa/computer/fallback.py` (VisualFallback orchestrator, gated coordinate click + re-read verify, fake + XTest clickers), `puspa/computer/gating.py` (shared token + prompt gate), `puspa/computer/web.py` (web bridge: fake + Playwright headless-Chromium backends, DOM-first grounding with OCR fallback, gated web click + re-read verify), `puspa/computer/cli.py` (`puspa computer visual/web`), `puspa/computer/mcp.py` (four new MCP tool definitions + handlers) |
+
+No new dependency was added for V2-32 (Playwright and Pillow were already Puspa dependencies; the X11 backend uses ctypes against the system libX11, tesseract is an external binary, not a dependency).
+Tests: `tests/test_computer_visual.py` (OCR grounding, fake + tesseract fail-closed, X11 capture live under Xvfb, gated coordinate-click loop, end-to-end task in an app with no tree) + `tests/test_computer_web.py` (routing, fake web page, gated web click loop, Playwright backend live against a local page) + `tests/test_computer_visual_mcp_cli.py` (four new MCP definitions + handlers, CLI visual/web on the fake backends).
+Honest limits: no live desktop exists on this VM (no display, no AT-SPI bus), so the X11 backend was only run against a test window under Xvfb, never a real application; tesseract is not installed, so real OCR was never run here; libXtst is not installed, so no real coordinate click was ever pressed here; the vision-model path is a seam with nothing behind it.
