@@ -1,4 +1,4 @@
-# Causal Ledger (Kosmos K4)
+# Causal Ledger (Kosmos causal ledger)
 
 Hypotheses of the form "X -> Y under condition C" with a
 strength, evidence, and expiry (`docs/kosmos-design.md`
@@ -76,7 +76,7 @@ propose (first observation, strength 0.5)
 Expired and contradicted are terminal: observing the same
 triple again starts a fresh hypothesis with a new id, and the
 old one stays stored as history. The daily sleep
-consolidation (K9) calls `prune_expired()` for an explicit
+consolidation (daily sleep consolidation and monthly ontology review) calls `prune_expired()` for an explicit
 expiry pass that reports how many hypotheses expired.
 
 ## The read path
@@ -126,7 +126,7 @@ link. Causal updates are fail-open: a ledger failure never
 breaks recording.
 
 No new ledger event type was added: the closed set of 31
-revision-7 event types stays closed (K4 follows the G6
+revision-7 event types stays closed (causal ledger follows the audit trail with initiator
 precedent). Hypotheses reference ledger events by id in
 their evidence only; when the loop needs to log anything it
 uses existing event types (for example `evidence_recorded`).

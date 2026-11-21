@@ -14,7 +14,7 @@ is `CLA.md` at the repo root.
 exact sentence as a comment on their own PR:
 
 ```
-I have read the Puspa Contributor License Agreement (CLA.md) and I agree to its terms.
+I have read the PuspaBot Contributor License Agreement (CLA.md) and I agree to its terms.
 ```
 
 One signature covers that PR; a new PR needs a new comment. The bot
@@ -67,16 +67,16 @@ branch, so PR code is never executed; the checkout takes the base
 ref on purpose. No GitHub App and no hosted CLA service is needed:
 the workflow runs entirely in-repo on the built-in `GITHUB_TOKEN`.
 
-## The license gap (D-01, open — read this)
+## The license gap (license choice, open — read this)
 
 The repo has **no `LICENSE` file**: the project license has not
-been chosen, and that choice belongs to the owner (decision D-01,
+been chosen, and that choice belongs to the owner (decision license choice,
 still open). This item does **not** choose a license, and no
 license name appears anywhere in the CLA. `CLA.md` section 5 says
 so plainly: until a license is chosen, the grants in the CLA itself
 are the license for a contribution, and the CLA takes full effect as
 a project-license grant once a license is chosen. Do not present
-the CLA as complete project licensing until D-01 is closed.
+the CLA as complete project licensing until license choice is closed.
 
 ## Verifying locally
 
@@ -85,7 +85,7 @@ the CLA as complete project licensing until D-01 is closed.
 .venv/bin/python -m pytest tests/test_cla_check.py -q
 
 # Simulated PR payloads (the test file does this too):
-echo '[{"user": {"login": "alice"}, "body": "I have read the Puspa Contributor License Agreement (CLA.md) and I agree to its terms."}]' > /tmp/comments.json
+echo '[{"user": {"login": "alice"}, "body": "I have read the PuspaBot Contributor License Agreement (CLA.md) and I agree to its terms."}]' > /tmp/comments.json
 .venv/bin/python scripts/cla_check.py --pr-author alice --comments /tmp/comments.json
 
 # Workflow YAML parses:

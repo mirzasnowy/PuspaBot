@@ -1,6 +1,6 @@
 # Migrations — one source of truth for the schema
 
-Before E-08 the schema lived in two places: a dozen SQL files under
+Before migration tool and schema snapshot the schema lived in two places: a dozen SQL files under
 `infra/` that a human ran by hand, and `CREATE TABLE` statements
 inside Python modules that ran at runtime (`agents`,
 `model_settings`, and others). A user with real data had no safe
@@ -109,7 +109,7 @@ Rules the runner enforces:
   `tests/test_bitemporal.py::test_migration_is_idempotent_and_backfills_honestly`
   and `tests/test_pwa_payments_api.py::test_api_creates_schema_when_table_missing`).
 
-## Expand, then contract (E-21, plan 9.6)
+## Expand, then contract (feature flags and canary releases, plan 9.6)
 
 Old and new versions must be able to run together during a
 rollback, so a migration's `up` section never drops a column or

@@ -1,7 +1,7 @@
-# P-01 — Memory screen: what already existed vs what was added
+# Memory screen: what already existed vs what was added
 
 Plan section 12.6, GitHub issue #15. The deliverable is the "What
-Puspa knows about me" screen plus its read endpoints: facts with
+PuspaBot knows about me" screen plus its read endpoints: facts with
 source and confidence, edit / delete / export / "forget this",
 guest mode, and room memory kept separate from personal memory.
 The point is data-subject rights made visible: access, correction,
@@ -12,30 +12,30 @@ deletion, consent withdrawal.
 - **Versioned profile facts** (`puspa/memory/facts.py`,
   `puspa/memory/profile.py`): record / supersede / expire /
   restore, history per key, proposals for inferred facts
-  (confirm / reject), soft delete. The P-01 service reads and
+  (confirm / reject), soft delete. The memory read endpoints and memory screen service reads and
   writes through these stores; it adds no second fact store.
 - **Episodic memory** (`puspa/memory/episodic.py`): chat history
-  with embeddings; the graph view (B18) seeds from it.
-- **Second-brain graph view** (B18, `puspa/pwa/graph_api.py`,
+  with embeddings; the graph view (second-brain graph view) seeds from it.
+- **Second-brain graph view** (second-brain graph view, `puspa/pwa/graph_api.py`,
   `docs/openapi-graph.yaml`): node/edge endpoints and graph
-  edits on the Memory screen. P-01 does not touch the graph; it
+  edits on the Memory screen. memory read endpoints and memory screen does not touch the graph; it
   covers the facts list the graph view never showed.
 - **Full user export** (`puspa/ledger/export.py`:
   `build_user_export`): facts with history, episodes,
   procedures, summaries, grants, consents, ledger events, vault
-  metadata. P-01 wires it to `GET /api/memory/export` as a
+  metadata. memory read endpoints and memory screen wires it to `GET /api/memory/export` as a
   download instead of rebuilding it.
 - **Room memory** (`puspa/rooms/memory.py`, `room_memories`
   table): three layers (personal / room / private-answer),
   membership-gated reads and deletes. There were no HTTP routes
-  for it; P-01 adds them. The service never reads personal
+  for it; memory read endpoints and memory screen adds them. The service never reads personal
   memory for a room request.
 - **Account deletion** (`puspa/consent/account.py`): hard delete
-  of all user data. P-01's per-fact forget is the smaller,
+  of all user data. memory read endpoints and memory screen's per-fact forget is the smaller,
   per-fact version of the same right; account deletion is
   unchanged.
 
-## What P-01 added
+## What memory read endpoints and memory screen added
 
 - **Migration 0023** (`puspa/migrations/versions/0023_memory_rights.sql`):
   `profile_facts.confidence` (REAL, 0-1) and
@@ -76,7 +76,7 @@ deletion, consent withdrawal.
     memory, membership-gated.
 - **Source label + confidence rule** (in the service, stated
   openly): a stored `source_detail` wins, else the label is
-  built from source and creation date ("you told Puspa on 3
+  built from source and creation date ("you told PuspaBot on 3
   November 2026"; an unconfirmed inference says so). A stored
   confidence wins; otherwise user-stated/confirmed is 1.0 by
   definition and an unverified inference is 0.5. The response
@@ -86,7 +86,7 @@ deletion, consent withdrawal.
   set of 31 types stays closed) on `memory-rights-<user_id>`,
   with content `{"kind": "memory_right", "operation": ...,
   "fact_id": ...}` — ids only, never fact content. This differs
-  deliberately from B18 graph corrections, which record
+  deliberately from second-brain graph view graph corrections, which record
   before/after detail: a "forget this" that kept a copy of the
   fact in the audit trail would not be a forget.
 - **Guest mode** (a turn that saves no memory): the flag is

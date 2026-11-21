@@ -1,11 +1,11 @@
-# Approvals taxonomy (G4)
+# Approvals taxonomy (approvals taxonomy)
 
-Puspa already had a single outbound gate (`puspa/policy/gate.py`:
+PuspaBot already had a single outbound gate (`puspa/policy/gate.py`:
 content-hash binding, 24-hour token expiry). Every approval looked
 the same. This module adds the taxonomy on top of it, in
 `puspa/policy/approvals.py`.
 
-Pattern source (studied, rewritten as Puspa code, never copied
+Pattern source (studied, rewritten as PuspaBot code, never copied
 verbatim — see `NOTICE.md` and `REUSE.md`): OpenBot
 `docs/approvals.md` + `app/src/lib/approval-rules/` +
 `api/openapi/approvals.yaml` (MIT).
@@ -22,7 +22,7 @@ Seven kinds always ask in every edition:
 | `post` | Post publicly |
 | `pay` | Pay money |
 | `change_credentials` | Change an account password or settings |
-| `install` | Install a skill from the marketplace (G30) |
+| `install` | Install a skill from the marketplace (skill discovery) |
 
 ## Tiered answers
 
@@ -158,7 +158,7 @@ enforces its 24-hour token expiry; this layer only decides
 *whether* to ask. The tests prove both still hold: a tampered
 content hash voids the approval, and an expired token is refused.
 
-## Server-rendered approval cards (E-10, plan 6.2)
+## Server-rendered approval cards (server-rendered approval card and narrowed always-approve, plan 6.2)
 
 `puspa/policy/approval_cards.py` renders what the user sees, from
 the structured tool arguments that will actually run — and nothing
@@ -183,7 +183,7 @@ returns `(gate_request, card)` for the same content the gate
 binds to. `DraftingService.request_send_approval` includes the
 rendered card in its `awaiting_approval` answer.
 
-## Narrowed "always" + beta ban (E-10, plan 6.3)
+## Narrowed "always" + beta ban (server-rendered approval card and narrowed always-approve, plan 6.3)
 
 An "always" answer used to bind only to the action kind. It can
 now be narrowed when recorded:
@@ -204,7 +204,7 @@ for `pay` and `send_to_other`: recording one is refused, and an
 answer recorded before beta mode was switched on never applies.
 Other kinds are unaffected.
 
-## Approval fatigue (E-10, plan 6.3)
+## Approval fatigue (server-rendered approval card and narrowed always-approve, plan 6.3)
 
 `ApprovalFatigueTracker` (same module) measures the signal the
 plan names: the share of decisions made faster than a human could
@@ -232,13 +232,13 @@ never blocks a decision, however fast.
 - **No persistence of the check-in flag.** Whether a task came from
   check-in is passed per call (`from_checkin`); nothing records
   which tasks are check-in tasks.
-- **The gate is unchanged, except for `Gate.reject` (P-11).**
+- **The gate is unchanged, except for `Gate.reject` (visual approval overlay).**
   `puspa/policy/gate.py` was not modified by the taxonomy; the
-  taxonomy sits in front of it. P-11 added one method, `reject`,
+  taxonomy sits in front of it. visual approval overlay added one method, `reject`,
   as the complement of `approve`: a rejected request can never
   execute or be approved later. A caller that goes straight to
   the gate bypasses the taxonomy.
-- **Visual overlay (P-11).** The overlay over this gate lives in
+- **Visual overlay (visual approval overlay).** The overlay over this gate lives in
   `puspa/pwa/approval_overlay.py` (see
   `docs/approval-overlay.md`): it highlights the target element
   in the event-based live frame and records the per-action
@@ -249,7 +249,7 @@ never blocks a decision, however fast.
   Server-rendered cards never set it — lines + hash are the
   source of truth — but an older payload carrying a narrative
   summary would still render it. Removing that field from the
-  component is a frontend follow-up, not part of E-10.
+  component is a frontend follow-up, not part of server-rendered approval card and narrowed always-approve.
 - **Fatigue timing starts at first render.** The clock starts
   when the tasks screen first serves the card, not when the user
   actually looks at it; a card left open and decided later

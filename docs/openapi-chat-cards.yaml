@@ -1,8 +1,8 @@
-# Rich cards in Chat API contract (P-12, plan section 12.10).
+# Rich cards in Chat API contract (rich cards in chat, plan section 12.10).
 #
-# Split out of docs/openapi-pwa.yaml on 21 Nov 2026 (P-12): the
+# Split out of docs/openapi-pwa.yaml on 21 Nov 2026 (rich cards in chat): the
 # card contract (3 endpoints + 9 schemas) would have pushed the
-# main spec past the 2000-line hard cap (Wave 30 precedent:
+# main spec past the 2000-line hard cap (earlier precedent:
 # rooms, graph, mockup, payments, controls, voice, receipts,
 # live-view, replay, and approval-overlay split the same way).
 # The main spec references this file with $ref stubs and adds
@@ -13,7 +13,7 @@
 #
 # Honest scope, in the contract: a card is declarative JSON on
 # a chat message — data describes the card, the renderer decides
-# how to show it (the same split as the B7 mockup doc). The map
+# how to show it (the same split as the prompt-to-visual-mockup doc). The map
 # card's tiles load client-side from free OpenStreetMap tiles
 # (tile.openstreetmap.org, no API key); no live browser exists
 # in this VM to prove a tile renders, so the contract promises
@@ -21,10 +21,10 @@
 # tile in a real browser. The options card is a choice (tapping
 # an option sends its label as a chat message), not a form:
 # the interactive components (calculator, slider, form) are
-# P-14, not this.
+# interactive components in chat, not this.
 openapi: 3.0.3
 info:
-  title: Puspa rich cards in Chat API
+  title: PuspaBot rich cards in Chat API
   version: 1.0.0
 paths:
   /api/chat/cards:
@@ -32,7 +32,7 @@ paths:
       tags: [chat-cards]
       summary: Post a rich card into the chat
       description: |
-        P-12: validate one card payload (draft / options / chart
+        rich cards in chat: validate one card payload (draft / options / chart
         / map) and append it as a `puspa` message carrying the
         card, so the Chat screen shows it in the thread. A bad
         card is a 400: unknown kind, bad coordinates, an empty
@@ -66,9 +66,9 @@ paths:
   /api/chat/cards/draft/{draft_id}:
     post:
       tags: [chat-cards]
-      summary: Show a stored B13 draft as a draft card in chat
+      summary: Show a stored co-drafting draft as a draft card in chat
       description: |
-        P-12: build a draft card from the stored B13 draft and
+        rich cards in chat: build a draft card from the stored co-drafting draft and
         append it as a `puspa` chat message. An email draft
         carries a `mailto:` link (recipient + body); a message
         draft is copy-only. The draft text is never edited
@@ -103,7 +103,7 @@ paths:
       tags: [chat-cards]
       summary: Show the Insights report as a chart card in chat
       description: |
-        P-12: build a chart card from the logged-in user's G28
+        rich cards in chat: build a chart card from the logged-in user's onboarding and cost insights
         Insights report (`activity_per_day`: every day in the
         window, including zero days, so the chart has no gaps)
         and append it as a `puspa` chat message. The metric
@@ -167,7 +167,7 @@ components:
     DraftCard:
       type: object
       description: |
-        A draft email or message (B13 draft text): the body is
+        A draft email or message (co-drafting draft text): the body is
         copyable, and an email draft with a recipient carries a
         `mailto:` link that opens Mail with the body filled in.
         No subject is ever guessed: the link carries one only
@@ -209,7 +209,7 @@ components:
       description: |
         A question with 2..8 tappable options. Tapping one
         sends its label as a chat message. A choice, not a
-        form: interactive components are P-14.
+        form: interactive components are interactive components in chat.
       properties:
         kind:
           type: string
@@ -237,7 +237,7 @@ components:
       type: object
       description: |
         A small data chart: one metric per labelled point,
-        drawn as bars. The points come from the G28 Insights
+        drawn as bars. The points come from the onboarding and cost insights Insights
         report (`activity_per_day`); the metric is one of its
         fields.
       properties:

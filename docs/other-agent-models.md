@@ -1,4 +1,4 @@
-# Other-agent goal models (Kosmos K5)
+# Other-agent goal models (Kosmos other-agent goal models)
 
 Models of what other people want and will do
 (`docs/kosmos-design.md` section C point 5). One model per
@@ -36,7 +36,7 @@ Evidence links are `{"kind", "id"}` dicts, kinds
 `observation` (an experience id from the learning loop),
 `interaction` (an observation count marker for the contact,
 `"<contact_id>:observations=<n>"`), or `causal` (the effect
-key of a K4 causal expectation). Goal models cite ledger
+key of a causal ledger causal expectation). Goal models cite ledger
 events as evidence by id only: no new ledger event type was
 added, the closed set of 31 revision-7 event types stays
 closed.
@@ -87,7 +87,7 @@ read path the planner and the turn loop query:
   was never observed: fail-open, never invented. Reply rate,
   delay, and channel come from the contact belief when one
   exists, and from the goal model otherwise.
-- `causal_expectations` is the active K4 expectations for the
+- `causal_expectations` is the active causal ledger expectations for the
   cause `"contact:<contact_id>"`, strongest first; they are
   attached as evidence to the reply prediction, never as a
   prediction of their own.
@@ -123,7 +123,7 @@ a result naming a `contact_id` plus `asked_for` /
 labels by the keyword inferrer). The learning loop does not
 need to change: it already sees the same task results.
 
-What is reused from K1, and where it is not reused:
+What is reused from intent engine, and where it is not reused:
 
 - Reused: the shape of a scored claim. A goal is a labelled,
   scored claim with evidence links, like an
@@ -139,7 +139,7 @@ What is reused from K1, and where it is not reused:
   desire/goal/values split for other agents: the system cannot
   see another person's values, only what they ask for and
   agree to, so a goal model claims nothing about values.
-- Reused from K4: the update-rule shape (first observation
+- Reused from causal ledger: the update-rule shape (first observation
   neutral at 0.5, +0.1 confirm, -0.2 contradict, terminal
   status kept as history) and the causal expectations as
   supporting context on the read path.

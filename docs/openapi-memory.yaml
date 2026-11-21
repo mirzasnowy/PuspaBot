@@ -1,6 +1,6 @@
-# Memory screen API contract (P-01, plan section 12.6).
+# Memory screen API contract (memory read endpoints and memory screen, plan section 12.6).
 #
-# The "What Puspa knows about me" endpoints: the facts list with
+# The "What PuspaBot knows about me" endpoints: the facts list with
 # source labels and confidence, correction / forget / proposal
 # actions, export, consent withdrawal, guest mode, and room memory
 # (separate from personal memory). The Error schema stays in the
@@ -8,7 +8,7 @@
 # here, as in docs/openapi-graph.yaml.
 openapi: 3.0.3
 info:
-  title: Puspa memory screen API
+  title: PuspaBot memory screen API
   version: 1.0.0
 paths:
   /api/memory:
@@ -17,7 +17,7 @@ paths:
       summary: Memory screen payload for the logged-in user
       description: |
         One page of the user's facts (each with `source_label`, a
-        human-readable provenance such as "you told Puspa on 3
+        human-readable provenance such as "you told PuspaBot on 3
         November 2026", and `confidence`), the inferred proposals
         waiting for confirmation, the consent state, and the
         guest-mode flag. Default view is live memory (active +
@@ -460,7 +460,7 @@ components:
           enum: [user_stated, user_confirmed, inferred]
         source_label:
           type: string
-          description: Human-readable provenance, for example "you told Puspa on 3 November 2026"
+          description: Human-readable provenance, for example "you told PuspaBot on 3 November 2026"
         confidence:
           type: number
           format: float

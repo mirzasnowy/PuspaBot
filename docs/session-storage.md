@@ -1,9 +1,9 @@
 # Session Storage
 
-How Puspa persists sessions: one SQLite database per profile, a
+How PuspaBot persists sessions: one SQLite database per profile, a
 single writer per profile, full-text search, and compression lineage.
 Pattern source: hermes-agent `persistence/` + `persistence_assembly.py`
-+ `gateway/` + `session-storage.md`, rewritten as Puspa's own code
++ `gateway/` + `session-storage.md`, rewritten as PuspaBot's own code
 (no verbatim copying). License note: hermes-agent is MIT.
 
 ## Layout
@@ -73,7 +73,7 @@ The rule is enforced in code, not just in this document:
   a new gateway may then open.
 - The registry is process-wide only, so opening a gateway also
   takes two cross-process layers (`puspa.sessions.single_writer`,
-  E-07, plan 5.2), both held for the gateway's lifetime:
+  single-writer lock across containers, plan 5.2), both held for the gateway's lifetime:
   1. An exclusive non-blocking `flock` on `state.db` itself. A
      second process on the same volume is refused at open time.
   2. A Postgres session-level advisory lock per agent id
@@ -118,23 +118,23 @@ it is rejected loudly instead of interleaving writes.
 ## Full-text search (FTS5)
 
 Message content is searchable with SQLite FTS5 (`messages_fts`,
-BM25-ranked). The mechanism is the one built in G7
+BM25-ranked). The mechanism is the one built in memory tightening
 (`puspa.memory.recall.FtsIndex` over a SQLite FTS5 sidecar) — not a
 second mechanism:
 
-- The MATCH query is built by G7's safe builder
+- The MATCH query is built by memory tightening's safe builder
   (`puspa.memory.recall._fts5_query`), so user punctuation can never
   break out of the FTS5 query syntax.
-- Three G7 shortcomings are fixed here:
-  1. G7 commits after every single indexed row; here the FTS5 table
+- Three memory tightening shortcomings are fixed here:
+  1. memory tightening commits after every single indexed row; here the FTS5 table
      is kept in sync by SQLite triggers inside the writer's own
      transaction — zero extra commits.
-  2. G7 has no way to detect index drift; here `verify_fts()`
+  2. memory tightening has no way to detect index drift; here `verify_fts()`
      probes the index itself (a MATCH query per message — `COUNT(*)`
      on an external-content FTS5 table reads the content table, not
      the index) and runs the FTS5 `integrity-check`, and
      `rebuild_fts()` restores the index.
-  3. G7's default index is in-memory and lost on close; here the
+  3. memory tightening's default index is in-memory and lost on close; here the
      FTS5 table lives in the same `state.db` file as the messages,
      so the index is persistent by construction.
 
@@ -148,7 +148,7 @@ hits = gateway.search_messages("PLN electricity bill", limit=20)
 
 ## Compression lineage
 
-A compression births a child session. The G19 compressor
+A compression births a child session. The context compression compressor
 (`puspa.runtime.context_compression.ContextCompressor`) mints a fresh
 `lineage_id` per compression and returns a `CompressionResult` with
 the compressed messages and `stats["compressed"]`. The seam is
@@ -169,13 +169,13 @@ the compressed messages and `stats["compressed"]`. The seam is
 `lineage_chain(session_id)` walks the ancestry
 `[self, parent, grandparent, ...]`; `children(session_id)` lists a
 session's direct children. The summary marker value is shared with
-G19 (`puspa.runtime.context_compression.SUMMARY_MARKER`) and a test
+context compression (`puspa.runtime.context_compression.SUMMARY_MARKER`) and a test
 asserts the two stay equal.
 
 ## Profile isolation
 
 Two profiles are two database files; nothing in the code ever opens
-another profile's file. `puspa.memory.scope.CredentialScope` (G22)
+another profile's file. `puspa.memory.scope.CredentialScope` (credential pool and per-profile secret scopes)
 applies the same rule to credentials: no fallback to another
 profile.
 
@@ -220,7 +220,7 @@ file read-only and names the applicable recovery steps.
   the second refused) cannot run live on a host without Docker.
   `tests/test_single_writer_lock.py` proves the same semantics
   with two processes on one volume and one database, and the
-  container form is CI / E-02 work.
+  container form is CI / VPS validation and machine-replacement drills work.
 - The gateway holds one SQLite connection; very large histories
   (tens of thousands of messages in one session) have no paging in
   `get_session()` — callers that need a window should query with a

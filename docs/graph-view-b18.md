@@ -1,9 +1,9 @@
-# B18 — Second-brain graph view, user-visible and user-editable
+# Second-brain graph view, user-visible and user-editable
 
 ## What it is
 
 The KnowledgeGraph already fed the AI's memory, but the user could
-not see it: the PWA Memory screen showed text only. B18 adds the
+not see it: the PWA Memory screen showed text only. second-brain graph view adds the
 visible second brain: a node-and-edge graph view on the Memory
 screen, served by a bounded read endpoint, with all four edit
 flows (rename node, add/delete node, add/change/delete edge,
@@ -75,7 +75,7 @@ a stray record behind.
 
 Nodes whose kind is one of `file`, `function`, `class`,
 `module`, `table`, `config`, or whose name ends in `.py`,
-belong to the G29 code graph. Any edit touching one —
+belong to the code graph code graph. Any edit touching one —
 directly, through an edge, or as a `correct_fact` target —
 is refused with 403, and adding a node with a code-graph kind
 is refused the same way. Code nodes are visible in the view
@@ -173,7 +173,7 @@ that.
 - Replay is best effort: a correction whose target vanished
   (the episode behind it was deleted) is skipped, never fatal.
 
-## B14 notes
+## Indonesian context pass notes
 
 Indonesian-context pass for this ticket: none of the graph
 content is locale-specific (node names come from the user's

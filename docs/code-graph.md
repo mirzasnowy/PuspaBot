@@ -1,13 +1,13 @@
-# Code graph (G29)
+# Code graph (code graph)
 
-The code graph answers questions about Puspa's own Python code
+The code graph answers questions about PuspaBot's own Python code
 from a knowledge graph, without re-reading the files: which
 functions call a function, what a function reaches in two hops,
 what a file defines and imports. The pattern follows
 Graphify (build a knowledge graph from a codebase and query
-the graph), rewritten as Puspa's own code — no Graphify code
+the graph), rewritten as PuspaBot's own code — no Graphify code
 is copied, vendored, or depended on. Graphify is Apache-2.0;
-see `REUSE.md` / `NOTICE.md` (G29) for the attribution.
+see `REUSE.md` / `NOTICE.md` (code graph) for the attribution.
 
 ## What is extracted
 

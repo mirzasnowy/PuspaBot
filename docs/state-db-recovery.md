@@ -1,9 +1,9 @@
 # State Database Recovery
 
-How to diagnose and recover a corrupt Puspa session database
+How to diagnose and recover a corrupt PuspaBot session database
 (`<home>/state.db`). Pattern source: hermes-agent
 `state-db-recovery.md` + housekeeping (`maintenance.py`,
-`state_meta.py`), rewritten as Puspa's own procedure.
+`state_meta.py`), rewritten as PuspaBot's own procedure.
 
 ## The one rule
 

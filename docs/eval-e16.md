@@ -1,6 +1,6 @@
-# E-16: attack corpus, benchmark, mutation, scorecard (plan section 8)
+# Attack corpus, benchmark, mutation and scorecard (plan section 8)
 
-This package is the measurement side of Puspa: it proves numbers
+This package is the measurement side of PuspaBot: it proves numbers
 instead of claiming them. Nothing here calls a model; every
 number comes from deterministic code and is reported with an
 uncertainty interval, a date, and a corpus version.
@@ -100,7 +100,7 @@ uncertainty interval, a date, and a corpus version.
   0.300. Full-module mutmut was not run: it would take much
   longer on this VM.
 
-## Follow-up re-measurement (2026-11-20, E-16 follow-up)
+## Follow-up re-measurement (2026-11-20, attack corpus, benchmark, mutation and scorecard follow-up)
 
 Same frozen corpus v1.0.0, same 50 retrieval questions, same
 first-10-mutants run. Scorecard regenerated at
@@ -162,18 +162,18 @@ first-10-mutants run. Scorecard regenerated at
   `tests/test_token_permission_regressions.py`, one per mutant
   (M001/M002 share the rank-order test; M008/M009/M010 one each
   for the tools/domains/connectors guards). Correction to the
-  E-16 note above: the measured line mapping is tools 173,
+  attack corpus, benchmark, mutation and scorecard note above: the measured line mapping is tools 173,
   domains 177, connectors 181 — M010 is the connectors guard,
   not the domains guard.
 - Timed-out mutant verdict: no mutant in the first 10 hangs.
-  The E-16 timeout does not reproduce: two consecutive runs on
+  The attack corpus, benchmark, mutation and scorecard timeout does not reproduce: two consecutive runs on
   a healthy database decided all 10 mutants in 31s and 37s.
-  The E-16 timeout was most likely an environment stall (the
+  The attack corpus, benchmark, mutation and scorecard timeout was most likely an environment stall (the
   VM/database instability of 19-20 Nov — the mutation runner's
   per-test database fixture waits on Postgres), not a hang risk
   in the code. No mutant touches a loop or a retry, so there is
   nothing in the code that could hang on these inputs. The
-  exact E-16 timeout was not logged per mutant, so this stays a
+  exact attack corpus, benchmark, mutation and scorecard timeout was not logged per mutant, so this stays a
   likelihood, not a proven cause.
 - Known remaining gap (not fixed here, needs a product
   decision): a broad "always" grant for "post" is still

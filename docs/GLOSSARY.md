@@ -5,7 +5,7 @@ Source of truth for the repo-wide English rename (ordered by Nero,
 (event types, table/column names, statuses, enum values) are English;
 prose (docstrings, comments, docs, messages) is English.
 
-Proper nouns are kept as-is: Puspa, PLN, PDAM, Tokopedia, Shopee,
+Proper nouns are kept as-is: PuspaBot, PLN, PDAM, Tokopedia, Shopee,
 Blibli, GoPay, OVO, DANA, QRIS, BI-FAST.
 
 ## Concepts
@@ -313,7 +313,7 @@ tables that store them are PLURAL (`false_reports`, `data_consents`).
 
 - `isi` → `content` everywhere (not `payload` for the ledger).
 - Template file uses underscore `panel_evidence.html` (renamed
-  from `evidence_panel.html` in G32: the route renders
+  from `evidence_panel.html` in WebUI lite as a real mode: the route renders
   `panel_evidence.html`, the old name never matched it).
 - `waktu` → `created_at` globally (ledger/recordings).
 - `jumlah` → `amount` (component); `anggaran_baca.jumlah` (a count) is a

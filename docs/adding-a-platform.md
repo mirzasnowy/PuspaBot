@@ -1,6 +1,6 @@
 # Adding a Platform (a third channel adapter)
 
-This is the Puspa version of the hermes-agent
+This is the PuspaBot version of the hermes-agent
 `gateway/platforms/ADDING_A_PLATFORM.md` guide, rewritten for this
 repo. Follow it step by step; a new adapter is one module plus
 tests plus one line in the runner — never a change to the shared

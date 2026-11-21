@@ -1,4 +1,4 @@
-# Serve Modes — One PWA Codebase, Two Ways to Serve It (G31)
+# Serve Modes — One PWA Codebase, Two Ways to Serve It (PWA serve modes (local operator vs hosted))
 
 Decision locked by Nero, 18 Nov 2026 ~23:00 WIB (see
 `docs/modes-decision.md`): **one web codebase, two serve modes.**
@@ -14,7 +14,7 @@ panels are shown, not the app. Never two separate frontends.
 | `hosted` | The end user: Free self-host and Plus/Pro/Team cloud users | The product screens only. The operator panels are hidden: the operator surface of a hosted deployment lives in the (private, not-yet-built) cloud backend, not in this repo |
 
 Hosted serving itself is cloud work, not in this repo: the hosted
-backend (`puspa-cloud`) is private and not built yet. What G31
+backend (`puspa-cloud`) is private and not built yet. What PWA serve modes (local operator vs hosted)
 builds is the mode switch and the local operator panels.
 
 ## Configuration
@@ -48,7 +48,7 @@ in precedence order:
 ## Live state: what the panels read
 
 No mocks, no constants. The panels read the real objects the app
-owns (wired in `puspa/pwa/app.py`, inside the marked G31 blocks):
+owns (wired in `puspa/pwa/app.py`, inside the marked PWA serve modes (local operator vs hosted) blocks):
 
 - **Pairing status** — `PairingStore.status_snapshot()` (new read
   method on `puspa/hosting/pairing.py`): counts of outstanding
@@ -92,7 +92,7 @@ Response (`OperatorStatus` in `docs/openapi-pwa.yaml`):
     "decisions": 1,
     "last_decision": {"allowed": true, "outcome": "allow", "rule": "true", "reason": "allow rule matched", "forwarded": true}
   },
-  "log": [{"type": "user_message", "created_at": 1730000000, "summary": "user_message: halo Puspa"}]
+  "log": [{"type": "user_message", "created_at": 1730000000, "summary": "user_message: halo PuspaBot"}]
 }
 ```
 

@@ -1,6 +1,6 @@
-# Own-model selection in PWA Settings (G33)
+# Own-model selection in PWA Settings (own-model selection in PWA settings)
 
-A user picks the model Puspa runs on, from the Settings screen.
+A user picks the model PuspaBot runs on, from the Settings screen.
 Three sources, one codebase, no second frontend (decision locked
 with Nero, see `docs/modes-decision.md`):
 
@@ -77,7 +77,7 @@ into `src/api/generated-types.ts`).
 
 - A local model needs real hardware. For most users BYOK is the
   realistic path; local is for users with a GPU or patience for
-  CPU. Puspa does not check whether the local server is running
+  CPU. PuspaBot does not check whether the local server is running
   or whether the named model is pulled — the server reports that
   when the first completion fails, as a `CompletionError`.
 - BYOK providers outside the known-endpoint map need their base
@@ -92,5 +92,5 @@ into `src/api/generated-types.ts`).
   provider. The first live BYOK and live Ollama completions are
   still unverified by hand.
 - The hosted default keeps the existing OpenRouter surrogate
-  path (`demo.byok_provider.resolve_key`); G33 does not change
+  path (`demo.byok_provider.resolve_key`); own-model selection in PWA settings does not change
   how the hosted key is obtained.

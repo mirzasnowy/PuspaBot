@@ -1,16 +1,16 @@
-# Skill discovery (G30)
+# Skill discovery (skill discovery)
 
 Pattern rewritten from vercel-labs/skills (MIT):
 `skills/find-skills/SKILL.md` + `src/find.ts` + the skills.sh
 registry. Nothing was copied verbatim; the mechanism below is
-Puspa's own Python implementation of the same ideas. The Node
-CLI (`npx skills`) is out of scope — Puspa installs through its
+PuspaBot's own Python implementation of the same ideas. The Node
+CLI (`npx skills`) is out of scope — PuspaBot installs through its
 own marketplace, not through a package manager.
 
 ## What it does
 
 When the user asks "how do I do X" (or "find a skill for X",
-"is there a skill that can..."), Puspa can discover an
+"is there a skill that can..."), PuspaBot can discover an
 installable skill from the open agent skills ecosystem:
 
 1. **Check the leaderboard first.** The registry ranks by
@@ -38,7 +38,7 @@ installable skill from the open agent skills ecosystem:
    (SKILL.md + LICENSE from the source repo), hash-checked
    against the hash the user approved, licence-checked against
    the allowlist (MIT / Apache-2.0 / BSD), imported DISABLED
-   through the G3 registry, then enabled only when the user
+   through the module marketplace (registry, trust, install, rollback) registry, then enabled only when the user
    approved this exact skill. No auto-install, ever.
 
 ## Code map
@@ -61,7 +61,7 @@ installable skill from the open agent skills ecosystem:
   — the built-in find-skills skill. It is active when the user
   asks how to do something, and its instructions point at the
   functions above. It lives in the repo-root `skills/` root,
-  the same shape the G24 curator scans
+  the same shape the pluggable memory providers with background review and skill curation curator scans
   (`puspa.memory.curator.discover_skills`), and it imports
   through the registry with origin `builtin` (disabled by
   default, like every import).
@@ -73,7 +73,7 @@ installable skill from the open agent skills ecosystem:
 
 0. The skills.sh install feature flag must be on
    (`PUSPA_SKILL_INSTALL_ENABLED=1`). Off by default for beta
-   (plan 6.7, E-12): only built-in skills and the self-signed
+   (plan 6.7, skill revocation, hashed dependencies, secrets and git history): only built-in skills and the self-signed
    allowlist may install. Searching the registry is unaffected —
    the flag gates installation only, never discovery.
 1. The slug must be a valid marketplace skill id.
@@ -91,20 +91,20 @@ installable skill from the open agent skills ecosystem:
 6. The skill is imported DISABLED through the registry
    (manifest validated, sha256 + source + licence recorded),
    then enabled by `registry.install(..., explicit_approval=True)`.
-   A library skill from skills.sh scores below the G3 trust
+   A library skill from skills.sh scores below the module marketplace (registry, trust, install, rollback) trust
    floor (unsigned, untrusted source), so the user's explicit
-   approval is what lets it through — exactly as G3 designed it.
+   approval is what lets it through — exactly as module marketplace (registry, trust, install, rollback) designed it.
 7. When a `skills_root` is given, the install records the skill
-   with the G24 curator (`puspa.memory.curator.record_use`), so
+   with the pluggable memory providers with background review and skill curation curator (`puspa.memory.curator.record_use`), so
    its usage is tracked and it goes stale, then archived, if
    nobody uses it — never deleted.
 
-## Approval wiring (G4)
+## Approval wiring (approvals taxonomy)
 
 A skill install is a local enablement, not an outbound action,
 so it never goes through the outbound Gate (whose kinds cover
 send / create / pay / delete / deploy). It goes through the
-G4 taxonomy instead: `install` is a first-class action kind
+approvals taxonomy instead: `install` is a first-class action kind
 (`puspa/policy/approvals.py`) that always asks, with tiered
 answers (once / conversation / always) in the `ApprovalStore`
 and 24-hour expiry. The caller asks the user through
@@ -139,7 +139,7 @@ client = SkillsShClient()
 cache = DiscoveryCache()
 outcome = search_with_cache(client, cache, "react performance")
 print(format_options(outcome.skills))
-# The user picks one; ask through the G4 policy and record the answer:
+# The user picks one; ask through the approvals taxonomy policy and record the answer:
 store = ApprovalStore()
 policy = ApprovalPolicy(store=store)
 content = {"skill_slug": chosen.slug, "sha256": approved_sha256}
@@ -173,7 +173,7 @@ MIT/Apache install, invalid slug refused, missing SKILL.md
 refused, default fetchers through a mock transport), and the
 built-in skill (imports disabled, discoverable by the curator).
 `tests/test_marketplace_discovery_approval.py` (8 tests) covers
-the G4 bridge: evidence built from a stored answer, wrong-hash
+the approvals taxonomy bridge: evidence built from a stored answer, wrong-hash
 / expired / wrong-conversation answers refused, "once" answers
 spent after install while "conversation" answers stay usable,
 and the full install-then-consume flow against the real

@@ -55,6 +55,7 @@ from fastapi.responses import JSONResponse
 
 from ..i18n.server_lines import render as render_server_line
 from .chat_widgets import (
+    _require_dict,
     append_widget_message,
     compute_calculator,
     format_widget_value,
@@ -92,7 +93,7 @@ def post_widget(user_id: str, *, body: dict, chat_state=None) -> dict:
     text = body.get("text")
     if not isinstance(text, str) or not text.strip():
         raise ValueError("text must be a non-empty string")
-    widget = validate_widget(body.get("widget"))
+    widget = validate_widget(_require_dict(body.get("widget"), "widget"))
     store = chat_state if chat_state is not None else {}
     return append_widget_message(store, user_id, text, widget)
 
@@ -108,10 +109,10 @@ def compute_widget(body: dict) -> dict:
     """
     if not isinstance(body, dict):
         raise ValueError("compute body must be a JSON object")
-    widget = validate_widget(body.get("widget"))
+    widget = validate_widget(_require_dict(body.get("widget"), "widget"))
     if widget.get("kind") != "calculator":
         raise ValueError("compute needs a calculator widget")
-    result = compute_calculator(widget, body.get("values"))
+    result = compute_calculator(widget, _require_dict(body.get("values"), "values"))
     return {"result": result, "formatted": format_widget_value(result, widget["value_format"])}
 
 
@@ -125,10 +126,10 @@ def submit_widget_form(user_id: str, *, body: dict, chat_state=None) -> dict:
     """
     if not isinstance(body, dict):
         raise ValueError("submit body must be a JSON object")
-    widget = validate_widget(body.get("widget"))
+    widget = validate_widget(_require_dict(body.get("widget"), "widget"))
     if widget.get("kind") != "form":
         raise ValueError("submit needs a form widget")
-    answers = validate_form_submission(widget, body.get("answers"))
+    answers = validate_form_submission(widget, _require_dict(body.get("answers"), "answers"))
     lines = []
     for field in widget["fields"]:
         answer = answers.get(field["id"])
@@ -172,7 +173,7 @@ def simulate_widget(user_id: str, *, body: dict, chat_state=None) -> dict:
     """
     if not isinstance(body, dict):
         raise ValueError("simulate body must be a JSON object")
-    widget = validate_widget(body.get("widget"))
+    widget = validate_widget(_require_dict(body.get("widget"), "widget"))
     if widget.get("kind") != "simulation":
         raise ValueError("simulate needs a simulation widget")
     action = body.get("action")

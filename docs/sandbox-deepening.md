@@ -1,4 +1,4 @@
-# Sandbox deepening (G34, NVIDIA/OpenShell pattern)
+# Sandbox deepening (sandbox deepening, NVIDIA/OpenShell pattern)
 
 Date: 19 Nov 2026. Status: implemented and tested on this VM; live
 container verification waits for a Docker host / VPS.
@@ -14,9 +14,9 @@ an isolation backend (Docker / Podman / Kubernetes / VM drivers
 behind one interface). Its own summary: "the safe, private runtime
 for fleets of autonomous AI agents". Only the *mechanisms* below
 were taken. No OpenShell code was copied, ported, or vendored;
-every Puspa module here was written from scratch in Python
-against Puspa's existing backend ABC. Attribution is recorded in
-`REUSE.md` and `NOTICE.md` (G34 sections).
+every PuspaBot module here was written from scratch in Python
+against PuspaBot's existing backend ABC. Attribution is recorded in
+`REUSE.md` and `NOTICE.md` (sandbox deepening sections).
 
 Sources read (all in the clone above):
 
@@ -59,16 +59,16 @@ Sources read (all in the clone above):
   supervisor-dependent operation fails closed, never opens an
   unmediated egress path.
 
-Not taken (out of scope for G34): the Rust code, the TUI, the
+Not taken (out of scope for sandbox deepening): the Rust code, the TUI, the
 Helm chart, the gateway/supervisor split as processes, kernel
 enforcement (Landlock/seccomp), formal policy verification
 (the prover), SPIFFE identity, and credential injection at the
-proxy. Puspa already has its own credential broker
-(`puspa/computer/broker.py`); G34 does not change it.
+proxy. PuspaBot already has its own credential broker
+(`puspa/computer/broker.py`); sandbox deepening does not change it.
 
-## Mechanisms taken, and where they map to Puspa code
+## Mechanisms taken, and where they map to PuspaBot code
 
-| OpenShell mechanism | Puspa code (written from scratch) |
+| OpenShell mechanism | PuspaBot code (written from scratch) |
 | --- | --- |
 | `Sandbox` resource with `SandboxPhase` lifecycle, named + retained identity, one sandbox per agent task | `puspa/sandbox/session.py`: `SandboxSession` + `SessionManager` (create/get/list/kill, `SessionStatus` created/ready/running/closed/error) |
 | `Attach` + `Confirm` before `StartAgent`: unsupported requirements fail before the workload starts | `SessionManager.create`: validate policy, reserve quota, then build the backend; any failure releases the reservation and leaves no session behind |
@@ -88,7 +88,7 @@ proxy. Puspa already has its own credential broker
 - Empty network policy: `--network none` (as before).
 - Non-empty network policy (hosts admitted): the runner
   routes the container through a configured, running
-  `EgressProxy` (E-03, `puspa/sandbox/egress.py`), and
+  `EgressProxy` (sandbox hardening, `puspa/sandbox/egress.py`), and
   *refuses to run* (`SandboxUnavailable`) when none is
   configured — running with the network on and no proxy
   would be a silent widening. The refusal happens at
@@ -96,12 +96,12 @@ proxy. Puspa already has its own credential broker
   Docker), and `docker_flags()` raises the same refusal
   instead of returning flags that open the network.
 - The Docker backend still runs one ephemeral container per
-  exec. A Puspa session is therefore a control-plane record
+  exec. A PuspaBot session is therefore a control-plane record
   plus a workspace, not a live process: `READY` means admitted
   (policy + quota + backend available), not "a container is
   running".
 - `LocalBackend` executes on the host (not in a container).
-  G34 does not change that; it *scopes* it: the filesystem API
+  sandbox deepening does not change that; it *scopes* it: the filesystem API
   and terminal sessions resolve every path through the backend
   scope (a temp-dir jail), the exec API resolves `cwd` through
   the scope, and credential-looking env keys are refused in
@@ -124,7 +124,7 @@ proxy. Puspa already has its own credential broker
    The first live check is the CI sandbox lane
    (.github/workflows/ci.yml), which builds the sandbox image and
    runs the live container tests on every PR.
-2. **Filtered egress proxy: BUILT (E-03).** A policy that
+2. **Filtered egress proxy: BUILT (sandbox hardening).** A policy that
    admits hosts is now enforced by
    :mod:`puspa.sandbox.egress` (`EgressProxy`: HTTP CONNECT +
    absolute-form forwarding, policy check before DNS, pinned
@@ -135,10 +135,10 @@ proxy. Puspa already has its own credential broker
    network, dead container DNS, proxy env) and still refuses
    when no proxy is configured. The proxy itself is tested
    live in-process over real sockets; the container side
-   awaits a Docker host (see the E-03 section below).
+   awaits a Docker host (see the sandbox hardening section below).
 3. **No GPU provisioning.** `gpu_count > 0` is refused at
    quota-build time.
-4. **Sessions are in-memory and process-local** (like the G16
+4. **Sessions are in-memory and process-local** (like the per-bot sandbox (computer use)
    browser `SessionRegistry`). A restart loses them; the
    workspaces on disk survive, but the records do not.
    Durability is a later step, not faked here.
@@ -148,9 +148,9 @@ proxy. Puspa already has its own credential broker
    browser must never be launched as a stand-in: it would not
    be inside the sandbox at all.
 6. **Kernel enforcement: seccomp profiled, not yet executed
-   (E-03).** Puspa now ships a pinned seccomp profile (the
+   (sandbox hardening).** PuspaBot now ships a pinned seccomp profile (the
    vendored Docker default plus a strict variant, validated at
-   load; see the E-03 section below) and passes it with
+   load; see the sandbox hardening section below) and passes it with
    `--security-opt seccomp=<path>`, alongside `--read-only`,
    `--cap-drop ALL`, `no-new-privileges`, non-root, and
    resource caps. There is still no Landlock layer, and no
@@ -183,9 +183,9 @@ Run: `NO_PROXY=localhost,127.0.0.1 no_proxy=localhost,127.0.0.1
 .venv/bin/python -m pytest tests/test_sandbox_g34*.py
 tests/test_sandbox_e03*.py tests/test_sandbox.py tests/test_computer*.py -q` (SOLO, no `-n`).
 
-## E-03: hardening (plan 4.3, 20 Nov 2026)
+## sandbox hardening: hardening (plan 4.3, 20 Nov 2026)
 
-What already existed (G34 + earlier), not rebuilt here:
+What already existed (sandbox deepening + earlier), not rebuilt here:
 
 - Rootless-ish execution: non-root user 65534, `--cap-drop
   ALL`, `no-new-privileges`, `--read-only` root filesystem
@@ -203,7 +203,7 @@ What already existed (G34 + earlier), not rebuilt here:
   `NetworkEndpoint`, allowlist narrowing) — with the runner
   refusing any non-empty policy for lack of a proxy.
 
-What E-03 added (the gaps in plan 4.3):
+What sandbox hardening added (the gaps in plan 4.3):
 
 - **Egress proxy** (`puspa/sandbox/egress.py`): `EgressProxy`
   speaks CONNECT (https) and absolute-form requests (http).
@@ -263,7 +263,7 @@ What E-03 added (the gaps in plan 4.3):
   `docker_spawn_probe`) against the gate-9 target of under 3
   seconds. The runtime choice is *not* made here: gVisor and
   Kata both cost spawn time and CPU, so the harness exists to
-  decide from measured numbers on the real host (E-02's VPS).
+  decide from measured numbers on the real host (VPS validation and machine-replacement drills's VPS).
 - **Warm pool** (`puspa/sandbox/warmpool.py`): pre-created,
   never-run containers; `acquire` hands one to exactly one
   user; `release` always destroys it (`docker rm -f`) and
@@ -274,13 +274,13 @@ What E-03 added (the gaps in plan 4.3):
   `finally`, even on timeout. The pool is opt-in; without one
   the runner keeps its `docker run --rm` path.
 
-Honest limits (E-03, in addition to the list above):
+Honest limits (sandbox hardening, in addition to the list above):
 
 - No live container has run through any of this on this VM:
   flag derivation, the proxy-mode network flags, and the
   pool's create/start/remove path are constructed and tested
   with fakes, not executed. First live check is a Docker host
-  (E-02's VPS): the internal network must actually let the
+  (VPS validation and machine-replacement drills's VPS): the internal network must actually let the
   container reach the host gateway where the proxy listens,
   and the seccomp profile must let a Python workload start.
 - The pinned-DNS live test is skipped on this VM (the VM

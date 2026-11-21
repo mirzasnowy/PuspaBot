@@ -84,7 +84,10 @@ def install_redacting_handler(
     handler.setLevel(level)
     target.addHandler(handler)
     target.setLevel(min(target.level, level) if target.level else level)
-    target._puspa_redacting_installed = True
+    # setattr, not attribute assignment: Logger has no such field,
+    # so mypy rejects the assignment, and the marker must live on
+    # the logger itself (tests read it back with getattr).
+    setattr(target, "_puspa_redacting_installed", True)  # noqa: B010
     return handler
 
 

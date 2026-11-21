@@ -1,4 +1,4 @@
-# Puspa PWA (G1)
+# PuspaBot PWA (full PWA)
 
 Date: 18 Nov 2026. Status: full PWA built (7 live screens); the
 central Python suite still has to run (coordinator runs it SOLO —
@@ -6,8 +6,8 @@ workers never run pytest, parallel runs collide on the shared
 `puspa_test` DB).
 
 The PWA is the product home (revision 7, locked decision). Before
-G1 it was a shell: 11 files (10 Jinja templates + `sw.js`),
-"coming soon" screens, no state management, no API client. G1
+full PWA it was a shell: 11 files (10 Jinja templates + `sw.js`),
+"coming soon" screens, no state management, no API client. full PWA
 replaces the shell with a real TypeScript app and keeps the Python
 server as the API + auth layer.
 
@@ -39,8 +39,8 @@ onboarding time). Form posts stay form-encoded
 expects; JSON bodies are used only where the server reads
 `request.json()` (push subscription, onboarding time). Later
 contracts split out of the main spec once they earn their own
-file (Wave 30 precedent: rooms, graph, mockup, payments); the
-P-02 controls contract lives in `docs/openapi-controls.yaml`
+file (earlier precedent: rooms, graph, mockup, payments each split out once they earned their own file); the
+stop-all and autonomy dial controls contract lives in `docs/openapi-controls.yaml`
 (stop-all, autonomy dial, weekly report) with `$ref` stubs in
 the main spec, and the generated client resolves the external
 refs.
@@ -134,7 +134,7 @@ Menu follows revision 7 §2.1 exactly — 7 screens, no 8th.
    modules are created through chat (revision 7 §2.12–2.13).
 4. **Connectors** — grant/revoke Gmail, Drive, Calendar per agent
    (`POST /api/konektor/{name}`); create/delete agents
-   (max 3, Puspa cannot be deleted — server enforces it).
+   (max 3, PuspaBot cannot be deleted — server enforces it).
 5. **Memory** — profile facts + Proposals from the bootstrap
    (tolerant normalizer: full fact objects or plain strings).
 6. **Settings** — spending limit (Rp0 default), language, real
@@ -149,10 +149,10 @@ Menu follows revision 7 §2.1 exactly — 7 screens, no 8th.
 ### hermes-agent page checklist (folded in, no new screens)
 
 Channels → Connectors screen (Gmail/Drive/Calendar live via
-grants; Telegram/WhatsApp labelled "not available", G14).
+grants; Telegram/WhatsApp labelled "not available", Telegram and WhatsApp channels).
 Cron → Tasks screen note (scheduler runs server-side; no read
 endpoint yet). Skills → Modules screen note (skills ship inside
-modules; registry is G23). Sessions + Analytics → Office screen
+modules; registry is tool registry, toolset and check functions). Sessions + Analytics → Office screen
 (live sessions and cost from the SSE projection). Config/Logs/
 Models/Plugins and the rest have no PWA surface in the MVP and
 are not faked as pages.
@@ -173,8 +173,8 @@ port 8000) after `npm run build`. A fresh checkout must run
 `npm install && npm run build` first — `node_modules/` and
 `dist/` are build outputs, not pushed sources. The `.gitignore`
 does not yet list them; the coordinator should add
-`apps/pwa/node_modules/` and `apps/pwa/dist/` when pushing (G1
-did not touch `.gitignore`: outside the G1 file scope).
+`apps/pwa/node_modules/` and `apps/pwa/dist/` when pushing (full PWA
+did not touch `.gitignore`: outside the full PWA file scope).
 
 ## Verification (this worker)
 
@@ -193,16 +193,16 @@ did not touch `.gitignore`: outside the G1 file scope).
 - The central Python suite was NOT run by this worker (task
   order: the coordinator runs it SOLO). `tests/test_pwa.py`
   expectations were preserved by design: screens still return
-  200 with "Puspa", the chat page still contains a posted
+  200 with "PuspaBot", the chat page still contains a posted
   message (now via the bootstrap JSON), SSE/manifest/sw routes
   unchanged, no API route changed.
 
-## Stop-all, autonomy dial, weekly report (P-02, plan 12.7)
+## Stop-all, autonomy dial, weekly report (stop-all and autonomy dial, plan 12.7)
 
 - **Stop-all** (`POST /api/stop-all`): a red button in the header
   (`apps/pwa/src/components/StopAllButton.tsx`, rendered by `Nav`,
   so it is on every screen). Two taps — arm, then confirm — stop
-  everything for the logged-in user through the E-11 stop package
+  everything for the logged-in user through the audit outside the agent's reach, daily anchor and kill switch stop package
   plus the PWA pool, and report what actually stopped with a link
   to the audit trail. It never touches the global kill switch
   (operator-only) and deletes nothing.
@@ -211,7 +211,7 @@ did not touch `.gitignore`: outside the G1 file scope).
   Settings screen (`AutonomyDialPanel`), three positions each (Ask
   first / Balanced / Autonomous). A raise is offered only after
   10 accepted drafts in a row, with the streak and the threshold
-  shown; Money is locked to Ask first. The dial itself is K11
+  shown; Money is locked to Ask first. The dial itself is autonomy dial
   (`puspa/autonomy/dial.py`); the user-facing rules live in
   `puspa/autonomy/controls.py`. See `docs/autonomy-dial.md`.
 - **Weekly report** (`GET /api/weekly-report`): tasks completed,
@@ -251,5 +251,5 @@ did not touch `.gitignore`: outside the G1 file scope).
 - **Photo upload (price check, phase 3) is not in the chat
   composer yet** — text only, as in the current API.
 - **The central Python suite result is pending** (coordinator
-  run); G1's Python change is small and covered by the smoke
+  run); full PWA's Python change is small and covered by the smoke
   checks above, but the suite number is not claimed here.

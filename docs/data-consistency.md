@@ -1,6 +1,6 @@
 # Data Consistency: Postgres Ledger vs SQLite Sessions
 
-One page. The rule, the mechanism, and the proof (E-06, plan §5.1).
+One page. The rule, the mechanism, and the proof (Postgres and SQLite consistency rules, plan §5.1).
 
 ## The rule
 

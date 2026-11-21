@@ -1,4 +1,4 @@
-# Phase 1 MVP Puspa — Persona + Memory + Onboarding
+# Phase 1 MVP PuspaBot — Persona + Memory + Onboarding
 
 Definition: revision 7 (approved by Nero 17 Nov 2026 ~17:42 WIB).
 Work period: 17 Nov 2026 (the 17-week timeline ignored on Nero's

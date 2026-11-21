@@ -1,9 +1,9 @@
-# Local Indonesian data layer (B5)
+# Local Indonesian data layer (local Indonesian data layer)
 
 Indonesian prices, sellers, and payment rails as data assets, plus
 Indonesian language handling. The layer lives in `puspa/local_data/`
 and is the first consumer's data source for the Check Before You Buy
-slice (B1).
+slice (price-check beta slice).
 
 ## What the layer holds
 
@@ -27,9 +27,9 @@ GrabExpress), all from a Jakarta origin hub, priced per started
 kilogram. Every row carries its provenance (origin + destination +
 courier + rate + COD flag + source label + seed date), and every
 quote carries it too: the source label is
-`seeded sample rate (B5)`, seeded 2026-11-19.
+`seeded sample rate (local Indonesian data layer)`, seeded 2026-11-19.
 
-The B1 answer renders the label next to the number ("sample
+The price-check beta slice answer renders the label next to the number ("sample
 rates, not a live tariff"), so a user never mistakes a seed rate
 for a courier's current price. A real courier tariff changes
 daily; the seed is an illustrative stand-in.
@@ -93,7 +93,7 @@ dana" is not the wallet).
 
 Naming only: this module never prepares a payment, never calls a
 gateway, never moves money. Actual payment preparation is ticket
-B8; this is the data asset B8 will read from.
+agent payments (prepare-only phase); this is the data asset agent payments (prepare-only phase) will read from.
 
 ## Language handling
 
@@ -119,7 +119,7 @@ pull the shipping lane out of the same text, preferring a city
 after `ke` / `kirim` ("ongkir ke Bandung"). They return `None`
 when nothing known is named, never a guess.
 
-## Wiring into B1
+## Wiring into price-check beta slice
 
 `check_before_buy` gains two sections on `CheckAnswer`:
 
@@ -144,7 +144,7 @@ quote never flips advice, it only adds `shipping` to
 - Rates are seeded samples, not live tariffs. They are wrong
   the moment a courier changes its price, and the seed only
   covers 10 cities from one Jakarta origin.
-- Quotes are for 1 kg by default; the B1 path does not extract
+- Quotes are for 1 kg by default; the price-check beta slice path does not extract
   a weight from the input yet (the store itself supports any
   weight).
 - Language normalisation is a hand-written term map, not a

@@ -137,10 +137,11 @@ def fetch_prayer_times(
         timings_in = data["timings"]
         timings = {name: str(timings_in[key]) for name, key in _TIMING_KEYS.items()}
         hijri = data["date"]["hijri"]
+        month_number = int(hijri["month"]["number"])
         hijri_out = {
             "date": str(hijri["date"]),
             "month": str(hijri["month"]["en"]),
-            "month_number": int(hijri["month"]["number"]),
+            "month_number": month_number,
             "year": str(hijri["year"]),
         }
     except (KeyError, TypeError, ValueError) as exc:
@@ -151,7 +152,7 @@ def fetch_prayer_times(
         "date": day.isoformat(),
         "timings": timings,
         "hijri": hijri_out,
-        "is_ramadan": is_ramadan(hijri_out["month_number"]),
+        "is_ramadan": is_ramadan(month_number),
         "method": PRAYER_METHOD,
         "method_name": PRAYER_METHOD_NAME,
         "source": "Aladhan API",

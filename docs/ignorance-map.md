@@ -1,4 +1,4 @@
-# Ignorance map (Kosmos K6)
+# Ignorance map (Kosmos ignorance map)
 
 The world model knows what it knows. The ignorance map is the
 other half: a record of where the model is blind, so the system

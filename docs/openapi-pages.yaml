@@ -1,7 +1,7 @@
-# PWA HTML page routes API contract (split 20 Nov 2026, P-04 ratchet
+# PWA HTML page routes API contract (split 20 Nov 2026, receipt photos ratchet
 # fix).
 #
-# Split out of docs/openapi-pwa.yaml: the merged P-04 spec reached 2002
+# Split out of docs/openapi-pwa.yaml: the merged receipt photos spec reached 2002
 # lines, 2 over the 2000-line hard cap, so the 18 page routes (HTML
 # screens, auth redirects, manifest, service worker, health) earned
 # their own file, following the rooms/voice/controls/receipts split
@@ -12,7 +12,7 @@
 # referenced back from here.
 openapi: 3.0.3
 info:
-  title: Puspa PWA page routes API
+  title: PuspaBot PWA page routes API
   version: 1.0.0
 paths:
   /:
@@ -257,7 +257,7 @@ paths:
       tags: [pages]
       summary: Health status including embedding degradation
       description: |
-        E-14: public and login-free. Always 200 while the server is
+        visible embedding degradation: public and login-free. Always 200 while the server is
         up; the `status` field carries `ok` or `degraded`. The
         `embedding` block is the startup embedding snapshot: in
         production with only the hash stand-in available the status

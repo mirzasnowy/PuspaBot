@@ -2,13 +2,13 @@
 
 > **Status: minimal draft, version 0.1, 21 November 2026.**
 > This document has NOT been reviewed by a lawyer. The legal review
-> (ticket L-01) is still open. See `docs/legal.md`. The binding text
+> (ticket legal consultation) is still open. See `docs/legal.md`. The binding text
 > is the one the product itself shows and records (section 2); this
 > document explains it and must stay in sync with it.
 
 ## 1. What this is
 
-Before Puspa stores your data, you agree to a short consent screen.
+Before PuspaBot stores your data, you agree to a short consent screen.
 That screen is defined in code — `puspa/consent/consent.py`,
 `TEXT_APPROVAL`, version `v1-2026-11-17` — and this document quotes
 it exactly. If the code text and this document ever disagree, the
@@ -18,13 +18,13 @@ be fixed.
 ## 2. The consent text (quoted verbatim from the product)
 
 ```text
-Puspa data consent (version v1-2026-11-17)
+PuspaBot data consent (version v1-2026-11-17)
 
 What data is stored: chats with your agent, memory (profile, history,
 procedures), the customer numbers you grant, and your Gmail, Drive,
 and Calendar tokens.
 
-Where: on the Puspa server (PostgreSQL + encrypted vault). Tokens are
+Where: on the PuspaBot server (PostgreSQL + encrypted vault). Tokens are
 stored encrypted; the master key does not exist in the database.
 
 How long: for as long as your account is active. Backups are kept for
@@ -41,7 +41,7 @@ deleted with it; audit records remain as tombstones without content).
 Shared graph: public price facts from your comparisons go into the
 shared graph WITHOUT your identity.
 
-By agreeing, you allow Puspa to store and use the data above to run
+By agreeing, you allow PuspaBot to store and use the data above to run
 your tasks.
 ```
 
@@ -55,7 +55,7 @@ Notes on the quoted text, for honesty:
   and not built yet. The quoted text is kept verbatim because it is
   what users see; this note records the gap instead of silently
   rewording the quote.
-- "On the Puspa server" means: on your own machine when you
+- "On the PuspaBot server" means: on your own machine when you
   self-host (Free plan), or on the operator's cloud machine when you
   use a hosted plan. See `docs/privacy-policy.md`, section 1.
 
@@ -74,9 +74,9 @@ export) check the history of what you agreed to and when.
 
 ## 4. What you agree to, in plain terms
 
-- Puspa may store your chats, your memory, the bill customer
+- PuspaBot may store your chats, your memory, the bill customer
   numbers you grant, and your Gmail, Drive, and Calendar tokens.
-- Puspa may use that data only to run your tasks.
+- PuspaBot may use that data only to run your tasks.
 - Public price facts from your comparisons may go into the shared
   graph without your identity.
 - Your tokens are stored encrypted; the master key is never in the
@@ -94,7 +94,7 @@ tasks.
 
 There is no per-feature consent withdrawal in the product yet, and
 no revoke button. The way to withdraw consent today is to stop
-using Puspa and delete your account: that deletes your memory,
+using PuspaBot and delete your account: that deletes your memory,
 procedures, summaries, onboarding, consents, sessions, and vault
 (`delete_account` in `puspa/consent/account.py`). The ledger limit
 in `docs/privacy-policy.md`, section 7, applies: ledger event

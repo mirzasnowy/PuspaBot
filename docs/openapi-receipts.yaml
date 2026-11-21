@@ -1,16 +1,16 @@
 # Receipt photo API contract (plan 12.5).
 #
-# Split out of docs/openapi-pwa.yaml on 20 Nov 2026 (P-04 ratchet
+# Split out of docs/openapi-pwa.yaml on 20 Nov 2026 (receipt photos ratchet
 # fix): the receipt contract (5 endpoints + 4 schemas) would have
 # pushed the main spec past the 2000-line hard cap, so it earned
-# its own file, following the voice split of P-03. The main spec
+# its own file, following the voice split of PWA share target and voice messages. The main spec
 # references this file with $ref stubs; the generated client is
 # produced from the main spec with openapi-typescript, which
 # resolves external $refs. The Error and ChatMessage schemas stay
 # in the main spec and are referenced back from here.
 openapi: 3.0.3
 info:
-  title: Puspa receipt photo API
+  title: PuspaBot receipt photo API
   version: 1.0.0
 paths:
   /api/receipts/upload:

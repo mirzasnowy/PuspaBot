@@ -1,7 +1,7 @@
-# Trajectory format (G12)
+# Trajectory format (self-observability (Sentinel and decision log))
 
-How Puspa records trajectories — the hermes-agent
-`trajectory-format.md` pattern, rewritten for Puspa. A
+How PuspaBot records trajectories — the hermes-agent
+`trajectory-format.md` pattern, rewritten for PuspaBot. A
 trajectory is the honest record of one run of one task: what
 the agent was asked, which tools it called, what came back,
 and whether it passed.

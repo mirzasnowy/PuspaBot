@@ -1,4 +1,4 @@
-# Verified outcome records (B2)
+# Verified outcome records (verified outcome records)
 
 Every task ends in a structured, evidenced outcome record:
 a price checked, a seller checked, a task done, a payment
@@ -47,7 +47,7 @@ second event system). The event content is:
 | `evidence` | The proof. **Required, non-empty** — see the evidence rule. |
 | `receipts` | Artefacts the outcome produced (a settlement row, an approval). May be empty. |
 | `sources` | The URLs the outcome rests on. May be empty. |
-| `details` | The type-specific payload. For the paths B2 generalised, this holds the pre-B2 event content verbatim. |
+| `details` | The type-specific payload. For the paths verified outcome records generalised, this holds the pre-verified outcome records event content verbatim. |
 
 The ledger event id is the record's id (`OutcomeRecord.outcome_id`).
 `created_at` is the ledger's recorded time; `valid_at` (bitemporal,
@@ -153,14 +153,14 @@ is an outcome record.
 
 | Path | Outcome type | How it got there |
 | --- | --- | --- |
-| B10 `MeetingMinutesStore.write_minutes`, per decision | `decision_recorded` | **Migrated.** The old `evidence_recorded` event (`{"kind": "meeting_decision", …}`) is now written by the shared writer; the old payload is preserved verbatim under `details`. |
-| B10 meeting action items | — | Not an outcome. Creating a task stays a plain `task_created` event. |
-| B11 `SplitService.prepare_settlement` | `payment_prepared` | **Migrated.** The old payload (`{"kind": "split_settlement_prepared", …}`) is preserved verbatim under `details`; the money approval is the evidence, the settlement row is the receipt. |
-| B6 `RoomTaskStore.complete_task` | `task_done` | **Wired.** Optional `ledger` + `agent_id`; the board task is the evidence. A caller with richer proof passes it as `evidence`. Completing an already-done task is a no-op and writes no second record. |
-| B9 `DelegationService.complete_task` | `task_done` | **Wired.** Optional `ledger` + `agent_id`; forwards to the B6 board call with the board task plus the delegation's decided steps as evidence, so there is exactly one record per completion. |
-| B12 `ResearchService.compare`, per checked link | `price_checked`, `seller_checked` | **Wired.** Optional `ledger` + `agent_id`; both records point at the same saved evidence row. Unchecked links write nothing — there is no evidence for them. |
-| B12 `ResearchService.record_group_decision` | `decision_recorded` | **Wired.** Optional `ledger` + `agent_id`; the decision and its agreers are the evidence. |
-| B13 `DraftingService.approve_draft` | `decision_recorded` | **Wired.** Optional `ledger` + `agent_id`; the approval itself is the evidence. `request_send_approval` passes the ledger through when the policy approves at once. |
+| meeting notes and follow-ups `MeetingMinutesStore.write_minutes`, per decision | `decision_recorded` | **Migrated.** The old `evidence_recorded` event (`{"kind": "meeting_decision", …}`) is now written by the shared writer; the old payload is preserved verbatim under `details`. |
+| meeting notes and follow-ups meeting action items | — | Not an outcome. Creating a task stays a plain `task_created` event. |
+| shared bill splitting `SplitService.prepare_settlement` | `payment_prepared` | **Migrated.** The old payload (`{"kind": "split_settlement_prepared", …}`) is preserved verbatim under `details`; the money approval is the evidence, the settlement row is the receipt. |
+| group chat `RoomTaskStore.complete_task` | `task_done` | **Wired.** Optional `ledger` + `agent_id`; the board task is the evidence. A caller with richer proof passes it as `evidence`. Completing an already-done task is a no-op and writes no second record. |
+| delegated tasks `DelegationService.complete_task` | `task_done` | **Wired.** Optional `ledger` + `agent_id`; forwards to the group chat board call with the board task plus the delegation's decided steps as evidence, so there is exactly one record per completion. |
+| group research and shopping `ResearchService.compare`, per checked link | `price_checked`, `seller_checked` | **Wired.** Optional `ledger` + `agent_id`; both records point at the same saved evidence row. Unchecked links write nothing — there is no evidence for them. |
+| group research and shopping `ResearchService.record_group_decision` | `decision_recorded` | **Wired.** Optional `ledger` + `agent_id`; the decision and its agreers are the evidence. |
+| co-drafting `DraftingService.approve_draft` | `decision_recorded` | **Wired.** Optional `ledger` + `agent_id`; the approval itself is the evidence. `request_send_approval` passes the ledger through when the policy approves at once. |
 
 In every wired path the ledger is optional and `agent_id` is
 required with it (`ValueError` otherwise), matching the
@@ -176,13 +176,13 @@ so a ledger failure never rolls back the user's work.
   and a later call is a no-op, so the record stays missing.
   Re-writing it needs an explicit repair call, which does not
   exist yet.
-- **B13 records the approval, not the send.** `send_draft`
+- **co-drafting records the approval, not the send.** `send_draft`
   writes no outcome record yet: there is no live delivery
-  channel (B13's own limit), so a "draft sent" record would
+  channel (co-drafting's own limit), so a "draft sent" record would
   have no delivery proof behind it. When a real channel
   exists, `send_draft` should write a `task_done` record with
   the delivery result as its receipt.
-- **No retroactive records.** Outcomes from before B2 exist
+- **No retroactive records.** Outcomes from before verified outcome records exist
   only as the old event shapes (or not at all, where a path
   never wrote ledger events). The queries only see records
   written through this writer.

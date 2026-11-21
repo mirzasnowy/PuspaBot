@@ -1,4 +1,4 @@
-# P-07 — Morning summary + notes-to-actions (plan section 12.8)
+# Morning summary and notes-to-action (plan section 12.8)
 
 ## What it is
 
@@ -13,7 +13,7 @@ Two features, one screen (`/morning`):
 
 Out of scope (plan 12.8's other three items — small-business
 assistant, light personal finance, contextual reminders) — those
-are not P-07. No WhatsApp (Meta bans general-purpose AI assistants
+are not morning summary and notes-to-action. No WhatsApp (Meta bans general-purpose AI assistants
 on the WhatsApp Business API since 15 Jan 2026). No Figma, voice
 cloning, or GPU video.
 
@@ -21,7 +21,7 @@ cloning, or GPU video.
 
 Every source reports its own status in `source_status`
 (`ok` / `connected` / `not_connected` / `unknown` / `unavailable`),
-the same pattern as `GET /api/voice/status` (P-03). A source that
+the same pattern as `GET /api/voice/status` (PWA share target and voice messages). A source that
 is not connected or not reachable says so; its section is empty
 with a reason. Nothing is invented.
 
@@ -29,7 +29,7 @@ with a reason. Nothing is invented.
 | --- | --- | --- |
 | Schedule | Google Calendar (`calendar_read`) | `not_connected` — Gmail + Drive are connected, Calendar is not yet |
 | Bills due | Gmail (`gmail_search` + `gmail_read`) | Connected; candidates are keyword matches, always `verified: false` |
-| Open tasks | `tasks` table (P-02 store) | Live |
+| Open tasks | `tasks` table (stop-all and autonomy dial store) | Live |
 | Holidays | Nager.Date (`date.nager.at`, no key) | Live, verified from this VM 20 Nov 2026 |
 | Prayer times | Aladhan (`api.aladhan.com`, no key), method 20 (Kemenag RI) | Live, verified from this VM 20 Nov 2026 |
 
@@ -62,7 +62,7 @@ Storage: the note (raw text, summary, actions with task ids) goes
 to `morning_notes` (migration 0025); each action goes to the
 `tasks` table as a tracked task (`status: accepted`), so it shows
 on the Tasks screen and in the weekly report. The transcript
-behind a voice note comes from the P-03 voice pipeline — the
+behind a voice note comes from the PWA share target and voice messages voice pipeline — the
 transcriber is still a stub, and that limitation carries over:
 a voice note's transcript is only as real as the configured
 transcriber. Audio is deleted right after transcribing, like
@@ -89,7 +89,7 @@ to stay under the 2000-line cap; the main spec holds `$ref` stubs).
   email was read during this work; candidates are tested with
   fake messages only.
 - **Voice notes**: the transcriber is a stub; a voice note on a
-  real phone has not been tested (same limitation as P-03).
+  real phone has not been tested (same limitation as PWA share target and voice messages).
 - **Prayer times / holidays**: verified live from this VM on
   20 Nov 2026 (Aladhan Jakarta timings + Hijri date; Nager.Date
   2026 Indonesia holidays). Both are free public APIs with no

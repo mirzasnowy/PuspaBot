@@ -1,4 +1,4 @@
-# Task progress rail beside Chat (P-13, plan section 12.13)
+# Task progress rail beside Chat (plan section 12.13)
 
 ## What it is
 
@@ -69,7 +69,7 @@ only the keyed `agent` map, and the frontend read only the
 map. With a real payload, `workingAgents` always returned
 empty — the WorkStrip could never show a working agent.
 
-P-13 fixed it at the contract + state layers, without
+task progress rail beside chat fixed it at the contract + state layers, without
 touching the server or the Jinja templates (which also read
 `office.agents`):
 

@@ -1,12 +1,12 @@
 # Subagent lifecycle API
 
-Public lifecycle for Puspa subagents (G25). This document is the
+Public lifecycle for PuspaBot subagents (public subagent lifecycle). This document is the
 contract: the handle, the states, the operations, and the
 fail-closed rules. The implementation lives in `puspa/subagents/`;
 the pattern follows the hermes-agent lifecycle
 (`agent/subagent_lifecycle.py`, `delegation_*.py`,
 `tools/delegate_tool.py`, `plugins/delegation/`,
-`subagent-lifecycle-api.md`), rewritten as Puspa's own code — never
+`subagent-lifecycle-api.md`), rewritten as PuspaBot's own code — never
 copied verbatim.
 
 ## Why this exists
@@ -118,7 +118,7 @@ Enforced at `launch`, before anything is spawned:
 
 ## Host path
 
-A child runs through the host path Puspa already has — no parallel
+A child runs through the host path PuspaBot already has — no parallel
 spawn path was built. `puspa.subagents.host.HostSession`:
 
 1. **Spawn accounting** — `SubagentPool.spawn` with the child
@@ -190,7 +190,7 @@ run it later, which is how `PENDING` is observed without a race.
 - **`subagent_stop` is not a plugin event yet.**
   `puspa.plugins.context.HOOK_EVENTS` does not list it, so plugins
   cannot register it through `PluginContext.register_hook` today.
-  Until that event is added (G27 area), stop hooks are passed to
+  Until that event is added (plugin system with catalog and boundary lint area), stop hooks are passed to
   the lifecycle as plain `(event, payload)` callables;
   `collect_stop_hooks` already understands plugin contexts, so it
   starts working the moment the event is allowed there.

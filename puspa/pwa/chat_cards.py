@@ -76,7 +76,7 @@ def _require(condition: bool, message: str) -> None:
 
 
 def _require_string(value, field: str) -> str:
-    _require(isinstance(value, str) and value.strip(), f"{field} must be a non-empty string")
+    _require(bool(isinstance(value, str) and value.strip()), f"{field} must be a non-empty string")
     return value
 
 
@@ -93,6 +93,28 @@ def _require_number(value, field: str) -> float:
         f"{field} must be a finite number",
     )
     return float(value)
+
+
+def _require_int(value, field: str) -> int:
+    _require(isinstance(value, int) and not isinstance(value, bool), f"{field} must be an integer")
+    return value
+
+
+def _require_list(value, field: str) -> list:
+    _require(isinstance(value, list), f"{field} must be a list")
+    return value
+
+
+def _require_dict(value, field: str) -> dict:
+    _require(isinstance(value, dict), f"{field} must be an object")
+    return value
+
+
+def _optional_list(value, field: str) -> list | None:
+    if value is None:
+        return None
+    _require(isinstance(value, list), f"{field} must be a list")
+    return value
 
 
 def _validate_lat_lon(lat, lon, field: str) -> tuple[float, float]:
@@ -159,8 +181,7 @@ def draft_card_from_draft(draft: dict) -> dict:
     message channel (copy only, no mailto).
     """
     _require(isinstance(draft, dict), "draft must be a dict")
-    text = draft.get("text")
-    _require(isinstance(text, str) and text.strip(), "draft text must be a non-empty string")
+    text = _require_string(draft.get("text"), "draft text")
     kind = draft.get("kind")
     channel = "email" if kind == "email" else "message"
     return draft_card(
@@ -216,7 +237,7 @@ def chart_card(*, title: str, metric: str, points: list[dict]) -> dict:
     """
     title = _require_string(title, "chart title")
     _require(metric in CHART_METRICS, f"chart metric must be one of {CHART_METRICS}")
-    _require(isinstance(points, list) and points, "chart points must be a non-empty list")
+    _require(bool(isinstance(points, list) and points), "chart points must be a non-empty list")
     _require(len(points) <= 90, "chart points must hold at most 90 points")
     cleaned = []
     for point in points:
@@ -238,8 +259,8 @@ def chart_card_from_insights(report: dict, *, metric: str = "cost_idr") -> dict:
     """
     _require(isinstance(report, dict), "insights report must be a dict")
     _require(metric in CHART_METRICS, f"chart metric must be one of {CHART_METRICS}")
-    days = report.get("activity_per_day")
-    _require(isinstance(days, list) and days, "insights report has no activity_per_day")
+    days = _require_list(report.get("activity_per_day"), "activity_per_day")
+    _require(bool(days), "insights report has no activity_per_day")
     metric_titles = {
         "turns": "Turns per day",
         "tokens": "Tokens per day",
@@ -329,7 +350,7 @@ def map_card(
         "a route of exactly one point draws nothing; use a marker instead",
     )
     _require(
-        cleaned_markers or len(cleaned_route) >= 2,
+        bool(cleaned_markers or len(cleaned_route) >= 2),
         "map needs at least one marker or a route of 2+ points",
     )
     card: dict = {
@@ -420,28 +441,31 @@ def validate_card(card: dict) -> dict:
     kind = card.get("kind")
     if kind == "draft":
         return draft_card(
-            body=card.get("body"),
-            title=card.get("title"),
-            recipient=card.get("recipient"),
-            subject=card.get("subject"),
+            body=_require_string(card.get("body"), "card body"),
+            title=_optional_string(card.get("title"), "card title"),
+            recipient=_optional_string(card.get("recipient"), "card recipient"),
+            subject=_optional_string(card.get("subject"), "card subject"),
             channel=card.get("channel") or "message",
-            draft_id=card.get("draft_id"),
+            draft_id=_optional_string(card.get("draft_id"), "card draft_id"),
         )
     if kind == "options":
-        return options_card(question=card.get("question"), options=card.get("options"))
+        return options_card(
+            question=_require_string(card.get("question"), "card question"),
+            options=_require_list(card.get("options"), "card options"),
+        )
     if kind == "chart":
         return chart_card(
-            title=card.get("title"),
-            metric=card.get("metric"),
-            points=card.get("points"),
+            title=_require_string(card.get("title"), "card title"),
+            metric=_require_string(card.get("metric"), "card metric"),
+            points=_require_list(card.get("points"), "chart points"),
         )
     if kind == "map":
         return map_card(
-            center=card.get("center"),
-            zoom=card.get("zoom"),
-            title=card.get("title"),
-            markers=card.get("markers"),
-            route=card.get("route"),
+            center=_require_dict(card.get("center"), "map center"),
+            zoom=_require_int(card.get("zoom"), "map zoom"),
+            title=_optional_string(card.get("title"), "card title"),
+            markers=_optional_list(card.get("markers"), "map markers"),
+            route=_optional_list(card.get("route"), "map route"),
         )
     raise ValueError(f"unknown card kind {kind!r}")
 

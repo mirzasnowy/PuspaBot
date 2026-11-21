@@ -1,6 +1,6 @@
-# Kosmos — Brain Design for Puspa
+# Kosmos — Brain Design for PuspaBot
 
-Status: accepted as the brain design document (Nero, 18 Nov 2026). Source: design note presented by Nero, 18 Nov 2026. This is a design document, not a promise: the riskiest parts (fractal resolution, self-growing ontology) are research-level and are NOT promised to users. Product name stays Puspa; Kosmos is the internal name for the brain design.
+Status: accepted as the brain design document (Nero, 18 Nov 2026). Source: design note presented by Nero, 18 Nov 2026. This is a design document, not a promise: the riskiest parts (fractal resolution, self-growing ontology) are research-level and are NOT promised to users. Product name stays PuspaBot; Kosmos is the internal name for the brain design.
 
 ## The core idea
 
@@ -94,9 +94,9 @@ Most at risk: fractal resolution and self-growing ontology. Both are still resea
 
 ## Assessment (Luna, 18 Nov 2026)
 
-Kosmos is not a new product. It is a sharper formulation of Puspa's brain. Mapping to what exists:
+Kosmos is not a new product. It is a sharper formulation of PuspaBot's brain. Mapping to what exists:
 
-| Kosmos part | Puspa today |
+| Kosmos part | PuspaBot today |
 |---|---|
 | World Engine | puspa/world (model + beliefs + simulator), exists, narrow (tasks, schedule, capability, contacts, habits) |
 | Presence | PWA, exists as a shell |
@@ -107,86 +107,86 @@ Kosmos is not a new product. It is a sharper formulation of Puspa's brain. Mappi
 | Memory, 3 of 5 layers | 3-layer memory + profile, exists |
 | Security posture | fail-closed, ledger, policy, exists |
 
-### Taken into the work list (K items)
+### Taken into the work list (brain mechanisms)
 
-- K1. Intent Engine: intent as a distribution over three levels (current desire, ongoing goal, long-term values). NEW.
-- K2. Act-or-ask rule: confidence x reversibility x stakes, computed, not just a taxonomy. Extends approvals (G4) and gateway (G5).
-- K3. Bitemporal state: valid time vs known time on beliefs and ledger entries. NEW.
-- K4. Causal Ledger: hypotheses "X -> Y under C" with strength, evidence, expiry. Extends the learning loop.
-- K5. Other-agent goal models: extend contact beliefs into models of what other people want and will do. NEW.
-- K6. Ignorance map: track where the model is blind. NEW.
-- K7. Three-speed simulator: structure the existing simulator into fast / medium / deep. Extends the world model.
-- K8. Outcome watcher: keep monitoring after "done". Extends eval harness + learning loop.
-- K9. Daily sleep consolidation + monthly ontology review. Extends consolidate.py.
-- K10. Interruption budget for proactivity. NEW, small.
-- K11. Autonomy dial per area, moving with prediction calibration; one serious irreversible failure drops it immediately. NEW.
-- K12. Audit log outside the agent's reach + kill switch + export. Hardening.
-- K13. Anti-manipulation as a design rule: optimise for reflective goals, surface conflicts, never decide silently. Design rule, applies to all K items.
+- Intent engine: intent as a distribution over three levels (current desire, ongoing goal, long-term values). NEW.
+- Act-or-ask rule: confidence x reversibility x stakes, computed, not just a taxonomy. Extends the approvals taxonomy and the fail-closed gateway.
+- Bitemporal state: valid time vs known time on beliefs and ledger entries. NEW.
+- Causal ledger: hypotheses "X -> Y under C" with strength, evidence, expiry. Extends the learning loop.
+- Other-agent goal models: extend contact beliefs into models of what other people want and will do. NEW.
+- Ignorance map: track where the model is blind. NEW.
+- Three-speed simulator: structure the existing simulator into fast / medium / deep. Extends the world model.
+- Outcome watcher: keep monitoring after "done". Extends eval harness + learning loop.
+- Daily sleep consolidation and monthly ontology review. Extends consolidate.py.
+- Interruption budget for proactivity. NEW, small.
+- Autonomy dial per area, moving with prediction calibration; one serious irreversible failure drops it immediately. NEW.
+- External audit log, kill switch and export: an audit log outside the agent's reach, plus a kill switch and export. Hardening.
+- Anti-manipulation as a design rule: optimise for reflective goals, surface conflicts, never decide silently. Design rule, applies to all brain mechanisms.
 
 ### Acceptance criteria (added 19 Nov 2026)
 
-These criteria were written by Luna on 19 Nov 2026 from this design note and the build standard of the G items (SOLO-green tests, real wiring, docs updated). The original design note defined no completion criteria.
+These criteria were written by Luna on 19 Nov 2026 from this design note and the build standard of the gap-fix items (SOLO-green tests, real wiring, docs updated). The original design note defined no completion criteria.
 
-**K1 — Intent Engine**
+**intent engine — Intent Engine**
 1. Intent is stored as a three-level distribution (current desire, ongoing goal, long-term values), not a single label.
 2. Tests prove one input ("I'm so tired") maps to all three levels with distinct scores.
 3. The distribution is consumed by a real caller (turn loop or decider), not a standalone module.
 4. Suite green, docs updated.
 
-**K2 — Act-or-ask rule**
+**act-or-ask rule — Act-or-ask rule**
 1. The act-or-ask decision is computed from confidence x reversibility x stakes, not just a taxonomy.
 2. Reversible, low-stakes actions run directly; irreversible, high-stakes actions stop and ask one calm question.
-3. Wired into approvals (G4) and gateway (G5).
+3. Wired into approvals (approvals taxonomy) and gateway (fail-closed gateway with CEL-style rules).
 4. Tests cover both ends of the spectrum plus boundary cases.
 5. Suite green, docs updated.
 
-**K3 — Bitemporal state**
+**bitemporal state — Bitemporal state**
 1. Every belief and ledger entry stores two times: when true (valid time) and when the system learned it (known time).
 2. Tests prove correcting the past does not overwrite history (old times stay readable).
 3. Schema migration and queries using both times run on Postgres.
 4. Suite green, docs updated.
 
-**K4 — Causal Ledger**
+**causal ledger — Causal Ledger**
 1. Hypotheses stored as X -> Y under condition C, plus strength, evidence, and expiry.
 2. Expired hypotheses are automatically dropped or weakened.
 3. Hypotheses are used by the learning loop (they influence predictions or decisions), not just stored.
 4. Tests cover formation, strengthening, and expiry.
 5. Suite green, docs updated.
 
-**K5 — Other-agent goal models**
+**other-agent goal models — Other-agent goal models**
 1. Each model stores another person's goals and predicted behaviour, built from existing contact beliefs.
 2. Tests prove predictions are recorded and scored right or wrong once the outcome is known.
 3. Models are used by a real caller (e.g. the planner accounts for other people's reactions).
 4. Suite green, docs updated.
 
-**K6 — Ignorance map**
+**ignorance map — Ignorance map**
 1. The map records areas or topics where the model has no evidence or low confidence.
 2. Tests prove an empty area is detected and disappears once evidence arrives.
 3. The map is used by a real caller (e.g. the system asks or places a probe in an empty area instead of guessing).
 4. Suite green, docs updated.
 
-**K7 — Three-speed simulator**
+**three-speed simulator — Three-speed simulator**
 1. The simulator is structured in three speeds: fast (LLM intuition), medium (dynamics learned from traces), deep (dry-run and sandbox with real tools).
 2. Each speed is callable and its results are recorded.
 3. Wired into the existing world model.
 4. Tests cover all three plus fallback when one speed fails.
 5. Suite green, docs updated.
 
-**K8 — Outcome watcher**
+**outcome watcher — Outcome watcher**
 1. The system keeps monitoring results after a task is marked done.
 2. Late-appearing failures are recorded and fed into the learning loop.
-3. Wired into the eval harness and sentinel (G12).
+3. Wired into the eval harness and sentinel (self-observability (Sentinel and decision log)).
 4. Tests cover a late failure being detected.
 5. Suite green, docs updated.
 
-**K9 — Daily sleep consolidation + monthly ontology review**
+**daily sleep consolidation and monthly ontology review — Daily sleep consolidation + monthly ontology review**
 1. Daily consolidation runs (traces merged, stale hypotheses dropped, dynamics retrained).
 2. Monthly ontology review runs (restructuring, hidden-variable search, bias audit).
 3. Both are scheduled and recorded in the ledger.
 4. Tests cover one end-to-end consolidation cycle.
 5. Suite green, docs updated.
 
-**K10 — Interruption budget**
+**interruption budget — Interruption budget**
 1. Every proactive initiative "pays" from a limited daily interruption budget.
 2. An empty budget means silence: no new notifications.
 3. Tests prove the budget suppresses spam while still allowing high-value actions.
@@ -203,25 +203,25 @@ trigger types `price_drop`, `due_date_bill` only) and into
 spend (documented limit). Denials are audited in the budget's
 spend log, not the ledger — no 32nd event type.
 
-**K11 — Autonomy dial per area**
+**autonomy dial — Autonomy dial per area**
 1. The dial is per area (not global) and moves with prediction calibration.
 2. One serious failure in an irreversible area immediately drops that area's dial.
 3. The stages propose -> do and show -> do silently follow the dial.
 4. Tests prove an immediate drop after a simulated failure.
 5. Suite green, docs updated.
 
-**K12 — Audit outside agent reach + kill switch + export**
+**external audit log, kill switch and export — Audit outside agent reach + kill switch + export**
 1. The append-only audit log is outside the agent's reach (the agent cannot modify or delete it).
 2. The kill switch stops the agent and is recorded in the log.
 3. Export of all user data works (including memory derivatives).
 4. Tests prove an agent attempt to modify the log fails (fail-closed).
 5. Suite green, docs updated.
 
-**K13 — Anti-manipulation design rule**
+**anti-manipulation design rule — Anti-manipulation design rule**
 1. The rule is written in docs and enforced in code (not just intent): optimise for the user's reflective goals, not engagement.
 2. Conflicts of interest are shown to the user, never decided silently.
 3. A test or check proves one conflict scenario is surfaced to the user.
-4. The rule is checked against every other K item (review checklist).
+4. The rule is checked against every other brain mechanism (review checklist).
 
 Implemented 19 Nov 2026 (`puspa/policy/conflicts.py`,
 migration `0019_conflicts.sql`, `docs/anti-manipulation.md`):
@@ -233,14 +233,14 @@ the user chooses proceed / alternative / decline
 (`require_resolved` raises while unresolved); records
 persisted in Postgres table `conflict_records` (in-memory
 store when no DSN is given, with the same honest restart
-limit as K10/K11) and audited through the existing ledger
+limit as interruption budget/autonomy dial) and audited through the existing ledger
 event types `approval_requested` / `approval_granted` /
 `approval_rejected` — no 32nd event type. Wired into the
-turn loop after the intent advisor (K1) and the autonomy dial
-(K11), so even a `do_silently` action is surfaced when it
+turn loop after the intent advisor (intent engine) and the autonomy dial
+(autonomy dial), so even a `do_silently` action is surfaced when it
 carries a conflict. The review checklist in
-`docs/anti-manipulation.md` covers every implemented K item
-(K1, K3, K4, K5, K6, K10, K11, K12); K2, K7, K8, K9 gain a
+`docs/anti-manipulation.md` covers every implemented brain mechanism
+(intent engine, bitemporal state, causal ledger, other-agent goal models, ignorance map, interruption budget, autonomy dial, external audit log, kill switch and export); act-or-ask rule, three-speed simulator, outcome watcher, daily sleep consolidation and monthly ontology review gain a
 row when they land.
 
 ### Explicitly NOT taken literally
@@ -251,4 +251,4 @@ row when they land.
 
 ### Placement in the work queue
 
-K items fold into the maturity phase after Tier 2 and the rework of 4 shallow spots. Items overlapping the G list fold into those G items (K2 into G4/G5, K8 into G12, K9 into G7/G24, K7 into the world-model work); the rest are new items after the G list. No new phase is created for Kosmos.
+Brain mechanisms fold into the maturity phase after Tier 2 and the rework of 4 shallow spots. Items overlapping the gap-fix list fold into those gap-fix items (act-or-ask rule into the approvals taxonomy / fail-closed gateway, outcome watcher into self-observability (Sentinel), daily sleep consolidation and monthly ontology review into memory tightening / pluggable memory providers, three-speed simulator into the world-model work); the rest are new items after the gap-fix list. No new phase is created for Kosmos.

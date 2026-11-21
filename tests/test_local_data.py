@@ -249,8 +249,9 @@ def test_detect_rail_wallets(text: str, rail_id: str) -> None:
 
 
 def test_detect_rail_dana_needs_payment_context() -> None:
-    assert detect_rail("bayar pake dana") is not None
-    assert detect_rail("bayar pake dana").rail_id == "dana"
+    rail = detect_rail("bayar pake dana")
+    assert rail is not None
+    assert rail.rail_id == "dana"
     # "dana" as the ordinary word for funds is not the wallet.
     assert detect_rail("butuh dana buat beli ini") is None
 

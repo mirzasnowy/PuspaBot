@@ -1,11 +1,11 @@
-# Sentinel — self-observability (G12)
+# Sentinel — self-observability (self-observability (Sentinel and decision log))
 
-Puspa watches itself: a periodic scanner over its own records
+PuspaBot watches itself: a periodic scanner over its own records
 (the ledger + the learning loop's inputs), a decision log, usage
 traces, anonymous analytics, a batch trajectory runner, and a
 session-insights engine. The code lives in `puspa/sentinel/`.
 
-Pattern sources (studied, rewritten as Puspa code, never copied
+Pattern sources (studied, rewritten as PuspaBot code, never copied
 verbatim — see `NOTICE.md` and `REUSE.md`): DuskBot
 `server/sentinel/` + `server/decision-log.ts` +
 `server/usage-trace/` (PolyForm Noncommercial, study only) and
@@ -43,7 +43,7 @@ content carries `trigger_id` + `task_id`
 `content.deleted == True` is a delete tombstone
 (`docs/contracts.md`), not a stopped turn, and is excluded.
 
-## Scan flow and the independent verifier (K8)
+## Scan flow and the independent verifier (outcome watcher)
 
 `puspa/sentinel/scanner.py` (`Sentinel.scan`):
 
@@ -51,7 +51,7 @@ content carries `trigger_id` + `task_id`
    `state["last_scan"]` is a no-op (`status: "skipped"`) unless
    forced.
 2. Detect: all five detectors over the lookback window.
-3. Verify (K8): each candidate goes through the independent
+3. Verify (outcome watcher): each candidate goes through the independent
    verifier (`puspa/sentinel/verifier.py`), which re-reads fresh
    events and re-runs the single detector for that issue's scope.
    The verifier module is separate from the detector module so
@@ -86,7 +86,7 @@ Honest limit: the scheduler moves a trigger one day forward on
 each run (`run_trigger`), so the trigger gives a daily scan at
 most. The 30-minute rescan interval is enforced inside the
 scanner state. A 30-minute cadence needs a caller that invokes
-`run_sentinel_scan` every 30 minutes — for example a G8 cron job
+`run_sentinel_scan` every 30 minutes — for example a scheduler and routines cron job
 (`every 30m`) — not this daily trigger.
 
 ## Decision log
@@ -100,7 +100,7 @@ the same decision always hashes the same). Retention 180 days
 by default (`prune` deletes older daily files; nothing else in
 the directory is touched).
 
-This is the durable, file-based counterpart of G9's in-memory
+This is the durable, file-based counterpart of decider (small model for cheap decisions)'s in-memory
 `puspa.decider.log.DecisionLog` — it does not write to the
 ledger, so it needs no new ledger event type.
 
@@ -147,7 +147,7 @@ instead of starting over. `record_prompt_run` records one agent
 run over a bare prompt (no cassette) from the agent's own
 `{"messages", "tool_calls", "final_state", "passed", "score"}`
 result. `aggregate_tool_usage` totals tool calls per tool.
-Redaction before saving: step content passes through G7's
+Redaction before saving: step content passes through memory tightening's
 `puspa.memory.trust.redact_secrets`; the raw trajectory is never
 written to disk. The format is documented in
 `docs/trajectory-format.md` (JSON + ShareGPT export).
@@ -156,10 +156,10 @@ written to disk. The format is documented in
 
 `puspa/sentinel/insights.py`: tokens, cost estimate, tool/skill
 usage, activity, model/platform breakdown — from ledger events
-(`insights_from_events`) or from a G26 session database
+(`insights_from_events`) or from a sessions and persistence (single-writer, full-text search, lineage) session database
 (`insights_from_state_db`, read-only SQLite `mode=ro`).
 
-- Tokens reuse `puspa.router.compression.count_tokens` (the G19
+- Tokens reuse `puspa.router.compression.count_tokens` (the context compression
   counter); cost uses the router catalog (cheapest reader model)
   or the `cost_rp` the ledger already recorded.
 - Sub-cent amounts are labelled at 4 decimals (`$0.0023`),
@@ -189,7 +189,7 @@ own home directory.
   ledger has no per-user partition (see `puspa/ledger/ledger.py`),
   so per-user scoping is a follow-up, not a claim.
 - The 30-minute cadence is not scheduled yet: the daily trigger
-  is registered, but a 30-minute caller (G8 cron job) still
+  is registered, but a 30-minute caller (scheduler and routines cron job) still
   needs wiring.
 - The scanner is not wired to any alerting channel: issues sit
   in the state file + snapshot until something reads them. The

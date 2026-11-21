@@ -1,7 +1,7 @@
-# Proof surface (B4)
+# Proof surface (trust and proof surface)
 
 The ledger hash chain, approval receipts, and audit trail are shown
-to the user, not hidden in logs. Puspa shows how it reached an
+to the user, not hidden in logs. PuspaBot shows how it reached an
 answer and what it did.
 
 ## Receipts
@@ -25,7 +25,7 @@ Every ledger event has a human-readable receipt
   explicitly whether the action moved money or sent something
   out, because those are the actions the user has to be able to
   check. The classification reads the markers the approval
-  taxonomy (G4) already writes: the content's `action_kind` /
+  taxonomy (approvals taxonomy) already writes: the content's `action_kind` /
   `gate_kind`, an outcome record's `outcome_type`, and — for
   `tool_called` events — the tool name through
   `puspa.policy.approvals.classify_action`. Anything
@@ -64,12 +64,12 @@ is true.
 
 Two real paths use it:
 
-- **Check Before You Buy (B1)** — `record_outcome` returns a
+- **Check Before You Buy (price-check beta slice)** — `record_outcome` returns a
   `proof` block with the answer: the verified price-evidence
   ids, the receipt for the ledger event the answer was recorded
   as, and — when the answer could not verify anything — the
   unverified sections named (`missing_evidence`).
-- **Outcome records (B2)** — `outcome_with_proof(record, ledger)`
+- **Outcome records (verified outcome records)** — `outcome_with_proof(record, ledger)`
   returns a record with its evidence and the receipt for the
   ledger event the record was written as, so the hash on the
   receipt is the hash of the record itself.
@@ -89,9 +89,9 @@ one user's own audit trail as a portable JSON document:
  "excluded": [...]}
 ```
 
-The shape reuses the K12 user export (`puspa.ledger.export`):
+The shape reuses the external audit log, kill switch and export user export (`puspa.ledger.export`):
 `format` / `version` / `exported_at` / `counts` / `excluded`.
-The ownership rule is the K12 rule too: the ledger has no
+The ownership rule is the external audit log, kill switch and export rule too: the ledger has no
 `user_id` column, so an event belongs to the user when its agent
 is one of the user's agents, or when its content carries the
 user's id (outcome records do). Only the requesting user's
@@ -99,7 +99,7 @@ events are ever included; secret-looking text is redacted, and
 the `excluded` list names what is left out.
 
 The export is bounded and paginated: `limit` defaults to 100
-and clamps to 5000 (the K12/G6 export cap `MAX_EXPORT_ROWS`),
+and clamps to 5000 (the external audit log, kill switch and export/audit trail with initiator export cap `MAX_EXPORT_ROWS`),
 and `pagination` carries the total so the user pages through
 their whole trail instead of getting a silently cut file.
 Exporting an unknown user id fails loudly instead of producing
@@ -113,7 +113,7 @@ routes require login; receipts and outcomes of another user
 return 403, unknown ids return 404, anonymous callers get 401.
 
 - `GET /api/proof/receipts/{event_id}` — one receipt.
-- `GET /api/proof/outcomes/{outcome_id}` — one B2 outcome
+- `GET /api/proof/outcomes/{outcome_id}` — one verified outcome records outcome
   record with its proof attached.
 - `GET /api/proof/audit-trail?limit=&offset=` — the user's own
   audit trail, paginated.

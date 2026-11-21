@@ -82,6 +82,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TypedDict
 
 from .dial import (
     STAGE_DO_AND_SHOW,
@@ -111,9 +112,19 @@ __all__ = [
 #: a row").
 SUGGESTION_THRESHOLD = 10
 
+
+class DisplayArea(TypedDict):
+    """One shown area: its dial key, label, lock, and description."""
+
+    area: str
+    label: str
+    locked: bool
+    description: str
+
+
 #: The five areas the PWA shows (plan 12.7), in display order.
 #: ``locked`` means the ceiling cannot be raised at all.
-DISPLAY_AREAS = (
+DISPLAY_AREAS: tuple[DisplayArea, ...] = (
     {
         "area": "money",
         "label": "Money",
@@ -207,11 +218,16 @@ class Signal:
     accepted: bool
 
 
-def area_by_key(key: str) -> dict | None:
+def area_by_key(key: str) -> DisplayArea | None:
     """The display-area entry for ``key``, or None when not shown."""
     for entry in DISPLAY_AREAS:
         if entry["area"] == key:
-            return dict(entry)
+            return {
+                "area": entry["area"],
+                "label": entry["label"],
+                "locked": entry["locked"],
+                "description": entry["description"],
+            }
     return None
 
 

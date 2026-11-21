@@ -1,17 +1,17 @@
-# B10 — Meeting notes and follow-ups
+# Meeting notes and follow-ups
 
-Date: 19 Nov 2026. Source: `docs/tickets-beta-plan.md` section B10,
+Date: 19 Nov 2026. Source: `docs/tickets-beta-plan.md` section meeting notes and follow-ups,
 plan section 8.5. From a transcript or notes, the agent writes
 minutes, extracts action items with owner and deadline, and reminds
 owners.
 
 ## What it is
 
-A room member pastes a meeting transcript (or notes) and Puspa
+A room member pastes a meeting transcript (or notes) and PuspaBot
 returns minutes: decisions and action items with owners and
 deadlines. Each action item lands on the shared room task board
-(B6); each decision lands in room memory and in the ledger; owners
-get reminders through the G8 scheduler.
+(group chat); each decision lands in room memory and in the ledger; owners
+get reminders through the scheduler and routines scheduler.
 
 ## Modules
 
@@ -22,18 +22,18 @@ All new code lives in `puspa/meetings/`; the schema is migration `0011_meetings.
 | --- | --- |
 | `parse.py` | Deterministic extraction and rendering (pure functions, no DB, no model call), plus the opt-in LLM polish seam. |
 | `store.py` | `MeetingMinutesStore`: write minutes end to end (board tasks + room decisions + ledger events), read them back. |
-| `reminders.py` | Reminder queries (due / overdue meeting action items, per-owner digest, flat scheduler sweep) and the G8 cron registration. |
+| `reminders.py` | Reminder queries (due / overdue meeting action items, per-owner digest, flat scheduler sweep) and the scheduler and routines cron registration. |
 | `schema.py` | Schema loader / reset for `meeting_minutes`. |
 
 No file in `puspa/rooms/`, `puspa/scheduler/`, or `puspa/ledger/`
-was changed: B10 reuses them through their public surface, so the
-parallel B9 build (same board, same scheduler) does not collide
+was changed: meeting notes and follow-ups reuses them through their public surface, so the
+parallel delegated tasks build (same board, same scheduler) does not collide
 with this one.
 
 ## Extraction: deterministic, markers only
 
 The parser recognises explicit markers, in the same style as the
-B6 chat summariser (`Decision:` / `TODO:` / `- [ ]`):
+group chat summariser (`Decision:` / `TODO:` / `- [ ]`):
 
 - `Title:` — meeting title (default `Meeting`).
 - `Attendees:` / `Present:` — comma-separated names.
@@ -83,7 +83,7 @@ stays deterministic.
 4. Records each decision as room memory of kind `decision`
    (`RoomMemoryStore.record_decision`).
 5. When a ledger is given (with `agent_id`), appends ledger
-   events — see "Outcome records (B2 stand-in)" below.
+   events — see "Outcome records (verified outcome records stand-in)" below.
 
 Only a room member may write or read minutes. The steps run in
 separate connections (each store owns its own), so a failure
@@ -91,9 +91,9 @@ after step 2 leaves a partial write: the minutes row is the
 anchor, and a retry re-parses the same transcript. A single
 cross-store transaction is a follow-up, not part of this ticket.
 
-## Outcome records (B2 — adopted)
+## Outcome records (verified outcome records — adopted)
 
-B2 built the general outcome-record path
+verified outcome records built the general outcome-record path
 (`puspa.evidence.outcomes`, see `docs/outcome-records.md`)
 and adopted these events: each decision is now a
 `decision_recorded` outcome record written through the shared
@@ -103,7 +103,7 @@ writer, as an `evidence_recorded` event with content
 <meeting id>, "summary": <decision>, "evidence":
 [{"kind": "meeting_minutes", …}], "details":
 {"kind": "meeting_decision", "meeting_id", "room_id",
-"decision"}}` — the pre-B2 payload is preserved verbatim
+"decision"}}` — the pre-verified outcome records payload is preserved verbatim
 under `details`. The action item stays a plain `task_created`
 event, content `{"kind": "meeting_action_item", "meeting_id",
 "room_id", "room_task_id", "title", "owner_user_id",
@@ -111,18 +111,18 @@ event, content `{"kind": "meeting_action_item", "meeting_id",
 
 The ledger `task_id` for these events is the meeting id, so the
 events for one meeting form their own verifiable chain. The
-records are queryable per user and per group through the B2
+records are queryable per user and per group through the verified outcome records
 query API.
 
 ## Reminders
 
-Reminder queries reuse the B6 board's `due_soon` / `overdue`
+Reminder queries reuse the group chat board's `due_soon` / `overdue`
 and filter to tasks that came from meeting minutes (their ids
 are stored in the minutes rows, so the board schema is
 unchanged):
 
 - `due_meeting_actions(room, within=1 day)` — due within the
-  window (B6 `due_soon` has no lower bound, so overdue items
+  window (group chat `due_soon` has no lower bound, so overdue items
   are included here too).
 - `overdue_meeting_actions(room)` — past deadline.
 - `reminders_for_owner(room, owner)` — one owner's items,
@@ -136,11 +136,11 @@ unchanged):
 
 Nothing in this module sends a reminder: sending is an
 approval-gated delivery, and the queries only answer who needs
-one. The scheduler hook reuses the G8 general cron scheduler —
+one. The scheduler hook reuses the scheduler and routines general cron scheduler —
 no second scheduler is built:
 
 - `register_reminder_job(store, room_id, deliver_to=...)`
-  creates a G8 cron job (`CronJobStore` + `cronjob_manage`,
+  creates a scheduler and routines cron job (`CronJobStore` + `cronjob_manage`,
   default every 12 hours, Asia/Jakarta) whose prompt tells a
   fresh agent to call `run_reminder_sweep` for the room and
   deliver each reminder to its owner, inventing nothing. The
@@ -156,8 +156,8 @@ no second scheduler is built:
   without it every action item is unassigned.
 - No live chat delivery is verified anywhere in this ticket:
   the reminder job's delivery target is the caller's, and no
-  Telegram / WhatsApp send is exercised (same limit as B6).
-- B2's general outcome-record path exists now (see above):
+  Telegram / WhatsApp send is exercised (same limit as group chat).
+- verified outcome records's general outcome-record path exists now (see above):
   decisions are outcome records; action items stay plain
   `task_created` events.
 - `write_minutes` is not one cross-store transaction (see above).

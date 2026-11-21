@@ -1,16 +1,16 @@
-# Skill narrowing + `search_tools` (G17)
+# Skill narrowing + `search_tools` (skill narrowing and tool search)
 
-Before a run, Puspa picks the skills that fit the user message and
+Before a run, PuspaBot picks the skills that fit the user message and
 offers the model only those skills' tools plus the granted tools.
 A model picks reliably from ~10 tools and unreliably from 30, so
 the offered set stays small; when the catalog is big anyway, the
 rest waits behind one `search_tools` tool; past the hard limit the
 run is refused. Pattern from OpenBot (`app/src/lib/skills/` +
-`docs/architecture.md`), rewritten as Puspa code — never copied
+`docs/architecture.md`), rewritten as PuspaBot code — never copied
 verbatim.
 
 This is the registry-level twin of the marketplace narrowing
-(`puspa/marketplace/narrowing.py`, G3). That module narrows
+(`puspa/marketplace/narrowing.py`, module marketplace (registry, trust, install, rollback)). That module narrows
 marketplace skill manifests (plain dicts); this module
 (`puspa/tools/narrowing.py`) narrows `ToolDefinition` objects
 from the registry, and it is what the turn loop actually runs.
@@ -31,7 +31,7 @@ tools-layer twin of the marketplace one.
 | `search_result_limit` | 10 | Results one `search_tools` call returns (at most 50). |
 
 The defaults are the OpenBot starting points from the comparison
-report — usable as-is, not tuned to Puspa data. Configure them in
+report — usable as-is, not tuned to PuspaBot data. Configure them in
 `NarrowingConfig` (`puspa/tools/narrowing.py`) or, for the turn
 loop, in `TurnConfig` (`puspa/turns/config.py`: `max_direct_tools`,
 `max_tools`, `max_offered_tools`, `search_result_limit`). The
@@ -183,7 +183,7 @@ no catalog, so its behavior is unchanged.
 ## Audit
 
 Narrowing records go through the `audit_sink` callable with the
-G4/G5/G6 ledger shape `sink(event_type, content)` — the same
+approvals taxonomy/fail-closed gateway with CEL-style rules/audit trail with initiator ledger shape `sink(event_type, content)` — the same
 shape `TurnLoop.sink` and `make_ledger_sink` use. No new audit
 path is invented. Event names:
 
@@ -228,7 +228,7 @@ coordinator, not to this item.
   is a no-op fail-open (the catalog is offered; the overflow and
   refusal rules still apply).
 - The 50 / 128 thresholds are OpenBot's starting points, not
-  numbers measured on Puspa's models or catalog. If the catalog
+  numbers measured on PuspaBot's models or catalog. If the catalog
   grows past a handful of skills, re-measure where the model
   actually starts choosing unreliably.
 - The refusal counts the catalog plus granted tools. Tools the

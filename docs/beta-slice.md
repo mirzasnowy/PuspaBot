@@ -1,7 +1,7 @@
-# Check Before You Buy — beta slice (ticket B1)
+# Check Before You Buy — beta slice (ticket price-check beta slice)
 
 The one vertical slice for the limited beta: the user forwards a
-product link, a seller chat, or an account number, and Puspa returns
+product link, a seller chat, or an account number, and PuspaBot returns
 one structured, evidence-backed answer in a single turn: a fair
 price, a seller track record, an account status, and act /
 do-not-act advice.
@@ -88,7 +88,7 @@ approved source, not to add a live reader here.
   record", not "proven safe".
 - There is no PWA API endpoint for the slice yet: the turn loop is
   the wired call path, and the PWA surface is the follow-up.
-- There is no cross-user shared fraud graph (that is ticket B3):
+- There is no cross-user shared fraud graph (that is ticket shared anti-fraud and price graphs):
   one store serves one check, and records are not pooled across
   users by this slice.
 

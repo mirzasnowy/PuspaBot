@@ -1,4 +1,4 @@
-# Nanobot changelog checklist (E-19, plan section 9.4)
+# Nanobot changelog checklist (nanobot pin process, plan section 9.4)
 
 Fill this in for every nanobot bump PR, for the upstream range from
 the old pin to the new pin. The point is not paperwork: every
@@ -15,7 +15,7 @@ Upstream range for this bump: old pin `________` to new pin `________`.
 
 The wrapper follows the upstream `_LegacyErrorPrefixTool` pattern
 (`nanobot/agent/tools/loader.py`): every attribute and schema is
-passed through, only `execute` adds Puspa checks. Upstream changes
+passed through, only `execute` adds PuspaBot checks. Upstream changes
 to any of these break that pass-through.
 
 - [ ] `nanobot/agent/tools/base.py` — `Tool` / `ToolResult`: did the
@@ -32,8 +32,8 @@ to any of these break that pass-through.
       backstop: if upstream stops calling `prepare_call`, or changes
       what its third return value means, tools can run unwrapped.
 - [ ] Builtin tool set — were tools added, removed, or renamed?
-      A renamed builtin that Puspa excludes by name (for example the
-      host shell tool, which never enters a Puspa token) can quietly
+      A renamed builtin that PuspaBot excludes by name (for example the
+      host shell tool, which never enters a PuspaBot token) can quietly
       re-enter under its new name.
 - [ ] MCP — did the MCP provider or its tool registration change?
       MCP tools enter the registry through the same `register` path,
@@ -58,7 +58,7 @@ turns and what a new turn can see.
       shape.
 - [ ] `Nanobot.run` / `AgentLoop.from_config` — did the composition
       parameters change (`tool_registry`, `hooks`, `attributes`)?
-      `assemble` (`puspa/chassis/factory.py`) passes the Puspa
+      `assemble` (`puspa/chassis/factory.py`) passes the PuspaBot
       registry and hook factory through these; a renamed parameter
       fails loudly, a changed default fails quietly.
 - [ ] Request context — did `RequestContext` or the attributes slot
@@ -78,12 +78,12 @@ breaks, because a hook that upstream stops calling simply never runs.
 
 - [ ] `nanobot/agent/hook.py` — did `AgentHook` change (new hook
       points, renamed methods, changed call order, changed return
-      contract)? A new upstream hook point that Puspa does not
+      contract)? A new upstream hook point that PuspaBot does not
       implement is a gap until someone adds it; a renamed one breaks
       the subclass silently (the old method just never runs).
 - [ ] `nanobot/agent/hooks/` — did any built-in hook behaviour change
       in a way that overlaps `PuspaHook` (double enforcement, or an
-      upstream hook now doing what Puspa assumed only it did)?
+      upstream hook now doing what PuspaBot assumed only it did)?
 - [ ] Skill hooks — did the skill loading path change
       (`SkillsLoader`, skill manifests)? `PuspaSkillsLoader`
       (`puspa/chassis/skill_loader.py`) requires signed skills; an
@@ -91,7 +91,7 @@ breaks, because a hook that upstream stops calling simply never runs.
       unsigned skill or drop a signed one.
 - [ ] `SkillHookRegistry` points (`HOOK_SKILL_INSTALLED`,
       `HOOK_SKILL_USED`, `HOOK_SKILL_BLOCKED`) — did upstream add a
-      skill lifecycle event Puspa should observe?
+      skill lifecycle event PuspaBot should observe?
 
 Notes / findings:
 
@@ -101,9 +101,9 @@ Notes / findings:
       way that alters what `assemble` builds (providers, workspace
       paths, sandbox settings)?
 - [ ] `nanobot/security/` / `nanobot/execution/` — did the workspace
-      policy, sandbox launcher, or SSRF guard change? Puspa's
+      policy, sandbox launcher, or SSRF guard change? PuspaBot's
       sandbox and gate assume the upstream guards behave as
-      inventoried; a weakened upstream guard is a Puspa hole.
+      inventoried; a weakened upstream guard is a PuspaBot hole.
 - [ ] License / notices — did `LICENSE` or `THIRD_PARTY_NOTICES.md`
       change? The MIT basis of the pin must still hold; a license
       change blocks the bump outright.

@@ -1,4 +1,4 @@
-# nanobot inventory (Puspa chassis) — Phase 0
+# nanobot inventory (PuspaBot chassis) — Phase 0
 
 **Inventory date:** 17 November 2026
 **Source:** local clone `~/workspace/goals/hard-ai-engineering-portfolio-project/build/fase-0/nanobot`
@@ -100,7 +100,7 @@ The SKILL.md body is Markdown instructions for the agent (when to use it, steps,
 ### How skills are registered
 - **Loader:** `nanobot/agent/skills.py` (`SkillsLoader`) — scans `nanobot/skills/` (built-in) and `<workspace>/skills/` (user-owned). Aliases from `CliAppManager` (installed CLI apps) also count as skills.
 - **Metadata:** `nanobot/agent/skill_metadata.py` — parses + validates frontmatter (`parse_skill_metadata`, `valid_skill_metadata`).
-- **No signing / verification.** Skills from the user workspace and from ClawHub load as-is; no signature check, no content scan. This is a point Puspa must harden (definition 2.6: signed skills).
+- **No signing / verification.** Skills from the user workspace and from ClawHub load as-is; no signature check, no content scan. This is a point PuspaBot must harden (definition 2.6: signed skills).
 - Skills can also be created automatically by Dream: `templates/agent/dream.md` orders the creation of `skills/<name>/SKILL.md` when a workflow has appeared at least 2 times.
 
 ### How tools are called
@@ -124,7 +124,7 @@ What exists is **Markdown-file memory + JSONL logs**, with no vector database an
 - **The `memory` skill:** only instructs the agent to search `history.jsonl` with a text-search tool. No semantic search.
 - **Context compaction:** `agent/autocompact.py` + `session/summary.py` — session summaries as context grows, or manual `/compact`.
 - **Sessions:** `session/sqlite_store.py` (SQLite) + `session/manager.py` — sessions, metadata, history, checkpoints, recovery; `session/history_graph.py` for history size/structure.
-- **What does NOT exist:** structured memory (facts + provenance + validity + conflicts), vector search, a knowledge graph, per-agent/subagent memory scoping (all agents share the same workspace files), Proposals/user confirmation of inferred facts. Puspa must build all of that (mem0 + Graphiti per definition 2.7).
+- **What does NOT exist:** structured memory (facts + provenance + validity + conflicts), vector search, a knowledge graph, per-agent/subagent memory scoping (all agents share the same workspace files), Proposals/user confirmation of inferred facts. PuspaBot must build all of that (mem0 + Graphiti per definition 2.7).
 
 ## 6. Cron / scheduler
 
@@ -134,7 +134,7 @@ Already present and complete enough for basic needs:
 - **Service:** `nanobot/cron/service.py` — loads/stores jobs from **`jobs.json`** (with a `.corrupt-<ts>` backup if the file is corrupt), runs jobs, records execution history. `binding.py`, `bound_runner.py`, `session_delivery.py`, `session_turns.py` bind jobs to sessions and deliver results to the originating channel.
 - **Tool + skill:** `nanobot/agent/tools/cron.py` (the `cron` tool: `add`/`list`/`remove`/pause/resume) and `nanobot/skills/cron/SKILL.md` — the agent creates schedules from natural language ("every day at 8am, remind me…", `cron_expr="0 9 * * 1-5"`, `at="<ISO datetime>"`, `every_seconds=1200`). Task kinds: Reminder, Task (the agent executes on each run), One-time (auto-deleted after running).
 - **HEARTBEAT.md:** a periodic background-check pattern with flexible timing — it only notifies when there is an actionable change; explicitly NOT a replacement for cron for schedules that must be on time.
-- **Note for Puspa:** nanobot cron is jobs in a local per-instance `jobs.json`, executed by the running gateway. The Puspa definition (2.12) wants scheduled tasks as Postgres rows + an APScheduler scheduler on the VPS + audit into the ledger — so this cron layer's pattern can be used, but its storage and execution need moving/wrapping to Postgres + the ledger.
+- **Note for PuspaBot:** nanobot cron is jobs in a local per-instance `jobs.json`, executed by the running gateway. The PuspaBot definition (2.12) wants scheduled tasks as Postgres rows + an APScheduler scheduler on the VPS + audit into the ledger — so this cron layer's pattern can be used, but its storage and execution need moving/wrapping to Postgres + the ledger.
 
 ## 7. Channels (WA / Telegram / etc.)
 
@@ -164,7 +164,7 @@ Already present and complete enough for basic needs:
 
 Common pattern per channel: `manifest.py` (defines `ChannelPlugin`: name, runtime, connector, setup spec, dependencies, webui), `runtime.py` (a channel class descending from `BaseChannel`, receiving messages → `MessageBus` → sending replies), `validation.py`, a `webui/` folder (channel settings UI). Channels are enabled from config; channel dependencies are installed separately (`scripts/install_channel_dependencies.py`).
 
-**Note for Puspa:** the MVP definition (2.8) states **no WhatsApp and no Telegram in the MVP (PWA only)**. So these channels are reserves for post-MVP phases, not what's used first. If WA is used later, a decision is needed: stay on neonize (unofficial, blocking risk) or move to the official Cloud API.
+**Note for PuspaBot:** the MVP definition (2.8) states **no WhatsApp and no Telegram in the MVP (PWA only)**. So these channels are reserves for post-MVP phases, not what's used first. If WA is used later, a decision is needed: stay on neonize (unofficial, blocking risk) or move to the official Cloud API.
 
 ## 8. MCP
 
@@ -173,7 +173,7 @@ Already present as an **MCP client** (nanobot connects to outside MCP servers), 
 - **Client:** `nanobot/agent/tools/mcp.py` (`MCPProvider`) — stdio/SSE/streamable HTTP connections, retries for transient stream failures, remote OAuth (`mcp_oauth.py`), 30-second tool timeout.
 - **Config:** `MCPServerConfig` (`config/schema.py`): `type` (stdio/sse/streamableHttp, auto-detect), `command`/`args`/`env`/`cwd` (stdio), `url`/`headers` (HTTP), `auth: oauth` (token stored outside config), `tool_timeout`, and **`enabled_tools` (default `["*"]` = all capabilities: tools, resources, prompts; when restricted, only the named tools, no resources/prompts)**. MCP tools are wrapped with the name `mcp_<server>_<tool>`.
 - **Presets:** `nanobot/webui/mcp_presets.json` + `docs/mcp-presets.md` — ready-to-use MCP server presets from the WebUI.
-- **What does NOT exist:** nanobot doesn't expose itself as an MCP server (no `mcp server` mode in this repo); no security scanning of MCP servers/tools (tool poisoning, rug-pull). Puspa needs to add curation + signing for allowed MCP servers.
+- **What does NOT exist:** nanobot doesn't expose itself as an MCP server (no `mcp server` mode in this repo); no security scanning of MCP servers/tools (tool poisoning, rug-pull). PuspaBot needs to add curation + signing for allowed MCP servers.
 
 ## 9. Security that already exists (and what doesn't)
 
@@ -186,7 +186,7 @@ Already present:
 - **DM pairing:** `pairing/store.py` — DM sender approval (allowlist of who may DM the agent). This is about who may talk, not about agent actions.
 - **Goal permission:** `agent/goal_permission.py` — per-run goal-mutation permission bound via `ContextVar` (a pattern similar to the permission token, but scoped to goals only, not tools).
 
-What does **NOT** exist (Puspa must build it):
+What does **NOT** exist (PuspaBot must build it):
 - **No per-action approval.** Grepping `approval` across all of `nanobot/` finds only: DM sender approval (pairing), package release approval (sigstore), and the OAuth device prompt. No approval queue, no content-hash-bound approval, no spending limit as code.
 - **`tools.restrictToWorkspace` defaults to off** (`False` in `ToolsConfig`) — per the survey note.
 - **No skill signing** (workspace + ClawHub skills load without verification).
@@ -197,11 +197,11 @@ What does **NOT** exist (Puspa must build it):
 - **No Google connectors** (Gmail/Drive/Calendar) — the email channel exists, but it isn't a minimal-scope Google OAuth connector. The `oauth-cli-kit` dependency already exists and the OAuth provider pattern (GitHub Copilot, Codex, xAI) can be copied.
 - **No PWA** — the WebUI is a desktop-browser React app; no PWA manifest/service worker.
 
-## 10. Hook points for Puspa's layers (analysis)
+## 10. Hook points for PuspaBot's layers (analysis)
 
-The most natural place to attach each Puspa layer, based on the structure read:
+The most natural place to attach each PuspaBot layer, based on the structure read:
 
-| Puspa layer | Hook point in nanobot | Why |
+| PuspaBot layer | Hook point in nanobot | Why |
 |---|---|---|
 | **Single gate for outbound actions** | `nanobot/agent/runner.py` (tool-call loop) + `nanobot/agent/tools/registry.py` (`ToolRegistry.get`/execution) + `nanobot/bus/delivery.py` (outbound delivery) | All tool calls and all outbound messages pass through these points. One wrapper here closes every outbound path without changing each tool |
 | **Permission token (narrowing)** | `nanobot/agent/tools/context.py` (`RequestContext`/`ToolContext` via `ContextVar`) + `nanobot/security/workspace_access.py` (`WorkspaceScope`, `bind_workspace_scope`) + `nanobot/agent/goal_permission.py` (existing per-run permission pattern) | The per-request context mechanism already exists; the token can hang off `RequestContext` and be checked in `ToolRegistry` before execution. `WorkspaceScope` is an example of a scope pattern that already works |
@@ -213,7 +213,7 @@ The most natural place to attach each Puspa layer, based on the structure read:
 | **Signed skills** | `nanobot/agent/skills.py` (`SkillsLoader`) + `nanobot/agent/skill_metadata.py` + `nanobot/skills/clawhub/` | All skills enter through `SkillsLoader`; one signature check here covers built-in, workspace, and ClawHub skills at once. The release-verification pattern (`release_trust.py` + sigstore) can be copied |
 | **Google connectors** | The OAuth pattern in `nanobot/providers/` (`github_copilot_oauth.py`, `openai_codex_oauth.py`, `xai_oauth.py`) + the `oauth-cli-kit` dependency + the `email/` channel | The OAuth pattern + token storage outside config already exist; new Gmail/Drive/Calendar connectors follow this pattern |
 | **Scheduler → ledger** | `nanobot/cron/service.py` (`jobs.json`) + `nanobot/triggers/local_store.py` | Cron jobs are already structured (`CronSchedule`/`CronPayload`); what changes is storage (jobs.json → Postgres) and recording executions in the ledger |
-| **PWA** | `webui/` (React + Vite) | The WebUI already exists as a frontend; PWA means adding a manifest/service worker/push + Puspa's 7 screens, not writing UI from scratch |
+| **PWA** | `webui/` (React + Vite) | The WebUI already exists as a frontend; PWA means adding a manifest/service worker/push + PuspaBot's 7 screens, not writing UI from scratch |
 
 ## 11. Main Python dependencies
 
@@ -248,6 +248,6 @@ Build: `hatchling` + `hatch_build.py` (custom hook). Packaged: `nanobot/**/*.py`
 
 - **Internal documentation is very good.** `docs/architecture.md` maps each behaviour to its source file; `docs/memory.md` explains Dream + `/dream-log` + `/dream-restore`. This sped up Phase 0 work.
 - **Tests:** `tests/` + tests in each channel; `pytest` with `asyncio_mode = auto`; 75% coverage gate.
-- **Self-update:** nanobot has its own update system (`nanobot/update*.py`, `release_feed.py`, `release_trust.py`) with release-approval verification — relevant when Puspa later distributes fork updates.
+- **Self-update:** nanobot has its own update system (`nanobot/update*.py`, `release_feed.py`, `release_trust.py`) with release-approval verification — relevant when PuspaBot later distributes fork updates.
 - **Python SDK:** `nanobot/sdk/` + `docs/python-sdk.md` — integration from Python code is possible without the CLI.
 - **Nothing needed installing/running in this phase.** All findings above come from reading the cloned code, as tasked.
