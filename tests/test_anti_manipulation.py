@@ -650,6 +650,7 @@ def test_docs_checklist_covers_every_implemented_k_item():
     for item in (
         "intent engine",
         "act-or-ask rule",
+        "three-speed simulator",
         "bitemporal state",
         "causal ledger",
         "other-agent goal models",

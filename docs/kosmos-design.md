@@ -174,6 +174,8 @@ Implemented 21 Nov 2026: the decision is computed as score = confidence x revers
 4. Tests cover all three plus fallback when one speed fails.
 5. Suite green, docs updated.
 
+Implemented 21 Nov 2026: the three speeds live in `puspa/world/speeds.py` (`ThreeSpeedSimulator` + `simulate`): fast is one `WorldModel.predict` per action on a copied state, medium re-derives the forecast from the trace history behind the belief (price-move history, observed durations, success counts), deep executes each action in a rehearsal world (`SimulatedWorld` / `NoisySimulatedWorld`) and observes the outcome, with a `tool_runner` seam for the sandbox dry-run. The fallback chain is deep -> medium -> fast with every abandonment recorded, and every result is recorded through the learning loop as a non-teaching experience. The planner routes its step forecasts through the simulator (`plan(..., speed=..., world=...)`); `WorldModel` itself gains no method (its 1395-line file-size baseline forbids growth). Tests in `tests/test_simulator_speeds.py`.
+
 **outcome watcher — Outcome watcher**
 1. The system keeps monitoring results after a task is marked done.
 2. Late-appearing failures are recorded and fed into the learning loop.
