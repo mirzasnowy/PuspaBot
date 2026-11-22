@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Galeri</h1>
+<p class="pesan-sub">Karya budaya dari komunitas: terbitkan mockup dari layar Mockup, lalu pengguna lain bisa memberi nilai 1-5 dan ulasan singkat. Satu nilai per pengguna per karya; skor rata-rata selalu tampil bersama jumlah penilainya.</p>
+<div id="gallery-list"><p class="pesan-sub">Memuat galeri…</p></div>
+<script>
+(function () {
+  var listEl = document.getElementById("gallery-list");
+  function esc(s) { return String(s).replace(/[&<>\"]/g, function (c) { return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]; }); }
+  function scoreText(w) {
+    if (!w.rating_count) { return "Belum ada penilaian"; }
+    return "Nilai " + w.average_rating + " dari " + w.rating_count + " penilaian";
+  }
+  function load() {
+    fetch("/api/gallery", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var works = data.works || [];
+        if (!works.length) {
+          listEl.innerHTML = "<p class=\"pesan-sub\">Galeri masih kosong. Terbitkan karya pertamamu dari layar Mockup.</p>";
+          return;
+        }
+        listEl.innerHTML = works.map(function (w) {
+          return "<div class=\"kartu\">"
+            + "<img src=\"/api/gallery/" + esc(w.id) + "/render.svg\" alt=\"\" style=\"max-width:100%\">"
+            + "<h2>" + esc(w.title) + "</h2>"
+            + "<p class=\"pesan-sub\">" + esc(w.template) + " · versi " + w.version + "</p>"
+            + "<p><strong>" + esc(scoreText(w)) + "</strong></p>"
+            + "<form data-work=\"" + esc(w.id) + "\">"
+            + "<label>Nilai <select name=\"rating\"><option value=\"5\">5</option><option value=\"4\">4</option><option value=\"3\">3</option><option value=\"2\">2</option><option value=\"1\">1</option></select></label> "
+            + "<input name=\"review\" maxlength=\"500\" placeholder=\"Ulasan singkat (opsional)\"> "
+            + "<button type=\"submit\">Kirim nilai</button> <span class=\"pesan-sub\" data-status></span>"
+            + "</form></div>";
+        }).join("");
+        listEl.querySelectorAll("form[data-work]").forEach(function (form) {
+          form.addEventListener("submit", function (ev) {
+            ev.preventDefault();
+            var status = form.querySelector("[data-status]");
+            fetch("/api/gallery/" + encodeURIComponent(form.getAttribute("data-work")) + "/rate", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                rating: parseInt(form.rating.value, 10),
+                review: form.review.value
+              })
+            }).then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+              .then(function (res) {
+                if (!res.ok) { status.textContent = res.body.error || "Gagal mengirim nilai."; return; }
+                status.textContent = "Tersimpan.";
+                load();
+              });
+          });
+        });
+      });
+  }
+  load();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Hub Skill</h1>
+<p class="pesan-sub">Jelajahi skill yang sudah ada di perangkat ini, cari yang cocok, lalu pasang dalam satu klik. Skill baru bisa dipasang dari GitHub, ClawHub, atau tautan SKILL.md langsung — setiap skill ditampilkan dulu (nama, lisensi, sidik digital isinya) dan baru dipasang setelah kamu mengonfirmasi.</p>
+<form id="cari-form">
+  <input type="search" id="cari-q" placeholder="Cari skill…" value="">
+  <button type="submit">Cari</button>
+</form>
+<h2>Pasang dari sumber lain</h2>
+<form id="pasang-form">
+  <input type="text" id="pasang-source" placeholder="owner/repo, clawhub:owner/skill, atau URL SKILL.md" size="60">
+  <button type="submit">Lihat dulu</button>
+</form>
+<p id="pasang-hasil" class="pesan-sub"></p>
+<h2>Skill di perangkat ini</h2>
+<div id="daftar-skill">
+{% for s in skills %}
+<div class="kartu"><strong>{{ s.name }}</strong> <span class="pesan-sub">v{{ s.version }} · {{ s.origin }} · {{ s.license }}</span><br>{{ s.description }}<br><span class="pesan-sub">Sumber: {{ s.source }}{% if s.installed %} · sudah terpasang{% endif %}</span></div>
+{% else %}
+<p class="pesan-sub">Belum ada skill yang cocok.</p>
+{% endfor %}
+</div>
+<script>
+(function () {
+  var daftar = document.getElementById("daftar-skill");
+  var cariForm = document.getElementById("cari-form");
+  function kartu(s) {
+    var div = document.createElement("div");
+    div.className = "kartu";
+    var kuat = document.createElement("strong");
+    kuat.textContent = s.name;
+    div.appendChild(kuat);
+    div.appendChild(document.createTextNode(" v" + s.version + " · " + s.origin + " · " + s.license));
+    div.appendChild(document.createElement("br"));
+    div.appendChild(document.createTextNode(s.description || ""));
+    div.appendChild(document.createElement("br"));
+    var sub = document.createElement("span");
+    sub.className = "pesan-sub";
+    sub.textContent = "Sumber: " + s.source + (s.installed ? " · sudah terpasang" : "");
+    div.appendChild(sub);
+    return div;
+  }
+  cariForm.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var q = document.getElementById("cari-q").value.trim();
+    fetch("/api/hub/skills?q=" + encodeURIComponent(q))
+      .then(function (r) { return r.json(); })
+      .then(function (b) {
+        daftar.textContent = "";
+        if (!b.skills || !b.skills.length) {
+          var p = document.createElement("p");
+          p.className = "pesan-sub";
+          p.textContent = "Belum ada skill yang cocok.";
+          daftar.appendChild(p);
+          return;
+        }
+        b.skills.forEach(function (s) { daftar.appendChild(kartu(s)); });
+      })
+      .catch(function () { daftar.textContent = "Pencarian gagal: jaringan bermasalah."; });
+  });
+  var form = document.getElementById("pasang-form");
+  var hasil = document.getElementById("pasang-hasil");
+  form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var source = document.getElementById("pasang-source").value.trim();
+    if (!source) { hasil.textContent = "Isi dulu sumber skillnya."; return; }
+    hasil.textContent = "Mengambil pratinjau…";
+    fetch("/api/hub/preview?source=" + encodeURIComponent(source))
+      .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+      .then(function (res) {
+        if (!res.ok) { hasil.textContent = "Gagal: " + (res.body.error || "tidak bisa mengambil skill"); return; }
+        var p = res.body;
+        var pesan = "Skill: " + p.name + " (" + p.slug + "), lisensi " + (p.license || "tidak diketahui") + ".";
+        if (!p.license) { hasil.textContent = pesan + " Lisensi tidak terdeteksi, pemasangan ditolak."; return; }
+        if (!window.confirm(pesan + " Pasang skill ini?")) { hasil.textContent = "Dibatalkan."; return; }
+        hasil.textContent = "Memasang…";
+        fetch("/api/hub/install", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source: source, expected_sha256: p.sha256 })
+        })
+          .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+          .then(function (res2) {
+            hasil.textContent = res2.ok
+              ? "Terpasang: " + res2.body.installed.skill_id + " v" + res2.body.installed.version + "."
+              : "Gagal memasang: " + (res2.body.error || "kesalahan tak diketahui");
+            if (res2.ok) window.location.reload();
+          })
+          .catch(function () { hasil.textContent = "Gagal memasang: jaringan bermasalah."; });
+      })
+      .catch(function () { hasil.textContent = "Gagal: jaringan bermasalah."; });
+  });
+})();
+</script>
+{% endblock %}

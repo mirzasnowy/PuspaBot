@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Diagnostik</h1>
+<p class="pesan-sub">Satu klik untuk mengunduh berkas diagnostik yang aman dibagikan ke laporan bug: log terakhir, jejak pesan (langkah-langkah bot), dan kejadian log audit — semuanya sudah disensor dulu.</p>
+<div class="kartu">
+  <strong>Yang ikut terunduh</strong><br>
+  Log terakhir, jejak pesan, dan kejadian audit terbaru untuk akunmu.
+</div>
+<div class="kartu">
+  <strong>Yang TIDAK PERNAH ikut</strong><br>
+  Token, API key, kata sandi, header Authorization, alamat email, dan isi brankas — semuanya diganti <code>&laquo;redacted&raquo;</code> sebelum berkas ditulis, tapi bentuk lognya tetap utuh.
+</div>
+<p><a href="/api/diagnostics/export"><button type="button">Unduh diagnostik (JSON)</button></a></p>
+<p class="pesan-sub">Berkas yang sama bisa dibuat dari terminal: <code>puspa diagnostics export --user &lt;id&gt; --out puspa-diagnostics.json</code>. Unduhan ini tidak merekam isi pesan chat — hanya nama langkah, jenis kejadian, dan durasinya.</p>
+{% endblock %}

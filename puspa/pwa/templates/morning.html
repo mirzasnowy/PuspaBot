@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Ringkasan Pagi</h1>
+<p class="pesan-sub">Jadwal, tagihan, tugas, libur nasional, dan jam salat hari ini. Setiap bagian menunjukkan sumbernya; kalau sumbernya belum tersambung, layar ini bilang begitu, bukan mengarang data.</p>
+<p class="pesan-sub">Layar ini menampilkan data lewat aplikasi (React). Tanpa build aplikasi, buka <a href="/api/morning/summary">/api/morning/summary</a> untuk melihat ringkasan JSON-nya, atau <a href="/api/morning/status">/api/morning/status</a> untuk status tiap sumber.</p>
+{% endblock %}

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f766e">
+<title>Puspa - {{ screen | capitalize }}</title>
+<link rel="manifest" href="/manifest.json">
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+<style>
+body { font-family: system-ui, sans-serif; margin: 0; color: #1f2937; }
+header { background: #0f766e; color: #fff; padding: 12px 16px; }
+header a { color: #fff; margin-right: 12px; text-decoration: none; }
+header a.aktif { font-weight: bold; text-decoration: underline; }
+main { padding: 16px; max-width: 720px; margin: 0 auto; }
+.kartu { border: 1px solid #d1d5db; border-radius: 8px; padding: 12px; margin: 8px 0; }
+.lencana { background: #ecfdf5; border: 1px solid #0f766e; border-radius: 999px; padding: 2px 8px; font-size: 12px; }
+button { background: #0f766e; color: #fff; border: 0; border-radius: 6px; padding: 8px 12px; }
+input, select { padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; }
+.pesan-sub { opacity: 0.6; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+<strong>Puspa</strong>
+<a href="/chat" class="{% if screen == 'chat' %}aktif{% endif %}">Chat</a>
+<a href="/tasks" class="{% if screen == 'tasks' %}aktif{% endif %}">Tugas</a>
+<a href="/modules" class="{% if screen == 'modules' %}aktif{% endif %}">Modul</a>
+<a href="/connectors" class="{% if screen == 'connectors' %}aktif{% endif %}">Konektor</a>
+<a href="/memory" class="{% if screen == 'memory' %}aktif{% endif %}">Memori</a>
+<a href="/settings" class="{% if screen == 'settings' %}aktif{% endif %}">Pengaturan</a>
+<a href="/personas" class="{% if screen == 'personas' %}aktif{% endif %}">Persona</a>
+<a href="/office" class="{% if screen == 'office' %}aktif{% endif %}">Kantor</a>
+<a href="/insights" class="{% if screen == 'insights' %}aktif{% endif %}">Insights</a>
+<a href="/onboarding" class="{% if screen == 'onboarding' %}aktif{% endif %}">Onboarding</a>
+<a href="/hub" class="{% if screen == 'hub' %}aktif{% endif %}">Hub Skill</a>
+<a href="/admin" class="{% if screen == 'admin' %}aktif{% endif %}">Admin</a>
+<a href="/trial" class="{% if screen == 'trial' %}aktif{% endif %}">Trial</a>
+</header>
+<main>{% block content %}{% endblock %}</main>
+<script>
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(function(){}); }
+</script>
+</body>
+</html>

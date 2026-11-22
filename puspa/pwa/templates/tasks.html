@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Tugas</h1>
+<h2>Buat tugas baru</h2>
+<form hx-post="/api/tugas" hx-swap="none" method="post">
+<input name="purpose" placeholder="Contoh: bandingkan harga laptop..." required style="width:70%">
+<button type="submit">Jalankan</button>
+</form>
+<h2>Antrean persetujuan</h2>
+<p class="pesan-sub">Semua tindakan keluar menunggu di sini. Persetujuan terikat isi: kalau isi berubah setelah disetujui, persetujuan batal dan diminta ulang.</p>
+{% for p in approval %}
+<div class="kartu"><strong>{{ p.kind }}</strong> - {{ p.status }}
+<form hx-post="/api/persetujuan/{{ p.request_id }}" hx-swap="none" method="post" style="display:inline">
+<input type="hidden" name="approve" value="ya"><button type="submit">Setuju</button>
+</form>
+<form hx-post="/api/persetujuan/{{ p.request_id }}" hx-swap="none" method="post" style="display:inline">
+<input type="hidden" name="approve" value="tidak"><button type="submit">Tolak</button>
+</form></div>
+{% else %}
+<p class="pesan-sub">Tidak ada persetujuan menunggu.</p>
+{% endfor %}
+<h2>Rencana</h2>
+<p class="pesan-sub">Rencana tiap tugas (langkah dan statusnya) tampil di sini setelah tugas dibuat. Tugas di bawah 3 langkah jalan tanpa menampilkan rencana.</p>
+{% endblock %}
