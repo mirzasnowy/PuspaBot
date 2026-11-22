@@ -252,11 +252,17 @@ def test_discover_imports_tool_modules():
     fresh = ToolRegistry()
     discover("puspa.tools", registry=fresh)
     # builtin.py adapts the existing Puspa tools at import time,
-    # and registers the G17 search_tools overflow tool.
+    # registers the COW-07 browser + web tools, and registers the
+    # G17 search_tools overflow tool.
     assert "run_code" in fresh
     assert "plugin_echo" in fresh
+    assert "browser_open" in fresh
+    assert "browser_click" in fresh
+    assert "browser_fill" in fresh
+    assert "web_search" in fresh
+    assert "web_fetch" in fresh
     assert "search_tools" in fresh
-    assert len(fresh.schemas()) == 3
+    assert len(fresh.schemas()) == 8
 
 
 def test_discover_is_idempotent_for_fresh_registry():

@@ -33,6 +33,7 @@ from puspa.tools.registry import ToolDefinition, ToolRegistry, default_registry
 __all__ = [
     "CODING_TOOLSET",
     "DEFAULT_TOOLSET",
+    "WEB_TOOLSET",
     "_PUSPA_CORE_TOOLS",
     "Toolset",
     "ToolsetRegistry",
@@ -53,6 +54,16 @@ DEFAULT_TOOLSET = "default"
 
 #: Name of the coding-platform preset (core + code execution).
 CODING_TOOLSET = "coding"
+
+#: Name of the web preset (core + browser and web tools). The
+#: browser tools are not in the core bundle: ``browser_click``
+#: and ``browser_fill`` act on live pages (permission-gated, but
+#: still actions), so a caller opts into them by picking this
+#: preset, the same way it opts into code execution with
+#: ``coding``. The read-only three (``browser_open``,
+#: ``web_search``, ``web_fetch``) ride along because a web run
+#: needs all five together.
+WEB_TOOLSET = "web"
 
 
 class Toolset:
@@ -194,10 +205,16 @@ class ToolsetRegistry:
 
 
 def default_toolsets() -> ToolsetRegistry:
-    """The built-in toolsets: ``default`` + the ``coding`` preset."""
+    """The built-in toolsets: ``default`` + the ``coding`` and
+    ``web`` presets."""
     registry = ToolsetRegistry()
     registry.register_toolset(DEFAULT_TOOLSET, _PUSPA_CORE_TOOLS)
     registry.register_toolset(CODING_TOOLSET, {"run_code"}, inherits=(DEFAULT_TOOLSET,))
+    registry.register_toolset(
+        WEB_TOOLSET,
+        {"browser_open", "browser_click", "browser_fill", "web_search", "web_fetch"},
+        inherits=(DEFAULT_TOOLSET,),
+    )
     return registry
 
 

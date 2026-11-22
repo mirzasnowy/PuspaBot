@@ -159,4 +159,4 @@ def test_exposed_schemas_are_valid_json(toolsets, registry):
 
 
 def test_toolset_registry_lists_presets(toolsets):
-    assert toolsets.names() == ["coding", "default"]
+    assert toolsets.names() == ["coding", "default", "web"]

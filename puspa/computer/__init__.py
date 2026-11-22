@@ -84,11 +84,13 @@ from .vision import (
 )
 from .web import (
     TOOL_WEB_CLICK,
+    TOOL_WEB_FILL,
     FakeWebBackend,
     PlaywrightWebBackend,
     WebBackend,
     WebBridge,
     WebClickResult,
+    WebFillResult,
     WebPage,
     is_web_target,
 )
@@ -97,6 +99,7 @@ __all__ = [
     "MASKED",
     "TOOL_CLICK_AT",
     "TOOL_WEB_CLICK",
+    "TOOL_WEB_FILL",
     "AccessibleNode",
     "Allowlist",
     "AtspiBackend",
@@ -144,6 +147,7 @@ __all__ = [
     "WebBackend",
     "WebBridge",
     "WebClickResult",
+    "WebFillResult",
     "WebPage",
     "WindowInfo",
     "WindowResult",
