@@ -25,7 +25,7 @@ description = "PuspaBot — a personal AI agent you run yourself"
 license = "Apache-2.0"
 requires-python = ">=3.12"
 dependencies = [
-  "nanobot-ai @ git+https://github.com/HKUDS/nanobot@e767174",
+  "nanobot-ai==0.4.2",
   "psycopg[binary]==3.3.9",
   "argon2-cffi==25.1.0",
   "cryptography==50.0.2",
@@ -194,7 +194,7 @@ warn_unused_ignores = true
 [[tool.mypy.overrides]]
 module = ["nanobot.*"]
 ignore_missing_imports = true
-# nanobot (installed from GitHub) ships no py.typed marker, so mypy
+# nanobot (installed from PyPI) ships no py.typed marker, so mypy
 # cannot resolve its submodules. The chassis integration tests cover
 # the boundary instead.
 
