@@ -8,7 +8,9 @@ giant file):
 - owns the adapters (Telegram first, WhatsApp second, then
   Discord, Slack, and LINE),
 - owns the pairing store, the allowlist, the delivery ledger, and
-  the agent seam,
+  the agent seam (the built-in ``TaskRunnerAgent`` by default, or
+  the configured external engine - Dify, Coze, or Bailian -
+  through ``ExternalEngineAgent``, AST-05),
 - runs the inbound pipeline for every event, whichever adapter
   produced it,
 - polls Telegram (``getUpdates``) with the restored offset and
@@ -40,6 +42,7 @@ from .base import ChannelAdapter
 from .config import ChannelConfig, ChannelConfigError, load_config
 from .delivery import DeliveryService
 from .discord import DiscordAdapter
+from .engines import ExternalEngineAgent
 from .errors import SingleWriterError
 from .events import MessageEvent
 from .heartbeat import HeartbeatStore
@@ -74,7 +77,8 @@ class GatewayRunner:
     ) -> None:
         self.profile = profile
         self.config = config or load_config()
-        self.agent = agent or TaskRunnerAgent()
+        self._http_client = http_client
+        self.agent = agent or self._default_agent()
         self.pairing = pairing or ChannelPairing()
         self.allowlist: Allowlist = self.config.allowlist
         self.ledger = ledger or InMemoryDeliveryLedger()
@@ -88,12 +92,25 @@ class GatewayRunner:
         self.heartbeat_store = heartbeat_store or HeartbeatStore(
             profile=profile, state_dir=self.config.state_dir
         )
-        self._http_client = http_client
         self._adapters: dict[str, ChannelAdapter] = {}
         self._closed = False
         # Restored polling offset (None = poll from the beginning).
         restored = self.heartbeat_store.load()
         self._telegram_offset: int | None = restored.last_offset
+
+    def _default_agent(self) -> ChannelAgent:
+        """The agent for this runner's configured engine.
+
+        ``builtin`` answers through the existing
+        :class:`TaskRunnerAgent`; an external engine answers
+        through an :class:`ExternalEngineAgent` built from the
+        config. A missing key fails here, at runner start, with
+        a :class:`ChannelConfigError` naming the variable.
+        """
+        engine = self.config.build_engine(http_client=self._http_client)
+        if engine is None:
+            return TaskRunnerAgent()
+        return ExternalEngineAgent(engine)
 
     # -- opening / single writer ------------------------------------------
 
@@ -123,6 +140,9 @@ class GatewayRunner:
             close = getattr(adapter, "close", None)
             if callable(close):
                 close()
+        close_agent = getattr(self.agent, "close", None)
+        if callable(close_agent):
+            close_agent()
 
     def __enter__(self) -> GatewayRunner:
         return self
