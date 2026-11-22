@@ -5,6 +5,12 @@ Python distribution ``puspa`` at the same version. These tests keep
 the two in sync and prove the shim hands off to the real entry
 point (or falls back to ``python -m puspa``) without needing a
 published package.
+
+The file runs on ubuntu, windows, and macOS in CI, so every fake
+executable is built per OS: a fake is a small Node script
+(``fake-python.cjs``) driven by a JSON rule list, reached through a
+shell wrapper on POSIX and a ``.cmd`` wrapper on Windows. The rules
+match on the logged ``name + args`` line; the first match wins.
 """
 
 import json
@@ -19,7 +25,24 @@ import pytest
 
 BUILD_DIR = Path(__file__).resolve().parent.parent
 NODE = shutil.which("node")
+WINDOWS = os.name == "nt"
 pytestmark = pytest.mark.skipif(NODE is None, reason="node is not installed")
+
+FAKE_RUNTIME = """
+const fs = require("node:fs");
+const name = process.env.FAKE_PY_NAME || "unknown";
+const log = process.env.FAKE_PY_LOG;
+const rules = JSON.parse(fs.readFileSync(process.env.FAKE_PY_RULES, "utf-8"));
+const line = `${name} ${process.argv.slice(2).join(" ")}`;
+fs.appendFileSync(log, line + "\\n");
+for (const rule of rules) {
+  if (rule.match === undefined || line.includes(rule.match)) {
+    if (rule.output !== undefined) process.stdout.write(rule.output + "\\n");
+    process.exit(rule.exit ?? 0);
+  }
+}
+process.exit(1);
+"""
 
 
 def _package_json():
@@ -29,6 +52,61 @@ def _package_json():
 def _pyproject():
     with (BUILD_DIR / "pyproject.toml").open("rb") as fh:
         return tomllib.load(fh)
+
+
+def _test_env(leading):
+    """PATH with only the leading dirs, node, and the system dirs — so
+    the code under test never reaches a real interpreter."""
+    node_dir = str(Path(NODE).resolve().parent)
+    parts = [str(p) for p in leading] + [node_dir]
+    if WINDOWS:
+        system_root = os.environ.get("SYSTEMROOT", r"C:\Windows")
+        parts.append(os.path.join(system_root, "System32"))
+    else:
+        parts += ["/usr/bin", "/bin"]
+    env = dict(os.environ)
+    env["PATH"] = os.pathsep.join(parts)
+    env.pop("PUSPA_LOCAL_WHEEL", None)
+    return env
+
+
+def _fake_command(tmp_path, name, log, rules):
+    """Create a fake executable called ``name`` that appends its args
+    to ``log`` and answers by ``rules`` (first match wins). The rules
+    file is per fake; the log is shared by every fake in the test."""
+    (tmp_path / "fake-python.cjs").write_text(FAKE_RUNTIME, encoding="utf-8")
+    rules_path = tmp_path / f"{name}-rules.json"
+    rules_path.write_text(json.dumps(rules), encoding="utf-8")
+    if WINDOWS:
+        launcher = tmp_path / f"{name}.cmd"
+        launcher.write_text(
+            "@echo off\n"
+            f"set FAKE_PY_NAME={name}\n"
+            f"set FAKE_PY_LOG={log}\n"
+            f"set FAKE_PY_RULES={rules_path}\n"
+            'node "%~dp0fake-python.cjs" %*\n',
+            encoding="utf-8",
+        )
+    else:
+        launcher = tmp_path / name
+        launcher.write_text(
+            "#!/bin/sh\n"
+            f'FAKE_PY_NAME="{name}" FAKE_PY_LOG="{log}" '
+            f'FAKE_PY_RULES="{rules_path}" '
+            f'exec node "{tmp_path / "fake-python.cjs"}" "$@"\n',
+            encoding="utf-8",
+        )
+        launcher.chmod(0o755)
+
+
+def _user_site_rule(tmp_path):
+    """The user-site query always succeeds and reports a site under
+    tmp_path, so the --target step never touches a real home."""
+    return {
+        "match": "getusersitepackages",
+        "exit": 0,
+        "output": str(tmp_path / "usersite"),
+    }
 
 
 def test_package_json_name_and_bin():
@@ -47,9 +125,9 @@ def test_shim_uses_the_installed_entry_point():
     """With the repo venv on PATH, the shim finds the pip console script."""
     # sys.prefix is the venv directory; sys.executable is a symlink to
     # the system python, so its resolved parent is NOT the venv bin.
-    venv_bin = str(Path(sys.prefix) / "bin")
+    venv_bin = Path(sys.prefix) / ("Scripts" if WINDOWS else "bin")
     env = dict(os.environ)
-    env["PATH"] = venv_bin + os.pathsep + env["PATH"]
+    env["PATH"] = str(venv_bin) + os.pathsep + env["PATH"]
     result = subprocess.run(
         [NODE, str(BUILD_DIR / "bin" / "puspa.js"), "--help"],
         capture_output=True,
@@ -69,20 +147,20 @@ def test_shim_skips_itself_when_its_own_bin_dir_is_first_on_path(tmp_path):
     21 Nov 2026: `npx puspa --help` grew a 268-deep node chain)."""
     bin_dir = tmp_path / "node_modules" / ".bin"
     bin_dir.mkdir(parents=True)
-    (bin_dir / "puspa").symlink_to(BUILD_DIR / "bin" / "puspa.js")
     real_bin = tmp_path / "realbin"
     real_bin.mkdir()
-    console_script = real_bin / "puspa"
-    console_script.write_text('#!/bin/sh\necho "REAL-CONSOLE-SCRIPT $@"\n', encoding="utf-8")
-    console_script.chmod(0o755)
-    env = dict(os.environ)
-    # Only the two fake dirs plus the system dirs node needs; nothing
-    # else on PATH, so the only `puspa` entries are the shim and the fake.
-    # Node's own directory comes from shutil.which: CI installs node via
-    # setup-node into a tool-cache dir, not /usr/bin (hardcoding /usr/bin
-    # made this test fail in CI with exit 127, command not found).
-    node_dir = str(Path(NODE).resolve().parent)
-    env["PATH"] = os.pathsep.join([str(bin_dir), str(real_bin), node_dir, "/usr/bin", "/bin"])
+    if WINDOWS:
+        # npm's Windows shim: a .cmd that calls this file.
+        (bin_dir / "puspa.cmd").write_text(
+            f'@node "{BUILD_DIR / "bin" / "puspa.js"}" %*\n', encoding="utf-8"
+        )
+        (real_bin / "puspa.cmd").write_text("@echo REAL-CONSOLE-SCRIPT %*\n", encoding="utf-8")
+    else:
+        (bin_dir / "puspa").symlink_to(BUILD_DIR / "bin" / "puspa.js")
+        console_script = real_bin / "puspa"
+        console_script.write_text('#!/bin/sh\necho "REAL-CONSOLE-SCRIPT $@"\n', encoding="utf-8")
+        console_script.chmod(0o755)
+    env = _test_env([bin_dir, real_bin])
     result = subprocess.run(
         ["puspa", "--help"],
         capture_output=True,
@@ -97,39 +175,23 @@ def test_shim_skips_itself_when_its_own_bin_dir_is_first_on_path(tmp_path):
 
 def test_shim_falls_back_to_python_module(tmp_path):
     """With no `puspa` on PATH, the shim runs `python -m puspa`."""
-    fake_python = tmp_path / "python"
-    fake_python.write_text('#!/bin/sh\necho "FAKE-PYTHON-CALLED $@"\n', encoding="utf-8")
-    fake_python.chmod(0o755)
-    env = dict(os.environ)
-    env["PATH"] = str(tmp_path)
+    log = tmp_path / "calls.log"
+    _fake_command(
+        tmp_path,
+        "python",
+        log,
+        [{"output": "FAKE-PYTHON-CALLED -m puspa --help", "exit": 0}],
+    )
     result = subprocess.run(
         [NODE, str(BUILD_DIR / "bin" / "puspa.js"), "--help"],
         capture_output=True,
         check=False,
         text=True,
-        env=env,
+        env=_test_env([tmp_path]),
         timeout=60,
     )
     assert result.returncode == 0
     assert "FAKE-PYTHON-CALLED -m puspa --help" in result.stdout
-
-
-def _fake_executable(tmp_path, name, script):
-    """A fake executable on PATH that records its args, then runs `script`."""
-    fake = tmp_path / name
-    fake.write_text(script, encoding="utf-8")
-    fake.chmod(0o755)
-    return fake
-
-
-def _postinstall_env(tmp_path):
-    """PATH with only the fake dir, node, and the system dirs — so the
-    script under test never reaches a real interpreter."""
-    node_dir = str(Path(NODE).resolve().parent)
-    env = dict(os.environ)
-    env["PATH"] = os.pathsep.join([str(tmp_path), node_dir, "/usr/bin", "/bin"])
-    env.pop("PUSPA_LOCAL_WHEEL", None)
-    return env
 
 
 def test_postinstall_installs_the_pyproject_version(tmp_path):
@@ -137,88 +199,128 @@ def test_postinstall_installs_the_pyproject_version(tmp_path):
     npm wrapper version — the two diverge (wrapper 0.1.1 fronts the
     Python 0.1.0 release)."""
     log = tmp_path / "calls.log"
-    _fake_executable(
+    _fake_command(
         tmp_path,
         "python3",
-        f'#!/bin/sh\necho "$@" >> "{log}"\nexit 0\n',
+        log,
+        [_user_site_rule(tmp_path), {"exit": 0}],
     )
-    _fake_executable(tmp_path, "python", "#!/bin/sh\nexit 1\n")
+    _fake_command(tmp_path, "python", log, [{"exit": 1}])
     result = subprocess.run(
         [NODE, str(BUILD_DIR / "bin" / "postinstall.js")],
         capture_output=True,
         check=False,
         text=True,
-        env=_postinstall_env(tmp_path),
+        env=_test_env([tmp_path]),
         timeout=120,
     )
     assert result.returncode == 0
     assert f"puspa=={_pyproject()['project']['version']}" in log.read_text(encoding="utf-8")
 
 
-def test_postinstall_retries_with_user_flag(tmp_path):
-    """Plain pip install fails (PEP 668 on Debian/Ubuntu) — the
-    postinstall retries with --user instead of giving up, and never
-    reaches pipx once --user succeeds."""
+def test_postinstall_retries_with_target_flag(tmp_path):
+    """Plain pip install fails (PEP 668 on Debian/Ubuntu, and --user
+    is refused the same way) — the postinstall retries with --target
+    <user site> instead of giving up, and never reaches pipx once
+    the target install succeeds."""
     log = tmp_path / "calls.log"
-    _fake_executable(
+    _fake_command(
         tmp_path,
         "python3",
-        f'#!/bin/sh\necho "$@" >> "{log}"\ncase "$*" in *--user*) exit 0;; *) exit 1;; esac\n',
+        log,
+        [
+            _user_site_rule(tmp_path),
+            {"match": "--target", "exit": 0},
+            {"match": "--user", "exit": 1},
+            {"match": "-m pip", "exit": 1},
+        ],
     )
-    _fake_executable(tmp_path, "python", "#!/bin/sh\nexit 1\n")
-    pipx_log = tmp_path / "pipx.log"
-    _fake_executable(
-        tmp_path,
-        "pipx",
-        f'#!/bin/sh\necho "$@" >> "{pipx_log}"\nexit 0\n',
-    )
+    _fake_command(tmp_path, "python", log, [{"exit": 1}])
+    _fake_command(tmp_path, "pipx", log, [{"exit": 0}])
     result = subprocess.run(
         [NODE, str(BUILD_DIR / "bin" / "postinstall.js")],
         capture_output=True,
         check=False,
         text=True,
-        env=_postinstall_env(tmp_path),
+        env=_test_env([tmp_path]),
         timeout=120,
     )
     assert result.returncode == 0
-    lines = log.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 2
-    assert "--user" not in lines[0]
+    lines = [line for line in log.read_text(encoding="utf-8").splitlines() if "-m pip" in line]
+    assert len(lines) == 3
+    assert "--user" not in lines[0] and "--target" not in lines[0]
     assert "--user" in lines[1]
-    assert not pipx_log.exists()
+    assert "--target" in lines[2]
+    assert str(tmp_path / "usersite") in lines[2]
+    assert "pipx install" not in log.read_text(encoding="utf-8")
 
 
 def test_postinstall_falls_back_to_pipx(tmp_path):
-    """Both pip attempts fail — the postinstall tries `pipx install`
+    """Every pip attempt fails — the postinstall tries `pipx install`
     before printing the manual command."""
     log = tmp_path / "calls.log"
-    _fake_executable(
+    _fake_command(
         tmp_path,
         "python3",
-        f'#!/bin/sh\necho "$@" >> "{log}"\nexit 1\n',
+        log,
+        [_user_site_rule(tmp_path), {"match": "-m pip", "exit": 1}],
     )
-    _fake_executable(
+    _fake_command(
         tmp_path,
         "python",
-        f'#!/bin/sh\necho "$@" >> "{log}"\nexit 1\n',
+        log,
+        [_user_site_rule(tmp_path), {"match": "-m pip", "exit": 1}],
     )
-    pipx_log = tmp_path / "pipx.log"
-    _fake_executable(
+    _fake_command(tmp_path, "pipx", log, [{"exit": 0}])
+    result = subprocess.run(
+        [NODE, str(BUILD_DIR / "bin" / "postinstall.js")],
+        capture_output=True,
+        check=False,
+        text=True,
+        env=_test_env([tmp_path]),
+        timeout=120,
+    )
+    assert result.returncode == 0
+    assert f"pipx install puspa=={_pyproject()['project']['version']}" in log.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_postinstall_tries_py_launcher(tmp_path):
+    """`python3` and `python` are missing or fail every pip attempt —
+    the postinstall tries the `py` Windows launcher next."""
+    log = tmp_path / "calls.log"
+    _fake_command(
         tmp_path,
-        "pipx",
-        f'#!/bin/sh\necho "$@" >> "{pipx_log}"\nexit 0\n',
+        "python3",
+        log,
+        [_user_site_rule(tmp_path), {"match": "-m pip", "exit": 1}],
+    )
+    _fake_command(
+        tmp_path,
+        "python",
+        log,
+        [_user_site_rule(tmp_path), {"match": "-m pip", "exit": 1}],
+    )
+    _fake_command(
+        tmp_path,
+        "py",
+        log,
+        [_user_site_rule(tmp_path), {"match": "-m pip", "exit": 0}],
     )
     result = subprocess.run(
         [NODE, str(BUILD_DIR / "bin" / "postinstall.js")],
         capture_output=True,
         check=False,
         text=True,
-        env=_postinstall_env(tmp_path),
+        env=_test_env([tmp_path]),
         timeout=120,
     )
     assert result.returncode == 0
-    pipx_calls = pipx_log.read_text(encoding="utf-8")
-    assert f"install puspa=={_pyproject()['project']['version']}" in pipx_calls
+    assert (
+        f"py -m pip install --quiet puspa=={_pyproject()['project']['version']}"
+        in log.read_text(encoding="utf-8")
+    )
 
 
 def test_postinstall_never_fails_the_npm_install():
