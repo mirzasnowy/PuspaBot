@@ -46,6 +46,7 @@ TRIGGER_TYPES = (
     "amnesia_check",
     "longterm_consolidation",
     "initiative_digest",
+    "self_evolution",
 )
 
 #: Proactive trigger types pay from the interruption budget (K10):
@@ -709,6 +710,24 @@ def schedule_longterm_consolidation(user_id: str, *, hour: int = 4, dsn=None) ->
     )
 
 
+def schedule_self_evolution(user_id: str, *, hour: int = 5, dsn=None) -> Trigger:
+    """Register the nightly idle self-evolution review (COW-02) as a trigger.
+
+    Running this trigger calls ``puspa.memory.self_evolution.
+    run_self_evolution_job`` through ``run_scheduled_job``
+    below: the pass only reviews when the session has been
+    idle for at least an hour (see
+    ``puspa.memory.self_evolution.DEFAULT_IDLE_SECONDS``), so
+    a night run after a busy evening still waits. Hour 5 keeps
+    it clear of the dream at hour 3 and the long-term
+    consolidation at hour 4.
+    """
+    tomorrow = (_now() + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
+    return create_trigger(
+        user_id, "self_evolution", tomorrow, schedule=f"daily {hour:02d}:00", dsn=dsn
+    )
+
+
 def run_scheduled_job(run: dict, *, dsn=None) -> dict:
     """Eksekusi job sistem untuk satu jalan pemicu (backup/konsolidasi).
 
@@ -786,6 +805,26 @@ def run_scheduled_job(run: dict, *, dsn=None) -> dict:
             },
         )
         return {"job": "longterm_consolidation", "result": result}
+    if event_type == "self_evolution":
+        from puspa.ledger.ledger import Ledger
+        from puspa.memory.self_evolution import run_self_evolution_job
+
+        result = run_self_evolution_job(str(user_id), dsn=dsn)
+        Ledger(dsn).append_event(
+            task_id=run["task_id"],
+            agent_id="puspa",
+            event_type="task_completed",
+            content={
+                "job": "self_evolution",
+                "user_id": str(user_id),
+                "ran": result["ran"],
+                "skills_proposed": len(result["skills_proposed"]),
+                "memories_proposed": result["memories_proposed"],
+                "tasks_followed_up": len(result["tasks_followed_up"]),
+                "changes": len(result["changes"]),
+            },
+        )
+        return {"job": "self_evolution", "result": result}
     if event_type == "trust_root_refresh":
         from puspa.policy.trust_root import run_trust_root_refresh_job
 
