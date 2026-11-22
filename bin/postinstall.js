@@ -4,9 +4,19 @@
 // The npm package only carries this shim; the agent itself is the
 // Python distribution `puspa` on PyPI. The wrapper version in
 // package.json tracks the shim, while PYPI_VERSION below tracks the
-// Python release the shim fronts — the two are 0.1.1 together now:
+// Python release the shim fronts — the two are 0.1.2 together now:
 // the wrapper fix and the Python release that carries the Windows
 // fcntl fix.
+//
+// pip writes its build/unpack temporaries under TMPDIR (Python's
+// tempfile). On systems where /tmp is a small tmpfs (512 MB on some
+// Debian installs), that is too small for puspa's wheels: torch
+// alone is ~539 MB and a full install is ~6.7 GB, so pip dies with
+// Errno 28 "No space left on device" even though the home disk has
+// room (seen on 0.1.1). Before spawning pip this script therefore
+// makes a fresh temp dir under the user's home and passes it as
+// TMPDIR (non-Windows only; on Windows pip uses TEMP, which already
+// lives on disk), then removes the dir when the install is done.
 //
 // Python lookup is cross-platform: `python3`, then `python`, then
 // `py` (the Windows launcher — `python3` often does not exist on
@@ -31,10 +41,44 @@
 // publish, when `puspa` is not on PyPI yet.
 "use strict";
 
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const { launch } = require("./launch.js");
 
-const PYPI_VERSION = "0.1.1";
+const PYPI_VERSION = "0.1.2";
 const PYTHONS = ["python3", "python", "py"];
+const WINDOWS = process.platform === "win32";
+
+function makePipTmpDir() {
+  // Null on Windows (pip there uses TEMP, which lives on disk) and
+  // whenever the directory cannot be made: the install then runs
+  // with the system temp dir, exactly like before.
+  if (WINDOWS) {
+    return null;
+  }
+  try {
+    const cacheDir = path.join(os.homedir(), ".cache");
+    fs.mkdirSync(cacheDir, { recursive: true });
+    return fs.mkdtempSync(path.join(cacheDir, "puspa-pip-tmp-"));
+  } catch (error) {
+    console.error(
+      `puspa postinstall: cannot make a pip temp dir (${error.message}); continuing with the system temp dir`
+    );
+    return null;
+  }
+}
+
+function removePipTmpDir(dir) {
+  if (dir === null) {
+    return;
+  }
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch (error) {
+    // Best effort only: a leftover temp dir is harmless.
+  }
+}
 
 function run(command, args, options) {
   const result = launch(command, args, {
@@ -76,15 +120,26 @@ function userSite(python) {
   return site || null;
 }
 
-function pipInstall(python, target, extraArgs) {
-  return run(python, ["-m", "pip", "install", "--quiet", ...extraArgs, target]);
+function pipInstall(python, target, extraArgs, options) {
+  return run(python, ["-m", "pip", "install", "--quiet", ...extraArgs, target], options);
 }
 
-function pipxInstall(target) {
-  return run("pipx", ["install", target]);
+function pipxInstall(target, options) {
+  return run("pipx", ["install", target], options);
 }
 
 function install(target) {
+  const pipTmpDir = makePipTmpDir();
+  const pipOptions =
+    pipTmpDir === null ? {} : { env: { ...process.env, TMPDIR: pipTmpDir } };
+  try {
+    return installWithPipTmp(target, pipOptions);
+  } finally {
+    removePipTmpDir(pipTmpDir);
+  }
+}
+
+function installWithPipTmp(target, pipOptions) {
   let first = null; // { python, site } of the first interpreter found
   for (const python of PYTHONS) {
     if (!probe(python)) {
@@ -96,7 +151,7 @@ function install(target) {
     }
     let ok;
     try {
-      ok = pipInstall(python, target, []);
+      ok = pipInstall(python, target, [], pipOptions);
     } catch (error) {
       console.error(`puspa postinstall: pip failed to run (${error.message})`);
       continue;
@@ -105,7 +160,7 @@ function install(target) {
       return { ok: true, first };
     }
     try {
-      ok = pipInstall(python, target, ["--user"]);
+      ok = pipInstall(python, target, ["--user"], pipOptions);
     } catch (error) {
       console.error(`puspa postinstall: pip failed to run (${error.message})`);
       continue;
@@ -118,7 +173,7 @@ function install(target) {
     // check and which is on sys.path on every OS.
     if (site !== null) {
       try {
-        ok = pipInstall(python, target, ["--target", site]);
+        ok = pipInstall(python, target, ["--target", site], pipOptions);
       } catch (error) {
         console.error(`puspa postinstall: pip failed to run (${error.message})`);
         continue;
@@ -131,7 +186,7 @@ function install(target) {
   // Last resort: an isolated pipx install, when pipx is installed.
   let ok = null;
   try {
-    ok = pipxInstall(target);
+    ok = pipxInstall(target, pipOptions);
   } catch (error) {
     console.error(`puspa postinstall: pipx failed to run (${error.message})`);
   }
@@ -155,9 +210,15 @@ function main() {
       );
     } else {
       const { python, site } = result.first;
+      // The manual --target command gets the same TMPDIR redirect:
+      // without it, a hand-run install hits the same small-/tmp wall
+      // (Errno 28) the automatic install just hit. $HOME/.cache is
+      // the same place the automatic temp dir lives; Python's
+      // tempfile falls back to /tmp if it does not exist.
+      const tmpPrefix = WINDOWS ? "" : 'TMPDIR="$HOME/.cache" ';
       const manual =
         site !== null
-          ? `${python} -m pip install --target ${site} ${target}`
+          ? `${tmpPrefix}${python} -m pip install --target ${site} ${target}`
           : `${python} -m pip install ${target}`;
       console.error(
         "puspa postinstall: could not install the Python package automatically.\n" +

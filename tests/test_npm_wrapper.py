@@ -35,6 +35,16 @@ const log = process.env.FAKE_PY_LOG;
 const rules = JSON.parse(fs.readFileSync(process.env.FAKE_PY_RULES, "utf-8"));
 const line = `${name} ${process.argv.slice(2).join(" ")}`;
 fs.appendFileSync(log, line + "\\n");
+// Record the TMPDIR the caller passed, and whether it existed at
+// call time: the postinstall is supposed to redirect pip's
+// temporaries under the user's home (see
+// test_postinstall_redirects_pip_tmpdir_under_home).
+if (process.env.TMPDIR !== undefined) {
+  fs.appendFileSync(
+    log,
+    `env TMPDIR=${process.env.TMPDIR} exists=${fs.existsSync(process.env.TMPDIR)}\\n`
+  );
+}
 for (const rule of rules) {
   if (rule.match === undefined || line.includes(rule.match)) {
     if (rule.output !== undefined) process.stdout.write(rule.output + "\\n");
@@ -113,7 +123,7 @@ def test_package_json_name_and_bin():
     """The npm name is scoped (@puspaverse/puspa, the product scope)
     while the PyPI name stays plain `puspa`, so the names are checked
     separately. The wrapper version tracks the shim, the Python
-    version tracks the PyPI release; both are 0.1.1 now (Nero's
+    version tracks the PyPI release; both are 0.1.2 now (Nero's
     decision, 23 Nov 2026). The postinstall pin is what must match
     pyproject (see test_postinstall_installs_the_pyproject_version)."""
     pkg = _package_json()
@@ -201,7 +211,7 @@ def test_shim_falls_back_to_python_module(tmp_path):
 
 def test_postinstall_installs_the_pyproject_version(tmp_path):
     """The postinstall target is puspa==<pyproject version>; the pin
-    must match pyproject (both are 0.1.1 now)."""
+    must match pyproject (both are 0.1.2 now)."""
     log = tmp_path / "calls.log"
     _fake_command(
         tmp_path,
@@ -257,6 +267,56 @@ def test_postinstall_retries_with_target_flag(tmp_path):
     assert "--target" in lines[2]
     assert str(tmp_path / "usersite") in lines[2]
     assert "pipx install" not in log.read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(WINDOWS, reason="TMPDIR redirect is POSIX-only; Windows pip uses TEMP on disk")
+def test_postinstall_redirects_pip_tmpdir_under_home(tmp_path):
+    """pip's temporaries must not go to /tmp: on systems where /tmp
+    is a small tmpfs (512 MB), pip dies with Errno 28 unpacking torch
+    (~539 MB wheel, ~6.7 GB full install) even though the home disk
+    has room (seen on 0.1.1). The postinstall redirects TMPDIR to a
+    fresh dir under the user's home before spawning pip, and removes
+    the dir when the install is done."""
+    log = tmp_path / "calls.log"
+    _fake_command(
+        tmp_path,
+        "python3",
+        log,
+        [
+            _user_site_rule(tmp_path),
+            {"match": "--target", "exit": 0},
+            {"match": "--user", "exit": 1},
+            {"match": "-m pip", "exit": 1},
+        ],
+    )
+    _fake_command(tmp_path, "python", log, [{"exit": 1}])
+    _fake_command(tmp_path, "pipx", log, [{"exit": 0}])
+    result = subprocess.run(
+        [NODE, str(BUILD_DIR / "bin" / "postinstall.js")],
+        capture_output=True,
+        check=False,
+        text=True,
+        env=_test_env([tmp_path]),
+        timeout=120,
+    )
+    assert result.returncode == 0
+    lines = log.read_text(encoding="utf-8").splitlines()
+    home = Path.home()
+    pip_lines = [i for i, line in enumerate(lines) if "-m pip install" in line]
+    assert pip_lines, "no pip install was attempted"
+    tmpdirs = set()
+    for i in pip_lines:
+        # The fake logs the call line, then its env line.
+        env_line = lines[i + 1]
+        assert env_line.startswith("env TMPDIR="), env_line
+        tmpdir = env_line.split("=", 2)[1].split(" exists=")[0]
+        assert tmpdir.startswith(str(home / ".cache" / "puspa-pip-tmp-")), tmpdir
+        assert not tmpdir.startswith("/tmp"), tmpdir
+        assert env_line.endswith("exists=true"), env_line
+        tmpdirs.add(tmpdir)
+    assert tmpdirs, "no redirected TMPDIR was recorded"
+    for tmpdir in tmpdirs:
+        assert not Path(tmpdir).exists(), f"temp dir not removed: {tmpdir}"
 
 
 def test_postinstall_falls_back_to_pipx(tmp_path):
