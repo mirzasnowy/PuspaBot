@@ -31,11 +31,15 @@ def _pyproject():
         return tomllib.load(fh)
 
 
-def test_package_json_version_matches_pyproject():
+def test_package_json_name_and_bin():
+    """The npm name is scoped (@puspaverse/puspa, the product scope)
+    while the PyPI name stays plain `puspa`, so the names are checked
+    separately. The versions diverge on purpose too: the wrapper
+    version tracks the shim, the Python version tracks the PyPI
+    release, and the postinstall pin is what must match pyproject
+    (see test_postinstall_installs_the_pyproject_version)."""
     pkg = _package_json()
-    project = _pyproject()["project"]
-    assert pkg["name"] == project["name"] == "puspa"
-    assert pkg["version"] == project["version"]
+    assert pkg["name"] in {"@puspaverse/puspa", "@mirzasnowy/puspa"}
     assert pkg["bin"] == {"puspa": "./bin/puspa.js"}
 
 
@@ -108,6 +112,113 @@ def test_shim_falls_back_to_python_module(tmp_path):
     )
     assert result.returncode == 0
     assert "FAKE-PYTHON-CALLED -m puspa --help" in result.stdout
+
+
+def _fake_executable(tmp_path, name, script):
+    """A fake executable on PATH that records its args, then runs `script`."""
+    fake = tmp_path / name
+    fake.write_text(script, encoding="utf-8")
+    fake.chmod(0o755)
+    return fake
+
+
+def _postinstall_env(tmp_path):
+    """PATH with only the fake dir, node, and the system dirs — so the
+    script under test never reaches a real interpreter."""
+    node_dir = str(Path(NODE).resolve().parent)
+    env = dict(os.environ)
+    env["PATH"] = os.pathsep.join([str(tmp_path), node_dir, "/usr/bin", "/bin"])
+    env.pop("PUSPA_LOCAL_WHEEL", None)
+    return env
+
+
+def test_postinstall_installs_the_pyproject_version(tmp_path):
+    """The postinstall target is puspa==<pyproject version>, not the
+    npm wrapper version — the two diverge (wrapper 0.1.1 fronts the
+    Python 0.1.0 release)."""
+    log = tmp_path / "calls.log"
+    _fake_executable(
+        tmp_path,
+        "python3",
+        f'#!/bin/sh\necho "$@" >> "{log}"\nexit 0\n',
+    )
+    _fake_executable(tmp_path, "python", "#!/bin/sh\nexit 1\n")
+    result = subprocess.run(
+        [NODE, str(BUILD_DIR / "bin" / "postinstall.js")],
+        capture_output=True,
+        check=False,
+        text=True,
+        env=_postinstall_env(tmp_path),
+        timeout=120,
+    )
+    assert result.returncode == 0
+    assert f"puspa=={_pyproject()['project']['version']}" in log.read_text(encoding="utf-8")
+
+
+def test_postinstall_retries_with_user_flag(tmp_path):
+    """Plain pip install fails (PEP 668 on Debian/Ubuntu) — the
+    postinstall retries with --user instead of giving up, and never
+    reaches pipx once --user succeeds."""
+    log = tmp_path / "calls.log"
+    _fake_executable(
+        tmp_path,
+        "python3",
+        f'#!/bin/sh\necho "$@" >> "{log}"\ncase "$*" in *--user*) exit 0;; *) exit 1;; esac\n',
+    )
+    _fake_executable(tmp_path, "python", "#!/bin/sh\nexit 1\n")
+    pipx_log = tmp_path / "pipx.log"
+    _fake_executable(
+        tmp_path,
+        "pipx",
+        f'#!/bin/sh\necho "$@" >> "{pipx_log}"\nexit 0\n',
+    )
+    result = subprocess.run(
+        [NODE, str(BUILD_DIR / "bin" / "postinstall.js")],
+        capture_output=True,
+        check=False,
+        text=True,
+        env=_postinstall_env(tmp_path),
+        timeout=120,
+    )
+    assert result.returncode == 0
+    lines = log.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+    assert "--user" not in lines[0]
+    assert "--user" in lines[1]
+    assert not pipx_log.exists()
+
+
+def test_postinstall_falls_back_to_pipx(tmp_path):
+    """Both pip attempts fail — the postinstall tries `pipx install`
+    before printing the manual command."""
+    log = tmp_path / "calls.log"
+    _fake_executable(
+        tmp_path,
+        "python3",
+        f'#!/bin/sh\necho "$@" >> "{log}"\nexit 1\n',
+    )
+    _fake_executable(
+        tmp_path,
+        "python",
+        f'#!/bin/sh\necho "$@" >> "{log}"\nexit 1\n',
+    )
+    pipx_log = tmp_path / "pipx.log"
+    _fake_executable(
+        tmp_path,
+        "pipx",
+        f'#!/bin/sh\necho "$@" >> "{pipx_log}"\nexit 0\n',
+    )
+    result = subprocess.run(
+        [NODE, str(BUILD_DIR / "bin" / "postinstall.js")],
+        capture_output=True,
+        check=False,
+        text=True,
+        env=_postinstall_env(tmp_path),
+        timeout=120,
+    )
+    assert result.returncode == 0
+    pipx_calls = pipx_log.read_text(encoding="utf-8")
+    assert f"install puspa=={_pyproject()['project']['version']}" in pipx_calls
 
 
 def test_postinstall_never_fails_the_npm_install():
