@@ -14,6 +14,8 @@ mock transport.
 
 import json
 import math
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _package_version
 
 import httpx
 import pytest
@@ -132,7 +134,14 @@ def test_flush_sends_aggregates_only_when_on():
         "counters",
         "durations",
     }
-    assert body["puspa_version"] == "0.1.0"
+    # The client reports the installed package version, so the test
+    # reads it from the same source instead of hardcoding it: the
+    # literal went stale on the 0.1.1 bump and would again at 0.1.2.
+    try:
+        expected_version = _package_version("puspa")
+    except PackageNotFoundError:
+        expected_version = "0.1.0"
+    assert body["puspa_version"] == expected_version
     assert body["counters"] == {"chat_message_sent": 2, "voice_message_sent": 1}
     assert body["durations"] == {"turn_seconds": {"count": 2, "total_seconds": 4.0}}
     # Buffers are cleared: a second flush sends nothing.
