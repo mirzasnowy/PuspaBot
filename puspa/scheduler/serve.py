@@ -64,7 +64,10 @@ def run_scheduler_loop(
         if loop is None:
             from puspa.turns.loop import TurnLoop
 
-            loop = TurnLoop()
+            # COW-08: the loop gets the DSN so a routine turn for a
+            # user runs through that user's routed chat provider
+            # (no DSN means the old default adapter, as before).
+            loop = TurnLoop(dsn=dsn)
         try:
             runs = tick(
                 sink=sink,

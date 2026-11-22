@@ -15,6 +15,9 @@
 <p id="telemetry-note" class="pesan-sub"></p>
 <button id="btn-telemetry" type="button">Simpan pilihan telemetri</button>
 <p id="telemetry-status" class="pesan-sub"></p></div>
+<div class="kartu"><strong>Routing per kemampuan</strong><p>Tiap kemampuan bisa memakai provider berbeda: chat, vision, gambar, suara, dan embeddings. Satu klik menyimpan satu kemampuan; kemampuan lain tidak ikut berubah.</p>
+<div id="routing-list"><p class="pesan-sub">Memuat tabel routing…</p></div>
+<p id="routing-status" class="pesan-sub"></p></div>
 <script>
 document.getElementById('btn-notif').addEventListener('click', async function() {
   var status = document.getElementById('notif-status');
@@ -54,6 +57,87 @@ document.getElementById('btn-notif').addEventListener('click', async function() 
       status.textContent = 'Gagal menyimpan pilihan telemetri.';
     }
   });
+})();
+(function() {
+  var list = document.getElementById('routing-list');
+  var status = document.getElementById('routing-status');
+  var caps = ['chat', 'vision', 'image', 'speech', 'embeddings'];
+  function describe(cap) {
+    return {chat: 'Obrolan utama.', vision: 'Membaca gambar dan label.', image: 'Membuat gambar.', speech: 'Suara masuk dan keluar.', embeddings: 'Vektor untuk ingatan.'}[cap] || cap;
+  }
+  function render(table) {
+    list.innerHTML = '';
+    caps.forEach(function(cap) {
+      var route = table.capabilities[cap];
+      var providers = table.providers[cap] || [];
+      var row = document.createElement('div');
+      row.style.marginBottom = '0.75rem';
+      var title = document.createElement('strong');
+      title.textContent = cap + ' ';
+      row.appendChild(title);
+      var hint = document.createElement('span');
+      hint.className = 'pesan-sub';
+      hint.textContent = describe(cap) + ' ';
+      row.appendChild(hint);
+      var sel = document.createElement('select');
+      var empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = '— belum dipilih —';
+      sel.appendChild(empty);
+      providers.forEach(function(p) {
+        var opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p;
+        if (route.provider === p) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      row.appendChild(sel);
+      var model = document.createElement('input');
+      model.type = 'text';
+      model.placeholder = 'nama model di provider itu';
+      model.value = route.model || '';
+      row.appendChild(model);
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = 'Simpan ' + cap;
+      btn.addEventListener('click', async function() {
+        status.textContent = '';
+        var body = {provider: sel.value, model: model.value.trim() || null, base_url: null};
+        if (!body.provider) { status.textContent = 'Pilih dulu provider untuk ' + cap + '.'; return; }
+        var r = await fetch('/api/routing/' + cap, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+        if (r.ok) {
+          var saved = await r.json();
+          status.textContent = 'Routing ' + cap + ' tersimpan: ' + saved.provider + '.';
+        } else {
+          var err = await r.json().catch(function() { return {}; });
+          status.textContent = 'Gagal menyimpan routing ' + cap + ': ' + (err.error || r.status);
+        }
+      });
+      row.appendChild(btn);
+      if (!route.is_default) {
+        var reset = document.createElement('button');
+        reset.type = 'button';
+        reset.textContent = 'Reset ke default';
+        reset.addEventListener('click', async function() {
+          var r = await fetch('/api/routing/' + cap, {method: 'DELETE', credentials: 'same-origin'});
+          if (r.ok) { status.textContent = 'Routing ' + cap + ' kembali ke default.'; load(); }
+          else { status.textContent = 'Gagal mereset routing ' + cap + '.'; }
+        });
+        row.appendChild(reset);
+      }
+      var note = document.createElement('p');
+      note.className = 'pesan-sub';
+      note.textContent = route.is_default ? 'Memakai default.' : ('Tersimpan: ' + (route.provider || '—') + (route.model ? ' / ' + route.model : '') + '.') + (route.has_key ? ' Kunci sudah tersimpan di vault.' : '');
+      row.appendChild(note);
+      list.appendChild(row);
+    });
+  }
+  function load() {
+    fetch('/api/routing', {credentials: 'same-origin'}).then(function(r) { return r.json(); }).then(function(t) {
+      render(t);
+    }).catch(function() { list.innerHTML = '<p class="pesan-sub">Tabel routing belum bisa dimuat; default tiap kemampuan dipakai.</p>'; });
+  }
+  load();
 })();
 </script>
 {% endblock %}

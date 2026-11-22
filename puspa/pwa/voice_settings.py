@@ -382,6 +382,29 @@ def delete_voice_key(user_id, kind: str, provider: str, dsn=None) -> None:
     vault_delete(user_id, _voice_vault_name(kind, provider), dsn=dsn)
 
 
+def _speech_route_override(user_id, dsn=None) -> tuple[str | None, str | None]:
+    """The stored speech route's endpoint + model, if one is stored.
+
+    COW-08: a speech route sets the endpoint + model the
+    OpenAI-compatible ASR/TTS engines call. Returns
+    ``(base_url, model)`` (either may be None) when a row is
+    stored, else ``(None, None)``: with no stored route the
+    voice settings behave exactly as today. Fail-open: a
+    routing table that cannot be read must never break a voice
+    upload or a speak call, so any read error means "no
+    override".
+    """
+    try:
+        from puspa.pwa.capability_routing import KNOWN_BASE_URLS, get_route
+
+        route = get_route(user_id, "speech", dsn=dsn)
+    except Exception:
+        return None, None
+    if route.is_default or route.provider is None:
+        return None, None
+    return route.base_url or KNOWN_BASE_URLS.get(route.provider), route.model
+
+
 def resolve_asr(user_id, settings: VoiceSettings | None = None, dsn=None, http_client=None):
     """Resolve a user's ASR choice to a transcriber instance.
 
@@ -392,6 +415,8 @@ def resolve_asr(user_id, settings: VoiceSettings | None = None, dsn=None, http_c
       is stored) with the vault key, model default ``whisper-1``.
       The key lives under ``voice:asr:openai-compatible``.
       Raises ``KeyError`` when no vault key exists.
+      COW-08: a stored speech route overrides the endpoint +
+      model here (the key still comes from the voice vault).
     """
     from puspa.voice.asr import OpenAICompatibleTranscriber
     from puspa.voice.transcriber import StubTranscriber
@@ -413,10 +438,11 @@ def resolve_asr(user_id, settings: VoiceSettings | None = None, dsn=None, http_c
                 "no ASR key stored: save one in Settings first (it lives in the vault only)"
             ) from exc
         base_url = settings.asr_base_url or KNOWN_ASR_BASE_URLS["openai"]
+        route_base_url, route_model = _speech_route_override(user_id, dsn=dsn)
         return OpenAICompatibleTranscriber(
-            base_url,
+            route_base_url or base_url,
             key,
-            settings.asr_model or DEFAULT_ASR_MODEL,
+            route_model or settings.asr_model or DEFAULT_ASR_MODEL,
             http_client=http_client,
         )
     raise ValueError(f"unknown ASR provider {settings.asr_provider!r}")
@@ -431,7 +457,9 @@ def resolve_tts(user_id, settings: VoiceSettings | None = None, dsn=None, http_c
     voice (the server is never called), or a BYOK engine
     instance (ElevenLabs / OpenAI-compatible / Azure) built with
     the vault key. Raises ``KeyError`` when a BYOK provider has
-    no vault key.
+    no vault key. COW-08: a stored speech route overrides the
+    endpoint + model of the OpenAI-compatible engine (the key
+    still comes from the voice vault).
     """
     from puspa.voice.tts import AzureTTS, ElevenLabsTTS, OpenAICompatibleTTS
 
@@ -461,10 +489,11 @@ def resolve_tts(user_id, settings: VoiceSettings | None = None, dsn=None, http_c
         )
     if provider == "openai-compatible":
         base_url = settings.tts_base_url or KNOWN_TTS_BASE_URLS["openai"]
+        route_base_url, route_model = _speech_route_override(user_id, dsn=dsn)
         return OpenAICompatibleTTS(
-            base_url,
+            route_base_url or base_url,
             key,
-            settings.tts_model or DEFAULT_TTS_MODEL,
+            route_model or settings.tts_model or DEFAULT_TTS_MODEL,
             settings.tts_voice or "alloy",
             http_client=http_client,
         )

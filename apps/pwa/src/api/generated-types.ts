@@ -8430,6 +8430,36 @@ export interface components {
             has_asr_key?: boolean;
             has_tts_key?: boolean;
         };
+        /**
+         * @description One capability's effective route (COW-08). Carries no key material: `has_key` only says whether a provider key exists in the vault.
+         * NOTE (COW-08): added by hand to match docs/openapi-routing.yaml because `npm run generate` cannot run in this tree (docs/openapi-rooms.yaml and docs/openapi-payments.yaml are absent); re-run the generator when those specs are back and confirm this type is unchanged.
+         */
+        CapabilityRoute: {
+            /** @enum {string} */
+            capability: "chat" | "vision" | "image" | "speech" | "embeddings";
+            /** @description The provider serving this capability; null only for image/speech before the user picks one. */
+            provider: string | null;
+            /** @description Model id to ask for (null means the router's default for the capability). */
+            model?: string | null;
+            /** @description Endpoint override. Must be a valid http(s) URL. */
+            base_url?: string | null;
+            /** @description Whether a provider key for `provider` exists in the vault. */
+            has_key: boolean;
+            /** @description True when no row is stored and this is the capability's default. */
+            is_default: boolean;
+        };
+        /**
+         * @description The whole routing table (COW-08): one effective route per capability, plus the providers that can serve each one.
+         * NOTE (COW-08): added by hand to match docs/openapi-routing.yaml for the same reason as CapabilityRoute above.
+         */
+        CapabilityRouting: {
+            capabilities: {
+                [key: string]: components["schemas"]["CapabilityRoute"];
+            };
+            providers: {
+                [key: string]: string[];
+            };
+        };
         /** @description One parsed line item, with the evidence id for its amount (photo + OCR line). */
         ReceiptLine: {
             name: string;

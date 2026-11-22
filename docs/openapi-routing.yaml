@@ -1,0 +1,252 @@
+# Per-capability model routing API contract (COW-08).
+#
+# Split out of docs/openapi-pwa.yaml (per-capability routing):
+# the routing contract (4 endpoints + 2 schemas) lives in its
+# own file, following the earlier voice split. The main spec
+# references this file with $ref stubs; the generated client is
+# produced from the main spec with openapi-typescript, which
+# resolves external $refs. The Error schema stays in the main
+# spec and is referenced back from here.
+openapi: 3.0.3
+info:
+  title: PuspaBot per-capability model routing API
+  version: 1.0.0
+paths:
+  /api/routing:
+    get:
+      tags: [settings]
+      summary: Read the user's per-capability routing table
+      description: |
+        Returns every capability's effective route (provider,
+        model, base URL, `has_key` boolean, `is_default` flag)
+        plus the providers that can serve each capability.
+        Never returns key material: only `has_key` (boolean)
+        says whether a provider key exists in the vault.
+      responses:
+        "200":
+          description: Routing table (stored routes or defaults)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapabilityRouting"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/routing/{capability}:
+    post:
+      tags: [settings]
+      summary: Swap one capability's provider
+      description: |
+        Persists one capability's route (provider + model +
+        optional base URL override). One click swaps one
+        capability; the other four routes are untouched. A
+        provider that cannot serve the capability is refused
+        with 400 naming the providers that can; a missing
+        model for a provider that needs one is a 400; any key
+        field in the body is refused with 400 (keys go to the
+        vault only, through POST /api/routing/key).
+      parameters:
+        - name: capability
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [chat, vision, image, speech, embeddings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CapabilityRoute"
+      responses:
+        "200":
+          description: Saved route
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapabilityRoute"
+        "400":
+          description: Invalid route (provider cannot serve, missing model, bad base URL, key field present)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown capability
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    delete:
+      tags: [settings]
+      summary: Reset one capability to its default route
+      description: |
+        Drops the stored route; the capability's default
+        applies again. Idempotent. Other capabilities are
+        untouched.
+      parameters:
+        - name: capability
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [chat, vision, image, speech, embeddings]
+      responses:
+        "200":
+          description: Default route for the capability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapabilityRoute"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Unknown capability
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/routing/key:
+    post:
+      tags: [settings]
+      summary: Save a provider key into the vault
+      description: |
+        The key is stored only in the existing per-user vault
+        (entry `byok:<provider>`, envelope-encrypted — the
+        same entry the model settings use, so one key serves
+        every capability routed to that provider) and is never
+        returned by any endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, key]
+              properties:
+                provider:
+                  type: string
+                  example: groq
+                key:
+                  type: string
+                  description: The provider API key; stored in the vault only.
+      responses:
+        "200":
+          description: Key stored in the vault
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        "400":
+          description: Empty provider or key
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    delete:
+      tags: [settings]
+      summary: Delete a provider key from the vault
+      parameters:
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Key deleted (idempotent)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    CapabilityRoute:
+      type: object
+      description: |
+        One capability's effective route (COW-08). Carries no key
+        material: `has_key` only says whether a provider key
+        exists in the vault. `provider` is null only for image
+        and speech before the user picks one (no usable default).
+        `is_default` is true when no row is stored and this is
+        the capability's default (chat follows the user's model
+        selection; vision and embeddings default to hosted).
+      required: [capability, provider, has_key, is_default]
+      properties:
+        capability:
+          type: string
+          enum: [chat, vision, image, speech, embeddings]
+        provider:
+          type: string
+          nullable: true
+          description: |
+            The provider serving this capability. `hosted` means
+            the Puspa default for the capability; `ollama` means
+            a local OpenAI-compatible model; anything else is a
+            BYOK provider whose key lives in the vault.
+          example: groq
+        model:
+          type: string
+          nullable: true
+          description: Model id to ask for (null means the router's default for the capability).
+          example: llama-3.3-70b-versatile
+        base_url:
+          type: string
+          nullable: true
+          description: Endpoint override. Must be a valid http(s) URL.
+          example: https://api.groq.com/openai/v1
+        has_key:
+          type: boolean
+        is_default:
+          type: boolean
+    CapabilityRouting:
+      type: object
+      description: |
+        The whole routing table (COW-08): one effective route per
+        capability, plus the providers that can serve each one.
+      required: [capabilities, providers]
+      properties:
+        capabilities:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/CapabilityRoute"
+        providers:
+          type: object
+          description: Providers that can serve each capability.
+          additionalProperties:
+            type: array
+            items:
+              type: string
