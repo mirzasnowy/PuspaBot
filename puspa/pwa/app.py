@@ -285,6 +285,22 @@ def create_app(
             pass
         return user_id
 
+    def user_error(key: str, user_id) -> str:
+        """A server-line in the user's stored language (COW-18).
+
+        The language switch is per user, so an error a logged-in
+        user reads answers in their language. Anything that stops
+        the locale being read (DB down, no row) falls back to
+        Indonesian — an error path must never fail because the
+        language lookup did.
+        """
+        try:
+            from puspa.pwa.language import get_language
+
+            return render_server_line(key, locale=get_language(user_id, dsn=app.state.dsn))
+        except Exception:
+            return render_server_line(key)
+
     def render(name: str, request: Request, context: dict | None = None):
         ctx = {"request": request, "screen": name.replace(".html", "")}
         ctx.update(context or {})
@@ -854,7 +870,7 @@ def create_app(
         item = app.state.approval.get(request_id)
         if item is None:
             return JSONResponse(
-                {"error": render_server_line("error.unknown_request")}, status_code=404
+                {"error": user_error("error.unknown_request", user_id)}, status_code=404
             )
         item["status"] = "approved" if approve == "ya" else "rejected"
         # E-10: record the decision latency for the fatigue signal.
@@ -1071,6 +1087,7 @@ def create_app(
         hub_api,
         insights_api,
         knowledge_api,
+        language_api,
         live_view_api,
         memory_api,
         mockup_api,
@@ -1205,6 +1222,10 @@ def create_app(
     # /api/telemetry/settings). Off by default; the sender in
     # puspa.telemetry only posts when the effective switch is on.
     telemetry_api.register_routes(app, need_user)
+    # COW-18: the language switch in Settings (GET/POST
+    # /api/language) and the UI-string catalog the client
+    # translates with (GET /api/i18n/catalog). Default Indonesian.
+    language_api.register_routes(app, need_user)
     # AST-10: the local admin dashboard (GET/POST /api/admin/*).
     # Local-only by design: in hosted mode the routes answer 403
     # (see puspa.pwa.admin_api); the /admin page below renders

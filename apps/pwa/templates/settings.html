@@ -3,7 +3,9 @@
 <h1>Pengaturan</h1>
 <div class="kartu"><strong>Persona</strong><p>Satu agen, beberapa peran (kerja, personal). <a href="/personas">Atur persona dan ganti yang aktif</a>.</p></div>
 <div class="kartu"><strong>Batas belanja</strong><p>Default Rp0 tanpa persetujuan. Agen tidak bisa menaikkannya sendiri.</p></div>
-<div class="kartu"><strong>Bahasa</strong><p>Indonesia.</p></div>
+<div class="kartu"><strong>Bahasa</strong><p>Bahasa tampilan Puspa. Pilihan tersimpan untuk akun ini dan dipakai di aplikasi (SPA) serta kalimat server; halaman lite ini sendiri tetap berbahasa Indonesia.</p>
+<label>Bahasa <select id="language-select"><option value="id">Bahasa Indonesia</option><option value="en">English</option></select></label>
+<p id="language-status" class="pesan-sub"></p></div>
 <div class="kartu"><strong>Notifikasi</strong><p>Web Push (VAPID). Di iOS, push hanya jalan kalau PWA dipasang ke layar utama; onboarding menguji kirim dan menampilkan peringatan kalau notif tidak bisa menjangkau kamu.</p>
 <button id="btn-notif" type="button">Izinkan notifikasi + uji kirim</button>
 <p id="notif-status" class="pesan-sub"></p></div>
@@ -29,6 +31,18 @@ document.getElementById('btn-notif').addEventListener('click', async function() 
   if (izin !== 'granted') { status.textContent = 'Peringatan: izin notifikasi tidak diberikan; pengingat hanya tampil di aplikasi.'; return; }
   status.textContent = 'Notifikasi diizinkan. Uji kirim dicatat di onboarding (langganan push disimpan di server).';
 });
+(function() {
+  var select = document.getElementById('language-select');
+  var status = document.getElementById('language-status');
+  fetch('/api/language', {credentials: 'same-origin'}).then(function(r) { return r.json(); }).then(function(s) {
+    select.value = s.locale || 'id';
+  }).catch(function() { status.textContent = 'Bahasa belum bisa dimuat; bahasa Indonesia dipakai.'; });
+  select.addEventListener('change', async function() {
+    status.textContent = '';
+    var r = await fetch('/api/language', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({locale: select.value})});
+    status.textContent = r.ok ? 'Bahasa tersimpan.' : 'Gagal menyimpan bahasa.';
+  });
+})();
 (function() {
   var box = document.getElementById('telemetry-enabled');
   var note = document.getElementById('telemetry-note');

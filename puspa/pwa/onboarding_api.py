@@ -57,6 +57,7 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from ..i18n import DEFAULT_LOCALE
 from ..i18n.server_lines import render as render_server_line
 from ..onboarding import hints as hints_engine
 from ..onboarding import onboarding as onboarding_core
@@ -116,8 +117,19 @@ def first_task(user_id, event_type, target, dsn=None) -> dict:
 
 
 def due_hints(user_id, context=None, dsn=None) -> dict:
-    """Hints due right now, as ``{"hints": [...]}``."""
-    return {"hints": hints_engine.due_hints(user_id, context=context, dsn=dsn)}
+    """Hints due right now, as ``{"hints": [...]}``.
+
+    Rendered in the user's stored language (COW-18): the switch in
+    Settings flips these sentences. A locale that cannot be read
+    falls back to Indonesian instead of failing the request.
+    """
+    try:
+        from puspa.pwa.language import get_language
+
+        locale = get_language(user_id, dsn=dsn)
+    except Exception:
+        locale = DEFAULT_LOCALE
+    return {"hints": hints_engine.due_hints(user_id, context=context, dsn=dsn, locale=locale)}
 
 
 def dismiss_hint(user_id, flag, dsn=None) -> dict:

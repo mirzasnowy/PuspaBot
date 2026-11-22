@@ -6,6 +6,7 @@ import {
   type HubPreview,
   type HubSkill,
 } from "../api/client";
+import { useLanguage } from "../state/language";
 
 /**
  * Skill marketplace hub (COW-03): browse, search and one-click
@@ -21,6 +22,7 @@ import {
  * screen never reports a success it did not get.
  */
 export function HubScreen() {
+  const { t } = useLanguage();
   const [query, setQuery] = useState("");
   const [skills, setSkills] = useState<HubSkill[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,7 +99,7 @@ export function HubScreen() {
 
   return (
     <div>
-      <h1>Hub Skill</h1>
+      <h1>{t("ui.nav.hub", "Hub Skill")}</h1>
       <p className="muted">
         Jelajahi skill yang sudah ada di perangkat ini, cari yang cocok, lalu pasang dalam satu
         klik. Skill baru bisa dipasang dari GitHub, ClawHub, atau tautan SKILL.md langsung.

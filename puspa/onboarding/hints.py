@@ -37,6 +37,7 @@ from psycopg.rows import dict_row
 from puspa.migrations import apply_migrations
 
 from ..billing.config import TASK_COST_CEILING_IDR
+from ..i18n import DEFAULT_LOCALE
 from ..i18n.server_lines import render as render_server_line
 from ..memory.schema import resolve_dsn
 
@@ -113,6 +114,37 @@ HINTS: tuple[Hint, ...] = (
 )
 
 HINT_FLAGS = tuple(hint.flag for hint in HINTS)
+
+
+def hints_in_locale(locale: str = DEFAULT_LOCALE) -> tuple[Hint, ...]:
+    """The hint registry rendered in ``locale``.
+
+    The import-time :data:`HINTS` is Indonesian; this rebuilds the
+    same flags, triggers and screens with every sentence rendered
+    in ``locale``. A key the locale is missing falls back to the
+    Indonesian sentence for that key (recorded by the renderer) —
+    never a blank, never a silently wrong sentence.
+    """
+    return tuple(
+        Hint(
+            flag=hint.flag,
+            trigger=hint.trigger,
+            title=render_server_line(f"hint.{hint.flag}.title", locale=locale),
+            body=render_server_line(
+                f"hint.{hint.flag}.body",
+                locale=locale,
+                **(
+                    {"ceiling": _format_rupiah(TASK_COST_CEILING_IDR)}
+                    if hint.flag == "first_costly_task"
+                    else {}
+                ),
+            ),
+            screen=hint.screen,
+            action_label=render_server_line(f"hint.{hint.flag}.action_label", locale=locale),
+        )
+        for hint in HINTS
+    )
+
 
 #: Cost threshold for the costly-task hint: the per-task ceiling.
 #: A task that reaches it is, by definition, an expensive task.
@@ -202,15 +234,17 @@ def mark_seen(user_id, flag, dsn=None) -> dict:
     return {"user_id": str(user_id), "flag": flag, "seen": True}
 
 
-def due_hints(user_id, context=None, dsn=None) -> list[dict]:
+def due_hints(user_id, context=None, dsn=None, locale: str = DEFAULT_LOCALE) -> list[dict]:
     """Hints due right now: triggered by ``context`` and not yet seen.
 
-    Returned in registry order. A hint whose branch was never
-    reached is never due, and a seen hint is never due again.
+    Returned in registry order, rendered in ``locale`` (Indonesian
+    when not given). A hint whose branch was never reached is never
+    due, and a seen hint is never due again.
     """
     seen = seen_flags(user_id, dsn=dsn)
+    hints = HINTS if locale == DEFAULT_LOCALE else hints_in_locale(locale)
     return [
         hint_to_dict(hint)
-        for hint in HINTS
+        for hint in hints
         if hint.flag not in seen and hint_triggered(hint, context)
     ]

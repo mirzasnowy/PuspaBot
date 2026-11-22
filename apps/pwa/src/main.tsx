@@ -4,11 +4,16 @@ import "./styles.css";
 import { currentScreen, readBootstrap } from "./api/bootstrap";
 import { fetchOnboardingStatus } from "./state/onboarding";
 import { requiredAgentName } from "./state/names";
+import { loadCatalog } from "./state/language";
 import { Nav } from "./components/Nav";
 import { App } from "./App";
 
 const bootstrap = readBootstrap();
 const screen = currentScreen(bootstrap);
+// COW-18: load the UI-string catalog for the user's stored
+// language in the background; screens render their hardcoded
+// Indonesian copy until it arrives, then re-render translated.
+void loadCatalog();
 const root = document.getElementById("root");
 if (root) {
   createRoot(root).render(

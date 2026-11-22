@@ -7,6 +7,7 @@ import {
   type Bootstrap,
 } from "../api/client";
 import { avatarPhotoSrc, avatarStatus } from "../state/avatar";
+import { useLanguage } from "../state/language";
 import { requiredAgentName, resolveSenderName } from "../state/names";
 import {
   appendMessage,
@@ -35,6 +36,10 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
   // (the required agent), never a hardcoded string, so a renamed
   // bot is called by its own name on every message.
   const botName = requiredAgentName(bootstrap.agents ?? []);
+  // COW-18: the screen's user-facing strings come from the loaded
+  // catalog; the fallbacks are the Indonesian copy this screen
+  // rendered before the language switch existed.
+  const { t } = useLanguage();
   // V2-26: the agent's photo (default logo while none is set).
   // Loaded once; the photo only changes from Settings, so no
   // polling is needed here.
@@ -117,7 +122,7 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
 
   return (
     <div>
-      <h1>Chat</h1>
+      <h1>{t("ui.nav.chat", "Chat")}</h1>
       <AgentAvatar
         state={avatarStatus(state.sending, state.liveOffice)}
         photoSrc={avatarPhotoSrc(avatar)}
@@ -174,7 +179,9 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder={`Tulis pesan ke ${botName}...`}
+          placeholder={t("ui.chat.input_placeholder", "Tulis pesan ke {bot}...", {
+            bot: botName,
+          })}
           aria-label={`Pesan ke ${botName}`}
           disabled={state.sending}
         />

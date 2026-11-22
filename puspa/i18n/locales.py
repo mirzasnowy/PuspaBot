@@ -2,8 +2,8 @@
 
 A locale is one JSON file per language in ``puspa/i18n/locales/``:
 ``<language>.json``, a flat object of message key -> template string.
-Today only ``id.json`` (Indonesian) ships; other locales are deferred
-until the global expansion (see ``docs/i18n.md``).
+Today ``id.json`` (Indonesian, the default) and ``en.json``
+(English) ship; see ``docs/i18n.md`` for how a language is added.
 
 Validation rule (DuskBot pattern, kept simple and honest): every key
 in the default locale must exist in every other locale file, and no
