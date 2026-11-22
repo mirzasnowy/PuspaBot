@@ -856,6 +856,38 @@ memory recall, ledger, price wedge, Bills module, scheduler,
 desktop hands); tests use injected fakes and the in-memory fake
 desktop backend.
 
+# NOTICE - Kosmos Phase 2, V2-40 (22 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **azrinaldi/gemini-stealth-bridge** (https://github.com/azrinaldi/gemini-stealth-bridge,
+  MIT License, Copyright (c) 2026 azrinaldi), pattern only, studied
+  from the public repo (`internal/server/accounts.go`,
+  `internal/config/config.go`, README): multi-account pooling with
+  `rotate` / `lru` / `fill-first` strategies, 5-hour and 7-day
+  quota tracking per account, a quota preflight that skips spent
+  accounts, failover on transport or quota errors, per-account
+  rate limits, and a web control plane showing live quota bars.
+  No gsb code was copied, ported, vendored, or depended on: gsb
+  is a Go program and all Puspa code in this item was written
+  from scratch in Python over Puspa's own `QuotaStore` and
+  tiered-fallback failure classification, in `puspa/router/pool.py`
+  (plus the Settings wiring in `puspa/pwa/model_settings.py`,
+  `puspa/pwa/app.py`, and the PWA). NOT taken: cookie-based
+  session auth, uTLS browser mimicry, and the unofficial Gemini
+  Web endpoints — those break Google's platform rules and are out
+  of scope; the pool serves official providers only (BYOK API keys
+  in the vault, OAuth logins via `puspa/router/oauth.py`). Full
+  license text: MIT License (https://opensource.org/licenses/MIT).
+
+## New dependency: none
+
+No new dependency was added for V2-40. The pool uses only the
+standard library plus Puspa's existing modules (`QuotaStore`,
+tiered fallback, vault, OAuth refresher); tests use scripted
+`call_fn`s, fake keys, and the test database, and never contact
+a live provider.
+
 # NOTICE - PuspaBot queue, AST-05 (22 Nov 2026)
 
 ## Pattern attribution (not code)

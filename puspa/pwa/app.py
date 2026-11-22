@@ -1106,6 +1106,28 @@ def create_app(
         except Exception as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
 
+    @app.get("/api/model-settings/pool-quota")
+    async def api_get_pool_quota(request: Request, provider: str = ""):
+        """Quota bars for the Settings screen (V2-40, gsb /ui pattern).
+
+        One dict per account the user holds for ``provider``: used
+        fraction and remaining tokens per 5h / weekly window, the
+        reset countdown, and availability. Empty ``accounts`` when
+        the user has no credential for the provider. Never returns
+        key material.
+        """
+        user_id = need_user(request)
+        if user_id is None:
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
+        from puspa.pwa.model_settings import pool_quota_bars
+
+        try:
+            return pool_quota_bars(user_id, provider, dsn=app.state.dsn)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
     # -- end G33 ---------------------------------------------------------
 
     # -- P-02: stop-all + autonomy dial + weekly report -------------

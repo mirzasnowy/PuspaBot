@@ -39,6 +39,23 @@ the selection on every call, so a Settings change takes effect
 without rebuilding the callable. Explicit caller kwargs win over
 the resolved selection.
 
+## Pool quota bars (V2-40)
+
+A provider can hold several accounts, not one key: the primary BYOK
+key (`byok:<provider>`), numbered extra keys (`byok:<provider>:2` …
+`:6`), and an OAuth subscription login. The router pool
+(`puspa/router/pool.py`, design in `docs/provider-pool.md`) routes
+across them with rotate / lru / fill-first, tracks quota per account
+in a 5-hour and a 7-day window, and fails over on quota or transport
+errors. Settings shows each account's quota next to the model
+choice: `GET /api/model-settings/pool-quota?provider=<provider>`
+(`puspa/pwa/model_settings.pool_quota_bars`) returns one bar per
+account — used fraction, remaining tokens, reset countdown,
+availability — and the screen renders it under the BYOK key form.
+No key material is ever in that response. The pool is read by
+Settings; the turn loop still resolves one key per provider (see
+`docs/provider-pool.md` honest limits).
+
 One small router addition supports this: `complete_messages` /
 `complete_detailed` / `complete` accept an optional `provider`
 argument, used only to label an unlisted model (a local Ollama

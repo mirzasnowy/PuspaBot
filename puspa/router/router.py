@@ -251,3 +251,56 @@ def translate_chat_response(payload: dict, *, source: str, target: str):
     from .translate import translate_response
 
     return translate_response(payload, source=source, target=target)
+
+
+# ---------------------------------------------------------------------------
+# Provider pool (delegasi ke pool.py)
+# ---------------------------------------------------------------------------
+
+
+def provider_pool_for_user(
+    provider: str,
+    user_id,
+    *,
+    strategy: str = "rotate",
+    dsn=None,
+    quota_store=None,
+    now_fn=None,
+    max_rpm: int = 0,
+    max_concurrent: int = 0,
+):
+    """The cached multi-account pool for one user + provider.
+
+    Delegates to `puspa.router.pool.provider_pool_for_user`: builds
+    the pool from the user's discovered credentials (BYOK keys in
+    the vault, OAuth login via `oauth.py`) on first use and returns
+    the same pool afterwards, so quota state is shared between the
+    router and Settings. Returns None when the user has no
+    credential for the provider.
+    """
+    from .pool import provider_pool_for_user as _pool_for_user
+
+    return _pool_for_user(
+        provider,
+        user_id,
+        strategy=strategy,
+        dsn=dsn,
+        quota_store=quota_store,
+        now_fn=now_fn,
+        max_rpm=max_rpm,
+        max_concurrent=max_concurrent,
+    )
+
+
+def pool_quota_bars(provider: str, user_id, *, dsn=None) -> dict:
+    """Quota-bar data for Settings for one user + provider.
+
+    Delegates to `puspa.router.pool.pool_quota_bars`: one dict per
+    account (used fraction and remaining tokens per 5h / weekly
+    window, reset countdown, availability). Empty `accounts` when
+    the user has no credential for the provider. No credential
+    material is ever in the result.
+    """
+    from .pool import pool_quota_bars as _bars
+
+    return _bars(provider, user_id, dsn=dsn)

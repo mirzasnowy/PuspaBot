@@ -59,6 +59,7 @@ __all__ = [
     "get_selection",
     "has_byok_key",
     "llm_complete_for_user",
+    "pool_quota_bars",
     "resolve_completion_kwargs",
     "save_byok_key",
     "save_selection",
@@ -371,6 +372,22 @@ def resolve_completion_kwargs(user_id, selection: ModelSelection | None = None, 
             kwargs["model"] = selection.model
         return kwargs
     raise ValueError(f"unknown model source {selection.source!r}")
+
+
+def pool_quota_bars(user_id, provider: str, dsn=None) -> dict:
+    """Quota-bar data for the Settings screen, for one provider.
+
+    Delegates to the router pool (``puspa.router.pool``): one dict
+    per account the user holds for the provider (BYOK keys in the
+    vault, OAuth login), each with used fraction and remaining
+    tokens per 5h / weekly window, the reset countdown, and
+    availability. Empty ``accounts`` when the user has no
+    credential for the provider. No credential material is ever
+    in the result: the bars show usage, never keys.
+    """
+    from puspa.router.router import pool_quota_bars as _router_bars
+
+    return _router_bars(provider, user_id, dsn=dsn)
 
 
 def complete_with_selection(

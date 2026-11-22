@@ -8916,6 +8916,55 @@ export interface components {
             has_byok_key: boolean;
         };
         /**
+         * @description One quota window of one pool account (V2-40). `used_fraction` is null when the window has no registered limit (untracked: the account is usable, its usage is just not measured yet).
+         * NOTE (V2-40): added by hand to match docs/openapi-pwa.yaml because `npm run generate` cannot run in this tree (docs/openapi-voice.yaml fails to parse); re-run the generator when the specs are back and confirm this type is unchanged.
+         */
+        PoolQuotaWindow: {
+            /** @enum {string} */
+            window: "5h" | "weekly";
+            limit_tokens?: number | null;
+            tokens_used?: number | null;
+            tokens_remaining?: number | null;
+            used_fraction?: number | null;
+            reset_in_seconds?: number | null;
+            exhausted: boolean;
+        };
+        /**
+         * @description One pool account's quota bar (V2-40). Carries no credential material: only the label, availability, and usage figures.
+         * NOTE (V2-40): added by hand to match docs/openapi-pwa.yaml because `npm run generate` cannot run in this tree (docs/openapi-voice.yaml fails to parse); re-run the generator when the specs are back and confirm this type is unchanged.
+         */
+        PoolQuotaAccount: {
+            account_id: string;
+            provider: string;
+            /** @enum {string} */
+            kind: "byok" | "oauth";
+            label: string;
+            disabled: boolean;
+            available: boolean;
+            /** @description Why the account cannot serve now (disabled, cooling, quota_exhausted, rate_limited), null when ready. */
+            skip_reason?: string | null;
+            rate_limited: boolean;
+            cooling_until_in_seconds: number;
+            fails: number;
+            strikes: number;
+            last_used?: string | null;
+            requests_last_minute: number;
+            max_rpm: number;
+            max_concurrent: number;
+            active_streams: number;
+            windows: components["schemas"]["PoolQuotaWindow"][];
+        };
+        /**
+         * @description Quota bars for one provider's pool (V2-40).
+         * NOTE (V2-40): added by hand to match docs/openapi-pwa.yaml because `npm run generate` cannot run in this tree (docs/openapi-voice.yaml fails to parse); re-run the generator when the specs are back and confirm this type is unchanged.
+         */
+        PoolQuotaResponse: {
+            provider: string;
+            /** @enum {string} */
+            strategy: "rotate" | "lru" | "fill-first";
+            accounts: components["schemas"]["PoolQuotaAccount"][];
+        };
+        /**
          * @description G28: cost and token totals from the usage ledger over the
          *     last N calendar days ending today. Costs are exact integer
          *     Rupiah plus server-rendered labels; the per-1k-token rate

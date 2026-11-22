@@ -7,6 +7,7 @@ import {
   getCapabilityRouting,
   getLanguage,
   getModelSettings,
+  getPoolQuota,
   getProviders,
   getTelemetrySettings,
   getVoiceSettings,
@@ -27,6 +28,7 @@ import {
   type CapabilityRoute,
   type CapabilityRouting,
   type ModelSettings,
+  type PoolQuotaResponse,
   type ProviderStatus,
   type TelemetrySettings,
   type VoiceSettings,
@@ -76,6 +78,16 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+/** V2-40: short human reading of a quota reset countdown in seconds. */
+function formatQuotaReset(seconds: number): string {
+  if (seconds >= 3600) {
+    const hours = Math.round(seconds / 3600);
+    return `${hours} jam`;
+  }
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return `${minutes} menit`;
+}
+
 export function SettingsScreen() {
   const { t } = useLanguage();
   const [pushStatus, setPushStatus] = useState("");
@@ -90,6 +102,9 @@ export function SettingsScreen() {
   const [modelBusy, setModelBusy] = useState(false);
   const [byokKey, setByokKey] = useState("");
   const [byokBusy, setByokBusy] = useState(false);
+  const [poolQuota, setPoolQuota] = useState<PoolQuotaResponse | null>(null);
+  const [poolQuotaLoaded, setPoolQuotaLoaded] = useState(false);
+  const [poolQuotaError, setPoolQuotaError] = useState<string | null>(null);
   const [providers, setProviders] = useState<ProviderStatus[]>([]);
   const [providersLoaded, setProvidersLoaded] = useState(false);
   const [providersError, setProvidersError] = useState<string | null>(null);
@@ -206,6 +221,32 @@ export function SettingsScreen() {
   useEffect(() => {
     void loadProviders();
   }, []);
+
+  // V2-40: quota bars next to the model choice. Loaded whenever
+  // the BYOK provider changes (and after a key is saved or
+  // removed, through the same provider value), cleared otherwise.
+  async function loadPoolQuota(provider: string) {
+    setPoolQuotaLoaded(false);
+    setPoolQuotaError(null);
+    try {
+      const data = await getPoolQuota(provider);
+      setPoolQuota(data);
+      setPoolQuotaLoaded(true);
+    } catch (err) {
+      setPoolQuotaError(err instanceof Error ? err.message : "error tak dikenal");
+    }
+  }
+
+  useEffect(() => {
+    if (modelSettings.source !== "byok") {
+      setPoolQuota(null);
+      setPoolQuotaLoaded(false);
+      return;
+    }
+    const provider = modelSettings.provider?.trim().toLowerCase() || "openrouter";
+    void loadPoolQuota(provider);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelSettings.source, modelSettings.provider, modelSettings.has_byok_key]);
 
   async function saveLanguageChoice(next: string) {
     setLanguageBusy(true);
@@ -652,6 +693,53 @@ export function SettingsScreen() {
               <button type="button" onClick={removeKey} disabled={byokBusy}>
                 Hapus kunci
               </button>
+            ) : null}
+            {/* V2-40: quota bars next to the model choice (gsb /ui pattern). */}
+            {poolQuota !== null && poolQuota.accounts.length > 0 ? (
+              <div style={{ marginTop: "0.5rem" }}>
+                <strong>Kuota akun ({poolQuota.strategy})</strong>
+                {poolQuota.accounts.map((account) => (
+                  <div key={account.account_id} style={{ marginTop: "0.5rem" }}>
+                    <span>{account.label}</span>{" "}
+                    <span className="muted">
+                      {account.available
+                        ? "siap dipakai"
+                        : `tidak tersedia (${account.skip_reason ?? "?"})`}
+                    </span>
+                    {account.windows.map((window) => (
+                      <div key={window.window}>
+                        <span className="muted">{window.window === "5h" ? "5 jam" : "7 hari"}: </span>
+                        {window.used_fraction === null || window.used_fraction === undefined ? (
+                          <span className="muted">belum terlacak (limit belum didaftarkan)</span>
+                        ) : (
+                          <>
+                            <span className="quota-bar">
+                              <span style={{ width: `${Math.round(window.used_fraction * 100)}%` }} />
+                            </span>{" "}
+                            <span className="muted">
+                              {Math.round(window.used_fraction * 100)}% terpakai
+                              {window.tokens_remaining !== null &&
+                              window.tokens_remaining !== undefined
+                                ? `, sisa ${window.tokens_remaining} token`
+                                : ""}
+                              {window.reset_in_seconds !== null &&
+                              window.reset_in_seconds !== undefined
+                                ? `, reset dalam ${formatQuotaReset(window.reset_in_seconds)}`
+                                : ""}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {poolQuotaLoaded && poolQuota !== null && poolQuota.accounts.length === 0 ? (
+              <p className="muted">Belum ada akun di pool untuk provider ini.</p>
+            ) : null}
+            {poolQuotaError ? (
+              <p className="muted">Kuota belum bisa dimuat: {poolQuotaError}</p>
             ) : null}
           </div>
         ) : null}
