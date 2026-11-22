@@ -62,6 +62,9 @@ SCREENS = (
     "insights",
     "onboarding",
     "mockup",
+    # Community gallery: published cultural works, rated by other
+    # users (one rating per user per work).
+    "gallery",
     # Broken-rooms fix: the SPA lists Rooms, but the server had no
     # "rooms" screen, so /rooms and /api/rooms both 404'd.
     "rooms",
@@ -1121,6 +1124,7 @@ def create_app(
         controls_api,
         diagnostics_api,
         drafts_api,
+        gallery_api,
         graph_api,
         hub_api,
         insights_api,
@@ -1210,6 +1214,9 @@ def create_app(
     # everything through the knowledge APIs.
     knowledge_api.register_routes(app, need_user)
     mockup_api.register_routes(app, need_user)
+    # Community gallery (publish + rate cultural works): the publish
+    # source is a B7 mockup, the aggregate always carries its count.
+    gallery_api.register_routes(app, need_user)
     insights_api.register_routes(app, need_user)
     onboarding_api.register_routes(app, need_user)
     drafts_api.register_routes(app, need_user)

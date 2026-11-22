@@ -631,6 +631,18 @@ paths:
     $ref: './openapi-rooms.yaml#/paths/~1api~1voice~1profile'
   /api/voice/corrections:
     $ref: './openapi-rooms.yaml#/paths/~1api~1voice~1corrections'
+  /api/gallery:
+    $ref: './openapi-gallery.yaml#/paths/~1api~1gallery'
+  /api/gallery/publish:
+    $ref: './openapi-gallery.yaml#/paths/~1api~1gallery~1publish'
+  /api/gallery/{work_id}:
+    $ref: './openapi-gallery.yaml#/paths/~1api~1gallery~1{work_id}'
+  /api/gallery/{work_id}/render.svg:
+    $ref: './openapi-gallery.yaml#/paths/~1api~1gallery~1{work_id}~1render.svg'
+  /api/gallery/{work_id}/rate:
+    $ref: './openapi-gallery.yaml#/paths/~1api~1gallery~1{work_id}~1rate'
+  /api/gallery/{work_id}/unpublish:
+    $ref: './openapi-gallery.yaml#/paths/~1api~1gallery~1{work_id}~1unpublish'
   /api/graph:
     $ref: './openapi-graph.yaml#/paths/~1api~1graph'
   /api/graph/nodes/{name}:

@@ -1,0 +1,318 @@
+# Community gallery API contract (publish + rate cultural works).
+#
+# Split out of docs/openapi-pwa.yaml the way the mockup contract was:
+# the main spec references this file with $ref stubs; the generated
+# client is produced from the main spec with openapi-typescript, which
+# resolves external $refs. The Error schema stays in the main spec
+# and is referenced back from here.
+openapi: 3.0.3
+info:
+  title: PuspaBot community gallery API
+  version: 1.0.0
+paths:
+  /api/gallery/publish:
+    post:
+      tags: [gallery]
+      summary: Publish one of the caller's B7 mockups to the shared gallery
+      description: |
+        Stores a snapshot of the mockup doc with its version, the owner,
+        and provenance. A work flagged restricted_customary_use is refused:
+        restricted customary use can never be published as a generic pattern.
+        Publishing a mockup that is already published returns 400; an
+        unpublished work can be re-published from the same mockup.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishRequest"
+      responses:
+        "200":
+          description: Published work
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GalleryWork"
+        "400":
+          description: Already published, restricted use, or invalid mockup
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Mockup not found
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/gallery:
+    get:
+      tags: [gallery]
+      summary: List published gallery works, newest first
+      description: |
+        Every work carries its aggregate as a pair, average_rating together
+        with rating_count, never a score on its own. With no ratings yet
+        the average is null and the count is 0.
+      responses:
+        "200":
+          description: Published works
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GalleryList"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/gallery/{work_id}:
+    get:
+      tags: [gallery]
+      summary: One gallery work with its aggregate and written reviews
+      responses:
+        "200":
+          description: Work detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GalleryWorkDetail"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Work not found (or unpublished and not yours)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/gallery/{work_id}/render.svg:
+    get:
+      tags: [gallery]
+      summary: The published snapshot rendered as SVG
+      responses:
+        "200":
+          description: SVG render of the published snapshot
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Work not found or unpublished
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/gallery/{work_id}/rate:
+    post:
+      tags: [gallery]
+      summary: Rate a work 1-5 with a short written review
+      description: |
+        Exactly one rating per user per work: a second rating updates the
+        first (new score, new review, stamped with the work's current
+        version). Owners cannot rate their own work. Rating spam is
+        rate-limited: too many submissions return 429 with
+        retry_after_seconds. No anonymous ratings.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RateRequest"
+      responses:
+        "200":
+          description: Saved rating with the work's new aggregate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GalleryRating"
+        "400":
+          description: Rating out of range, review too long, or self-rating
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Work not found or unpublished
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "429":
+          description: Rating spam guard tripped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimited"
+  /api/gallery/{work_id}/unpublish:
+    post:
+      tags: [gallery]
+      summary: Take a work down (owner only)
+      description: |
+        The work disappears from the gallery listing immediately. Ratings
+        are kept, so re-publishing restores the work with its history.
+      responses:
+        "200":
+          description: Taken down
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Unpublished"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: Work not found (or not yours)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    PublishRequest:
+      type: object
+      properties:
+        mockup_id:
+          type: string
+        restricted_customary_use:
+          type: boolean
+          description: |
+            True marks the work as restricted customary use; publish then
+            refuses it, so it can never enter the gallery as a generic pattern.
+      required: [mockup_id]
+    GalleryWork:
+      type: object
+      description: |
+        One published work. average_rating is always shown together with
+        rating_count, never on its own; null with a 0 count means no
+        ratings yet.
+      properties:
+        id:
+          type: string
+        owner_id:
+          type: string
+        mockup_id:
+          type: string
+        title:
+          type: string
+        template:
+          type: string
+        version:
+          type: integer
+        status:
+          type: string
+          enum: [published, unpublished]
+        published_at:
+          type: string
+          format: date-time
+        average_rating:
+          type: number
+          nullable: true
+        rating_count:
+          type: integer
+    GalleryList:
+      type: object
+      properties:
+        works:
+          type: array
+          items:
+            $ref: "#/components/schemas/GalleryWork"
+    GalleryWorkDetail:
+      allOf:
+        - $ref: "#/components/schemas/GalleryWork"
+        - type: object
+          properties:
+            reviews:
+              type: array
+              items:
+                $ref: "#/components/schemas/GalleryReview"
+    GalleryReview:
+      type: object
+      properties:
+        user_id:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        review:
+          type: string
+        work_version:
+          type: integer
+          description: The version of the work this rating was made against.
+        created_at:
+          type: string
+          format: date-time
+    RateRequest:
+      type: object
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        review:
+          type: string
+          maxLength: 500
+      required: [rating]
+    GalleryRating:
+      type: object
+      properties:
+        work_id:
+          type: string
+        user_id:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        review:
+          type: string
+        work_version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        average_rating:
+          type: number
+          nullable: true
+        rating_count:
+          type: integer
+    RateLimited:
+      type: object
+      properties:
+        error:
+          type: string
+        retry_after_seconds:
+          type: integer
+    Unpublished:
+      type: object
+      properties:
+        unpublished:
+          type: string
