@@ -1151,6 +1151,7 @@ def create_app(
         personas_api,
         proof_api,
         replay_api,
+        support_api,
         telemetry_api,
         wiki_api,
     )
@@ -1230,6 +1231,10 @@ def create_app(
     # Community gallery (publish + rate cultural works): the publish
     # source is a B7 mockup, the aggregate always carries its count.
     gallery_api.register_routes(app, need_user)
+    # Creator support (B17): pay to support a gallery work; the
+    # creator's share is Puspa credits only, never cash, and the
+    # credit value stays below the price paid.
+    support_api.register_routes(app, need_user)
     insights_api.register_routes(app, need_user)
     onboarding_api.register_routes(app, need_user)
     drafts_api.register_routes(app, need_user)
