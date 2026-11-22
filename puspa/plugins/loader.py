@@ -22,6 +22,18 @@ The G3 marketplace seam: the marketplace installer calls
 installed skill's plugin code. The installer passes the plugin
 as a module object or a dotted path; the loader never installs
 anything and never touches the network.
+
+Versioned API (AST-01, the stable plugin SDK): before
+``register(ctx)`` runs, the loader resolves the plugin's
+declared ``PLUGIN_API_VERSION`` (``puspa.plugins.api_version``)
+and refuses a plugin whose API major differs from the host's
+or whose minor is newer than the host's, with a clear error.
+A plugin that declares no version is treated as written
+against the current API. After ``register`` runs, the loader
+enforces declared permissions (``PLUGIN_PERMISSIONS`` on the
+module, or the ``permissions`` argument, e.g. from a catalog
+manifest): what the plugin registered must be a subset of
+what it declared.
 """
 
 from __future__ import annotations
@@ -36,12 +48,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
 
+from .api_version import API_VERSION, resolve_api_version
 from .context import PluginContext
 from .errors import (
     PluginError,
     PluginShadowError,
     PluginStructureError,
     UnknownPluginError,
+)
+from .permissions import (
+    PLUGIN_PERMISSIONS_ATTR,
+    check_permissions,
+    used_permissions,
+    validate_permissions,
 )
 from .single_select import SingleSelectRegistry
 
@@ -92,6 +111,12 @@ class PluginRecord:
     module_name: str
     context: PluginContext
     single_select: SingleSelectRegistry
+    #: API version the plugin declared (or the host's, when it
+    #: declared none), as "MAJOR.MINOR".
+    api_version: str = API_VERSION
+    #: Permissions the plugin declared, in declaration order
+    #: (empty when it declared none).
+    permissions: tuple = ()
 
     @property
     def tools(self):
@@ -119,6 +144,8 @@ class PluginRecord:
             "plugin_id": self.plugin_id,
             "origin": self.origin,
             "location": self.location,
+            "api_version": self.api_version,
+            "permissions": list(self.permissions),
             "tools": sorted(self.tools),
             "hooks": [hook.event for hook in self.hooks],
             "commands": sorted(self.commands),
@@ -316,7 +343,7 @@ def _call_register(module: ModuleType, context: PluginContext):
         raise PluginStructureError(f"plugin {plugin_id_of(module)!r}: " + "; ".join(problems))
 
 
-def load_plugin(source, *, single_select=None) -> PluginRecord:
+def load_plugin(source, *, single_select=None, permissions=None) -> PluginRecord:
     """Load one plugin and return its record.
 
     ``source`` is a module object, a dotted module path, a
@@ -324,6 +351,18 @@ def load_plugin(source, *, single_select=None) -> PluginRecord:
     package directory. ``single_select`` is the shared
     ``SingleSelectRegistry`` (a fresh one is created when omitted,
     so single-select registrations never leak between loads).
+    ``permissions`` is the plugin's declared permission list
+    (e.g. from its catalog manifest); when omitted, the module's
+    ``PLUGIN_PERMISSIONS`` attribute is used instead, and when
+    neither is present no permission check runs.
+
+    Before ``register(ctx)`` runs, the plugin's declared
+    ``PLUGIN_API_VERSION`` is checked against the host's API:
+    a different major, or a minor newer than the host's, raises
+    ``PluginApiVersionError`` and the plugin is refused. After
+    ``register`` runs, what the plugin registered is checked
+    against its declared permissions (``PluginStructureError``
+    when it used a permission it did not declare).
     Raises ``PluginStructureError`` for malformed plugins and
     ``PluginShadowError`` when the plugin id is already loaded
     in this call (callers that load several plugins must pass
@@ -353,8 +392,17 @@ def load_plugin(source, *, single_select=None) -> PluginRecord:
     else:
         raise PluginStructureError(f"cannot load plugin from {source!r}")
     plugin_id = plugin_id_of(module)
+    api_version = resolve_api_version(module, plugin_id=plugin_id)
+    declared_permissions = permissions
+    if declared_permissions is None:
+        declared_permissions = getattr(module, PLUGIN_PERMISSIONS_ATTR, None)
+    if declared_permissions is not None:
+        problems = validate_permissions(declared_permissions)
+        if problems:
+            raise PluginStructureError(f"plugin {plugin_id!r}: " + "; ".join(problems))
     context = PluginContext(plugin_id, single_select=registry)
     _call_register(module, context)
+    check_permissions(declared_permissions, used_permissions(context), plugin_id=plugin_id)
     return PluginRecord(
         plugin_id=plugin_id,
         origin=origin,
@@ -362,6 +410,8 @@ def load_plugin(source, *, single_select=None) -> PluginRecord:
         module_name=module.__name__,
         context=context,
         single_select=registry,
+        api_version=str(api_version),
+        permissions=tuple(declared_permissions or ()),
     )
 
 
