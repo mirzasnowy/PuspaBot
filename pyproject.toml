@@ -209,7 +209,7 @@ ignore_missing_imports = true
 # bandit ships no py.typed marker.
 
 [[tool.mypy.overrides]]
-module = ["byok_provider", "mock_provider_server", "openrouter_provider", "dynamic_credentials", "test_sigstore_verify", "worker_db", "affected"]
+module = ["byok_provider", "mock_provider_server", "openrouter_provider", "dynamic_credentials", "test_sigstore_verify", "worker_db", "affected", "code_size", "code_lines", "size_budgets"]
 ignore_missing_imports = true
 # Top-level names resolved at runtime via sys.path manipulation, not via
 # the package tree: demo/ modules import each other by top-level name,
@@ -219,6 +219,9 @@ ignore_missing_imports = true
 # test_sigstore_verify is a test module imported by sibling test files;
 # pytest puts tests/ on sys.path, so the import works at runtime, but
 # mypy cannot resolve a top-level name for a file under tests/.
+# code_size / code_lines / size_budgets (V2-41) are the same pattern for
+# scripts/: tests/test_file_size_ratchet.py puts scripts/ on sys.path
+# and imports them, and the check script runs standalone the same way.
 # worker_db (E-17) is the same pattern: a tests/ helper imported by
 # conftest.py and test files. affected (E-17) is the same pattern for
 # scripts/: pr_lane.py puts scripts/ on sys.path and imports it.
