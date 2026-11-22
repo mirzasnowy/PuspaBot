@@ -1,4 +1,4 @@
-"""Channels: Telegram + WhatsApp access to Puspa (G14).
+"""Channels: Telegram, WhatsApp, Discord, Slack and LINE access to Puspa (G14).
 
 The channels are access channels, NOT the home: the home stays
 the PWA. One core, many adapters — every platform event is
@@ -11,8 +11,11 @@ Public surface:
 - :class:`GatewayRunner` — the facade (``run.py``); one live
   runner per profile (G26 single writer).
 - :class:`MessageEvent` — the normalised event (``events.py``).
-- :class:`TelegramAdapter` / :class:`WhatsAppAdapter` — raw
-  HTTPS adapters over the pinned ``httpx`` (no new dependency).
+- :class:`TelegramAdapter` / :class:`WhatsAppAdapter` /
+  :class:`DiscordAdapter` / :class:`SlackAdapter` /
+  :class:`LineAdapter` — raw HTTPS adapters over the pinned
+  ``httpx`` (no new dependency). Discord and Slack poll over
+  REST; LINE is webhook-only.
 - :class:`ChannelPairing` / :class:`Allowlist` — authorisation
   (``authz.py``).
 - :class:`InMemoryDeliveryLedger` /
@@ -34,6 +37,7 @@ from .authz import Allowlist, ChannelPairing, resolve_session_key
 from .base import ChannelAdapter
 from .config import ChannelConfig, ChannelConfigError, load_config
 from .delivery import DeliveryService
+from .discord import DiscordAdapter
 from .errors import (
     BotLoopError,
     ChannelError,
@@ -51,8 +55,10 @@ from .ledger import (
     InMemoryDeliveryLedger,
     PostgresDeliveryLedger,
 )
+from .line import LineAdapter
 from .notify import notification_text, notify
 from .run import GatewayRunner
+from .slack import SlackAdapter
 from .telegram import TelegramAdapter
 from .whatsapp import WhatsAppAdapter
 
@@ -68,15 +74,18 @@ __all__ = [
     "DeliveryError",
     "DeliveryRecord",
     "DeliveryService",
+    "DiscordAdapter",
     "GatewayRunner",
     "Heartbeat",
     "HeartbeatStore",
     "InMemoryDeliveryLedger",
     "InboundOutcome",
+    "LineAdapter",
     "MessageEvent",
     "PairingError",
     "PostgresDeliveryLedger",
     "SingleWriterError",
+    "SlackAdapter",
     "TaskRunnerAgent",
     "TelegramAdapter",
     "UnauthorizedChatError",
