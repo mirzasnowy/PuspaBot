@@ -52,6 +52,7 @@ EXPECTED_SKILLS = {
     "receipts": ("puspa.receipts", "Receipts"),
     "rooms": ("puspa.rooms", "Rooms"),
     "scheduler": ("puspa.scheduler", "Scheduler"),
+    "skill-creator": ("puspa.marketplace.skill_creator", "Skill Creator"),
     "tables": ("puspa.modules.tables", "Tables"),
     "views": ("puspa.modules.views", "Views"),
     "voice": ("puspa.voice", "Voice"),

@@ -8,6 +8,8 @@ GitHub or writes outside a temporary ``PUSPA_HOME``.
 
 from __future__ import annotations
 
+import pytest
+
 from puspa.cli import main
 from puspa.marketplace.hub import FetchedSkill
 from puspa.marketplace.manifest import sha256_bytes
@@ -95,3 +97,23 @@ def test_skill_install_with_yes_installs_previewed_hash(monkeypatch, tmp_path, c
     assert seen["expected_sha256"] == fetched.sha256
     assert seen["user_id"] == "local"
     assert str(seen["skills_root"]).startswith(str(tmp_path))
+
+
+def test_skill_parser_has_hub_and_create_subcommands(capsys):
+    """One `skill` parser carries list/search/install (COW-03) AND create (COW-04).
+
+    Regression: registering the two groups with two `add_parser("skill")`
+    calls overwrote one group; create is now added to the same parser.
+    (--help exits via SystemExit(0), so the help text is read from capsys.)
+    """
+    with pytest.raises(SystemExit) as excinfo:
+        main(["skill", "--help"])
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    for sub in ("list", "search", "install", "create"):
+        assert sub in out
+    with pytest.raises(SystemExit) as excinfo:
+        main(["skill", "create", "--help"])
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    assert "--describe" in out and "--approve" in out

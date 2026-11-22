@@ -47,20 +47,6 @@ from .errors import (
     ToolLimitError,
     TrustError,
 )
-from .hub import (
-    BUILTIN_SKILLS_DIR,
-    CLAW_HUB_HOSTS,
-    FetchedSkill,
-    HubSkill,
-    SkillSource,
-    install_from_source,
-    list_builtin_skills,
-    list_hub_skills,
-    parse_skill_source,
-    preview_source,
-    search_local,
-    slugify_skill_name,
-)
 from .learning import (
     MAX_CHANGES_PER_REVIEW,
     MAX_CONSECUTIVE_FAILURES,
@@ -90,6 +76,18 @@ from .narrowing import (
 )
 from .registry import MarketplaceRegistry, RegistryEntry, default_entitlement
 from .share import DEFAULT_SHARE_MODE, SHARE_MODES, ShareDecision, share_skill
+from .skill_creator import (
+    ApiEndpoint,
+    SkillCreatorSession,
+    SkillDraft,
+    known_tool_names,
+    parse_api_description,
+    parse_workflow_steps,
+    register_trial_skill,
+    render_skill_md,
+    slugify,
+    validate_draft,
+)
 from .store import MemoryStore, PostgresStore, create_schema
 from .trust import (
     MIN_TRUST_SCORE,
@@ -100,8 +98,6 @@ from .trust import (
 )
 
 __all__ = [
-    "BUILTIN_SKILLS_DIR",
-    "CLAW_HUB_HOSTS",
     "DEFAULT_CACHE_TTL_SECONDS",
     "DEFAULT_SHARE_MODE",
     "INSTALL_LICENSE_ALLOWLIST",
@@ -125,14 +121,13 @@ __all__ = [
     "SUSPECT_MAX_STARS",
     "TOOL_LIMIT_REFUSED_EVENT",
     "TRUSTED_SOURCE_OWNERS",
+    "ApiEndpoint",
     "ApprovalRequiredError",
     "DiscoveredSkill",
     "DiscoveryCache",
     "DiscoveryError",
     "EntitlementError",
-    "FetchedSkill",
     "HashMismatchError",
-    "HubSkill",
     "InstallApproval",
     "LearningStep",
     "LicenseNotAllowedError",
@@ -147,8 +142,9 @@ __all__ = [
     "SearchOutcome",
     "ShareDecision",
     "ShareError",
+    "SkillCreatorSession",
+    "SkillDraft",
     "SkillManifest",
-    "SkillSource",
     "SkillsShClient",
     "ToolLimitError",
     "TrustError",
@@ -165,25 +161,25 @@ __all__ = [
     "format_options",
     "inject_config",
     "install_discovered",
-    "install_from_source",
+    "known_tool_names",
     "learn_from_turn",
-    "list_builtin_skills",
-    "list_hub_skills",
     "narrow_tools",
+    "parse_api_description",
     "parse_frontmatter",
-    "parse_skill_source",
-    "preview_source",
+    "parse_workflow_steps",
     "rank_results",
+    "register_trial_skill",
+    "render_skill_md",
     "resolve_config",
     "review_after_reply",
     "score_module",
     "score_skill_dir",
-    "search_local",
     "search_skills",
     "search_tools",
     "search_with_cache",
     "share_skill",
-    "slugify_skill_name",
+    "slugify",
+    "validate_draft",
     "validate_manifest",
     "validate_skill_folder",
 ]
