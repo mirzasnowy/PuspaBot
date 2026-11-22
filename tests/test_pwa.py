@@ -1,4 +1,4 @@
-"""Tes PWA 18 layar (FastAPI + Jinja + SSE).
+"""Tes PWA 20 layar (FastAPI + Jinja + SSE).
 
 Revisi 7 membatasi PWA pada 7 layar, tetapi kerja kematangan G28
 menambah Insights dan Onboarding (perintah Nero: kerjakan semua
@@ -7,10 +7,11 @@ pagi, P-09 menambah layar live, dan P-10 menambah layar replay,
 perbaikan layar Ruang yang rusak mendaftarkan layar Ruang yang
 selama ini ada di SPA tapi tidak terdaftar di server, dan layar
 Persona menambah satu lagi untuk beberapa persona yang bisa
-diganti, layar Artefak dan Diagnostik menambah dua lagi, dan
-COW-03 menambah layar Hub Skill, dan AST-02 menambah layar
-Knowledge Base — jadi total sekarang 19. Tes
-jumlah layar di bawah mencerminkan batas baru itu.
+diganti, layar Artefak dan Diagnostik menambah dua lagi,
+COW-03 menambah layar Hub Skill, AST-02 menambah layar
+Knowledge Base, dan COW-06 menambah layar Wiki —
+jadi total sekarang 20. Tes jumlah layar di bawah mencerminkan
+batas baru itu.
 """
 
 import pytest
@@ -44,14 +45,15 @@ def test_sixteen_screens_exist_including_rooms():
     (the artifacts + run-logs browser from CowAgent research),
     and Diagnostics is the seventeenth (the redacted
     diagnostics export for bug reports), and Hub is the
-    eighteenth (the skill marketplace hub, COW-03), and
-    Knowledge is the nineteenth (the document knowledge
+    eighteenth (the skill marketplace hub, COW-03), and Wiki is the
+    nineteenth (the auto-curated knowledge wiki, COW-06), and
+    Knowledge is the twentieth (the document knowledge
     base, AST-02: upload files, ask about them).
 
-    The count is pinned on purpose: a twentieth screen must be a
+    The count is pinned on purpose: a twenty-first screen must be a
     deliberate decision with its own ticket, not an accident.
     """
-    assert len(SCREENS) == 19
+    assert len(SCREENS) == 20
     assert set(SCREENS) == {
         "chat",
         "tasks",
@@ -78,6 +80,8 @@ def test_sixteen_screens_exist_including_rooms():
         "diagnostics",
         # Skill marketplace hub (COW-03): browse, search, one-click install.
         "hub",
+        # COW-06: auto-curated knowledge wiki from conversations.
+        "wiki",
         # Document knowledge base (AST-02): upload files, ask about them.
         "knowledge",
     }

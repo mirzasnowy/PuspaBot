@@ -1,22 +1,16 @@
-"""PWA Puspa — 18 layar (7 dari revisi 7, ditambah Insights dan
-Onboarding oleh kerja kematangan G28, ditambah layar Persona untuk
-beberapa persona yang bisa diganti, dan layar Artefak penampil artefak
-+ log run dari riset CowAgent).
+"""PWA Puspa — 19 layar: 7 dari revisi 7, ditambah Insights dan
+Onboarding (G28), Persona, Artefak, Ruang, Hub skill (COW-03),
+dan Wiki (COW-06: wiki pengetahuan yang dikurasi otomatis).
 
 Stack (keputusan 1, diperbarui G1): FastAPI + TypeScript SPA
 (React 19 + Vite, `apps/pwa/`, dibangun ke `apps/pwa/dist`) + service
 worker. Kalau `dist` belum dibangun, layar jatuh kembali ke template
-Jinja lama. Kontrak API: `docs/openapi-pwa.yaml`.
-Update live lewat SSE dari proyeksi Buku Kerja, tanpa WebSocket
-di MVP. Layar: Chat, Tugas, Modul, Konektor, Memori, Pengaturan,
-Kantor, Insights, Onboarding, Ruang. Bukti, Rencana, Rekor Otonomi, alur,
-dan modul kustom adalah panel di dalam layar yang sudah ada —
-bukan layar baru.
-
-Catatan jujur soal jumlah layar: revisi 7 membatasi PWA pada 7 layar, tetapi perintah
-kematangan Nero (kerjakan semua 28 celah G1-G28) mewajibkan halaman Insights dan
-Onboarding pertama kali (G28), jadi batas 7 layar itu sudah tidak berlaku; total
-sekarang 18 (termasuk Ruang, Artefak, Persona, dan Hub skill COW-03).
+Jinja lama. Kontrak API: `docs/openapi-pwa.yaml`. Update live lewat
+SSE dari proyeksi Buku Kerja, tanpa WebSocket di MVP. Layar: Chat,
+Tugas, Modul, Konektor, Memori, Pengaturan, Kantor, Insights,
+Onboarding, Ruang, Hub, Wiki. (Revisi 7 membatasi PWA pada 7 layar,
+tetapi perintah kematangan Nero mewajibkan Insights dan Onboarding;
+batas itu sudah tidak berlaku lagi.)
 
 Login: Google (keputusan 16, fondasi Fase 1 `puspa.auth`); sesi
 cookie httpOnly via `puspa.accounts.ports`. Di tes, `create_app`
@@ -78,6 +72,7 @@ SCREENS = (
     "diagnostics",
     # Skill marketplace hub (COW-03): browse, search, one-click install.
     "hub",
+    "wiki",
     # AST-02: document knowledge base (upload files, ask about them).
     "knowledge",
 )
@@ -1054,6 +1049,7 @@ def create_app(
         proof_api,
         replay_api,
         telemetry_api,
+        wiki_api,
     )
     # The hosted-only APIs (room sharing, room membership, payments)
     # live in the hosted service and mount their routes there; the
@@ -1062,6 +1058,7 @@ def create_app(
     app.state.graph_views = graph_api.GraphViewService(dsn=app.state.dsn)
     app.state.memory_service = memory_api.MemoryReadService(dsn=app.state.dsn)
     graph_api.register_routes(app, need_user)
+    wiki_api.register_routes(app, need_user)
     memory_api.register_routes(app, need_user)
     # V2-27: the caller's own display name (read + edit). The room
     # routes themselves live in rooms_api (local rooms, backed by
