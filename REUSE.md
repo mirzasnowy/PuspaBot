@@ -820,6 +820,16 @@ awaits that host; the pinned-DNS live test is skipped on this VM
 the gVisor/Kata choice is not made here — the harness exists so
 it is decided from measured spawn times on the real host.
 
+## Kosmos Phase 2 (V2-22: K17 automatic ontology repair)
+
+| Ide besar | Dari repo apa (lisensi) | Apa yang diadaptasi | Apa yang ditulis ulang dari nol |
+| --- | --- | --- | --- |
+| Build an ontology from sources deterministically (semantic layer), keep it as a typed model with a parser (catalog), answer queries deterministically and measure entity coverage (retrieval), expose the operations as tools (mcp) | NVIDIA/auto-ontology-server (Apache-2.0, 1.3.0; clone studied at `~/workspace/research/nvidia-auto-ontology`) | The mechanism shapes only: semantic building -> compile facts + hypotheses into one deterministic ontology model; catalog model + parser -> parse K9 findings into typed repair operations with a risk class and an undo payload; retrieval deterministic query + entity coverage -> a deterministic ontology score (entity coverage + hypothesis health - fixed penalties per finding kind); mcp exposure -> the repair operations as tool definitions | `puspa/memory/ontology_evolve.py` (compile/score/plan/shadow/apply/undo, all deterministic, no model call; low-risk repairs apply directly, ontology changes run in shadow first and promote only when the shadow score matches or beats the current one; every applied repair is one ledger event carrying its undo payload) |
+
+NOT taken: the FastAPI server, the NIM endpoints, the enterprise connectors (Snowflake, HeavyDB), the frontend. No new dependency was added (standard library + psycopg, already a Puspa dependency).
+Tests: `tests/test_ontology_evolve.py` (20 tests: compile determinism, scoring weights, one planner test per finding kind, shadow promote/match, copy purity, dry run, tool definitions, end-to-end repair cycle on the test DB incl. ledger events per repair and undo of a fact supersede + a hypothesis retirement, clean-ontology no-op run).
+Honest limits: the shadow comparison scores the ontology itself (coverage, health, finding counts), not live recall quality against held-out user questions — that needs a question set the repo does not have yet; the shadow gate is a safety net, and with the current repair set a repair that regresses the score has no live trigger (the refuse branch is covered by the `should_promote` unit test, not by an end-to-end case); Puspa's causal statuses have no "retired" value, so a repair-retired hypothesis is recorded as "contradicted" with the true reason in its ledger event (a future item could add a "retired" status to `puspa/world/causal.py`); the scheduler does not call the evolution yet — `run_ontology_evolution` is callable, wiring it to a monthly trigger is a follow-up.
+
 ## Kosmos Phase 2 (V2-31: Sophisticated desktop hands, core only)
 
 | Ide besar | Dari repo apa (lisensi) | Apa yang diadaptasi | Apa yang ditulis ulang dari nol |
