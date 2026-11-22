@@ -877,3 +877,26 @@ desktop backend.
 No new dependency was added for AST-05. The adapters use only the
 already-pinned `httpx==0.28.1`; tests use `httpx.MockTransport`
 fake servers and never contact the real platforms.
+
+# NOTICE - PuspaBot queue, multi-agent team (22 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **zhayujie/CowAgent** (https://github.com/zhayujie/CowAgent,
+  MIT License), pattern only: the idea of a team of peer agents,
+  each with its own role, model, skills, knowledge, and workspace,
+  collaborating inside one shared conversation to finish a complex
+  task together. No CowAgent code was copied, ported, vendored, or
+  depended on: the team store, the shared conversation log, and
+  the turn-taking runner in `puspa/teams/` are Puspa's own code
+  written from the described behavior, over Puspa's existing
+  Postgres store and the same injected-callable seam shape the
+  hierarchy runner already uses. Full license text: MIT License
+  (https://opensource.org/licenses/MIT).
+
+## New dependency: none
+
+No new dependency was added for the multi-agent team. The new
+modules use only the standard library plus the already-pinned
+`psycopg`; tests use scripted contributors and never call a live
+model.
