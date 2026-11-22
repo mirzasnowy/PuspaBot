@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from puspa.computer.cli import add_computer_parser, run_computer
+from puspa.marketplace.cli import add_skill_parser, run_skill
 from puspa.mcp_server.cli import add_mcp_parser, run_mcp
 from puspa.service.cli import add_service_parser, run_service
 
@@ -31,7 +32,7 @@ FULL_CLI_NOTE = (
     "The full PuspaBot CLI lands in a later step of the public/private "
     "split; this build ships `puspa web` / `puspa serve`, `puspa memory "
     "export` / `import`, `puspa mcp`, `puspa service`, `puspa diagnostics export`, "
-    "`puspa self-evolve`, plus help."
+    "`puspa self-evolve`, `puspa skill list` / `search` / `install`, plus help."
 )
 
 _KNOWN_COMMANDS = (
@@ -43,6 +44,7 @@ _KNOWN_COMMANDS = (
     "computer",
     "mcp",
     "service",
+    "skill",
     "diagnostics",
     "self-evolve",
 )
@@ -324,6 +326,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_computer_parser(sub)
     add_mcp_parser(sub)
     add_service_parser(sub)
+    add_skill_parser(sub)
     self_evolve = sub.add_parser(
         "self-evolve",
         help="Run the idle-time self-evolution review pass (COW-02).",
@@ -755,6 +758,11 @@ def main(argv: list[str] | None = None) -> int:
         return run_computer(parsed)
     if parsed.command == "mcp":
         return run_mcp(parsed)
+    if parsed.command == "skill":
+        if parsed.skill_command is None:
+            parser.print_help()
+            return 0
+        return run_skill(parsed)
     if parsed.command == "service":
         if parsed.service_command is None:
             parser.print_help()

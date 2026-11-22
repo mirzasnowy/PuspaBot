@@ -1,4 +1,4 @@
-"""PWA Puspa — 16 layar (7 dari revisi 7, ditambah Insights dan
+"""PWA Puspa — 18 layar (7 dari revisi 7, ditambah Insights dan
 Onboarding oleh kerja kematangan G28, ditambah layar Persona untuk
 beberapa persona yang bisa diganti, dan layar Artefak penampil artefak
 + log run dari riset CowAgent).
@@ -13,22 +13,14 @@ Kantor, Insights, Onboarding, Ruang. Bukti, Rencana, Rekor Otonomi, alur,
 dan modul kustom adalah panel di dalam layar yang sudah ada —
 bukan layar baru.
 
-Catatan jujur soal jumlah layar: revisi 7 membatasi PWA pada 7
-layar, tetapi perintah kematangan Nero (kerjakan semua 28 celah
-G1-G28) mewajibkan halaman Insights (celah biaya/token) dan
-Onboarding pertama kali (G28). Batas 7 layar itu sudah tidak
-berlaku lagi setelah penambahan kematangan; total sekarang 16
-(termasuk Ruang, yang selama ini ada di SPA tapi tidak terdaftar
-di server sehingga /rooms 404, Artefak, penampil artefak + log run
-dari riset CowAgent, dan Persona untuk beberapa persona yang bisa
-diganti).
+Catatan jujur soal jumlah layar: revisi 7 membatasi PWA pada 7 layar, tetapi perintah
+kematangan Nero (kerjakan semua 28 celah G1-G28) mewajibkan halaman Insights dan
+Onboarding pertama kali (G28), jadi batas 7 layar itu sudah tidak berlaku; total
+sekarang 18 (termasuk Ruang, Artefak, Persona, dan Hub skill COW-03).
 
 Login: Google (keputusan 16, fondasi Fase 1 `puspa.auth`); sesi
 cookie httpOnly via `puspa.accounts.ports`. Di tes, `create_app`
-menerima `test_user_id` (seam tes saja; di produksi None dan cookie
-wajib). Pesan chat + kejadian demo disimpan di `app.state` (memori
-proses) untuk demo lokal; jalur produksi menulis ke Buku Kerja
-(`Ledger`) — lihat `catat_kejadian`.
+menerima `test_user_id` (seam tes saja; di produksi None dan cookie wajib).
 """
 
 from __future__ import annotations
@@ -84,6 +76,8 @@ SCREENS = (
     # download of logs + message trace + ledger events, secrets
     # scrubbed before they leave the server.
     "diagnostics",
+    # Skill marketplace hub (COW-03): browse, search, one-click install.
+    "hub",
 )
 
 
@@ -474,6 +468,10 @@ def create_app(
                 ctx["agents"] = list_agents(user_id, dsn=app.state.dsn)
             except (psycopg.Error, ValueError, TypeError, AttributeError):
                 ctx["agents"] = []
+        elif screen == "hub":
+            from puspa.pwa import hub_api
+
+            ctx["skills"] = hub_api.hub_screen_context(app)
         return ctx
 
     # -- G32 WebUI lite + trial (BEGIN: lite-mode wiring, do not move) --
@@ -1042,6 +1040,7 @@ def create_app(
         diagnostics_api,
         drafts_api,
         graph_api,
+        hub_api,
         insights_api,
         live_view_api,
         memory_api,
@@ -1116,9 +1115,10 @@ def create_app(
     # Redacted diagnostics export for bug reports (one-click
     # download); the screen itself needs no bootstrap data.
     diagnostics_api.register_routes(app, need_user)
-    # Artifacts + run-logs browser: the artifacts list +
-    # download; the run-log half reuses the replay routes.
+    # Artifacts + run-logs browser (list + download; run-log half reuses replay).
     artifacts_api.register_routes(app, need_user)
+    # Skill marketplace hub (COW-03): browse, search, one-click install.
+    hub_api.register_routes(app, need_user)
     mockup_api.register_routes(app, need_user)
     insights_api.register_routes(app, need_user)
     onboarding_api.register_routes(app, need_user)

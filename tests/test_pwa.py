@@ -1,4 +1,4 @@
-"""Tes PWA 15 layar (FastAPI + Jinja + SSE).
+"""Tes PWA 18 layar (FastAPI + Jinja + SSE).
 
 Revisi 7 membatasi PWA pada 7 layar, tetapi kerja kematangan G28
 menambah Insights dan Onboarding (perintah Nero: kerjakan semua
@@ -7,8 +7,9 @@ pagi, P-09 menambah layar live, dan P-10 menambah layar replay,
 perbaikan layar Ruang yang rusak mendaftarkan layar Ruang yang
 selama ini ada di SPA tapi tidak terdaftar di server, dan layar
 Persona menambah satu lagi untuk beberapa persona yang bisa
-diganti — jadi total sekarang 15. Tes jumlah layar di bawah
-mencerminkan batas baru itu.
+diganti, layar Artefak dan Diagnostik menambah dua lagi, dan
+COW-03 menambah layar Hub Skill — jadi total sekarang 18. Tes
+jumlah layar di bawah mencerminkan batas baru itu.
 """
 
 import pytest
@@ -41,12 +42,13 @@ def test_sixteen_screens_exist_including_rooms():
     and Artifacts is the sixteenth
     (the artifacts + run-logs browser from CowAgent research),
     and Diagnostics is the seventeenth (the redacted
-    diagnostics export for bug reports).
+    diagnostics export for bug reports), and Hub is the
+    eighteenth (the skill marketplace hub, COW-03).
 
-    The count is pinned on purpose: an eighteenth screen must be a
+    The count is pinned on purpose: a nineteenth screen must be a
     deliberate decision with its own ticket, not an accident.
     """
-    assert len(SCREENS) == 17
+    assert len(SCREENS) == 18
     assert set(SCREENS) == {
         "chat",
         "tasks",
@@ -71,6 +73,8 @@ def test_sixteen_screens_exist_including_rooms():
         "artifacts",
         # Redacted diagnostics export for bug reports.
         "diagnostics",
+        # Skill marketplace hub (COW-03): browse, search, one-click install.
+        "hub",
     }
 
 
