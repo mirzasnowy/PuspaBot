@@ -25,9 +25,10 @@ import os
 import time
 from collections import defaultdict
 from pathlib import Path
+from typing import Annotated
 
 import psycopg
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
@@ -104,6 +105,12 @@ def create_app(
     # fakes and no real network is needed.
     voice_http_client=None,
     voice_edge_connect=None,
+    # COW-19: multimodal seams (same pattern as the voice seams
+    # above): httpx clients for the routed vision and image
+    # endpoints, so tests can inject fakes and no real network
+    # is needed. None means each call builds its own client.
+    vision_http_client=None,
+    image_http_client=None,
     # Switchable personas: the Puspa home holding the persona
     # files (same test seam pattern as the transcriber above).
     # None means the switcher resolves the user's real home.
@@ -756,13 +763,44 @@ def create_app(
 
     # -- API -------------------------------------------------------------
     @app.post("/api/chat")
-    async def send_chat(request: Request, text: str = Form(...)):
+    async def send_chat(
+        request: Request,
+        text: str = Form(""),
+        files: Annotated[list[UploadFile] | None, File()] = None,
+    ):
         user_id = need_user(request)
         if user_id is None:
             return JSONResponse(
                 {"error": render_server_line("error.not_logged_in")}, status_code=401
             )
-        message = {"sender": "users", "text": text, "created_at": time.time()}
+        # COW-19: a message may carry files (photo, recording,
+        # document) as well as text. Each file is validated and
+        # stored as an attachment on the message; a refused file
+        # fails the whole send loudly, so a message never claims
+        # an attachment it does not have.
+        from puspa.multimodal.attachments import AttachmentError
+
+        attachments: list[dict] = []
+        for upload in files or []:
+            content = await upload.read()
+            try:
+                attachment = request.app.state.attachment_store.store_bytes(
+                    user_id,
+                    content,
+                    upload.content_type or "",
+                    filename=upload.filename,
+                )
+            except AttachmentError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            attachments.append(attachment.to_public_dict())
+        if not text.strip() and not attachments:
+            return JSONResponse({"error": "empty message"}, status_code=400)
+        message = {
+            "sender": "users",
+            "text": text,
+            "created_at": time.time(),
+            "attachments": attachments,
+        }
         app.state.chat[user_id].append(message)
         app.state.event.append(
             {
@@ -1191,6 +1229,18 @@ def create_app(
 
     share_api.register_routes(app, need_user, _render_shared_chat, share_inbox_dir=share_inbox_dir)
     voice_api.register_routes(app, need_user)
+    # COW-19: multimodal chat (attachments on messages, image
+    # understanding, image generation). The store lives under
+    # the share inbox, so attachments share the inbox's
+    # per-user directory; registered after share_api so
+    # app.state.share_inbox_dir is already set.
+    from puspa.multimodal.attachments import AttachmentStore
+    from puspa.pwa import multimodal_api
+
+    app.state.attachment_store = AttachmentStore(app.state.share_inbox_dir / "attachments")
+    app.state.vision_http_client = vision_http_client
+    app.state.image_http_client = image_http_client
+    multimodal_api.register_routes(app, need_user)
     # COW-08: per-capability model routing (GET/POST/DELETE
     # /api/routing[/{capability}] + the routing key endpoints).
     from puspa.pwa import capability_routing_api
