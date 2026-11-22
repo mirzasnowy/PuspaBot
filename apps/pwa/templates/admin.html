@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Admin</h1>
+<p class="pesan-sub">Layar operator untuk instalasi lokal ini: konfigurasi, sesi, statistik pemakaian, dan skill. Bukan layar pengguna — dan bukan panel operator hosted: penagihan dan multi-tenant tidak ada di sini, panel itu ada di backend cloud privat.</p>
+<div class="kartu">
+  <strong>Yang menjaga layar ini</strong><br>
+  Login operator biasa (cookie sesi yang sama dengan layar lain). Tidak ada kata sandi admin terpisah: siapa pun yang masuk sebagai operator di mesin ini bisa membuka halaman ini. Itu jujur, bukan keamanan tambahan — jangan jadikan mesin ini multi-pengguna.
+</div>
+
+<h2>Konfigurasi instansi</h2>
+{% if admin.config.error %}
+<p>Konfigurasi tidak bisa dibaca: {{ admin.config.error }}</p>
+{% else %}
+<div class="kartu">
+  <form id="form-konfig">
+    <label>Nama instansi<br>
+      <input type="text" name="instance_name" value="{{ admin.config.instance_name }}" maxlength="80">
+    </label><br><br>
+    <label>Sumber model<br>
+      <select name="model_source">
+        <option value="hosted" {% if admin.config.model.source == "hosted" %}selected{% endif %}>hosted (bawaan Puspa)</option>
+        <option value="byok" {% if admin.config.model.source == "byok" %}selected{% endif %}>byok (kunci sendiri)</option>
+        <option value="local" {% if admin.config.model.source == "local" %}selected{% endif %}>local (Ollama)</option>
+      </select>
+    </label><br><br>
+    <label>Base URL model (local / byok, kosongkan bila tidak perlu)<br>
+      <input type="text" name="model_base_url" value="{{ admin.config.model.base_url or '' }}">
+    </label><br><br>
+    <label>Model<br>
+      <input type="text" name="model_model" value="{{ admin.config.model.model or '' }}">
+    </label><br><br>
+    <label>Provider BYOK<br>
+      <input type="text" name="model_provider" value="{{ admin.config.model.provider or '' }}">
+    </label><br><br>
+    <label>
+      <input type="checkbox" name="telemetry_enabled" {% if admin.config.telemetry.effective_enabled %}checked{% endif %}>
+      Telemetri anonim aktif (saat ini: {% if admin.config.telemetry.effective_enabled %}aktif{% else %}mati{% endif %}{% if admin.config.telemetry.env_override is not none %}, dikunci variabel lingkungan{% endif %})
+    </label><br><br>
+    <button type="submit">Simpan konfigurasi</button>
+  </form>
+  <p class="pesan-sub">Mode serve: <strong>{{ admin.config.serve_mode }}</strong>. {{ admin.config.serve_mode_change }}</p>
+  {% if admin.config.embedding %}
+  <p class="pesan-sub">Embedding: {{ admin.config.embedding.status or admin.config.embedding }}</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<h2>Sesi</h2>
+{% if admin.sessions.error %}
+<p>Sesi tidak bisa dibaca: {{ admin.sessions.error }}</p>
+{% else %}
+<div class="kartu">
+  <strong>{{ admin.sessions.active }} sesi aktif, {{ admin.sessions.revoked }} dicabut</strong>
+  <p class="pesan-sub">Hanya sesi operator yang sedang masuk yang terlihat: instansi lokal punya satu operator.</p>
+  <ul>
+  {% for s in admin.sessions.sessions %}
+    <li>
+      {{ s.device_label }} — dibuat {{ s.created_at }}, terakhir terlihat {{ s.last_seen_at }}
+      {% if s.revoked %}<span class="lencana">dicabut</span>
+      {% else %}<button type="button" data-cabut-sesi="{{ s.id }}">Cabut</button>{% endif %}
+    </li>
+  {% else %}
+    <li>Tidak ada sesi tercatat.</li>
+  {% endfor %}
+  </ul>
+  <p><button type="button" id="cabut-semua">Cabut semua sesi (termasuk browser ini)</button></p>
+  {% if admin.sessions.pairing %}
+  <p class="pesan-sub">Pairing: {{ admin.sessions.pairing.active_codes }} kode aktif, {{ admin.sessions.pairing.active_sessions }} sesi pairing, {{ admin.sessions.pairing.locked_addresses }} alamat terkunci.</p>
+  <ul>
+  {% for p in admin.sessions.pairing.sessions %}
+    <li>{{ p.device_label }} — kedaluwarsa {{ p.expires_at }}</li>
+  {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endif %}
+
+<h2>Statistik pemakaian</h2>
+{% if admin.usage.error %}
+<p>Statistik tidak bisa dibaca: {{ admin.usage.error }}</p>
+{% else %}
+<div class="kartu">
+  <strong>{{ admin.usage.events_total }} kejadian di ledger</strong><br>
+  24 jam terakhir: {{ admin.usage.events_last_24h }} &middot; 7 hari terakhir: {{ admin.usage.events_last_7d }}<br>
+  Pengguna: {{ admin.usage.users }} &middot; Sesi aktif: {{ admin.usage.sessions_active }} &middot;
+  Pesan chat di memori (sesi jalan ini saja, hilang saat restart): {{ admin.usage.messages_in_memory }}<br>
+  Skill: {{ admin.usage.skills.total }} total ({{ admin.usage.skills.installed }} aktif, {{ admin.usage.skills.builtin }} bawaan, {{ admin.usage.skills.library }} pustaka)
+  <p class="pesan-sub">Dihitung dari ledger dan penyimpanan yang sudah ada — tidak ada telemetri baru yang dikumpulkan untuk halaman ini.</p>
+  <ul>
+  {% for row in admin.usage.events_by_type %}
+    <li>{{ row.type }}: {{ row.count }}</li>
+  {% else %}
+    <li>Belum ada kejadian.</li>
+  {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<h2>Skill</h2>
+{% if admin.skills.error %}
+<p>Skill tidak bisa dibaca: {{ admin.skills.error }}</p>
+{% else %}
+<div class="kartu">
+  <p class="pesan-sub">Skill bawaan ikut terpasang bersama Puspa dan selalu aktif — tombol hanya ada untuk skill pustaka yang diinstal lewat Hub.</p>
+  <ul>
+  {% for s in admin.skills.skills %}
+    <li>
+      <strong>{{ s.name }}</strong> ({{ s.id }}, v{{ s.version }}, {{ s.origin }})
+      {% if s.installed %}<span class="lencana">aktif</span>{% else %}<span class="lencana">nonaktif</span>{% endif %}
+      {% if s.origin != "builtin" %}
+        {% if s.installed %}<button type="button" data-skill-disable="{{ s.id }}">Nonaktifkan</button>
+        {% else %}<button type="button" data-skill-enable="{{ s.id }}">Aktifkan</button>{% endif %}
+      {% endif %}
+      <br><span class="pesan-sub">{{ s.description }}</span>
+    </li>
+  {% else %}
+    <li>Tidak ada skill.</li>
+  {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<script>
+async function kirim(url, badan) {
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(badan || {}),
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(function () { return {}; });
+    alert(data.error || ("Gagal: " + resp.status));
+    return false;
+  }
+  return true;
+}
+var formKonfig = document.getElementById("form-konfig");
+if (formKonfig) {
+formKonfig.addEventListener("submit", async function (ev) {
+  ev.preventDefault();
+  const form = ev.target;
+  const model = {source: form.model_source.value};
+  if (form.model_base_url.value.trim()) { model.base_url = form.model_base_url.value.trim(); }
+  if (form.model_model.value.trim()) { model.model = form.model_model.value.trim(); }
+  if (form.model_provider.value.trim()) { model.provider = form.model_provider.value.trim(); }
+  const ok = await kirim("/api/admin/config", {
+    instance_name: form.instance_name.value,
+    model: model,
+    telemetry_enabled: form.telemetry_enabled.checked,
+  });
+  if (ok) { location.reload(); }
+});
+}
+document.querySelectorAll("[data-cabut-sesi]").forEach(function (btn) {
+  btn.addEventListener("click", async function () {
+    if (!confirm("Cabut sesi ini? Perangkat itu harus masuk lagi.")) { return; }
+    if (await kirim("/api/admin/sessions/" + encodeURIComponent(btn.dataset.cabutSesi) + "/revoke")) {
+      location.reload();
+    }
+  });
+});
+var cabutSemua = document.getElementById("cabut-semua");
+if (cabutSemua) {
+cabutSemua.addEventListener("click", async function () {
+  if (!confirm("Cabut SEMUA sesi, termasuk browser ini? Kamu harus masuk lagi.")) { return; }
+  if (await kirim("/api/admin/sessions/revoke-all")) { location.reload(); }
+});
+}
+document.querySelectorAll("[data-skill-enable]").forEach(function (btn) {
+  btn.addEventListener("click", async function () {
+    if (await kirim("/api/admin/skills/" + encodeURIComponent(btn.dataset.skillEnable) + "/enable")) {
+      location.reload();
+    }
+  });
+});
+document.querySelectorAll("[data-skill-disable]").forEach(function (btn) {
+  btn.addEventListener("click", async function () {
+    if (await kirim("/api/admin/skills/" + encodeURIComponent(btn.dataset.skillDisable) + "/disable")) {
+      location.reload();
+    }
+  });
+});
+</script>
+{% endblock %}

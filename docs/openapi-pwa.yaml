@@ -949,6 +949,356 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /admin:
+    get:
+      tags: [admin]
+      summary: Local admin dashboard page (Jinja, local mode only)
+      description: |
+        The operator screen for a self-hosted instance
+        (`docs/local-admin-dashboard.md`). Server-rendered Jinja
+        (like `/trial`): it works with no React build. Login
+        required; in `hosted` serve mode it answers 403, because
+        the hosted operator panel lives in the private cloud
+        backend, not here.
+      responses:
+        "200":
+          description: Admin page HTML
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Not logged in (redirect to /masuk)
+        "403":
+          description: Hosted serve mode (no admin surface here)
+  /api/admin/config:
+    get:
+      tags: [admin]
+      summary: Instance configuration (local mode only)
+      description: |
+        Instance name (editable), serve mode (read-only: changing
+        it needs PUSPA_SERVE_MODE plus a restart), the model
+        selection, the telemetry switch, and the embedding
+        snapshot. Requires a logged-in session cookie; 403 in
+        `hosted` serve mode.
+      responses:
+        "200":
+          description: Instance configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminConfig"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Hosted serve mode (no admin surface here)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [admin]
+      summary: Save instance configuration (local mode only)
+      description: |
+        Any of `instance_name`, `model`, `telemetry_enabled`.
+        Each part is validated and stored by its owning module;
+        a bad value is a 400 naming the problem, and an unknown
+        key is a 400, never silently ignored. Returns the saved
+        configuration in the GET shape.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminConfigUpdate"
+      responses:
+        "200":
+          description: Saved configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminConfig"
+        "400":
+          description: Bad value, unknown key, or empty body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Hosted serve mode (no admin surface here)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/sessions:
+    get:
+      tags: [admin]
+      summary: Operator sessions (local mode only)
+      description: |
+        The operator's login sessions (device label, created /
+        last-seen times, revoked flag), the live pairing-store
+        snapshot, and the active/revoked counts. Tokens are never
+        exposed: only their hashes are stored, and this listing
+        does not even carry those. Requires a logged-in session
+        cookie; 403 in `hosted` serve mode.
+      responses:
+        "200":
+          description: Sessions plus pairing snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSessions"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Hosted serve mode (no admin surface here)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/sessions/{session_id}/revoke:
+    post:
+      tags: [admin]
+      summary: Revoke one session by id (local mode only)
+      description: |
+        Revokes one login session of the operator by its row id.
+        Idempotent. An unknown id and another user's id both
+        answer 404, so one user's ids cannot probe another's.
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, session_id, revoked]
+                properties:
+                  ok:
+                    type: boolean
+                  session_id:
+                    type: string
+                  revoked:
+                    type: boolean
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Hosted serve mode (no admin surface here)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such session for this operator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/sessions/revoke-all:
+    post:
+      tags: [admin]
+      summary: Revoke all operator sessions (local mode only)
+      description: |
+        Revokes every session of the operator, including the
+        browser making the call: the operator signs themselves
+        out everywhere.
+      responses:
+        "200":
+          description: All sessions revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, revoked_all]
+                properties:
+                  ok:
+                    type: boolean
+                  revoked_all:
+                    type: boolean
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Hosted serve mode (no admin surface here)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/usage:
+    get:
+      tags: [admin]
+      summary: Usage statistics from the ledger (local mode only)
+      description: |
+        Counts from data the instance already keeps: the
+        append-only ledger (`events`), the account tables, the
+        hub skill list, and the in-memory chat store. No new
+        telemetry is collected. Requires a logged-in session
+        cookie; 403 in `hosted` serve mode.
+      responses:
+        "200":
+          description: Usage statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsage"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Hosted serve mode (no admin surface here)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/skills:
+    get:
+      tags: [admin]
+      summary: Installed skills (local mode only)
+      description: |
+        The same skill list the hub serves: shipped builtins
+        plus registry skills. Requires a logged-in session
+        cookie; 403 in `hosted` serve mode.
+      responses:
+        "200":
+          description: Installed skills
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSkills"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Hosted serve mode (no admin surface here)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/skills/{skill_id}/enable:
+    post:
+      tags: [admin]
+      summary: Enable an installed library skill (local mode only)
+      description: |
+        Enables a skill through the existing skill registry
+        (`MarketplaceRegistry.install`); the operator's POST is
+        the explicit approval, mirroring the hub install.
+        Builtin skills ship with Puspa and are always on:
+        toggling one is a 409 with that reason.
+      parameters:
+        - name: skill_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Skill enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSkillToggleResult"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Hosted serve mode (no admin surface here)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such skill
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Builtin skill (always on, cannot be toggled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/admin/skills/{skill_id}/disable:
+    post:
+      tags: [admin]
+      summary: Disable an installed library skill (local mode only)
+      description: |
+        Disables a skill through the existing skill registry
+        (`MarketplaceRegistry.uninstall`). Builtin skills ship
+        with Puspa and are always on: toggling one is a 409
+        with that reason.
+      parameters:
+        - name: skill_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Skill disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSkillToggleResult"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Hosted serve mode (no admin surface here)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such skill
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Builtin skill (always on, cannot be toggled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/model-settings:
     get:
       tags: [settings]
@@ -2163,6 +2513,155 @@ components:
           $ref: "#/components/schemas/EmbeddingHealth"
         embedding_banner:
           $ref: "#/components/schemas/EmbeddingBanner"
+    AdminConfig:
+      type: object
+      description: |
+        The `GET /api/admin/config` payload: the instance
+        configuration the local admin dashboard shows and edits.
+        `serve_mode` is read-only here (changing it needs
+        PUSPA_SERVE_MODE plus a restart).
+      required: [instance_name, serve_mode, serve_mode_change, model, telemetry]
+      properties:
+        instance_name:
+          type: string
+          description: Display name of this instance (default "Puspa")
+        serve_mode:
+          type: string
+          enum: [local, hosted]
+        serve_mode_change:
+          type: string
+          description: How the serve mode is actually changed
+        model:
+          type: object
+          description: The stored model selection (see model-settings)
+        telemetry:
+          type: object
+          description: Stored toggle, env override, effective switch
+          properties:
+            enabled:
+              type: boolean
+            env_override:
+              type: boolean
+              nullable: true
+            effective_enabled:
+              type: boolean
+        embedding:
+          $ref: "#/components/schemas/EmbeddingHealth"
+    AdminConfigUpdate:
+      type: object
+      description: |
+        The `POST /api/admin/config` body. Any of the three keys;
+        at least one is required, and an unknown key is a 400.
+      properties:
+        instance_name:
+          type: string
+          maxLength: 80
+        model:
+          type: object
+          description: Model selection (source, base_url, model, provider; never a key)
+        telemetry_enabled:
+          type: boolean
+    AdminSession:
+      type: object
+      description: One login session (no token material of any kind).
+      required: [id, device_label, created_at, last_seen_at, revoked]
+      properties:
+        id:
+          type: string
+          format: uuid
+        device_label:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        revoked:
+          type: boolean
+    AdminSessions:
+      type: object
+      description: The `GET /api/admin/sessions` payload.
+      required: [sessions, active, revoked, pairing]
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminSession"
+        active:
+          type: integer
+        revoked:
+          type: integer
+        pairing:
+          $ref: "#/components/schemas/PairingStatus"
+    AdminUsage:
+      type: object
+      description: |
+        The `GET /api/admin/usage` payload: counts from the ledger
+        and the live stores, no new telemetry. `messages_in_memory`
+        counts chat messages held this run only (the in-memory chat
+        store resets on restart).
+      required: [events_total, events_by_type, events_last_24h, events_last_7d, users, sessions_active, skills, messages_in_memory]
+      properties:
+        events_total:
+          type: integer
+        events_by_type:
+          type: array
+          items:
+            type: object
+            required: [type, count]
+            properties:
+              type:
+                type: string
+              count:
+                type: integer
+        events_last_24h:
+          type: integer
+        events_last_7d:
+          type: integer
+        users:
+          type: integer
+        sessions_active:
+          type: integer
+        skills:
+          type: object
+          required: [total, installed, builtin, library]
+          properties:
+            total:
+              type: integer
+            installed:
+              type: integer
+            builtin:
+              type: integer
+            library:
+              type: integer
+        messages_in_memory:
+          type: integer
+    AdminSkills:
+      type: object
+      description: The `GET /api/admin/skills` payload (the hub skill list).
+      required: [skills]
+      properties:
+        skills:
+          type: array
+          items:
+            $ref: "./openapi-hub.yaml#/components/schemas/HubSkill"
+    AdminSkillToggleResult:
+      type: object
+      description: The enable/disable POST result for one skill.
+      required: [ok, skill_id, status]
+      properties:
+        ok:
+          type: boolean
+        skill_id:
+          type: string
+        status:
+          type: string
+          enum: [enabled, disabled]
+        installed:
+          type: object
+          description: The registry install record for this skill
     EmbeddingHealth:
       type: object
       description: |

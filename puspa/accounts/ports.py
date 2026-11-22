@@ -68,6 +68,7 @@ __all__ = [
     "resolve_dsn",
     "revoke_all_sessions",
     "revoke_session",
+    "revoke_session_by_id",
     "validate_session",
 ]
 
@@ -249,6 +250,25 @@ def revoke_session(token, dsn=None):
                 (_token_hash(token),),
             )
         conn.commit()
+
+
+def revoke_session_by_id(session_id, user_id, dsn=None):
+    """Revoke one session by its row id. Returns True when a
+    session of this user was revoked, False when no such session
+    exists. An unknown id and another user's id read the same
+    (False), so one user's ids cannot probe another user's
+    sessions. Idempotent: revoking an already-revoked session
+    still returns True. A malformed id raises the database's
+    error, which the caller maps to "no such session"."""
+    with _connect(dsn) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE sessions SET revoked = true WHERE id = %s AND user_id = %s",
+                (session_id, user_id),
+            )
+            revoked = cur.rowcount > 0
+        conn.commit()
+    return revoked
 
 
 def revoke_all_sessions(user_id, dsn=None):
