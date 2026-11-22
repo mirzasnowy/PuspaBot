@@ -38,11 +38,14 @@ from __future__ import annotations
 
 import datetime
 import re
+from collections.abc import Callable
 
 import psycopg
 
 from ..memory.schema import resolve_dsn
+from ..mind.workspace import Candidate, WorkspaceBus
 from .holidays import holidays_on_date, upcoming_holidays
+from .prayer import JAKARTA_TZ
 
 __all__ = [
     "BILL_QUERY",
@@ -52,6 +55,7 @@ __all__ = [
     "extract_email_subject",
     "find_bill_candidates",
     "open_tasks_for_user",
+    "select_morning_focus",
 ]
 
 #: Gmail search for bill-like mail (last 60 days; the caller adds
@@ -200,6 +204,162 @@ def _status(status: str, detail: str) -> dict:
     return {"status": status, "detail": detail}
 
 
+#: Focus scores for the K18 workspace bus (see
+#: :func:`select_morning_focus`): each briefing section bids
+#: with fixed numbers, so the focus is deterministic. Bills bid
+#: high on urgency when a due hint is printed, but low on
+#: confidence — they are unverified keyword matches, never
+#: confirmed bills — so a bill never outranks the schedule on
+#: confidence alone. The schedule bids a flat urgency: a later
+#: event loses to a bill with a due hint on score, and only the
+#: imminent-event veto below puts it first.
+_FOCUS_BIDS: dict[str, tuple[float, float, float]] = {
+    "schedule": (0.6, 0.9, 0.9),
+    "bills": (0.9, 0.8, 0.4),
+    "tasks": (0.6, 0.7, 0.9),
+    "holidays": (0.5, 0.6, 0.9),
+}
+
+#: An event starting within this window owns the morning focus:
+#: 30 minutes ago (still running) to 60 minutes from now.
+IMMINENT_EVENT_MINUTES_BEFORE = 30
+IMMINENT_EVENT_MINUTES_AFTER = 60
+
+
+def _parse_event_start(start: str, day: datetime.date) -> datetime.datetime | None:
+    """Parse an event start into an aware Jakarta datetime.
+
+    Accepts an ISO datetime (``"2026-11-20T09:00:00+07:00"``,
+    naive values are read as Jakarta time), a bare ``"HH:MM"``
+    time on ``day``, or a bare date. Anything else returns None
+    instead of guessing — an unparseable start simply cannot
+    claim imminence.
+    """
+    text = (start or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(text)
+    except ValueError:
+        parsed = None
+    if parsed is not None:
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=JAKARTA_TZ)
+        return parsed
+    try:
+        clock = datetime.time.fromisoformat(text)
+    except ValueError:
+        return None
+    return datetime.datetime.combine(day, clock, tzinfo=JAKARTA_TZ)
+
+
+def select_morning_focus(
+    *,
+    day: datetime.date,
+    events: list[dict] | None,
+    bill_candidates: list[dict] | None,
+    open_tasks: list[dict] | None,
+    holidays: list[dict] | None,
+    now: datetime.datetime | None = None,
+    record: Callable[[dict], str | None] | None = None,
+) -> dict | None:
+    """Pick the morning briefing's focus through the K18 bus.
+
+    Each non-empty section posts one candidate — schedule,
+    bills, tasks, holidays — with the fixed bids in
+    :data:`_FOCUS_BIDS` (a bill without a due hint bids lower
+    urgency, a task waiting on the user bids higher). One hard
+    constraint is registered: when the first event starts
+    within the imminent window it vetoes every non-schedule
+    candidate, so an event starting within the hour owns the
+    focus even when a bill with a due hint outscores the
+    schedule. ``now`` defaults to the current Jakarta time; a
+    naive ``now`` is read as Jakarta time.
+
+    Returns the broadcast record (winner, action, scores,
+    vetoes, ledger event id), or None when every section is
+    empty and nothing bids. ``record`` is the bus recorder
+    (see :func:`puspa.mind.workspace.ledger_recorder`); when
+    given, the broadcast is recorded in the ledger.
+    """
+    moment = now or datetime.datetime.now(JAKARTA_TZ)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=JAKARTA_TZ)
+    bus = WorkspaceBus(record=record)
+    first_event: dict | None = events[0] if events else None
+    first_start: datetime.datetime | None = None
+    if first_event is not None:
+        first_start = _parse_event_start(str(first_event.get("start") or ""), day)
+    if events:
+        urgency, relevance, confidence = _FOCUS_BIDS["schedule"]
+        bus.post(
+            Candidate(
+                module="schedule",
+                action="check_schedule",
+                content=str(first_event.get("summary") or "(no title)")
+                if first_event is not None
+                else "",
+                urgency=urgency,
+                relevance=relevance,
+                confidence=confidence,
+            )
+        )
+    if bill_candidates:
+        has_due_hint = any(candidate.get("due_hint") for candidate in bill_candidates)
+        urgency, relevance, confidence = _FOCUS_BIDS["bills"]
+        bus.post(
+            Candidate(
+                module="bills",
+                action="review_bill",
+                content=str(bill_candidates[0].get("subject") or "(no subject)"),
+                urgency=urgency if has_due_hint else 0.5,
+                relevance=relevance,
+                confidence=confidence,
+            )
+        )
+    if open_tasks:
+        needs_user = any(
+            task.get("status") in ("pending_user", "pending_approval") for task in open_tasks
+        )
+        urgency, relevance, confidence = _FOCUS_BIDS["tasks"]
+        bus.post(
+            Candidate(
+                module="tasks",
+                action="resume_task",
+                content=str(open_tasks[0].get("purpose") or "(no purpose)"),
+                urgency=urgency if needs_user else 0.4,
+                relevance=relevance,
+                confidence=confidence,
+            )
+        )
+    today_holidays = holidays_on_date(holidays or [], day)
+    if today_holidays:
+        urgency, relevance, confidence = _FOCUS_BIDS["holidays"]
+        bus.post(
+            Candidate(
+                module="holidays",
+                action="note_holiday",
+                content=str(
+                    today_holidays[0].get("local_name") or today_holidays[0].get("name") or ""
+                ),
+                urgency=urgency,
+                relevance=relevance,
+                confidence=confidence,
+            )
+        )
+    if first_start is not None:
+        delta_minutes = (first_start - moment).total_seconds() / 60.0
+        if -IMMINENT_EVENT_MINUTES_BEFORE <= delta_minutes <= IMMINENT_EVENT_MINUTES_AFTER:
+            bus.register_constraint(
+                "schedule",
+                lambda candidate: candidate.module != "schedule",
+                reason=("An event starts within the hour, so it owns the morning focus."),
+            )
+    if len(bus) == 0:
+        return None
+    return bus.broadcast().to_dict()
+
+
 def build_morning_summary(
     *,
     day: datetime.date,
@@ -209,6 +369,8 @@ def build_morning_summary(
     holidays: list[dict] | None,
     prayer: dict | None,
     source_status: dict,
+    now: datetime.datetime | None = None,
+    focus_record: Callable[[dict], str | None] | None = None,
 ) -> dict:
     """Assemble the morning summary from already-fetched sources.
 
@@ -218,6 +380,14 @@ def build_morning_summary(
     when ``prayer["is_ramadan"]`` is true; otherwise the prayer
     section carries ``imsak: None`` and a note saying imsak is
     shown only during Ramadan.
+
+    ``focus`` is the briefing's focus, picked by the K18
+    workspace bus from the non-empty sections (see
+    :func:`select_morning_focus`): the winning section, its
+    scores, and any vetoes. None when every section is empty.
+    ``now`` fixes the moment the focus is judged at (default:
+    current Jakarta time); ``focus_record`` records the
+    broadcast in the ledger when given.
     """
     today_holidays = holidays_on_date(holidays or [], day)
     upcoming = upcoming_holidays(holidays or [], day)
@@ -239,6 +409,15 @@ def build_morning_summary(
     return {
         "date": day.isoformat(),
         "weekday": day.strftime("%A"),
+        "focus": select_morning_focus(
+            day=day,
+            events=events,
+            bill_candidates=bill_candidates,
+            open_tasks=open_tasks,
+            holidays=holidays,
+            now=now,
+            record=focus_record,
+        ),
         "schedule": {"events": events if events is not None else []},
         "bills": {"candidates": bill_candidates if bill_candidates is not None else []},
         "tasks": {"open": open_tasks if open_tasks is not None else []},

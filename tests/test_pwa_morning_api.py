@@ -183,6 +183,45 @@ def test_summary_with_connected_google(client, test_dsn, vault_master_key):
     assert body["source_status"]["prayer"]["status"] == "ok"
 
 
+def test_summary_focus_is_picked_by_workspace_and_recorded(client, test_dsn, vault_master_key):
+    """The live wiring: GET /api/morning/summary carries a focus
+    picked by the K18 bus, and the broadcast is ledger-recorded.
+
+    The fake briefing has one event (09:00 on 2026-11-20, long
+    past by the time this runs, so no imminent-event veto) and
+    one bill with a due hint: bills outscore the schedule 0.77
+    to 0.75, so the focus is the bill."""
+    from puspa.ledger.ledger import Ledger
+
+    _store_google_token(
+        client.user_id,
+        test_dsn,
+        scopes=(
+            "https://www.googleapis.com/auth/calendar.readonly "
+            "https://www.googleapis.com/auth/gmail.readonly"
+        ),
+    )
+    resp = client.get("/api/morning/summary?date=2026-11-20&city=Jakarta")
+    assert resp.status_code == 200
+    body = resp.json()
+    focus = body["focus"]
+    assert focus["winner"]["module"] == "bills"
+    assert focus["action"] == "review_bill"
+    assert focus["winner"]["content"] == "Tagihan Listrik"
+    assert focus["scores"]["bills"] == 0.77
+    assert focus["scores"]["schedule"] == 0.75
+    assert focus["blocked"] == []
+    assert focus["ledger_event_id"] is not None
+    events = Ledger(test_dsn).events(
+        f"morning-focus-{client.user_id}-2026-11-20",
+        event_type="task_completed",
+    )
+    assert len(events) == 1
+    assert events[0]["content"]["job"] == "workspace_broadcast"
+    assert events[0]["content"]["winner"]["module"] == "bills"
+    assert str(events[0]["id"]) == focus["ledger_event_id"]
+
+
 def test_summary_without_google_reports_sources_honestly(client, vault_master_key):
     body = client.get("/api/morning/summary?date=2026-11-20").json()
     assert body["source_status"]["calendar"]["status"] == "not_connected"

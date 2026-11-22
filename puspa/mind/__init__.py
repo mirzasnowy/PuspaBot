@@ -12,6 +12,10 @@ See :mod:`puspa.mind.felt_state` for the K21 felt state: the
 viability variables, appraisal into the felt-state vector
 F(t), and the honest report read from F(t) and its logged
 causes.
+
+See :mod:`puspa.mind.workspace` for the K18 global workspace
+bus: modules post scored candidates, the top score broadcasts
+subject to hard constraints, and the broadcast is recorded.
 """
 
 from __future__ import annotations
@@ -33,19 +37,39 @@ from .metacognition import (
     EscalationDecision,
     Metacognition,
 )
+from .workspace import (
+    ASK_USER_ACTION,
+    BLOCKED_ACTION,
+    CONFIDENCE_WEIGHT,
+    RELEVANCE_WEIGHT,
+    URGENCY_WEIGHT,
+    Broadcast,
+    Candidate,
+    WorkspaceBus,
+    ledger_recorder,
+)
 
 __all__ = [
+    "ASK_USER_ACTION",
+    "BLOCKED_ACTION",
     "CALIBRATION_PRIOR_WEIGHT",
+    "CONFIDENCE_WEIGHT",
     "FORBIDDEN_VARIABLES",
+    "RELEVANCE_WEIGHT",
     "STAKES_HIGH",
     "UNCERTAINTY_HIGH",
+    "URGENCY_WEIGHT",
     "VARIABLES",
     "AppraisalRecord",
     "AreaCalibration",
+    "Broadcast",
+    "Candidate",
     "DecisionRecord",
     "EscalationDecision",
     "FeltReport",
     "FeltState",
     "FeltVector",
     "Metacognition",
+    "WorkspaceBus",
+    "ledger_recorder",
 ]

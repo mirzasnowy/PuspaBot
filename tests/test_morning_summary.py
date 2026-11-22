@@ -8,11 +8,14 @@ core of the bills section, so they are tested directly too.
 
 import datetime
 
+import pytest
+
 from puspa.morning.summary import (
     build_morning_summary,
     extract_due_hint,
     extract_email_subject,
     find_bill_candidates,
+    select_morning_focus,
 )
 
 DAY = datetime.date(2026, 11, 20)
@@ -173,3 +176,123 @@ def test_bill_candidates_are_keyword_matches_and_unverified():
     assert "Open the email" in first["note"]
     assert candidates[1]["due_hint"] is None
     assert candidates[1]["due_hint_source"] is None
+
+
+# -- K18 focus: the morning briefing's focus is picked by the
+# workspace bus (see puspa.morning.summary.select_morning_focus).
+# Scores are the fixed bids: schedule 0.75, a bill with a due
+# hint 0.77, an open task 0.59, a holiday today 0.61. A bill
+# with a due hint outscores a later event on score alone; only
+# the imminent-event veto puts the schedule first.
+
+JAKARTA = datetime.timezone(datetime.timedelta(hours=7))
+
+
+def _at(hour, minute=0):
+    return datetime.datetime(2026, 11, 20, hour, minute, tzinfo=JAKARTA)
+
+
+def _bill(subject="Tagihan Listrik", due_hint="12 Desember 2026"):
+    return {"message_id": "m1", "subject": subject, "due_hint": due_hint}
+
+
+def _event(summary="Rapat", start="2026-11-20T09:00:00+07:00"):
+    return {"summary": summary, "start": start, "end": "", "location": ""}
+
+
+def test_focus_picks_schedule_over_tasks_and_holiday():
+    result = _summary(now=_at(7))
+    focus = result["focus"]
+    assert focus["winner"]["module"] == "schedule"
+    assert focus["action"] == "check_schedule"
+    assert focus["scores"]["schedule"] == pytest.approx(0.75)
+    assert focus["blocked"] == []
+
+
+def test_focus_bill_with_due_hint_beats_later_event():
+    result = _summary(
+        events=[_event(start="2026-11-20T17:00:00+07:00")],
+        bill_candidates=[_bill()],
+        now=_at(8),
+    )
+    focus = result["focus"]
+    assert focus["winner"]["module"] == "bills"
+    assert focus["action"] == "review_bill"
+    assert focus["scores"]["bills"] == pytest.approx(0.77)
+    assert focus["scores"]["schedule"] == pytest.approx(0.75)
+    assert focus["blocked"] == []
+
+
+def test_focus_imminent_event_vetoes_bill():
+    result = _summary(
+        events=[_event(start="2026-11-20T09:00:00+07:00")],
+        bill_candidates=[_bill()],
+        now=_at(8, 30),
+    )
+    focus = result["focus"]
+    assert focus["winner"]["module"] == "schedule"
+    assert focus["action"] == "check_schedule"
+    assert focus["blocked"] == [
+        {
+            "module": "bills",
+            "action": "review_bill",
+            "blocked_by": "schedule",
+            "reason": "An event starts within the hour, so it owns the morning focus.",
+        }
+    ]
+
+
+def test_focus_bill_without_due_hint_loses_to_schedule():
+    result = _summary(
+        events=[_event(start="2026-11-20T17:00:00+07:00")],
+        bill_candidates=[_bill(due_hint=None)],
+        now=_at(8),
+    )
+    focus = result["focus"]
+    assert focus["winner"]["module"] == "schedule"
+    assert focus["scores"]["bills"] == pytest.approx(0.57)
+
+
+def test_focus_none_when_every_section_empty():
+    result = _summary(
+        events=None,
+        bill_candidates=None,
+        open_tasks=None,
+        holidays=None,
+        prayer=None,
+        source_status={},
+    )
+    assert result["focus"] is None
+
+
+def test_focus_records_broadcast_when_recorder_given():
+    recorded = []
+    result = _summary(now=_at(7), focus_record=recorded.append)
+    assert result["focus"] is not None
+    assert len(recorded) == 1
+    assert recorded[0]["action"] == "check_schedule"
+    assert recorded[0]["winner"]["module"] == "schedule"
+
+
+def test_select_morning_focus_directly():
+    """The pure focus helper: a holiday today is the only bid."""
+    focus = select_morning_focus(
+        day=DAY,
+        events=[],
+        bill_candidates=[],
+        open_tasks=[],
+        holidays=[
+            {"date": "2026-11-20", "local_name": "Hari Ini", "name": "Today Holiday"},
+        ],
+        now=_at(7),
+    )
+    assert focus is not None
+    assert focus["winner"]["module"] == "holidays"
+    assert focus["action"] == "note_holiday"
+    assert focus["scores"]["holidays"] == pytest.approx(0.61)
+    assert (
+        select_morning_focus(
+            day=DAY, events=[], bill_candidates=[], open_tasks=[], holidays=[], now=_at(7)
+        )
+        is None
+    )
