@@ -76,6 +76,10 @@ The rule is enforced in code, not just in this document:
   single-writer lock across containers, plan 5.2), both held for the gateway's lifetime:
   1. An exclusive non-blocking `flock` on `state.db` itself. A
      second process on the same volume is refused at open time.
+     Windows has no `flock`, so there the same layer is a one-byte
+     `msvcrt.locking` lock on a sidecar file `state.db.lock` next to
+     the database (a Windows byte-range lock is mandatory, so locking
+     `state.db` itself would block SQLite's own reads).
   2. A Postgres session-level advisory lock per agent id
      (`pg_try_advisory_lock` on a dedicated connection, keyed by a
      deterministic 64-bit hash of the agent id). A second process

@@ -112,10 +112,10 @@ def _user_site_rule(tmp_path):
 def test_package_json_name_and_bin():
     """The npm name is scoped (@puspaverse/puspa, the product scope)
     while the PyPI name stays plain `puspa`, so the names are checked
-    separately. The versions diverge on purpose too: the wrapper
-    version tracks the shim, the Python version tracks the PyPI
-    release, and the postinstall pin is what must match pyproject
-    (see test_postinstall_installs_the_pyproject_version)."""
+    separately. The wrapper version tracks the shim, the Python
+    version tracks the PyPI release; both are 0.1.1 now (Nero's
+    decision, 23 Nov 2026). The postinstall pin is what must match
+    pyproject (see test_postinstall_installs_the_pyproject_version)."""
     pkg = _package_json()
     assert pkg["name"] in {"@puspaverse/puspa", "@mirzasnowy/puspa"}
     assert pkg["bin"] == {"puspa": "./bin/puspa.js"}
@@ -161,8 +161,13 @@ def test_shim_skips_itself_when_its_own_bin_dir_is_first_on_path(tmp_path):
         console_script.write_text('#!/bin/sh\necho "REAL-CONSOLE-SCRIPT $@"\n', encoding="utf-8")
         console_script.chmod(0o755)
     env = _test_env([bin_dir, real_bin])
+    # Start the shim the way npm does. A bare "puspa" cannot be used on
+    # Windows: CreateProcess resolves it against the PARENT process's
+    # PATH (not `env`) and only tries .exe, so it would run the real
+    # pip console script from the venv instead of npm's puspa.cmd.
+    command = [str(bin_dir / "puspa.cmd")] if WINDOWS else ["puspa"]
     result = subprocess.run(
-        ["puspa", "--help"],
+        [*command, "--help"],
         capture_output=True,
         check=False,
         text=True,
@@ -195,9 +200,8 @@ def test_shim_falls_back_to_python_module(tmp_path):
 
 
 def test_postinstall_installs_the_pyproject_version(tmp_path):
-    """The postinstall target is puspa==<pyproject version>, not the
-    npm wrapper version — the two diverge (wrapper 0.1.1 fronts the
-    Python 0.1.0 release)."""
+    """The postinstall target is puspa==<pyproject version>; the pin
+    must match pyproject (both are 0.1.1 now)."""
     log = tmp_path / "calls.log"
     _fake_command(
         tmp_path,

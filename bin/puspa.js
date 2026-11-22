@@ -19,9 +19,9 @@
 // recognised because its text calls `bin/puspa.js`.
 "use strict";
 
-const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
+const { launch } = require("./launch.js");
 
 function findConsoleScript() {
   let self;
@@ -74,7 +74,7 @@ function findConsoleScript() {
 }
 
 function tryRun(command, args) {
-  const result = spawnSync(command, args, { stdio: "inherit" });
+  const result = launch(command, args, { stdio: "inherit" });
   if (result.error && result.error.code === "ENOENT") {
     return null; // command not found — try the next candidate
   }

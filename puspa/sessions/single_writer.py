@@ -12,6 +12,13 @@ process dies, which is what makes a crash safe instead of sticky):
    on the same volume fails at open time. The lock lives on an open
    file description, so the operating system releases it when the
    holder process exits for any reason, including ``kill -9``.
+   Windows has no ``flock`` (and no ``fcntl`` module), so there the
+   same lock is a one-byte ``msvcrt.locking`` lock on a sidecar file
+   ``state.db.lock`` next to the database. It is a sidecar on
+   purpose: a Windows byte-range lock is mandatory, so locking
+   ``state.db`` itself would stop SQLite from reading the locked
+   bytes. The semantics are the same: non-blocking, refused on
+   contention, released when the holder exits.
 2. A Postgres session-level advisory lock per ``agent_id``
    (``PostgresAdvisoryLock``). The lock key is a deterministic
    64-bit hash of the agent id, taken with
@@ -48,9 +55,9 @@ Honest limits (see also ``docs/session-storage.md``):
 from __future__ import annotations
 
 import errno
-import fcntl
 import hashlib
 import os
+import sys
 from pathlib import Path
 
 import psycopg
@@ -58,6 +65,54 @@ import psycopg
 from puspa.accounts.ports import resolve_dsn as _port_resolve_dsn
 
 from .errors import SingleWriterError
+
+# ``fcntl`` is a Unix-only module: importing it on Windows raises
+# ModuleNotFoundError, which used to make every ``puspa`` command die
+# at import time there (even ``puspa --help``). The platform check
+# is a plain ``sys.platform`` comparison so type checkers can follow it.
+if sys.platform == "win32":
+    import msvcrt
+
+    def _try_lock(fd: int) -> None:
+        """Take a one-byte exclusive lock at offset 0 without blocking.
+
+        ``msvcrt.locking`` locks from the current position, so seek
+        first. Raises ``OSError`` (``EACCES``) when another holder
+        has the lock.
+        """
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+
+    def _unlock(fd: int) -> None:
+        """Unlock explicitly: Windows frees locks of a closed handle
+        only after a delay, so a quick restart could still be refused."""
+        try:
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        except OSError:
+            pass  # closing the descriptor releases the lock anyway
+
+else:
+    import fcntl
+
+    def _try_lock(fd: int) -> None:
+        """Take an exclusive ``flock`` without blocking. Raises
+        ``OSError`` (``EAGAIN``/``EACCES``) when another holder has it."""
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def _unlock(fd: int) -> None:
+        """Nothing to do: ``flock`` is released when the descriptor closes."""
+
+
+#: errno values that mean "somebody else holds the lock" (as opposed
+#: to a real I/O failure): ``flock`` reports EAGAIN or EACCES,
+#: ``msvcrt.locking`` reports EACCES (EDEADLK after retries).
+_CONTENTION_ERRNOS = (errno.EACCES, errno.EAGAIN, errno.EDEADLK)
+
+#: True where the file lock must live on a sidecar file (see the
+#: module docstring); evaluated once so tests can build a Windows-mode
+#: copy of this module.
+_USE_SIDECAR = sys.platform == "win32"
 
 __all__ = [
     "DEFAULT_DSN",
@@ -129,6 +184,14 @@ class StateDbFileLock:
         self.db_path = Path(db_path)
         self._fd: int | None = None
 
+    @property
+    def lock_path(self) -> Path:
+        """The file the lock is taken on: ``state.db`` itself, except
+        on Windows where it is the sidecar ``state.db.lock``."""
+        if _USE_SIDECAR:
+            return self.db_path.with_name(self.db_path.name + ".lock")
+        return self.db_path
+
     def acquire(self) -> None:
         """Take the lock, or raise :class:`SingleWriterError`.
 
@@ -137,12 +200,12 @@ class StateDbFileLock:
         """
         if self._fd is not None:
             return
-        fd = os.open(self.db_path, os.O_RDWR | os.O_CREAT, 0o600)
+        fd = os.open(self.lock_path, os.O_RDWR | os.O_CREAT, 0o600)
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            _try_lock(fd)
         except OSError as exc:
             os.close(fd)
-            if exc.errno in (errno.EACCES, errno.EAGAIN):
+            if exc.errno in _CONTENTION_ERRNOS:
                 raise SingleWriterError(
                     f"another process already holds the writer lock on "
                     f"{self.db_path}; refusing to open a second writer "
@@ -155,6 +218,7 @@ class StateDbFileLock:
         """Release the lock. Idempotent."""
         fd, self._fd = self._fd, None
         if fd is not None:
+            _unlock(fd)
             os.close(fd)
 
     @property

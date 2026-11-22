@@ -4,8 +4,9 @@
 // The npm package only carries this shim; the agent itself is the
 // Python distribution `puspa` on PyPI. The wrapper version in
 // package.json tracks the shim, while PYPI_VERSION below tracks the
-// Python release the shim fronts — the two diverge on purpose (the
-// wrapper 0.1.1 fixes the install, the Python package stays 0.1.0).
+// Python release the shim fronts — the two are 0.1.1 together now:
+// the wrapper fix and the Python release that carries the Windows
+// fcntl fix.
 //
 // Python lookup is cross-platform: `python3`, then `python`, then
 // `py` (the Windows launcher — `python3` often does not exist on
@@ -30,13 +31,13 @@
 // publish, when `puspa` is not on PyPI yet.
 "use strict";
 
-const { spawnSync } = require("node:child_process");
+const { launch } = require("./launch.js");
 
-const PYPI_VERSION = "0.1.0";
+const PYPI_VERSION = "0.1.1";
 const PYTHONS = ["python3", "python", "py"];
 
 function run(command, args, options) {
-  const result = spawnSync(command, args, {
+  const result = launch(command, args, {
     stdio: "inherit",
     ...(options || {}),
   });
@@ -52,7 +53,7 @@ function run(command, args, options) {
 function probe(python) {
   // True when the interpreter runs at all (its --version output is
   // irrelevant); false when the command does not exist.
-  const result = spawnSync(python, ["--version"], { stdio: "ignore" });
+  const result = launch(python, ["--version"], { stdio: "ignore" });
   if (result.error && result.error.code === "ENOENT") {
     return false;
   }
@@ -63,7 +64,7 @@ function userSite(python) {
   // The interpreter's user site directory (on sys.path on every OS).
   // Null when the interpreter cannot tell us, in which case the
   // --target step is skipped.
-  const result = spawnSync(
+  const result = launch(
     python,
     ["-c", "import site; print(site.getusersitepackages())"],
     { encoding: "utf-8" }
