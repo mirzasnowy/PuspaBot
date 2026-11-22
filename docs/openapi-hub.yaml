@@ -1,0 +1,195 @@
+# Skill marketplace hub API (COW-03) — local-only surface.
+#
+# Split out from docs/openapi-pwa.yaml (Wave 30 precedent): the
+# hub is its own contract, and openapi-pwa.yaml is over the file
+# size ratchet baseline, so it may only shrink. The hub server
+# (hosted listings, ratings, payments) lives in the private repo
+# by the D-08 split; these three endpoints run on the user's own
+# machine over the local skill registry. All routes require
+# login; anonymous callers get 401 {"error": "belum masuk"}.
+openapi: 3.0.3
+info:
+  title: Puspa Skill Marketplace Hub
+  version: 0.1.0
+  description: |
+    Browse, search and one-click-install skills over the local
+    registry. Installing from GitHub, ClawHub or a URL is always
+    two steps: preview first (GET /api/hub/preview), then install
+    the exact previewed content (POST /api/hub/install with the
+    preview's sha256). A failed install is a 4xx with the reason,
+    never a pretend-success.
+paths:
+  /api/hub/skills:
+    get:
+      summary: List the locally browsable skills (shipped + installed).
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by id, name, description, or source (all terms must match).
+      responses:
+        "200":
+          description: The matching skills.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  skills:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/HubSkill"
+                  query:
+                    type: string
+  /api/hub/preview:
+    get:
+      summary: Preview a skill source (fetch only, install nothing).
+      parameters:
+        - name: source
+          in: query
+          required: true
+          schema:
+            type: string
+          description: >
+            owner/repo, owner/repo/path, a github.com URL, a
+            clawhub:owner/skill or clawhub.ai URL, or a direct
+            SKILL.md URL.
+      responses:
+        "200":
+          description: The fetched skill (slug, name, licence, sha256).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HubPreview"
+        "502":
+          description: The source could not be understood or fetched.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HubError"
+  /api/hub/install:
+    post:
+      summary: Install the previewed skill.
+      description: |
+        The POST itself is the user's explicit approval for the
+        exact slug + hash. expected_sha256 is required: content
+        that changed since the preview is refused (409).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source, expected_sha256]
+              properties:
+                source:
+                  type: string
+                expected_sha256:
+                  type: string
+      responses:
+        "200":
+          description: The skill was installed and enabled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  installed:
+                    type: object
+                    properties:
+                      skill_id:
+                        type: string
+                      version:
+                        type: string
+                      status:
+                        type: string
+                      sha256:
+                        type: string
+                      source:
+                        type: string
+        "400":
+          description: Missing source or expected_sha256, or an invalid source.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HubError"
+        "403":
+          description: No explicit approval for this skill (and hash).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HubError"
+        "409":
+          description: Hash mismatch (content changed since preview) or licence outside the allowlist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HubError"
+        "502":
+          description: The source could not be fetched.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HubError"
+  /hub:
+    get:
+      summary: The hub screen (Jinja template when dist/ is absent, SPA otherwise).
+      responses:
+        "200":
+          description: The hub page, with the local skill list.
+          content:
+            text/html:
+              schema:
+                type: string
+components:
+  schemas:
+    HubSkill:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        version:
+          type: string
+        origin:
+          type: string
+          enum: [builtin, user, library]
+        status:
+          type: string
+          enum: [builtin, disabled, enabled, removed]
+        source:
+          type: string
+        license:
+          type: string
+        price_credits:
+          type: integer
+        installed:
+          type: boolean
+    HubPreview:
+      type: object
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        license:
+          type: string
+          nullable: true
+        sha256:
+          type: string
+        source:
+          type: string
+    HubError:
+      type: object
+      properties:
+        error:
+          type: string

@@ -208,7 +208,12 @@ BASELINE_LINES = {
     # TelemetrySettings interface (hand-written, generation is
     # broken: see the AST-09 note in client.ts) plus the
     # get/save fetchers. The ratchet resumes from 1657.
-    "apps/pwa/src/api/client.ts": 1657,
+    # Skill marketplace hub (COW-03, 22 Nov 2026): +82 lines —
+    # the HubSkill / HubPreview / HubInstallResult interfaces
+    # (hand-written, contract in docs/openapi-hub.yaml) plus the
+    # fetch/preview/install fetchers. The ratchet resumes
+    # from 1739.
+    "apps/pwa/src/api/client.ts": 1739,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Shared-room delegation (B6): the delegation board, task

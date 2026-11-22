@@ -11,6 +11,7 @@ import { OfficeScreen } from "./screens/OfficeScreen";
 import { LiveViewScreen } from "./screens/LiveViewScreen";
 import { ReplayScreen } from "./screens/ReplayScreen";
 import { ArtifactsScreen } from "./screens/ArtifactsScreen";
+import { HubScreen } from "./screens/HubScreen";
 import { InsightsScreen } from "./screens/InsightsScreen";
 import { OnboardingScreen } from "./screens/OnboardingScreen";
 import { MockupScreen } from "./screens/MockupScreen";
@@ -59,6 +60,9 @@ export function App({ bootstrap, screen }: { bootstrap: Bootstrap; screen: Scree
       break;
     case "artifacts":
       content = <ArtifactsScreen bootstrap={bootstrap} />;
+      break;
+    case "hub":
+      content = <HubScreen />;
       break;
     case "insights":
       content = <InsightsScreen />;

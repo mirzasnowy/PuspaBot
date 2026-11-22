@@ -665,6 +665,88 @@ export function artifactDownloadUrl(agentId: string, artifactId: string): string
   return `/api/artifacts/${encodeURIComponent(agentId)}/${encodeURIComponent(artifactId)}`;
 }
 
+/**
+ * Skill marketplace hub (COW-03). These types are hand-written
+ * here (like `ComputerAllowlist` above), not generated: the hub
+ * contract lives in `docs/openapi-hub.yaml`, separate from the
+ * generated `docs/openapi-pwa.yaml` types.
+ */
+export interface HubSkill {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  origin: string;
+  status: string;
+  source: string;
+  license: string;
+  price_credits: number;
+  installed: boolean;
+}
+
+export interface HubPreview {
+  slug: string;
+  name: string;
+  description: string;
+  license: string | null;
+  sha256: string;
+  source: string;
+}
+
+export interface HubInstallResult {
+  ok: boolean;
+  installed: {
+    skill_id: string;
+    version: string;
+    status: string;
+    sha256: string;
+    source: string;
+  };
+}
+
+/** Hub: list the locally browsable skills, optionally filtered by query. */
+export function fetchHubSkills(
+  query: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ skills: HubSkill[]; query: string }> {
+  const path = query
+    ? `/api/hub/skills?q=${encodeURIComponent(query)}`
+    : "/api/hub/skills";
+  return getJson<{ skills: HubSkill[]; query: string }>(path, fetchFn);
+}
+
+/**
+ * Hub: preview a skill source (fetch only, install nothing).
+ * Throws ApiError with the server's reason when the source
+ * cannot be understood or fetched.
+ */
+export function previewHubSkill(
+  source: string,
+  fetchFn: FetchFn = fetch,
+): Promise<HubPreview> {
+  return getJson<HubPreview>(
+    `/api/hub/preview?source=${encodeURIComponent(source)}`,
+    fetchFn,
+  );
+}
+
+/**
+ * Hub: install the previewed skill. The caller passes the
+ * sha256 from the preview the user confirmed; content that
+ * changed since the preview is refused (409).
+ */
+export function installHubSkill(
+  source: string,
+  expectedSha256: string,
+  fetchFn: FetchFn = fetch,
+): Promise<HubInstallResult> {
+  return postJson<HubInstallResult>(
+    "/api/hub/install",
+    { source, expected_sha256: expectedSha256 },
+    fetchFn,
+  );
+}
+
 /** Read the autonomy dial state: five areas, ceilings, streaks, suggestions. */
 export function fetchAutonomyDial(fetchFn: FetchFn = fetch): Promise<DialState> {
   return getJson<DialState>("/api/autonomy-dial", fetchFn);
