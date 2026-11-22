@@ -73,9 +73,44 @@ def _not_logged_in() -> JSONResponse:
     return JSONResponse({"error": render_server_line("error.not_logged_in")}, status_code=401)
 
 
-def _post_chat_message(app, user_id: str, text: str) -> dict:
-    """Append a message to the user's chat, as ``POST /api/chat`` does."""
-    message = {"sender": "users", "text": text, "created_at": time.time()}
+def _post_chat_message(
+    app,
+    user_id: str,
+    text: str,
+    *,
+    audio_path=None,
+    mime_type=None,
+    transcript: str | None = None,
+) -> dict:
+    """Append a message to the user's chat, as ``POST /api/chat`` does.
+
+    ``audio_path`` is a kept voice recording: it is adopted as
+    an audio attachment on the message, carrying the transcript
+    with it, so the voice note stays playable and retrievable
+    instead of vanishing once transcribed.
+    """
+    message: dict = {
+        "sender": "users",
+        "text": text,
+        "created_at": time.time(),
+        "attachments": [],
+    }
+    if audio_path is not None:
+        from ..multimodal.attachments import AttachmentError
+
+        try:
+            attachment = app.state.attachment_store.adopt_file(
+                user_id,
+                audio_path,
+                mime_type or "audio/webm",
+                filename="voice-note",
+                transcript=transcript if transcript is not None else text,
+            )
+            message["attachments"] = [attachment.to_public_dict()]
+        except (AttachmentError, AttributeError):
+            # The recording is gone or the store is unavailable:
+            # the transcript still sends, without an attachment.
+            pass
     app.state.chat[user_id].append(message)
     app.state.event.append(
         {
@@ -162,13 +197,22 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
                 return JSONResponse({"error": str(exc)}, status_code=502)
             raise
         pending_id = uuid.uuid4().hex
-        _pending_store(request)[pending_id] = {
+        pending: dict = {
             "user_id": user_id,
             "transcript": result.transcript,
             "language": result.language,
             "engine": result.engine,
             "created_at": time.time(),
         }
+        # COW-19: a kept recording is a voice note, not just a
+        # transcript source — the confirm step adopts it as an
+        # audio attachment on the sent message. A deleted
+        # recording leaves no audio behind, as before.
+        if result.audio_path is not None:
+            pending["audio_path"] = result.audio_path
+            pending["mime_type"] = result.mime_type
+            pending["size_bytes"] = result.size_bytes
+        _pending_store(request)[pending_id] = pending
         return {
             "ok": True,
             "pending_id": pending_id,
@@ -197,7 +241,14 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
         text = str(data.get("text", "") or pending["transcript"]).strip()
         if not text:
             return JSONResponse({"error": "empty transcript"}, status_code=400)
-        message = _post_chat_message(request.app, user_id, text)
+        message = _post_chat_message(
+            request.app,
+            user_id,
+            text,
+            audio_path=pending.get("audio_path"),
+            mime_type=pending.get("mime_type"),
+            transcript=pending.get("transcript"),
+        )
         del _pending_store(request)[pending_id]
         return {"ok": True, "message": message}
 

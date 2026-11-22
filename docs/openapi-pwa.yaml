@@ -97,18 +97,23 @@ paths:
     post:
       tags: [chat]
       summary: Send a chat message
-      description: Appends the message to the group chat and records a user_message event.
+      description: Appends the message to the group chat and records a user_message event. A multipart post may also carry `files` (image, audio, or file attachments, COW-19); each file is validated and stored as an attachment on the message, and a refused file fails the send with 400. Text may be empty when files are attached.
       requestBody:
         required: true
         content:
-          application/x-www-form-urlencoded:
+          multipart/form-data:
             schema:
               type: object
-              required: [text]
               properties:
                 text:
                   type: string
-                  description: Message text
+                  description: Message text (may be empty when files are attached)
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Attachments (images, audio, PDF/text/csv/markdown; max 10 MiB each; no video)
       responses:
         "200":
           description: Message accepted
@@ -128,6 +133,58 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/chat/attachments/{attachment_id}:
+    get:
+      tags: [chat]
+      summary: Download a chat attachment
+      description: Serves the attachment bytes (or redirects to the provider URL for a provider-hosted image). Only the owner can download it; anyone else gets 404.
+      responses:
+        "200":
+          description: Attachment bytes
+        "404":
+          description: Unknown attachment
+  /api/multimodal/describe:
+    post:
+      tags: [chat]
+      summary: Describe an attached image
+      description: Asks the routed vision model about an image attachment (COW-19). 400 when the attachment is not an image or no vision route/key is configured, 502 when the vision provider fails.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [attachment_id]
+              properties:
+                attachment_id:
+                  type: string
+                prompt:
+                  type: string
+                  description: Question about the image (default asks for a description)
+      responses:
+        "200":
+          description: Vision description with provider and model
+  /api/multimodal/generate-image:
+    post:
+      tags: [chat]
+      summary: Generate an image into the chat
+      description: Generates a picture through the routed image provider, stores it as an attachment, and posts it as an assistant message (COW-19). 400 when no image route/key is configured or the prompt is empty, 502 when the provider fails.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt:
+                  type: string
+                size:
+                  type: string
+                  description: Image size, e.g. 1024x1024
+      responses:
+        "200":
+          description: Assistant message carrying the generated image
   /api/chat/cards:
     $ref: './openapi-chat-cards.yaml#/paths/~1api~1chat~1cards'
   /api/chat/cards/draft/{draft_id}:
@@ -2188,6 +2245,35 @@ components:
         widget:
           $ref: './openapi-chat-widgets.yaml#/components/schemas/ChatWidget'
           description: Optional interactive widget (interactive components in chat) shown inside the chat message
+        attachments:
+          type: array
+          description: Attachments on the message (COW-19); empty when the message is text only
+          items:
+            $ref: "#/components/schemas/ChatAttachment"
+    ChatAttachment:
+      type: object
+      required: [id, kind, mime_type, size_bytes, download_url]
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          description: image, audio, or file
+        mime_type:
+          type: string
+        size_bytes:
+          type: integer
+        filename:
+          type: string
+        transcript:
+          type: string
+          description: Voice-note transcript, when the attachment is a transcribed recording
+        url:
+          type: string
+          description: Provider URL, only for a provider-hosted (generated) image
+        download_url:
+          type: string
+          description: GET this URL to download the attachment (owner only)
     Agent:
       type: object
       required: [agent_id, name]

@@ -6,6 +6,11 @@
 <div id="riwayat">
 {% for p in message %}
 <div class="kartu"><strong>{{ p.sender }}</strong>: {{ p.text }}
+{% if p.attachments %}
+{% for a in p.attachments %}
+{% if a.kind == "image" %}<br><img src="{{ a.download_url }}" alt="{{ a.filename or 'gambar' }}" style="max-width:100%">{% elif a.kind == "audio" %}<br><a href="{{ a.download_url }}">Pesan suara{% if a.transcript %}: {{ a.transcript }}{% endif %}</a>{% else %}<br><a href="{{ a.download_url }}">{{ a.filename or 'Lampiran' }}</a>{% endif %}
+{% endfor %}
+{% endif %}
 {% if p.card %}
 {% if p.card.kind == "draft" %}
 <div class="kartu"><strong>{{ p.card.title }}</strong><br><pre>{{ p.card.body }}</pre>{% if p.card.mailto %}<a href="{{ p.card.mailto }}">Buka di Mail</a>{% endif %}</div>
@@ -22,8 +27,9 @@
 <p class="pesan-sub">Belum ada pesan. Sapa Puspa dulu.</p>
 {% endfor %}
 </div>
-<form hx-post="/api/chat" hx-swap="none" method="post">
-<input name="text" placeholder="Tulis pesan ke Puspa..." required style="width:70%" value="{{ shared_text or '' }}">
+<form hx-post="/api/chat" hx-swap="none" method="post" enctype="multipart/form-data">
+<input name="text" placeholder="Tulis pesan ke Puspa..." style="width:70%" value="{{ shared_text or '' }}">
+<input type="file" name="files" multiple accept="image/*,audio/*,.pdf,.txt,.csv,.md">
 <button type="submit">Kirim</button>
 </form>
 <p class="pesan-sub">Kirim foto untuk cek harga (fase 3). Angka bermakna punya tombol Bukti di panelnya.</p>
