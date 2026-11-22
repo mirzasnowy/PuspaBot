@@ -30,7 +30,8 @@ from puspa.service.cli import add_service_parser, run_service
 FULL_CLI_NOTE = (
     "The full PuspaBot CLI lands in a later step of the public/private "
     "split; this build ships `puspa web` / `puspa serve`, `puspa memory "
-    "export` / `import`, `puspa mcp`, `puspa service`, `puspa diagnostics export`, plus help."
+    "export` / `import`, `puspa mcp`, `puspa service`, `puspa diagnostics export`, "
+    "`puspa self-evolve`, plus help."
 )
 
 _KNOWN_COMMANDS = (
@@ -43,6 +44,7 @@ _KNOWN_COMMANDS = (
     "mcp",
     "service",
     "diagnostics",
+    "self-evolve",
 )
 
 #: Environment variable holding the export passphrase (never a
@@ -322,6 +324,33 @@ def build_parser() -> argparse.ArgumentParser:
     add_computer_parser(sub)
     add_mcp_parser(sub)
     add_service_parser(sub)
+    self_evolve = sub.add_parser(
+        "self-evolve",
+        help="Run the idle-time self-evolution review pass (COW-02).",
+        description=(
+            "Review an idle session for repeated successes worth turning into a trial "
+            "skill, durable memories worth proposing, and unfinished tasks worth "
+            "following up. Runs only when the session has been idle for at least "
+            "--idle-seconds (default 3600), unless --force is given."
+        ),
+    )
+    self_evolve.add_argument("--user", required=True, help="User id the session belongs to.")
+    self_evolve.add_argument(
+        "--session",
+        default=None,
+        help="Session (task) id to review, as a UUID; without it the whole user is reviewed.",
+    )
+    self_evolve.add_argument(
+        "--idle-seconds",
+        type=int,
+        default=3600,
+        help="Seconds of quiet before a session counts as idle (default: 3600).",
+    )
+    self_evolve.add_argument(
+        "--force",
+        action="store_true",
+        help="Run the review even when the session was active recently.",
+    )
     return parser
 
 
@@ -653,6 +682,36 @@ def _run_provider(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_self_evolve(args: argparse.Namespace) -> int:
+    """Run ``puspa self-evolve`` (lazy import: ``--help`` stays fast)."""
+    from puspa.memory.self_evolution import run_review_pass
+
+    try:
+        result = run_review_pass(
+            args.user,
+            session_id=args.session,
+            idle_seconds=args.idle_seconds,
+            force=args.force,
+        )
+    except ValueError as exc:
+        print(f"puspa self-evolve: failed: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, indent=2, default=str))
+    if not result["ran"]:
+        print(f"Session not idle yet ({result['reason']}); nothing reviewed.")
+        return 0
+    if not result["changes"]:
+        print("Idle review ran: no repeated pattern, no new memory, no stale task — no change.")
+        return 0
+    print(
+        f"Idle review ran: {len(result['skills_proposed'])} trial skill(s), "
+        f"{result['memories_proposed']} memor{'y' if result['memories_proposed'] == 1 else 'ies'} "
+        f"proposed, {len(result['tasks_followed_up'])} task(s) followed up; "
+        f"every change has a ledger entry."
+    )
+    return 0
+
+
 def _run_memory(args: argparse.Namespace) -> int:
     if args.memory_command == "export":
         return _run_memory_export(args)
@@ -687,6 +746,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_conversation(parsed)
     if parsed.command == "diagnostics":
         return _run_diagnostics(parsed)
+    if parsed.command == "self-evolve":
+        return _run_self_evolve(parsed)
     if parsed.command == "computer":
         if parsed.computer_command is None:
             parser.print_help()
