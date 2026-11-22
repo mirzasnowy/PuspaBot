@@ -16,6 +16,7 @@ import { OnboardingScreen } from "./screens/OnboardingScreen";
 import { MockupScreen } from "./screens/MockupScreen";
 import { RoomsScreen } from "./screens/RoomsScreen";
 import { MorningScreen } from "./screens/MorningScreen";
+import { DiagnosticsScreen } from "./screens/DiagnosticsScreen";
 import { PersonasScreen } from "./screens/PersonasScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { HintBanner } from "./components/HintBanner";
@@ -73,6 +74,9 @@ export function App({ bootstrap, screen }: { bootstrap: Bootstrap; screen: Scree
       break;
     case "morning":
       content = <MorningScreen />;
+      break;
+    case "diagnostics":
+      content = <DiagnosticsScreen />;
       break;
   }
   return (

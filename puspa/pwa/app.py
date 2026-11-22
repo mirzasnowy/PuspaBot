@@ -80,6 +80,10 @@ SCREENS = (
     "rooms",
     # P-07: morning summary + notes-to-actions (plan section 12.8).
     "morning",
+    # Redacted diagnostics export for bug reports: one-click
+    # download of logs + message trace + ledger events, secrets
+    # scrubbed before they leave the server.
+    "diagnostics",
 )
 
 
@@ -1035,6 +1039,7 @@ def create_app(
         chat_widgets_api,
         computer_api,
         controls_api,
+        diagnostics_api,
         drafts_api,
         graph_api,
         insights_api,
@@ -1107,6 +1112,9 @@ def create_app(
     chat_widgets_api.register_routes(app, need_user)
     # P-10: replay timeline + GIF export, same login resolver.
     replay_api.register_routes(app, need_user)
+    # Redacted diagnostics export for bug reports (one-click
+    # download); the screen itself needs no bootstrap data.
+    diagnostics_api.register_routes(app, need_user)
     # Artifacts + run-logs browser: the artifacts list +
     # download; the run-log half reuses the replay routes.
     artifacts_api.register_routes(app, need_user)
