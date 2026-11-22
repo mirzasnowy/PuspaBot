@@ -24,7 +24,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from puspa.computer.cli import add_computer_parser, run_computer
-from puspa.marketplace.cli import add_skill_parser, run_skill
+from puspa.marketplace.cli import add_skill_parser
+from puspa.marketplace.cli import run_skill as run_skill_hub
+from puspa.marketplace.skill_creator import (
+    add_create_subcommand,
+)
+from puspa.marketplace.skill_creator import (
+    run_skill as run_skill_create,
+)
 from puspa.mcp_server.cli import add_mcp_parser, run_mcp
 from puspa.service.cli import add_service_parser, run_service
 
@@ -32,7 +39,7 @@ FULL_CLI_NOTE = (
     "The full PuspaBot CLI lands in a later step of the public/private "
     "split; this build ships `puspa web` / `puspa serve`, `puspa memory "
     "export` / `import`, `puspa mcp`, `puspa service`, `puspa diagnostics export`, "
-    "`puspa self-evolve`, `puspa skill list` / `search` / `install`, plus help."
+    "`puspa self-evolve`, `puspa skill list` / `search` / `install` / `create`, plus help."
 )
 
 _KNOWN_COMMANDS = (
@@ -326,7 +333,11 @@ def build_parser() -> argparse.ArgumentParser:
     add_computer_parser(sub)
     add_mcp_parser(sub)
     add_service_parser(sub)
-    add_skill_parser(sub)
+    # One `skill` parser for both groups: hub list/search/install (COW-03)
+    # plus authoring create (COW-04). Two `add_parser("skill")` calls would
+    # overwrite each other, so create is added to the same parser.
+    skill_parser = add_skill_parser(sub)
+    add_create_subcommand(skill_parser)
     self_evolve = sub.add_parser(
         "self-evolve",
         help="Run the idle-time self-evolution review pass (COW-02).",
@@ -762,7 +773,9 @@ def main(argv: list[str] | None = None) -> int:
         if parsed.skill_command is None:
             parser.print_help()
             return 0
-        return run_skill(parsed)
+        if parsed.skill_command == "create":
+            return run_skill_create(parsed)
+        return run_skill_hub(parsed)
     if parsed.command == "service":
         if parsed.service_command is None:
             parser.print_help()
