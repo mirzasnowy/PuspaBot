@@ -58,8 +58,12 @@ from ..ledger import Ledger
 
 __all__ = ["get_receipt", "register_routes"]
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-TEMPLATE_DIR = BASE_DIR / "apps" / "pwa" / "templates"
+# Templates ship inside the package (see puspa/pwa/app.py): the
+# Jinja templates live at `puspa/pwa/templates/`, resolved relative
+# to this file, so they survive in an installed wheel. The editable
+# source of truth stays `apps/pwa/templates/`; the shipped copy is
+# kept byte-identical by tests/test_packaging_pwa.py.
+TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
 
 def _jinja():

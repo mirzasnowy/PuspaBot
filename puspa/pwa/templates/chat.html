@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Chat</h1>
+<p class="pesan-sub">Group chat: kamu, Puspa, dan agenmu di satu thread. Sub-agen terlipat secara default; @mention agen atau sub-agen untuk bicara langsung. Pesanmu selalu menyela tugas yang berjalan.</p>
+<div id="strip-kerja" hx-get="/office" hx-trigger="every 5s" hx-select="#strip-kerja" hx-swap="outerHTML"></div>
+<div id="riwayat">
+{% for p in message %}
+<div class="kartu"><strong>{{ p.sender }}</strong>: {{ p.text }}
+{% if p.attachments %}
+{% for a in p.attachments %}
+{% if a.kind == "image" %}<br><img src="{{ a.download_url }}" alt="{{ a.filename or 'gambar' }}" style="max-width:100%">{% elif a.kind == "audio" %}<br><a href="{{ a.download_url }}">Pesan suara{% if a.transcript %}: {{ a.transcript }}{% endif %}</a>{% else %}<br><a href="{{ a.download_url }}">{{ a.filename or 'Lampiran' }}</a>{% endif %}
+{% endfor %}
+{% endif %}
+{% if p.card %}
+{% if p.card.kind == "draft" %}
+<div class="kartu"><strong>{{ p.card.title }}</strong><br><pre>{{ p.card.body }}</pre>{% if p.card.mailto %}<a href="{{ p.card.mailto }}">Buka di Mail</a>{% endif %}</div>
+{% elif p.card.kind == "options" %}
+<div class="kartu"><strong>{{ p.card.question }}</strong><br>{% for o in p.card.options %}{{ o.label }}{% if o.detail %} — {{ o.detail }}{% endif %}<br>{% endfor %}</div>
+{% elif p.card.kind == "chart" %}
+<div class="kartu"><strong>{{ p.card.title }}</strong><br>{% for pt in p.card.points %}{{ pt.label }}: {{ pt.value }}<br>{% endfor %}</div>
+{% elif p.card.kind == "map" %}
+<div class="kartu"><strong>{{ p.card.title }}</strong><br>Peta OpenStreetMap, zoom {{ p.card.zoom }}.<br>{% for mk in p.card.markers %}Marker: {{ mk.label or mk.lat }}, {{ mk.lon }}<br>{% endfor %}{% if p.card.route %}Rute: {{ p.card.route|length }} titik.{% endif %}</div>
+{% endif %}
+{% endif %}
+</div>
+{% else %}
+<p class="pesan-sub">Belum ada pesan. Sapa Puspa dulu.</p>
+{% endfor %}
+</div>
+<form hx-post="/api/chat" hx-swap="none" method="post" enctype="multipart/form-data">
+<input name="text" placeholder="Tulis pesan ke Puspa..." style="width:70%" value="{{ shared_text or '' }}">
+<input type="file" name="files" multiple accept="image/*,audio/*,.pdf,.txt,.csv,.md">
+<button type="submit">Kirim</button>
+</form>
+<p class="pesan-sub">Kirim foto untuk cek harga (fase 3). Angka bermakna punya tombol Bukti di panelnya.</p>
+<div id="sse-status" class="pesan-sub">Live: SSE /sse aktif saat ada tugas berjalan.</div>
+<script>
+var es = new EventSource('/sse');
+es.onmessage = function(e) { document.getElementById('sse-status').textContent = 'Live: ' + e.data.slice(0, 120); };
+</script>
+{% endblock %}

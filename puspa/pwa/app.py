@@ -35,9 +35,22 @@ from jinja2 import Environment, FileSystemLoader
 
 from puspa.i18n.server_lines import render as render_server_line
 
+# PWA asset locations (queue item 1.1, Nov 2026): the Jinja templates
+# and static files ship INSIDE the `puspa` package
+# (`puspa/pwa/templates/`, `puspa/pwa/static/`), resolved relative to
+# this file, so they survive in an installed wheel. They used to be
+# resolved from the repo root (`apps/pwa/templates|static`), which the
+# wheel never carried, so an installed `puspa web` could not render
+# any screen. The editable source of truth stays `apps/pwa/`; the
+# shipped copies are kept byte-identical by
+# tests/test_packaging_pwa.py, which fails on any drift.
+# The React build (`apps/pwa/dist/`) is NOT shipped: it is a
+# gitignored `npm run build` artifact, rebuilt at deploy time, and
+# every screen falls back to its Jinja template when it is absent.
+_PACKAGE_DIR = Path(__file__).resolve().parent
+TEMPLATE_DIR = _PACKAGE_DIR / "templates"
+STATIC_DIR = _PACKAGE_DIR / "static"
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-TEMPLATE_DIR = BASE_DIR / "apps" / "pwa" / "templates"
-STATIC_DIR = BASE_DIR / "apps" / "pwa" / "static"
 DIST_DIR = BASE_DIR / "apps" / "pwa" / "dist"
 BOOTSTRAP_MARKER = "<!--PUSPA_BOOTSTRAP-->"
 
@@ -498,7 +511,7 @@ def create_app(
         return ctx
 
     # -- G32 WebUI lite + trial (BEGIN: lite-mode wiring, do not move) --
-    # The lite mode serves the Jinja templates (apps/pwa/templates/)
+    # The lite mode serves the Jinja templates (puspa/pwa/templates/)
     # with no React build, and the trial entry page (/trial) against
     # the G2 billing trial entitlements (puspa.pwa.lite). The trial
     # page is Jinja-only on purpose: it must work even when dist

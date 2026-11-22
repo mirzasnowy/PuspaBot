@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Wiki</h1>
+<p class="pesan-sub">Catatan yang dikurasi otomatis dari percakapan — dikelompokkan per topik, tiap entri menyebut sumbernya. Halaman dibuat ulang tiap build dari ringkasan konsolidasi, prosedur, dan fakta profil; bukan tempat mengedit (pengeditan grafik ada di tampilan second-brain).</p>
+<div id="wiki-topics"><p class="pesan-sub">Memuat topik…</p></div>
+<div id="wiki-page"></div>
+<div id="wiki-graph"></div>
+<p class="pesan-sub"><button id="wiki-build" type="button">Bangun ulang wiki sekarang</button> <span id="wiki-build-status"></span></p>
+<script>
+(function () {
+  var topicsEl = document.getElementById("wiki-topics");
+  var pageEl = document.getElementById("wiki-page");
+  var graphEl = document.getElementById("wiki-graph");
+  var statusEl = document.getElementById("wiki-build-status");
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]; }); }
+  function loadTopics() {
+    return fetch("/api/wiki/topics", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var topics = data.topics || [];
+        if (!topics.length) {
+          topicsEl.innerHTML = "<p class=\"pesan-sub\">Belum ada yang dikurasi. Jalankan build setelah agen mengonsolidasi percakapan.</p>";
+          return;
+        }
+        var html = "<ul>" + topics.map(function (t) {
+          return "<li><a href=\"#\" data-slug=\"" + esc(t.slug) + "\">" + esc(t.title) + "</a> — " + t.entries + " entri</li>";
+        }).join("") + "</ul>";
+        topicsEl.innerHTML = html;
+        topicsEl.querySelectorAll("a[data-slug]").forEach(function (a) {
+          a.addEventListener("click", function (ev) { ev.preventDefault(); loadPage(a.getAttribute("data-slug")); });
+        });
+      });
+  }
+  function loadPage(slug) {
+    fetch("/api/wiki/pages/" + encodeURIComponent(slug), { credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error("not found"); return r.json(); })
+      .then(function (page) {
+        pageEl.innerHTML = page.html;
+        return fetch("/api/wiki/graph?topic=" + encodeURIComponent(slug), { credentials: "same-origin" });
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (graph) {
+        if (!graph.nodes || !graph.nodes.length) {
+          graphEl.innerHTML = "<p class=\"pesan-sub\">Grafik topik ini masih kosong.</p>";
+          return;
+        }
+        var nodes = graph.nodes.map(function (n) { return "<li>" + esc(n.name) + (n.kind ? " (" + esc(n.kind) + ")" : "") + "</li>"; }).join("");
+        var edges = (graph.edges || []).map(function (e) { return "<li>" + esc(e.subject) + " — " + esc(e.relation) + " → " + esc(e.object) + "</li>"; }).join("");
+        graphEl.innerHTML = "<h2>Grafik topik (hanya baca)</h2><ul>" + nodes + "</ul>" + (edges ? "<h3>Kaitan</h3><ul>" + edges + "</ul>" : "");
+      })
+      .catch(function () { pageEl.innerHTML = "<p class=\"pesan-sub\">Topik tidak ditemukan.</p>"; graphEl.innerHTML = ""; });
+  }
+  document.getElementById("wiki-build").addEventListener("click", function () {
+    statusEl.textContent = "Membangun…";
+    fetch("/api/wiki/build", { method: "POST", credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (report) {
+        statusEl.textContent = "Selesai: " + report.pages_written + " halaman, " + report.entries + " entri.";
+        loadTopics();
+      })
+      .catch(function () { statusEl.textContent = "Build gagal."; });
+  });
+  loadTopics();
+})();
+</script>
+{% endblock %}

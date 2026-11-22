@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Artefak</h1>
+<p class="pesan-sub">Berkas yang dihasilkan tiap tugas bot, beserta log langkahnya dari buku kejadian asli — nama, jenis, ukuran, waktu, dan tugasnya.</p>
+{% for a in agents %}
+<div class="kartu"><strong>{{ a.name or a.agent_id }}</strong><br>Tugas: {{ a.purpose or "-" }}<br><a href="/api/artifacts/{{ a.agent_id }}">Lihat artefak agen ini (JSON)</a></div>
+{% else %}
+<p class="pesan-sub">Belum ada agen yang menghasilkan artefak.</p>
+{% endfor %}
+<p class="pesan-sub">Penjelajah artefak dan log langkah ada di aplikasi: pilih agen, buka tab Artefak untuk mengunduh berkasnya, atau tab Log Run untuk menelusuri tiap langkah beserta alasan dan hasilnya. Tanpa build aplikasi, buka <a href="/api/artifacts/puspa">/api/artifacts/puspa</a> untuk melihat daftar artefaknya.</p>
+{% endblock %}

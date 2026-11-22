@@ -1,7 +1,7 @@
 """WebUI lite: the no-install trial surface (G32).
 
 The lite mode is the same PWA served as server-rendered Jinja
-templates (``apps/pwa/templates/``) instead of the React build
+templates (``puspa/pwa/templates/``) instead of the React build
 (``apps/pwa/dist``). It exists for one job: let a trial user reach
 Puspa with zero install friction — one chat page plus an upgrade
 button (``templates/trial.html``), per the locked modes decision
