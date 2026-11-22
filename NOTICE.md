@@ -784,6 +784,30 @@ the standard library plus Puspa's existing sandbox modules
 fake runtimes/binaries for Docker paths, and a fake UDP DNS
 server for the pinned resolver (no live containers).
 
+# NOTICE - Kosmos Phase 2, V2-22 (22 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **NVIDIA/auto-ontology-server** (https://github.com/NVIDIA/auto-ontology-server,
+  Apache License 2.0), pattern only, studied at version `1.3.0`:
+  deterministic ontology building from sources (`semantic/`),
+  a typed catalog model with a parser (`catalog/`), deterministic
+  querying with entity coverage (`retrieval/`), and tool exposure
+  (`mcp/`). No auto-ontology code was copied, ported, vendored, or
+  depended on: all Puspa code in this item was written from scratch
+  in Python as deterministic functions over profile facts and causal
+  hypotheses (no LLM, no server, no enterprise connectors, no
+  frontend), in `puspa/memory/ontology_evolve.py`. Full license
+  text: Apache License 2.0
+  (https://www.apache.org/licenses/LICENSE-2.0).
+
+## New dependency: none
+
+No new dependency was added for V2-22. The module uses only the
+standard library plus Puspa's existing modules (profile facts,
+causal ledger, ledger, K9 review); tests run against the Postgres
+test database.
+
 # NOTICE - Kosmos Phase 2, V2-31 (22 Nov 2026)
 
 ## Pattern attribution (not code)
