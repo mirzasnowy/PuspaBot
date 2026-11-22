@@ -1,0 +1,21 @@
+-- Team workspaces audit log (hosted-only, cloud issue 16): the audit table
+-- lives in the hosted service now.
+--
+-- The public repo keeps this version file so the version numbers
+-- stay aligned with the hosted schema and already-applied
+-- databases keep a file for every recorded version. The table
+-- itself (team_audit_log) is created by the hosted service's own
+-- migration 0041_team_workspaces_audit.sql, not here: no public
+-- module reads or writes it. The up/down sections below are
+-- intentionally no-ops.
+--
+-- Apply with: python -m puspa.migrations up
+-- Never edit an applied migration: add a new numbered migration instead.
+-- Never run this file with psql -f: only the migration runner applies
+-- it, in order, inside one transaction per migration.
+
+-- migrate:up
+-- No-op: the team audit log lives in the hosted service (see header).
+
+-- migrate:down
+-- No-op: nothing created here, nothing to drop.
