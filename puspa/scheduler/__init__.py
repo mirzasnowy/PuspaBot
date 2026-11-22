@@ -25,6 +25,7 @@ Public surface:
 from .claim import InMemoryWorkQueue, WorkItem  # noqa: F401
 from .cron import CronJob, CronJobStore, cronjob_manage  # noqa: F401
 from .curriculum import CurriculumRunner, run_curriculum_tick  # noqa: F401
+from .mission_triggers import schedule_mission  # noqa: F401
 from .routines import (  # noqa: F401
     Routine,
     RoutineError,

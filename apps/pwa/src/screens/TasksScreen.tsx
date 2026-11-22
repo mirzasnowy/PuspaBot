@@ -22,6 +22,7 @@ import {
   decidedApprovals,
 } from "../state/approvals";
 import { ApprovalCard } from "../components/ApprovalCard";
+import { MissionsSection } from "../components/MissionsSection";
 
 export function TasksScreen({ bootstrap }: { bootstrap: Bootstrap }) {
   const [tasks, setTasks] = useState(initialTasksState);
@@ -210,6 +211,8 @@ export function TasksScreen({ bootstrap }: { bootstrap: Bootstrap }) {
         punya endpoint baca di API ini, jadi jadwal hanya terlihat di layar Kantor saat tugasnya
         berjalan — endpoint baca jadwal adalah follow-up.
       </p>
+
+      <MissionsSection />
     </div>
   );
 }

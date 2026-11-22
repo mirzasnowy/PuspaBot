@@ -1167,6 +1167,7 @@ def create_app(
         language_api,
         live_view_api,
         memory_api,
+        missions_api,
         mockup_api,
         names_api,
         onboarding_api,
@@ -1257,6 +1258,10 @@ def create_app(
     # creator's share is Puspa credits only, never cash, and the
     # credit value stays below the price paid.
     support_api.register_routes(app, need_user)
+    # Missions with checklist (V2-42): one multi-step goal the
+    # agent works through in the background, with a step-ask
+    # when a step needs a decision and a webhook that wakes it.
+    missions_api.register_routes(app, need_user)
     insights_api.register_routes(app, need_user)
     onboarding_api.register_routes(app, need_user)
     drafts_api.register_routes(app, need_user)
