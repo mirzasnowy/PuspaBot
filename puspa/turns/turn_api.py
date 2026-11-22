@@ -178,7 +178,12 @@ def make_routed_model_call(
       and model, with the vault key for that provider. With no
       stored chat route the user's model selection is the route
       (hosted means this tier behaves exactly like the OpenRouter
-      adapter: the chain entry's model on OpenRouter).
+      adapter: the chain entry's model on OpenRouter). When the
+      routed provider has at least two accounts (several BYOK keys
+      or a key plus a subscription login), the call goes through
+      the provider pool (see :func:`_call_subscription_via_pool`):
+      a quota or transport failure on one account fails over to
+      the next instead of killing the turn.
     - Cheap/free tiers: exactly the OpenRouter adapter (the chain
       entry's model), so a routed provider that 429s or fails
       auth still falls through to the existing safety net instead
@@ -202,6 +207,22 @@ def make_routed_model_call(
                         f"chat is routed to provider {routed.get('provider')!r} with no model: "
                         "pick a model in Settings first"
                     )
+                pool = _pool_for_provider(routed.get("provider"), user_id, dsn=dsn)
+                if pool is not None:
+                    return _call_subscription_via_pool(
+                        pool,
+                        wire_messages=wire_messages,
+                        model=model,
+                        routed=routed,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        timeout=timeout,
+                        transport=transport,
+                        client=client,
+                        user_id=user_id,
+                        dsn=dsn,
+                        tools=tools,
+                    )
                 try:
                     result = complete_messages(
                         wire_messages,
@@ -219,15 +240,7 @@ def make_routed_model_call(
                     )
                 except CompletionError as exc:
                     raise _completion_error_to_failure(exc) from exc
-                return ModelReply(
-                    text=result.text,
-                    tool_calls=list(result.tool_calls),
-                    input_tokens=result.input_tokens,
-                    output_tokens=result.output_tokens,
-                    finish_reason=result.finish_reason,
-                    provider=result.provider,
-                    model=result.model,
-                )
+                return _reply_from_result(result)
         return make_openrouter_model_call(
             key_resolver=key_resolver,
             transport=transport,
@@ -238,6 +251,113 @@ def make_routed_model_call(
         )(entry, wire_messages, tools)
 
     return model_call
+
+
+def _reply_from_result(result) -> ModelReply:
+    """Build a :class:`ModelReply` from a router ``CompletionResult``."""
+
+    return ModelReply(
+        text=result.text,
+        tool_calls=list(result.tool_calls),
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        finish_reason=result.finish_reason,
+        provider=result.provider,
+        model=result.model,
+    )
+
+
+def _pool_for_provider(provider, user_id, dsn=None):
+    """The pool for a routed provider, or None when pooling adds nothing.
+
+    Only a pool with at least two accounts routes traffic: with one
+    account there is nothing to fail over to, and the direct call
+    stays bit-identical. A pool-build failure also falls back to
+    the direct call, so the pool can never break a completion that
+    would have worked. The failure modes the build can hit here
+    are a missing or corrupt vault entry (``KeyError`` /
+    ``ValueError``) and an OS-level failure reading the vault
+    (``OSError``); anything else propagates, as before.
+    """
+
+    if not provider:
+        return None
+    try:
+        from puspa.router.pool import provider_pool_for_user
+
+        pool = provider_pool_for_user(provider, user_id, dsn=dsn)
+    except (KeyError, ValueError, OSError):
+        return None
+    if pool is None or len(pool.accounts) < 2:
+        return None
+    return pool
+
+
+def _call_subscription_via_pool(
+    pool,
+    *,
+    wire_messages,
+    model,
+    routed,
+    temperature,
+    max_tokens,
+    timeout,
+    transport,
+    client,
+    user_id,
+    dsn,
+    tools,
+) -> ModelReply:
+    """Run one subscription-tier call through ``pool`` (V2-40 wiring).
+
+    Each pool attempt resolves its own account's credential at call
+    time and calls :func:`complete_messages` with it, so a quota or
+    transport failure on one key fails over to the next account of
+    the same provider instead of killing the turn. The tiered
+    fallback above still sees the outcome: a non-retryable failure
+    raises immediately, and when every account fails the tier
+    raises a retryable :class:`ProviderError`, so the chain falls
+    through to the cheap/free safety net.
+
+    The caller's ``key_resolver`` is deliberately NOT forwarded
+    here: it would hand the same key to every account and defeat
+    the failover. Per-account credentials come from the vault
+    (BYOK) or the OAuth refresher, resolved at call time.
+    """
+
+    from puspa.router.pool import AllAccountsFailed, call_with_pool, resolve_credential
+
+    def _attempt(account):
+        key = resolve_credential(account, user_id=user_id, dsn=dsn)
+        try:
+            result = complete_messages(
+                wire_messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
+                base_url=routed.get("base_url"),
+                api_key=key,
+                transport=transport,
+                client=client,
+                tools=tools,
+                provider=routed.get("provider"),
+            )
+        except CompletionError as exc:
+            raise _completion_error_to_failure(exc) from exc
+        return CallResult(
+            value=_reply_from_result(result),
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+        )
+
+    try:
+        reply = call_with_pool(pool, _attempt).value
+    except AllAccountsFailed as exc:
+        raise ProviderError(str(exc)) from exc
+    if not isinstance(reply, ModelReply):
+        raise ProviderError(f"pool returned {type(reply).__name__}, not a ModelReply")
+    return reply
 
 
 def call_model(

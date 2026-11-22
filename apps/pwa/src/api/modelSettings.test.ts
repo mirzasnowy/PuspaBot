@@ -3,6 +3,7 @@ import {
   ApiError,
   deleteByokKey,
   getModelSettings,
+  getPoolQuota,
   saveByokKey,
   saveModelSettings,
 } from "./client";
@@ -82,5 +83,69 @@ describe("saveByokKey / deleteByokKey", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/api/model-settings/byok-key?provider=openrouter");
     expect(init.method).toBe("DELETE");
+  });
+});
+
+describe("getPoolQuota", () => {
+  it("fetches quota bars for the provider", async () => {
+    const fetchMock = mockFetch({
+      provider: "openrouter",
+      strategy: "rotate",
+      accounts: [
+        {
+          account_id: "openrouter:1",
+          provider: "openrouter",
+          kind: "byok",
+          label: "openrouter key 1",
+          disabled: false,
+          available: true,
+          skip_reason: null,
+          rate_limited: false,
+          cooling_until_in_seconds: 0,
+          fails: 0,
+          strikes: 0,
+          last_used: null,
+          requests_last_minute: 0,
+          max_rpm: 0,
+          max_concurrent: 0,
+          active_streams: 0,
+          windows: [
+            {
+              window: "5h",
+              limit_tokens: 1000,
+              tokens_used: 250,
+              tokens_remaining: 750,
+              used_fraction: 0.25,
+              reset_in_seconds: 18000,
+              exhausted: false,
+            },
+            {
+              window: "weekly",
+              limit_tokens: null,
+              tokens_used: null,
+              tokens_remaining: null,
+              used_fraction: null,
+              reset_in_seconds: null,
+              exhausted: false,
+            },
+          ],
+        },
+      ],
+    });
+    const result = await getPoolQuota("openrouter", fetchMock as unknown as typeof fetch);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/model-settings/pool-quota?provider=openrouter",
+    );
+    expect(result.provider).toBe("openrouter");
+    expect(result.accounts).toHaveLength(1);
+    expect(result.accounts[0].windows[0].used_fraction).toBe(0.25);
+    expect(result.accounts[0].windows[1].used_fraction).toBeNull();
+  });
+
+  it("returns empty accounts when the user has no credential", async () => {
+    const fetchMock = mockFetch({ provider: "openrouter", strategy: "rotate", accounts: [] });
+    const result = await getPoolQuota("openrouter", fetchMock as unknown as typeof fetch);
+    expect(result.accounts).toEqual([]);
   });
 });

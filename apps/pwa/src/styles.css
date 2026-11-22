@@ -66,6 +66,21 @@ select {
   opacity: 0.6;
   font-size: 13px;
 }
+/* V2-40: quota bars next to the model choice (gsb /ui pattern). */
+.quota-bar {
+  display: inline-block;
+  width: 120px;
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.quota-bar > span {
+  display: block;
+  height: 100%;
+  background: #0f766e;
+}
 .error {
   color: #b91c1c;
   font-size: 13px;

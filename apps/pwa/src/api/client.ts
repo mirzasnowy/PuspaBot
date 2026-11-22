@@ -30,6 +30,9 @@ export type GatewayPolicy = components["schemas"]["GatewayPolicy"];
 export type GatewayDecision = components["schemas"]["GatewayDecision"];
 export type OperatorLogLine = components["schemas"]["OperatorLogLine"];
 export type ModelSettings = components["schemas"]["ModelSettings"];
+export type PoolQuotaResponse = components["schemas"]["PoolQuotaResponse"];
+export type PoolQuotaAccount = components["schemas"]["PoolQuotaAccount"];
+export type PoolQuotaWindow = components["schemas"]["PoolQuotaWindow"];
 export type VoiceUpload = components["schemas"]["VoiceUpload"];
 export type VoiceStatus = components["schemas"]["VoiceStatus"];
 export type VoiceSettings = components["schemas"]["VoiceSettings"];
@@ -1033,6 +1036,22 @@ export async function deleteByokKey(
   );
   if (!response.ok) throw new ApiError(response.status, await readError(response));
   return (await response.json()) as { ok: boolean };
+}
+
+/**
+ * Read the provider pool's quota bars for Settings (V2-40, gsb /ui
+ * pattern). One entry per account the user holds for `provider`,
+ * with used fraction and remaining tokens per 5h / weekly window.
+ * Never returns key material.
+ */
+export function getPoolQuota(
+  provider: string,
+  fetchFn: FetchFn = fetch,
+): Promise<PoolQuotaResponse> {
+  return getJson<PoolQuotaResponse>(
+    `/api/model-settings/pool-quota?provider=${encodeURIComponent(provider)}`,
+    fetchFn,
+  );
 }
 
 /** Read the user's per-capability routing table (COW-08). Never returns key material. */

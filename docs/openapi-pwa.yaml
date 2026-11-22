@@ -1497,6 +1497,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/model-settings/pool-quota:
+    get:
+      tags: [settings]
+      summary: Read the provider pool's quota bars for Settings (V2-40)
+      description: |
+        One entry per account the user holds for `provider` (BYOK
+        keys in the vault, OAuth subscription login): used fraction
+        and remaining tokens per 5h / weekly window, the reset
+        countdown, and availability — the gsb /ui quota-bar pattern.
+        Never returns key material: only usage figures and labels.
+      parameters:
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+          example: openrouter
+      responses:
+        "200":
+          description: Quota bars (empty accounts when no credential exists)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoolQuotaResponse"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/providers:
     get:
       tags: [settings]
@@ -1890,6 +1920,99 @@ components:
         has_byok_key:
           type: boolean
           description: Whether a BYOK key for `provider` exists in the vault.
+    PoolQuotaWindow:
+      type: object
+      description: |
+        One quota window of one pool account (V2-40). `used_fraction`
+        is null when the window has no registered limit (untracked:
+        the account is usable, its usage is just not measured yet).
+      required: [window, limit_tokens, tokens_used, tokens_remaining, used_fraction, reset_in_seconds, exhausted]
+      properties:
+        window:
+          type: string
+          enum: ["5h", weekly]
+        limit_tokens:
+          type: integer
+          nullable: true
+        tokens_used:
+          type: integer
+          nullable: true
+        tokens_remaining:
+          type: integer
+          nullable: true
+        used_fraction:
+          type: number
+          nullable: true
+        reset_in_seconds:
+          type: integer
+          nullable: true
+        exhausted:
+          type: boolean
+    PoolQuotaAccount:
+      type: object
+      description: |
+        One pool account's quota bar (V2-40). Carries no credential
+        material: only the label, availability, and usage figures.
+      required: [account_id, provider, kind, label, disabled, available, skip_reason, rate_limited, cooling_until_in_seconds, fails, strikes, last_used, requests_last_minute, max_rpm, max_concurrent, active_streams, windows]
+      properties:
+        account_id:
+          type: string
+          example: openrouter:1
+        provider:
+          type: string
+          example: openrouter
+        kind:
+          type: string
+          enum: [byok, oauth]
+        label:
+          type: string
+          example: openrouter key 1
+        disabled:
+          type: boolean
+        available:
+          type: boolean
+        skip_reason:
+          type: string
+          nullable: true
+          description: Why the account cannot serve now (disabled, cooling, quota_exhausted, rate_limited), null when ready.
+        rate_limited:
+          type: boolean
+        cooling_until_in_seconds:
+          type: integer
+        fails:
+          type: integer
+        strikes:
+          type: integer
+        last_used:
+          type: string
+          nullable: true
+        requests_last_minute:
+          type: integer
+        max_rpm:
+          type: integer
+        max_concurrent:
+          type: integer
+        active_streams:
+          type: integer
+        windows:
+          type: array
+          items:
+            $ref: "#/components/schemas/PoolQuotaWindow"
+    PoolQuotaResponse:
+      type: object
+      description: Quota bars for one provider's pool (V2-40).
+      required: [provider, strategy, accounts]
+      properties:
+        provider:
+          type: string
+          example: openrouter
+        strategy:
+          type: string
+          enum: [rotate, lru, fill-first]
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/PoolQuotaAccount"
     ProviderStatus:
       type: object
       description: |
