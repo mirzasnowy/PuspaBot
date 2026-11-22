@@ -45,6 +45,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from .api_version import API_VERSION_MAJOR
 from .context_engine import ContextEngine
 from .errors import PluginConfigError, PluginStructureError
 
@@ -146,7 +147,10 @@ class PluginContext:
 
     def __init__(self, plugin_id: str, *, single_select=None):
         self.plugin_id = plugin_id
-        self.api_version = 1
+        #: Major part of the published plugin API version this
+        #: context implements (the full "MAJOR.MINOR" string is
+        #: ``puspa.plugins.api_version.API_VERSION``).
+        self.api_version = API_VERSION_MAJOR
         #: Per-plugin shared state (see the module docstring).
         self.shared: dict = {}
         self._tools: dict[str, ToolDefinition] = {}

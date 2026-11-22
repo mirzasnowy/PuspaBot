@@ -56,6 +56,8 @@ def test_load_echo_plugin_by_module_path():
         "plugin_id": "echo",
         "origin": "module",
         "location": ECHO_MODULE,
+        "api_version": "1.0",
+        "permissions": [],
         "tools": ["plugin_echo"],
         "hooks": ["after_run"],
         "commands": ["echo"],

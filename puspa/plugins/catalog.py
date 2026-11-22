@@ -21,7 +21,15 @@ Admission rules (mirroring hermes-agent's catalog README):
 - ``repository`` is an https URL on a known forge;
 - ``kind`` is ``general``, ``memory_provider``, or
   ``context_engine``;
-- ``api_version`` must match the current published API version;
+- ``api_version`` must be compatible with the host's
+  published API (``puspa.plugins.api_version``): same major
+  and a minor no newer than the host's — so a manifest
+  written against API 1.0 keeps passing on a 1.x host, while
+  a 2.x manifest (or a 1.3 manifest on a 1.0 host) fails
+  admission with a clear reason;
+- ``permissions`` (optional) is a list of declared
+  permission names (``puspa.plugins.permissions``); an
+  unknown name fails admission;
 - ``dependencies`` (optional) is a list of pip requirement
   strings; ``price_credits`` (optional, G3-owned pricing) is a
   non-negative integer when present.
@@ -40,7 +48,9 @@ from pathlib import Path
 
 import yaml
 
+from .api_version import API_VERSION, is_compatible, parse_api_version
 from .errors import PluginStructureError
+from .permissions import validate_permissions
 
 __all__ = [
     "ALLOWED_KINDS",
@@ -53,6 +63,8 @@ __all__ = [
 ]
 
 #: Current published plugin API version (must match plugin_api.json).
+#: Kept as the major number for backwards compatibility; the
+#: full version string lives in ``puspa.plugins.api_version``.
 CATALOG_API_VERSION = 1
 
 #: Allowed plugin kinds (matches the single-select kinds + general).
@@ -128,9 +140,21 @@ def validate_manifest(manifest) -> list[str]:
         problems.append("entry_point must be a third-party module, not a puspa.* module")
     if manifest["kind"] not in ALLOWED_KINDS:
         problems.append(f"kind {manifest['kind']!r} must be one of {', '.join(ALLOWED_KINDS)}")
-    if manifest["api_version"] != CATALOG_API_VERSION:
-        problems.append(
-            f"api_version must be {CATALOG_API_VERSION}, got {manifest['api_version']!r}"
+    try:
+        declared_api = parse_api_version(manifest["api_version"])
+    except PluginStructureError as exc:
+        problems.append(str(exc))
+    else:
+        if not is_compatible(declared_api):
+            problems.append(
+                f"api_version {manifest['api_version']!r} is not compatible "
+                f"with this PuspaBot (plugin API {API_VERSION}): "
+                "the major must match and the minor must be no newer "
+                "than the host's"
+            )
+    if "permissions" in manifest:
+        problems.extend(
+            f"permissions: {problem}" for problem in validate_permissions(manifest["permissions"])
         )
     dependencies = manifest.get("dependencies", [])
     if not isinstance(dependencies, list) or not all(

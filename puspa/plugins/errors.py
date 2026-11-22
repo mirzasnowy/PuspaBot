@@ -8,6 +8,7 @@ problem, so a broken plugin is reported, never silently skipped.
 from __future__ import annotations
 
 __all__ = [
+    "PluginApiVersionError",
     "PluginConfigError",
     "PluginError",
     "PluginShadowError",
@@ -28,6 +29,19 @@ class PluginStructureError(PluginError):
     ``register`` raises, when a registration is invalid (bad name,
     duplicate tool, unknown hook event), or when a manifest or
     definition file fails validation.
+    """
+
+
+class PluginApiVersionError(PluginStructureError):
+    """A plugin declares a plugin API version this host cannot run.
+
+    Raised when a plugin's declared ``PLUGIN_API_VERSION`` (or
+    manifest ``api_version``) has a different major than the
+    host, or a minor newer than the host's. The message names
+    the plugin, both versions, and what to do. It subclasses
+    ``PluginStructureError`` so existing load-failure handling
+    (``load_plugins`` collects it per source) treats it like
+    any other malformed plugin.
     """
 
 

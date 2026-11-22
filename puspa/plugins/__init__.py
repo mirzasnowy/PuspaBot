@@ -9,6 +9,13 @@ lint (``puspa.plugins.boundary``) enforces it.
 
 - ``loader`` — discovery from user / project / pip entry points
   plus ``load_plugin`` (the G3 marketplace installer seam).
+  The loader enforces the declared plugin API version and
+  declared permissions before/after ``register(ctx)`` runs.
+- ``api_version`` — the versioned SDK core: the current API
+  version, parsing, and the compatibility rule (same major,
+  minor no newer than the host).
+- ``permissions`` — the permission names a plugin may declare
+  and the load-time enforcement of the registration kinds.
 - ``context`` — ``PluginContext`` (the ``ctx`` API).
 - ``single_select`` — the single-select registry + the G24
   memory-provider bridge.
@@ -24,6 +31,16 @@ lint (``puspa.plugins.boundary``) enforces it.
 
 from __future__ import annotations
 
+from .api_version import (
+    API_VERSION,
+    API_VERSION_MAJOR,
+    API_VERSION_MINOR,
+    ApiVersion,
+    check_api_version,
+    is_compatible,
+    parse_api_version,
+    resolve_api_version,
+)
 from .boundary import Violation, lint_tree
 from .catalog import (
     check_repository_alive,
@@ -40,6 +57,7 @@ from .context import (
 )
 from .context_engine import ContextEngine
 from .errors import (
+    PluginApiVersionError,
     PluginConfigError,
     PluginError,
     PluginShadowError,
@@ -58,6 +76,12 @@ from .loader import (
     run_command,
 )
 from .mcp import check_mcp_readiness, check_readiness, load_mcp_definition
+from .permissions import (
+    KNOWN_PERMISSIONS,
+    check_permissions,
+    used_permissions,
+    validate_permissions,
+)
 from .single_select import (
     SINGLE_SELECT_KINDS,
     SingleSelectRegistry,
@@ -66,13 +90,19 @@ from .single_select import (
 )
 
 __all__ = [
+    "API_VERSION",
+    "API_VERSION_MAJOR",
+    "API_VERSION_MINOR",
     "ENTRY_POINT_GROUP",
     "HOOK_EVENTS",
+    "KNOWN_PERMISSIONS",
     "SINGLE_SELECT_KINDS",
+    "ApiVersion",
     "CommandDefinition",
     "ContextEngine",
     "HookDefinition",
     "LoadResult",
+    "PluginApiVersionError",
     "PluginConfigError",
     "PluginContext",
     "PluginError",
@@ -85,18 +115,25 @@ __all__ = [
     "UnknownPluginError",
     "UnknownSingleSelectKindError",
     "Violation",
+    "check_api_version",
     "check_mcp_readiness",
+    "check_permissions",
     "check_readiness",
     "check_repository_alive",
     "discover_plugins",
     "install_into_provider_registry",
+    "is_compatible",
     "lint_tree",
     "load_catalog",
     "load_manifest",
     "load_mcp_definition",
     "load_plugin",
     "load_plugins",
+    "parse_api_version",
+    "resolve_api_version",
     "run_command",
     "select_single",
+    "used_permissions",
     "validate_manifest",
+    "validate_permissions",
 ]
