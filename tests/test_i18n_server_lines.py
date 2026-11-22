@@ -20,11 +20,13 @@ from puspa.i18n import (
     UnknownMessageKey,
     all_keys,
     available_locales,
+    catalog,
     check_locales,
     clear_fallback_records,
     fallback_records,
     load_locale_file,
     load_locales,
+    merged_catalog,
     render,
     validate_locales,
 )
@@ -33,18 +35,19 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 LOCALES_DIR = REPO_ROOT / "puspa" / "i18n" / "locales"
 
 
-def test_default_locale_is_indonesian_and_only_locale():
+def test_default_locale_is_indonesian_and_both_locales_ship():
     assert DEFAULT_LOCALE == "id"
-    assert available_locales() == ("id",)
+    assert available_locales() == ("en", "id")
 
 
 def test_catalog_has_every_key_the_code_renders():
     """The shipped catalog covers all keys the wired code asks for."""
     keys = all_keys()
-    assert len(keys) == 36
+    assert len(keys) == 62
     assert "error.not_logged_in" in keys
     assert "error.unknown_request" in keys
     assert "error.spending_limit_denied" in keys
+    assert "cli.unknown_command" in keys
     for flag in (
         "first_modules_visit",
         "first_approval",
@@ -54,6 +57,31 @@ def test_catalog_has_every_key_the_code_renders():
     ):
         for field in ("title", "body", "action_label"):
             assert f"hint.{flag}.{field}" in keys
+    for screen in (
+        "chat",
+        "tasks",
+        "modules",
+        "connectors",
+        "memory",
+        "settings",
+        "personas",
+        "office",
+        "live",
+        "replay",
+        "artifacts",
+        "insights",
+        "onboarding",
+        "mockup",
+        "rooms",
+        "morning",
+        "diagnostics",
+        "hub",
+        "wiki",
+    ):
+        assert f"ui.nav.{screen}" in keys
+    assert "ui.chat.input_placeholder" in keys
+    assert "ui.login.title" in keys
+    assert "ui.settings.language.title" in keys
 
 
 def test_render_plain_sentence():
@@ -94,13 +122,26 @@ def test_render_extra_variables_are_ignored():
     assert render("error.not_logged_in", unused="whatever") == "belum masuk"
 
 
+def test_render_english_catalog():
+    assert render("error.not_logged_in", locale="en") == "not signed in"
+    assert render("error.unknown_request", locale="en") == "unknown request"
+    assert render("hint.first_modules_visit.title", locale="en") == "Modules add capabilities"
+    assert render("ui.nav.tasks", locale="en") == "Tasks"
+    assert render("ui.chat.input_placeholder", locale="en", bot="Puspa") == (
+        "Write a message to Puspa..."
+    )
+    assert render("cli.unknown_command", locale="en", command="'frobnicate'") == (
+        "unknown command: 'frobnicate'"
+    )
+
+
 def test_render_unknown_locale_falls_back_to_indonesian_and_records_it():
     clear_fallback_records()
-    assert render("error.not_logged_in", locale="en") == "belum masuk"
+    assert render("error.not_logged_in", locale="fr") == "belum masuk"
     assert render("error.not_logged_in", locale="xx") == "belum masuk"
     records = fallback_records()
     assert len(records) == 2
-    assert records[0].requested_locale == "en"
+    assert records[0].requested_locale == "fr"
     assert records[0].key == "error.not_logged_in"
     assert records[0].used_locale == "id"
     assert records[1].requested_locale == "xx"
@@ -111,10 +152,49 @@ def test_render_unknown_locale_falls_back_to_indonesian_and_records_it():
 def test_render_unknown_locale_and_unknown_key_still_raises():
     clear_fallback_records()
     with pytest.raises(UnknownMessageKey):
-        render("no_such_key", locale="en")
+        render("no_such_key", locale="xx")
     # The fallback was recorded even though the render then failed.
-    assert fallback_records()[0].requested_locale == "en"
+    assert fallback_records()[0].requested_locale == "xx"
     clear_fallback_records()
+
+
+def test_render_missing_key_in_locale_falls_back_per_key(monkeypatch):
+    """A key the requested locale is missing renders the Indonesian
+    sentence for that key (recorded) — never a blank, never the
+    wrong language for keys that *are* translated."""
+    from puspa.i18n import server_lines
+
+    monkeypatch.setattr(
+        server_lines,
+        "_catalogs",
+        {
+            "id": {"error.a": "A-id", "error.b": "B-id"},
+            "en": {"error.a": "A-en"},
+        },
+    )
+    clear_fallback_records()
+    assert server_lines.render("error.a", locale="en") == "A-en"
+    assert fallback_records() == ()
+    assert server_lines.render("error.b", locale="en") == "B-id"
+    records = fallback_records()
+    assert len(records) == 1
+    assert records[0].requested_locale == "en"
+    assert records[0].key == "error.b"
+    assert records[0].used_locale == "id"
+    with pytest.raises(UnknownMessageKey):
+        server_lines.render("error.c", locale="en")
+    clear_fallback_records()
+
+
+def test_merged_catalog_fills_missing_keys_never_blank():
+    merged = merged_catalog("en", {"id": {"a": "A-id", "b": "B-id"}, "en": {"a": "A-en"}})
+    assert merged == {"a": "A-en", "b": "B-id"}
+    assert merged_catalog("xx", {"id": {"a": "A-id"}, "en": {"a": "A-en"}}) == {"a": "A-id"}
+    full = catalog("en")
+    assert len(full) == 62
+    assert all(full.values())
+    assert full["error.not_logged_in"] == "not signed in"
+    assert catalog("id")["error.not_logged_in"] == "belum masuk"
 
 
 def test_every_key_renders_with_example_variables():
@@ -130,9 +210,12 @@ def test_every_key_renders_with_example_variables():
         "status": "'approved'",
         "detail": "bad signature",
         "ceiling": "Rp2.000",
+        "command": "'frobnicate'",
+        "bot": "Puspa",
     }
     for key in sorted(all_keys()):
         assert render(key, **examples), key
+        assert render(key, locale="en", **examples), key
 
 
 # --- locale files + validation -------------------------------------------
@@ -165,7 +248,7 @@ def test_load_locales_requires_the_default_locale(tmp_path):
         load_locales(tmp_path)
 
 
-def test_validate_locales_single_locale_passes():
+def test_validate_locales_shipped_catalogs_pass():
     catalogs = load_locales(LOCALES_DIR)
     assert validate_locales(catalogs) == []
     check_locales(catalogs)

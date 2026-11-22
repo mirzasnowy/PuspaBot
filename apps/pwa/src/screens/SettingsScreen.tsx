@@ -5,6 +5,7 @@ import {
   deleteVoiceKey,
   finishProviderTokenLogin,
   getCapabilityRouting,
+  getLanguage,
   getModelSettings,
   getProviders,
   getTelemetrySettings,
@@ -14,6 +15,7 @@ import {
   resetCapabilityRoute,
   saveByokKey,
   saveCapabilityRoute,
+  saveLanguage,
   saveModelSettings,
   saveRoutingKey,
   saveTelemetrySettings,
@@ -63,6 +65,7 @@ import {
   defaultCapabilityRouting,
   describeCapability,
 } from "../state/capabilityRouting";
+import { LANGUAGE_OPTIONS, loadCatalog, useLanguage } from "../state/language";
 
 /** Base64url -> Uint8Array for the VAPID applicationServerKey. */
 function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
@@ -74,8 +77,13 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
 }
 
 export function SettingsScreen() {
+  const { t } = useLanguage();
   const [pushStatus, setPushStatus] = useState("");
   const [pushBusy, setPushBusy] = useState(false);
+  const [language, setLanguage] = useState("id");
+  const [languageLoaded, setLanguageLoaded] = useState(false);
+  const [languageStatus, setLanguageStatus] = useState("");
+  const [languageBusy, setLanguageBusy] = useState(false);
   const [modelSettings, setModelSettings] = useState<ModelSettings>(defaultModelSettings());
   const [modelLoaded, setModelLoaded] = useState(false);
   const [modelStatus, setModelStatus] = useState("");
@@ -119,6 +127,22 @@ export function SettingsScreen() {
 
   useEffect(() => {
     let cancelled = false;
+    getLanguage()
+      .then((settings) => {
+        if (!cancelled) {
+          setLanguage(settings.locale);
+          setLanguageLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled)
+          setLanguageStatus(
+            t(
+              "ui.settings.language.load_failed",
+              "Bahasa belum bisa dimuat; bahasa Indonesia dipakai.",
+            ),
+          );
+      });
     getModelSettings()
       .then((settings) => {
         if (!cancelled) {
@@ -182,6 +206,25 @@ export function SettingsScreen() {
   useEffect(() => {
     void loadProviders();
   }, []);
+
+  async function saveLanguageChoice(next: string) {
+    setLanguageBusy(true);
+    setLanguageStatus("");
+    try {
+      const saved = await saveLanguage(next);
+      setLanguage(saved.locale);
+      // Reload the catalog so the nav and the translated screens
+      // flip to the new language without a page reload.
+      await loadCatalog(saved.locale);
+      setLanguageStatus(t("ui.settings.language.saved", "Bahasa tersimpan."));
+    } catch (err) {
+      setLanguageStatus(
+        `Gagal menyimpan bahasa: ${err instanceof Error ? err.message : "error tak dikenal"}`,
+      );
+    } finally {
+      setLanguageBusy(false);
+    }
+  }
 
   async function saveModelChoice() {
     setModelBusy(true);
@@ -1051,8 +1094,33 @@ export function SettingsScreen() {
         />
       </div>
       <div className="card">
-        <strong>Bahasa</strong>
-        <p>Indonesia.</p>
+        <strong>{t("ui.settings.language.title", "Bahasa")}</strong>
+        <p>
+          {t(
+            "ui.settings.language.description",
+            "Bahasa tampilan Puspa. Pilihan tersimpan untuk akun ini dan dipakai di semua layar.",
+          )}
+        </p>
+        <label htmlFor="language-select">
+          {t("ui.settings.language.title", "Bahasa")}
+        </label>
+        <select
+          id="language-select"
+          value={language}
+          disabled={languageBusy || !languageLoaded}
+          onChange={(event) => void saveLanguageChoice(event.target.value)}
+        >
+          {LANGUAGE_OPTIONS.map((option) => (
+            <option key={option.code} value={option.code}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {languageStatus ? (
+          <p role="status" className="muted">
+            {languageStatus}
+          </p>
+        ) : null}
       </div>
       <div className="card">
         <strong>Notifikasi</strong>

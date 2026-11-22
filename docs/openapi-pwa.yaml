@@ -168,6 +168,10 @@ paths:
     $ref: './openapi-routing.yaml#/paths/~1api~1routing~1key'
   /api/telemetry/settings:
     $ref: './openapi-telemetry.yaml#/paths/~1api~1telemetry~1settings'
+  /api/language:
+    $ref: './openapi-language.yaml#/paths/~1api~1language'
+  /api/i18n/catalog:
+    $ref: './openapi-language.yaml#/paths/~1api~1i18n~1catalog'
   /api/receipts/upload:
     $ref: './openapi-receipts.yaml#/paths/~1api~1receipts~1upload'
   /api/receipts/confirm:

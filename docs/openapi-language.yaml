@@ -1,0 +1,127 @@
+# Language switch + UI-string catalog API contract (COW-18).
+#
+# The language switch in Settings (English/Indonesian, persisted
+# per user, Indonesian by default) and the merged UI-string
+# catalog the PWA client translates with. The main spec
+# references this file with $ref stubs; the generated client is
+# produced from the main spec with openapi-typescript, which
+# resolves external $refs. The Error schema stays in the main
+# spec and is referenced back from here. The TypeScript shapes
+# are hand-written in apps/pwa/src/api/client.ts until
+# `npm run generate` works again (see the AST-09 note there).
+openapi: 3.0.3
+info:
+  title: PuspaBot language API
+  version: 1.0.0
+paths:
+  /api/language:
+    get:
+      tags: [settings]
+      summary: Read the user's language choice
+      description: |
+        Language switch (COW-18): the stored Settings choice, Indonesian (`"id"`) when nothing
+        is stored. `available_locales` lists the locales the switch offers (`"id"`, `"en"`).
+      responses:
+        "200":
+          description: Language state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LanguageSettings"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    post:
+      tags: [settings]
+      summary: Save the user's language choice
+      description: |
+        Language switch (COW-18): persists the locale code only. An unknown locale is refused
+        with 400: a typo must never store a language the catalogs do not have.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [locale]
+              properties:
+                locale:
+                  type: string
+                  description: Locale code, one of the shipped catalogs ("id" or "en")
+      responses:
+        "200":
+          description: Saved language state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LanguageSettings"
+        "400":
+          description: Bad body (not a JSON object, missing `locale`, or an unknown locale)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/i18n/catalog:
+    get:
+      tags: [settings]
+      summary: Read the merged UI-string catalog for a locale
+      description: |
+        UI-string catalog (COW-18): the full key -> string catalog for one locale. No login
+        is needed — UI strings carry no user data. `?locale=en` previews one locale; without
+        it, a logged-in user gets their stored language and an anonymous user gets Indonesian.
+        The catalog is merged: the requested locale's strings win and any key it is missing
+        is filled from Indonesian, so the client never receives a blank. An unknown `?locale=`
+        value falls back to Indonesian (never an error: this endpoint must never fail a page
+        load).
+      parameters:
+        - name: locale
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Locale code to preview ("id" or "en"); defaults to the user's stored language
+      responses:
+        "200":
+          description: Merged catalog for the locale
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogResponse"
+components:
+  schemas:
+    LanguageSettings:
+      type: object
+      description: |
+        The user's language choice (COW-18). `locale` is the stored choice, Indonesian (`"id"`)
+        when nothing is stored; `available_locales` lists the locales the Settings switch
+        offers.
+      required: [locale, available_locales]
+      properties:
+        locale:
+          type: string
+        available_locales:
+          type: array
+          items:
+            type: string
+    CatalogResponse:
+      type: object
+      description: |
+        The merged UI-string catalog for one locale (COW-18). `strings` always has every key:
+        the requested locale's strings win, missing keys are filled from Indonesian.
+      required: [locale, strings]
+      properties:
+        locale:
+          type: string
+        strings:
+          type: object
+          additionalProperties:
+            type: string

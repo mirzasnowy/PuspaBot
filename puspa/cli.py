@@ -31,6 +31,8 @@ from pathlib import Path
 
 from puspa.channels.cli import add_channels_parser, run_channels
 from puspa.computer.cli import add_computer_parser, run_computer
+from puspa.i18n import DEFAULT_LOCALE, available_locales
+from puspa.i18n.server_lines import render as render_server_line
 from puspa.knowledge.cli import add_knowledge_parser, run_knowledge
 from puspa.marketplace.cli import add_skill_parser
 from puspa.marketplace.cli import run_skill as run_skill_hub
@@ -73,6 +75,53 @@ _KNOWN_COMMANDS = (
 #: command-line argument: arguments are visible in the process list).
 EXPORT_PASSPHRASE_ENV = "PUSPA_EXPORT_PASSPHRASE"
 
+#: Environment variable holding the CLI display language (``id`` or
+#: ``en``); ``--lang`` on the command line wins over it.
+LOCALE_ENV = "PUSPA_LOCALE"
+
+
+def resolve_cli_locale(argv: list[str] | None = None) -> str:
+    """Locale for CLI user-facing lines (COW-18).
+
+    ``--lang <code>`` (or ``--lang=<code>``) wins, then the
+    ``PUSPA_LOCALE`` environment variable, else Indonesian. An
+    unknown value falls back to Indonesian instead of failing —
+    a mistyped language flag must never break the CLI.
+    """
+    args = list(sys.argv[1:] if argv is None else argv)
+    for i, token in enumerate(args):
+        if token == "--lang" and i + 1 < len(args):
+            code = args[i + 1].strip().lower()
+            return code if code in available_locales() else DEFAULT_LOCALE
+        if token.startswith("--lang="):
+            code = token.split("=", 1)[1].strip().lower()
+            return code if code in available_locales() else DEFAULT_LOCALE
+    env = os.environ.get(LOCALE_ENV, "").strip().lower()
+    return env if env in available_locales() else DEFAULT_LOCALE
+
+
+def _first_command_token(args: list[str]) -> str | None:
+    """The first positional token: the subcommand name.
+
+    ``--lang`` may precede it, so the flag and its value are
+    skipped; any other leading flag is skipped too.
+    """
+    skip_next = False
+    for token in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if token == "--lang":
+            skip_next = True
+            continue
+        if token.startswith("--"):
+            continue
+        if token.startswith("-") and len(token) > 1:
+            continue
+        return token
+    return None
+
+
 _IMPORT_SOURCES = ("kosmos", "memory_md", "generic_json", "generic_markdown")
 
 
@@ -82,6 +131,12 @@ def build_parser() -> argparse.ArgumentParser:
         prog="puspa",
         description="PuspaBot — a personal AI agent you run yourself.",
         epilog=FULL_CLI_NOTE,
+    )
+    parser.add_argument(
+        "--lang",
+        choices=["id", "en"],
+        default=None,
+        help="Language for CLI messages (id or en; default: Indonesian, or PUSPA_LOCALE).",
     )
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
     web = sub.add_parser(
@@ -858,8 +913,10 @@ def _run_memory(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     """Entry point for the ``puspa`` and ``puspa-cli`` console scripts."""
     args = list(sys.argv[1:] if argv is None else argv)
-    if args and not args[0].startswith("-") and args[0] not in _KNOWN_COMMANDS:
-        print(f"puspa: unknown command {args[0]!r}")
+    locale = resolve_cli_locale(args)
+    first = _first_command_token(args)
+    if first is not None and first not in _KNOWN_COMMANDS:
+        print(render_server_line("cli.unknown_command", locale=locale, command=repr(first)))
         print(FULL_CLI_NOTE)
         print()
         build_parser().print_help()

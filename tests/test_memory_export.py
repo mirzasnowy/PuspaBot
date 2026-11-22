@@ -535,7 +535,10 @@ def test_cli_unknown_command_still_prints_help(capsys):
     from puspa.cli import main
 
     assert main(["frobnicate"]) == 0
-    assert "unknown command" in capsys.readouterr().out
+    # Default CLI language is Indonesian (COW-18); --lang en flips it.
+    assert "perintah tidak dikenal: 'frobnicate'" in capsys.readouterr().out
+    assert main(["--lang", "en", "frobnicate"]) == 0
+    assert "unknown command: 'frobnicate'" in capsys.readouterr().out
 
 
 # -- integration: PWA route --------------------------------------------------

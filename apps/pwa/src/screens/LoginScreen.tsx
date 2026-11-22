@@ -1,7 +1,10 @@
+import { useLanguage } from "../state/language";
+
 export function LoginScreen() {
+  const { t } = useLanguage();
   return (
     <div>
-      <h1>Masuk ke Puspa</h1>
+      <h1>{t("ui.login.title", "Masuk ke Puspa")}</h1>
       <p>Login lewat akun Google (tautan email sebagai cadangan).</p>
       <a href="/auth/google">
         <button type="button">Masuk dengan Google</button>

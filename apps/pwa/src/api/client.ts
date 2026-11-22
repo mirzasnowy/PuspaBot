@@ -67,6 +67,25 @@ export interface TelemetrySettings {
   env_override: boolean | null;
   effective_enabled: boolean;
 }
+
+/**
+ * COW-18 language choice, hand-written here instead of
+ * generated: `npm run generate` is broken at this base (see the
+ * V2-35 note above), so the generated file cannot be rebuilt
+ * right now. This shape mirrors docs/openapi-language.yaml
+ * exactly; move it to generated-types.ts once generation is
+ * repaired.
+ */
+export interface LanguageSettings {
+  locale: string;
+  available_locales: string[];
+}
+
+/** Merged UI-string catalog for one locale (COW-18). */
+export interface CatalogResponse {
+  locale: string;
+  strings: Record<string, string>;
+}
 export interface ComputerAllowlistChange {
   app: string;
   allowed: boolean;
@@ -413,6 +432,38 @@ export function saveTelemetrySettings(
   fetchFn: FetchFn = fetch,
 ): Promise<TelemetrySettings> {
   return postJson("/api/telemetry/settings", settings, fetchFn);
+}
+
+/**
+ * Read the user's language choice (COW-18). Indonesian ("id")
+ * when nothing is stored; `available_locales` lists the locales
+ * the switch offers.
+ */
+export function getLanguage(fetchFn: FetchFn = fetch): Promise<LanguageSettings> {
+  return getJson<LanguageSettings>("/api/language", fetchFn);
+}
+
+/** Save the user's language choice (COW-18). */
+export function saveLanguage(
+  locale: string,
+  fetchFn: FetchFn = fetch,
+): Promise<LanguageSettings> {
+  return postJson("/api/language", { locale }, fetchFn);
+}
+
+/**
+ * Read the merged UI-string catalog for a locale (COW-18).
+ * Without `locale`, the server answers with the logged-in user's
+ * stored language (Indonesian when anonymous or never set). Keys
+ * the locale is missing are filled from Indonesian, so the
+ * catalog never carries a blank.
+ */
+export function getCatalog(
+  locale?: string,
+  fetchFn: FetchFn = fetch,
+): Promise<CatalogResponse> {
+  const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
+  return getJson<CatalogResponse>(`/api/i18n/catalog${query}`, fetchFn);
 }
 
 /**
