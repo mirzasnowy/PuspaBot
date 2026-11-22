@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Knowledge Base</h1>
+<p class="pesan-sub">Unggah dokumen teks atau Markdown, lalu tanyakan isinya. Jawaban hanya diambil dari dokumen yang kamu unggah, dan setiap jawaban mencantumkan sumbernya (nama file + nomor potongan), jadi kamu bisa memeriksanya langsung.</p>
+<h2>Unggah dokumen</h2>
+<form action="/api/knowledge/upload" method="post" enctype="multipart/form-data">
+<label>File (.txt atau .md, maks 5 MB)<br><input type="file" name="file" accept=".txt,.md,.markdown" required></label><br><br>
+<label>Judul (opsional)<br><input type="text" name="title" placeholder="Judul dokumen"></label><br><br>
+<button type="submit">Unggah</button>
+</form>
+<p class="pesan-sub">File PDF belum didukung: repo ini tidak punya parser PDF, dan basis pengetahuan ini tidak menambah dependensi berat hanya untuk PDF. Unggah versi teks atau Markdown-nya.</p>
+<h2>Tanya dokumen</h2>
+<p class="pesan-sub">Buka <a href="/api/knowledge/ask?q=apa%20isi%20dokumen%20ini">/api/knowledge/ask?q=pertanyaanmu</a> untuk bertanya. Jawabannya mengutip potongan dokumen yang paling relevan, lengkap dengan nama file dan nomor potongannya.</p>
+<h2>Dokumen tersimpan</h2>
+<p class="pesan-sub">Daftar dokumen ada di <a href="/api/knowledge/documents">/api/knowledge/documents</a> (JSON). Tampilan unggah, daftar, dan tanya yang lengkap ada di aplikasi; halaman ini adalah versi ringannya saat aplikasi belum dibangun.</p>
+{% endblock %}

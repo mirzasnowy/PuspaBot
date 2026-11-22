@@ -175,7 +175,12 @@ BASELINE_LINES = {
     # registration plus the comment (same seam as the voice routes:
     # no new screen, no new table). Both items merged: 1219 + 8 + 5.
     # Resumes from 1232.
-    "puspa/pwa/app.py": 1232,
+    # Document knowledge base (22 Nov 2026, AST-02): +7 lines — the
+    # "knowledge" screen in SCREENS, the knowledge_api import and
+    # route registration plus the comment (same seam as the
+    # diagnostics screen: no bootstrap data, the screen fetches
+    # everything through its APIs). Resumes from 1239.
+    "puspa/pwa/app.py": 1239,
     # PWA typed API client: every screen's fetch wrapper plus
     # the generated-types aliases in one file. Crossed 1000
     # lines in P-10 (21 Nov 2026): the replay fetchers (tasks,
