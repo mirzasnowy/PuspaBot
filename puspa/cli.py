@@ -9,8 +9,10 @@ conversation export`` / ``import`` (conversation export, V2-11), ``puspa
 mcp`` (serve Puspa's tools to outside agents over MCP stdio), ``puspa
 service`` (lifecycle of the local agent service: start, stop, restart,
 status, logs, update), ``puspa diagnostics export`` (a redacted diagnostics
-bundle for bug reports), plus help. The full one-shot CLI lands in a later step of the split;
-until then any other subcommand prints help and says so.
+bundle for bug reports), ``puspa knowledge`` (document knowledge base: upload
+files and ask questions about them, AST-02), plus help. The full one-shot CLI
+lands in a later step of the split; until then any other subcommand prints help
+and says so.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from puspa.computer.cli import add_computer_parser, run_computer
+from puspa.knowledge.cli import add_knowledge_parser, run_knowledge
 from puspa.marketplace.cli import add_skill_parser
 from puspa.marketplace.cli import run_skill as run_skill_hub
 from puspa.marketplace.skill_creator import (
@@ -39,6 +42,7 @@ FULL_CLI_NOTE = (
     "The full PuspaBot CLI lands in a later step of the public/private "
     "split; this build ships `puspa web` / `puspa serve`, `puspa memory "
     "export` / `import`, `puspa mcp`, `puspa service`, `puspa diagnostics export`, "
+    "`puspa knowledge` (upload / list / ask / delete), "
     "`puspa self-evolve`, `puspa skill list` / `search` / `install` / `create`, plus help."
 )
 
@@ -53,6 +57,7 @@ _KNOWN_COMMANDS = (
     "service",
     "skill",
     "diagnostics",
+    "knowledge",
     "self-evolve",
 )
 
@@ -338,6 +343,7 @@ def build_parser() -> argparse.ArgumentParser:
     # overwrite each other, so create is added to the same parser.
     skill_parser = add_skill_parser(sub)
     add_create_subcommand(skill_parser)
+    add_knowledge_parser(sub)
     self_evolve = sub.add_parser(
         "self-evolve",
         help="Run the idle-time self-evolution review pass (COW-02).",
@@ -776,6 +782,11 @@ def main(argv: list[str] | None = None) -> int:
         if parsed.skill_command == "create":
             return run_skill_create(parsed)
         return run_skill_hub(parsed)
+    if parsed.command == "knowledge":
+        if parsed.knowledge_command is None:
+            parser.print_help()
+            return 0
+        return run_knowledge(parsed)
     if parsed.command == "service":
         if parsed.service_command is None:
             parser.print_help()

@@ -78,6 +78,8 @@ SCREENS = (
     "diagnostics",
     # Skill marketplace hub (COW-03): browse, search, one-click install.
     "hub",
+    # AST-02: document knowledge base (upload files, ask about them).
+    "knowledge",
 )
 
 
@@ -1042,6 +1044,7 @@ def create_app(
         graph_api,
         hub_api,
         insights_api,
+        knowledge_api,
         live_view_api,
         memory_api,
         mockup_api,
@@ -1119,6 +1122,10 @@ def create_app(
     artifacts_api.register_routes(app, need_user)
     # Skill marketplace hub (COW-03): browse, search, one-click install.
     hub_api.register_routes(app, need_user)
+    # AST-02: document knowledge base (upload / list / ask / delete).
+    # The screen itself needs no bootstrap data: it fetches
+    # everything through the knowledge APIs.
+    knowledge_api.register_routes(app, need_user)
     mockup_api.register_routes(app, need_user)
     insights_api.register_routes(app, need_user)
     onboarding_api.register_routes(app, need_user)

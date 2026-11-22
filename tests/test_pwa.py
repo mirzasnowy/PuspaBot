@@ -8,7 +8,8 @@ perbaikan layar Ruang yang rusak mendaftarkan layar Ruang yang
 selama ini ada di SPA tapi tidak terdaftar di server, dan layar
 Persona menambah satu lagi untuk beberapa persona yang bisa
 diganti, layar Artefak dan Diagnostik menambah dua lagi, dan
-COW-03 menambah layar Hub Skill — jadi total sekarang 18. Tes
+COW-03 menambah layar Hub Skill, dan AST-02 menambah layar
+Knowledge Base — jadi total sekarang 19. Tes
 jumlah layar di bawah mencerminkan batas baru itu.
 """
 
@@ -43,12 +44,14 @@ def test_sixteen_screens_exist_including_rooms():
     (the artifacts + run-logs browser from CowAgent research),
     and Diagnostics is the seventeenth (the redacted
     diagnostics export for bug reports), and Hub is the
-    eighteenth (the skill marketplace hub, COW-03).
+    eighteenth (the skill marketplace hub, COW-03), and
+    Knowledge is the nineteenth (the document knowledge
+    base, AST-02: upload files, ask about them).
 
-    The count is pinned on purpose: a nineteenth screen must be a
+    The count is pinned on purpose: a twentieth screen must be a
     deliberate decision with its own ticket, not an accident.
     """
-    assert len(SCREENS) == 18
+    assert len(SCREENS) == 19
     assert set(SCREENS) == {
         "chat",
         "tasks",
@@ -75,6 +78,8 @@ def test_sixteen_screens_exist_including_rooms():
         "diagnostics",
         # Skill marketplace hub (COW-03): browse, search, one-click install.
         "hub",
+        # Document knowledge base (AST-02): upload files, ask about them.
+        "knowledge",
     }
 
 
