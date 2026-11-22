@@ -210,6 +210,8 @@ class TurnLoop:
         takeover_hold=None,
         turn_committer=None,
         persona_home=None,
+        dsn=None,
+        model_transport=None,
     ) -> None:
         """Build a turn loop.
 
@@ -223,9 +225,22 @@ class TurnLoop:
         no extra persona the home's own files are the persona).
         When None (the default) the loop never touches the persona
         files and behaves exactly as before.
+
+        ``dsn`` is the Postgres DSN the per-capability routing
+        table is read from (COW-08). When a turn runs with a
+        ``user_id`` and no explicit ``model_call`` (neither on
+        the turn nor on the loop), the loop builds the routed
+        adapter for that user, so the turn's primary model tier
+        goes to the user's routed chat provider. With no
+        ``user_id`` the loop behaves exactly as before.
+        ``model_transport`` is the httpx transport the routed
+        adapter uses (tests pass a ``MockTransport``); with none
+        the adapter builds a real client per call.
         """
         self.config = config or TurnConfig()
         self.model_call = model_call
+        self.dsn = dsn
+        self.model_transport = model_transport
         self.tool_call = tool_call
         self.intercepts = intercepts if intercepts is not None else InterceptedTools()
         self.refresher = refresher
@@ -586,12 +601,31 @@ class TurnLoop:
             if overflow_note:
                 notes.append(overflow_note)
 
+            # COW-08: with no explicit model call anywhere and a
+            # user on the turn, the primary tier goes to the user's
+            # routed chat provider (the loop's own adapter is built
+            # per turn, so a Settings change applies immediately).
+            # An explicit model_call (turn or loop) always wins,
+            # and a turn with no user keeps the old default.
+            effective_model_call = model_call if model_call is not None else self.model_call
+            if effective_model_call is None and user_id is not None:
+                from puspa.turns.turn_api import make_routed_model_call
+
+                effective_model_call = make_routed_model_call(
+                    user_id=user_id,
+                    dsn=self.dsn,
+                    transport=self.model_transport,
+                    temperature=self.config.temperature,
+                    max_tokens=self.config.max_tokens,
+                    timeout=self.config.call_timeout_seconds,
+                )
+
             try:
                 call_started = time.monotonic()
                 outcome = call_model(
                     history,
                     config=self.config,
-                    model_call=model_call if model_call is not None else self.model_call,
+                    model_call=effective_model_call,
                     tools=tools,
                     interrupt_event=event,
                     refresher=self.refresher,

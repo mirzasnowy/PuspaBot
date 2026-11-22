@@ -137,6 +137,31 @@ export type ReceiptExpense = components["schemas"]["ReceiptExpense"];
 export type ReceiptStatus = components["schemas"]["ReceiptStatus"];
 export type AvatarStatus = components["schemas"]["AvatarStatus"];
 export type AvatarDeleted = components["schemas"]["AvatarDeleted"];
+/**
+ * Per-capability model routing (COW-08). Hand-written interfaces,
+ * not generated types: `npm run generate` cannot run in this
+ * tree (the voice spec has an unquoted colon at
+ * openapi-voice.yaml:439 and the rooms spec file is absent,
+ * both pre-existing), so the generated client carries no
+ * CapabilityRoute yet. The shapes mirror the contract in
+ * docs/openapi-routing.yaml exactly; when generation works
+ * again these become `components["schemas"]["CapabilityRoute"]`
+ * and `components["schemas"]["CapabilityRouting"]` like the
+ * model types above.
+ */
+export type CapabilityName = "chat" | "vision" | "image" | "speech" | "embeddings";
+export interface CapabilityRoute {
+  capability: CapabilityName;
+  provider: string | null;
+  model: string | null;
+  base_url: string | null;
+  has_key: boolean;
+  is_default: boolean;
+}
+export interface CapabilityRouting {
+  capabilities: Record<CapabilityName, CapabilityRoute>;
+  providers: Record<CapabilityName, string[]>;
+}
 export type ModelSource = ModelSettings["source"];
 export type InsightsReport = components["schemas"]["InsightsReport"];
 export type TokenTotals = components["schemas"]["TokenTotals"];
@@ -955,6 +980,63 @@ export async function deleteByokKey(
     `/api/model-settings/byok-key?provider=${encodeURIComponent(provider)}`,
     { method: "DELETE", credentials: "same-origin" },
   );
+  if (!response.ok) throw new ApiError(response.status, await readError(response));
+  return (await response.json()) as { ok: boolean };
+}
+
+/** Read the user's per-capability routing table (COW-08). Never returns key material. */
+export function getCapabilityRouting(fetchFn: FetchFn = fetch): Promise<CapabilityRouting> {
+  return getJson<CapabilityRouting>("/api/routing", fetchFn);
+}
+
+/**
+ * Swap one capability's provider with one click (COW-08).
+ * The server validates the provider against the capability and
+ * refuses with 400 when it cannot serve it. Never send a key here.
+ */
+export function saveCapabilityRoute(
+  capability: CapabilityName,
+  route: { provider: string; model?: string | null; base_url?: string | null },
+  fetchFn: FetchFn = fetch,
+): Promise<CapabilityRoute> {
+  return postJson(`/api/routing/${capability}`, route, fetchFn);
+}
+
+/** Reset one capability to its default route (COW-08). Idempotent. */
+export async function resetCapabilityRoute(
+  capability: CapabilityName,
+  fetchFn: FetchFn = fetch,
+): Promise<CapabilityRoute> {
+  const response = await fetchFn(`/api/routing/${capability}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw new ApiError(response.status, await readError(response));
+  return (await response.json()) as CapabilityRoute;
+}
+
+/**
+ * Save a provider key for routing (COW-08). The server stores it
+ * in the vault only (the same `byok:<provider>` entry the model
+ * settings use) and never returns it.
+ */
+export function saveRoutingKey(
+  provider: string,
+  key: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ ok: boolean }> {
+  return postJson("/api/routing/key", { provider, key }, fetchFn);
+}
+
+/** Delete a provider key from the vault (COW-08). Idempotent. */
+export async function deleteRoutingKey(
+  provider: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ ok: boolean }> {
+  const response = await fetchFn(`/api/routing/key?provider=${encodeURIComponent(provider)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
   if (!response.ok) throw new ApiError(response.status, await readError(response));
   return (await response.json()) as { ok: boolean };
 }

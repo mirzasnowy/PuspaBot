@@ -1,21 +1,29 @@
 import { useEffect, useState } from "react";
 import {
   deleteByokKey,
+  deleteRoutingKey,
   deleteVoiceKey,
   finishProviderTokenLogin,
+  getCapabilityRouting,
   getModelSettings,
   getProviders,
   getTelemetrySettings,
   getVoiceSettings,
   logoutProvider,
   pollProviderDeviceLogin,
+  resetCapabilityRoute,
   saveByokKey,
+  saveCapabilityRoute,
   saveModelSettings,
+  saveRoutingKey,
   saveTelemetrySettings,
   saveVoiceKey,
   saveVoiceSettings,
   startProviderLogin,
   subscribePush,
+  type CapabilityName,
+  type CapabilityRoute,
+  type CapabilityRouting,
   type ModelSettings,
   type ProviderStatus,
   type TelemetrySettings,
@@ -49,6 +57,12 @@ import {
   describeTelemetry,
   withTelemetryDefaults,
 } from "../state/telemetrySettings";
+import {
+  CAPABILITIES,
+  CAPABILITY_PROVIDERS,
+  defaultCapabilityRouting,
+  describeCapability,
+} from "../state/capabilityRouting";
 
 /** Base64url -> Uint8Array for the VAPID applicationServerKey. */
 function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
@@ -78,6 +92,13 @@ export function SettingsScreen() {
   const [voiceKey, setVoiceKey] = useState("");
   const [voiceKeyKind, setVoiceKeyKind] = useState<"asr" | "tts">("tts");
   const [voiceKeyBusy, setVoiceKeyBusy] = useState(false);
+  const [routing, setRouting] = useState<CapabilityRouting>(defaultCapabilityRouting());
+  const [routingLoaded, setRoutingLoaded] = useState(false);
+  const [routingStatus, setRoutingStatus] = useState("");
+  const [routingBusy, setRoutingBusy] = useState<CapabilityName | null>(null);
+  const [routingKey, setRoutingKey] = useState("");
+  const [routingKeyProvider, setRoutingKeyProvider] = useState("openrouter");
+  const [routingKeyBusy, setRoutingKeyBusy] = useState(false);
   const [telemetrySettings, setTelemetrySettings] = useState<TelemetrySettings>(
     defaultTelemetrySettings(),
   );
@@ -129,6 +150,29 @@ export function SettingsScreen() {
       .catch(() => {
         if (!cancelled)
           setTelemetryStatus("Pilihan telemetri belum bisa dimuat; default mati dipakai.");
+      });
+    getCapabilityRouting()
+      .then((table) => {
+        if (!cancelled) {
+          // The table is only trusted when it carries the
+          // capabilities map; anything else (a stubbed fetch in
+          // tests, a proxy error page) leaves the defaults in
+          // place instead of crashing the render.
+          if (table && typeof table === "object" && table.capabilities) {
+            setRouting({
+              capabilities: {
+                ...defaultCapabilityRouting().capabilities,
+                ...table.capabilities,
+              },
+              providers: table.providers ?? CAPABILITY_PROVIDERS,
+            });
+            setRoutingLoaded(true);
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled)
+          setRoutingStatus("Tabel routing belum bisa dimuat; default tiap kemampuan dipakai.");
       });
     return () => {
       cancelled = true;
@@ -249,6 +293,125 @@ export function SettingsScreen() {
 
   function voiceKeyProvider(kind: "asr" | "tts"): string {
     return kind === "asr" ? voiceSettings.asr_provider : voiceSettings.tts_provider;
+  }
+
+  function setRoutingDraft(capability: CapabilityName, patch: Partial<CapabilityRoute>) {
+    setRouting((current) => ({
+      ...current,
+      capabilities: {
+        ...current.capabilities,
+        [capability]: { ...current.capabilities[capability], ...patch },
+      },
+    }));
+  }
+
+  async function saveRoutingChoice(capability: CapabilityName) {
+    const draft = routing.capabilities[capability];
+    if (!draft.provider) {
+      setRoutingStatus(`Pilih dulu provider untuk ${capability}.`);
+      return;
+    }
+    if (draft.base_url) {
+      const error = validateBaseUrl(draft.base_url);
+      if (error) {
+        setRoutingStatus(error);
+        return;
+      }
+    }
+    setRoutingBusy(capability);
+    setRoutingStatus("");
+    try {
+      const saved = await saveCapabilityRoute(capability, {
+        provider: draft.provider,
+        model: draft.model?.trim() ? draft.model.trim() : null,
+        base_url: draft.base_url?.trim() ? draft.base_url.trim() : null,
+      });
+      setRouting((current) => ({
+        ...current,
+        capabilities: { ...current.capabilities, [capability]: saved },
+      }));
+      setRoutingStatus(`Routing ${capability} tersimpan: ${saved.provider}.`);
+    } catch (err) {
+      setRoutingStatus(
+        `Gagal menyimpan routing ${capability}: ${err instanceof Error ? err.message : "error tak dikenal"}`,
+      );
+    } finally {
+      setRoutingBusy(null);
+    }
+  }
+
+  async function resetRoutingChoice(capability: CapabilityName) {
+    setRoutingBusy(capability);
+    setRoutingStatus("");
+    try {
+      const reset = await resetCapabilityRoute(capability);
+      setRouting((current) => ({
+        ...current,
+        capabilities: { ...current.capabilities, [capability]: reset },
+      }));
+      setRoutingStatus(`Routing ${capability} kembali ke default.`);
+    } catch (err) {
+      setRoutingStatus(
+        `Gagal mereset routing ${capability}: ${err instanceof Error ? err.message : "error tak dikenal"}`,
+      );
+    } finally {
+      setRoutingBusy(null);
+    }
+  }
+
+  async function saveRoutingKeyChoice() {
+    setRoutingKeyBusy(true);
+    setRoutingStatus("");
+    try {
+      const provider = routingKeyProvider.trim().toLowerCase();
+      if (!routingKey.trim()) {
+        setRoutingStatus("Kunci routing tidak boleh kosong.");
+        return;
+      }
+      await saveRoutingKey(provider, routingKey.trim());
+      setRoutingKey("");
+      setRouting((current) => ({
+        ...current,
+        capabilities: Object.fromEntries(
+          Object.entries(current.capabilities).map(([name, route]) => [
+            name,
+            route.provider === provider ? { ...route, has_key: true } : route,
+          ]),
+        ) as Record<CapabilityName, CapabilityRoute>,
+      }));
+      setRoutingStatus(`Kunci ${provider} tersimpan di vault.`);
+    } catch (err) {
+      setRoutingStatus(
+        `Gagal menyimpan kunci: ${err instanceof Error ? err.message : "error tak dikenal"}`,
+      );
+    } finally {
+      setRoutingKeyBusy(false);
+    }
+  }
+
+  async function removeRoutingKeyChoice() {
+    setRoutingKeyBusy(true);
+    setRoutingStatus("");
+    try {
+      const provider = routingKeyProvider.trim().toLowerCase();
+      await deleteRoutingKey(provider);
+      setRouting((current) => ({
+        ...current,
+        capabilities: Object.fromEntries(
+          Object.entries(current.capabilities).map(([name, route]) => [
+            name,
+            route.provider === provider ? { ...route, has_key: false } : route,
+          ]),
+        ) as Record<CapabilityName, CapabilityRoute>,
+      }));
+      setRoutingStatus(`Kunci ${provider} dihapus dari vault.`);
+    } catch (err) {
+      setRoutingStatus(
+        `Gagal menghapus kunci: ${err instanceof Error ? err.message : "error tak dikenal"}`,
+      );
+    } finally {
+      setRoutingKeyBusy(false);
+    }
   }
 
   async function saveVoiceKeyForKind() {
@@ -483,6 +646,129 @@ export function SettingsScreen() {
           {modelBusy ? "Menyimpan…" : "Simpan pilihan model"}
         </button>
         {modelStatus ? <p className="muted">{modelStatus}</p> : null}
+      </div>
+      <div className="card">
+        <strong>Routing per kemampuan</strong>
+        <p>
+          Tiap kemampuan bisa memakai provider berbeda: chat, vision, gambar, suara, dan
+          embeddings. Satu klik menyimpan satu kemampuan; kemampuan lain tidak ikut berubah.
+          Provider yang tidak bisa melayani suatu kemampuan ditolak dengan pesan yang jelas.
+        </p>
+        {CAPABILITIES.map((capability) => {
+          const route =
+            routing.capabilities[capability] ??
+            defaultCapabilityRouting().capabilities[capability];
+          const options =
+            routing.providers?.[capability] ?? CAPABILITY_PROVIDERS[capability];
+          return (
+            <div key={capability} style={{ marginBottom: "1rem" }}>
+              <strong>{capability}</strong>
+              <span className="muted"> — {describeCapability(capability)}</span>
+              <label>
+                Provider{" "}
+                <select
+                  value={route.provider ?? ""}
+                  disabled={!routingLoaded}
+                  onChange={(event) =>
+                    setRoutingDraft(capability, {
+                      provider: event.target.value || null,
+                    })
+                  }
+                >
+                  <option value="">— belum dipilih —</option>
+                  {options.map((provider) => (
+                    <option key={provider} value={provider}>
+                      {provider}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Nama model{" "}
+                <input
+                  type="text"
+                  value={route.model ?? ""}
+                  placeholder={
+                    route.provider === "hosted"
+                      ? "default router"
+                      : "nama model di provider itu"
+                  }
+                  disabled={!routingLoaded}
+                  onChange={(event) =>
+                    setRoutingDraft(capability, { model: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Base URL (opsional){" "}
+                <input
+                  type="text"
+                  value={route.base_url ?? ""}
+                  placeholder="https://api.provider.example/v1"
+                  disabled={!routingLoaded}
+                  onChange={(event) =>
+                    setRoutingDraft(capability, { base_url: event.target.value })
+                  }
+                />
+              </label>
+              <p className="muted">
+                {route.is_default
+                  ? "Memakai default."
+                  : `Tersimpan: ${route.provider ?? "—"}${route.model ? ` / ${route.model}` : ""}.`}
+                {route.has_key ? " Kunci sudah tersimpan di vault." : ""}
+              </p>
+              <button
+                type="button"
+                onClick={() => void saveRoutingChoice(capability)}
+                disabled={!routingLoaded || routingBusy === capability}
+              >
+                {routingBusy === capability ? "Menyimpan…" : `Simpan ${capability}`}
+              </button>{" "}
+              {!route.is_default ? (
+                <button
+                  type="button"
+                  onClick={() => void resetRoutingChoice(capability)}
+                  disabled={routingBusy === capability}
+                >
+                  Reset ke default
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+        <label>
+          Kunci provider untuk routing{" "}
+          <input
+            type="text"
+            value={routingKeyProvider}
+            placeholder="openrouter"
+            onChange={(event) => setRoutingKeyProvider(event.target.value)}
+          />
+        </label>
+        <label>
+          Kunci API{" "}
+          <input
+            type="password"
+            value={routingKey}
+            autoComplete="off"
+            placeholder="tempel kunci routing, lalu simpan"
+            onChange={(event) => setRoutingKey(event.target.value)}
+          />
+        </label>
+        <button type="button" onClick={() => void saveRoutingKeyChoice()} disabled={routingKeyBusy}>
+          {routingKeyBusy ? "Menyimpan…" : "Simpan kunci ke vault"}
+        </button>{" "}
+        <button
+          type="button"
+          onClick={() => void removeRoutingKeyChoice()}
+          disabled={routingKeyBusy}
+        >
+          Hapus kunci
+        </button>
+        <p className="muted">
+          Satu kunci per provider dipakai semua kemampuan yang di-routing ke provider itu.
+        </p>
+        {routingStatus ? <p className="muted">{routingStatus}</p> : null}
       </div>
       <div className="card">
         <strong>Suara</strong>

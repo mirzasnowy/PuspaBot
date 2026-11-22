@@ -1143,6 +1143,11 @@ def create_app(
 
     share_api.register_routes(app, need_user, _render_shared_chat, share_inbox_dir=share_inbox_dir)
     voice_api.register_routes(app, need_user)
+    # COW-08: per-capability model routing (GET/POST/DELETE
+    # /api/routing[/{capability}] + the routing key endpoints).
+    from puspa.pwa import capability_routing_api
+
+    capability_routing_api.register_routes(app, need_user)
     # Receipt photos (plan section 12.5): upload -> draft ->
     # confirm-or-discard. Nothing is recorded from a photo alone.
     from puspa.pwa import receipt_api

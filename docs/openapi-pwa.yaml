@@ -160,6 +160,12 @@ paths:
     $ref: './openapi-voice.yaml#/paths/~1api~1voice~1key'
   /api/voice/speak:
     $ref: './openapi-voice.yaml#/paths/~1api~1voice~1speak'
+  /api/routing:
+    $ref: './openapi-routing.yaml#/paths/~1api~1routing'
+  /api/routing/{capability}:
+    $ref: './openapi-routing.yaml#/paths/~1api~1routing~1{capability}'
+  /api/routing/key:
+    $ref: './openapi-routing.yaml#/paths/~1api~1routing~1key'
   /api/telemetry/settings:
     $ref: './openapi-telemetry.yaml#/paths/~1api~1telemetry~1settings'
   /api/receipts/upload:
@@ -1356,6 +1362,10 @@ components:
       $ref: './openapi-voice.yaml#/components/schemas/VoiceStatus'
     VoiceSettings:
       $ref: './openapi-voice.yaml#/components/schemas/VoiceSettings'
+    CapabilityRoute:
+      $ref: './openapi-routing.yaml#/components/schemas/CapabilityRoute'
+    CapabilityRouting:
+      $ref: './openapi-routing.yaml#/components/schemas/CapabilityRouting'
     ReceiptLine:
       $ref: './openapi-receipts.yaml#/components/schemas/ReceiptLine'
     ReceiptDraft:

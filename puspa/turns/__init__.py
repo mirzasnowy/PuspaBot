@@ -43,7 +43,13 @@ from .messages import (
     validate_alternation,
 )
 from .todos import TodoItem, TodoStore
-from .turn_api import ModelCallOutcome, ModelReply, call_model, make_openrouter_model_call
+from .turn_api import (
+    ModelCallOutcome,
+    ModelReply,
+    call_model,
+    make_openrouter_model_call,
+    make_routed_model_call,
+)
 from .turn_api_error import describe_failure, is_auth_failure, wrap_with_auth_refresh
 from .turn_overflow import OverflowDecision, check_overflow
 from .turn_prepare import PreparedIteration, prepare_iteration
@@ -91,6 +97,7 @@ __all__ = [
     "interruption_note",
     "is_auth_failure",
     "make_openrouter_model_call",
+    "make_routed_model_call",
     "make_task_executor",
     "prepare_iteration",
     "recovery_note",

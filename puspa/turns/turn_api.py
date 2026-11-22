@@ -56,6 +56,7 @@ __all__ = [
     "ModelReply",
     "call_model",
     "make_openrouter_model_call",
+    "make_routed_model_call",
 ]
 
 
@@ -149,6 +150,92 @@ def make_openrouter_model_call(
             provider=result.provider,
             model=result.model,
         )
+
+    return model_call
+
+
+def make_routed_model_call(
+    *,
+    user_id,
+    dsn=None,
+    key_resolver=None,
+    transport=None,
+    client=None,
+    temperature: float = 0.0,
+    max_tokens: int = 1024,
+    timeout: float = 60.0,
+):
+    """Build the per-capability ``model_call`` adapter (COW-08).
+
+    The drop-in replacement for :func:`make_openrouter_model_call`
+    when the turn loop knows the user: the chat capability's route
+    (see :mod:`puspa.pwa.capability_routing`) decides the primary
+    tier. The route is resolved on EVERY call, so a Settings
+    change takes effect on the very next turn without rebuilding
+    anything.
+
+    - Primary tier (``"subscription"``): the routed chat provider
+      and model, with the vault key for that provider. With no
+      stored chat route the user's model selection is the route
+      (hosted means this tier behaves exactly like the OpenRouter
+      adapter: the chain entry's model on OpenRouter).
+    - Cheap/free tiers: exactly the OpenRouter adapter (the chain
+      entry's model), so a routed provider that 429s or fails
+      auth still falls through to the existing safety net instead
+      of retrying the same failing endpoint.
+    - A routed provider with no model is refused loudly
+      (``ValueError`` naming the fix) instead of sending the
+      chain's OpenRouter model id to the wrong endpoint.
+
+    The adapter never invents a key: a missing vault key raises
+    ``KeyError``, loudly, instead of calling with a fake one.
+    """
+    from puspa.pwa.capability_routing import resolve_chat_kwargs
+
+    def model_call(entry: ChainEntry, wire_messages: list[dict], tools: list[dict] | None):
+        if entry.tier == "subscription":
+            routed = resolve_chat_kwargs(user_id, dsn=dsn)
+            if routed:
+                model = routed.get("model")
+                if not model:
+                    raise ValueError(
+                        f"chat is routed to provider {routed.get('provider')!r} with no model: "
+                        "pick a model in Settings first"
+                    )
+                try:
+                    result = complete_messages(
+                        wire_messages,
+                        model=model,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        timeout=timeout,
+                        base_url=routed.get("base_url"),
+                        api_key=routed.get("api_key"),
+                        transport=transport,
+                        client=client,
+                        key_resolver=key_resolver,
+                        tools=tools,
+                        provider=routed.get("provider"),
+                    )
+                except CompletionError as exc:
+                    raise _completion_error_to_failure(exc) from exc
+                return ModelReply(
+                    text=result.text,
+                    tool_calls=list(result.tool_calls),
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens,
+                    finish_reason=result.finish_reason,
+                    provider=result.provider,
+                    model=result.model,
+                )
+        return make_openrouter_model_call(
+            key_resolver=key_resolver,
+            transport=transport,
+            client=client,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )(entry, wire_messages, tools)
 
     return model_call
 

@@ -229,3 +229,111 @@ describe("SettingsScreen telemetry toggle", () => {
     }
   });
 });
+
+describe("SettingsScreen per-capability routing", () => {
+  const routingTable = {
+    capabilities: {
+      chat: { capability: "chat", provider: "hosted", model: null, base_url: null, has_key: false, is_default: true },
+      vision: { capability: "vision", provider: "hosted", model: null, base_url: null, has_key: false, is_default: true },
+      image: { capability: "image", provider: null, model: null, base_url: null, has_key: false, is_default: true },
+      speech: { capability: "speech", provider: null, model: null, base_url: null, has_key: false, is_default: true },
+      embeddings: { capability: "embeddings", provider: "hosted", model: null, base_url: null, has_key: false, is_default: true },
+    },
+    providers: {
+      chat: ["hosted", "ollama", "openrouter", "openai", "deepseek", "groq", "together", "mistral", "xai", "gemini"],
+      vision: ["hosted", "ollama", "openrouter", "openai", "groq", "together", "mistral", "xai", "gemini"],
+      image: ["openai", "openrouter", "together", "xai", "gemini"],
+      speech: ["openai", "openrouter", "groq", "deepseek", "together"],
+      embeddings: ["hosted", "ollama", "openai", "openrouter", "together", "mistral", "gemini"],
+    },
+  };
+
+  function mockFetchByUrl() {
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      let body: unknown = hostedSettings;
+      if (url === "/api/routing") {
+        body = routingTable;
+      } else if (url === "/api/providers") {
+        body = { providers: [] };
+      } else if (url.startsWith("/api/routing/") && init?.method === "POST") {
+        const capability = url.split("/").pop();
+        const posted = JSON.parse(String(init.body));
+        body = {
+          capability,
+          provider: posted.provider,
+          model: posted.model,
+          base_url: posted.base_url,
+          has_key: false,
+          is_default: false,
+        };
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => body,
+      } as Response);
+    });
+    return fetchMock;
+  }
+
+  it("lists all five capabilities with their providers", async () => {
+    const fetchMock = mockFetchByUrl();
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      render(<SettingsScreen />);
+      expect(await screen.findByText("Routing per kemampuan")).toBeTruthy();
+      for (const capability of ["chat", "vision", "image", "speech", "embeddings"]) {
+        expect(screen.getByText(capability, { exact: true })).toBeTruthy();
+      }
+      expect(fetchMock).toHaveBeenCalledWith("/api/routing", {
+        credentials: "same-origin",
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("saves one capability with one click and leaves the others alone", async () => {
+    const fetchMock = mockFetchByUrl();
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      render(<SettingsScreen />);
+      await screen.findByText("Routing per kemampuan");
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "Simpan chat" })).toHaveProperty(
+          "disabled",
+          false,
+        ),
+      );
+      const user = userEvent.setup();
+      const selects = screen.getAllByRole("combobox");
+      const chatSelect = selects[0];
+      await user.selectOptions(chatSelect, "groq");
+      const modelInputs = screen.getAllByPlaceholderText("nama model di provider itu");
+      await user.type(modelInputs[0], "llama-3.3-70b-versatile");
+      await user.click(screen.getByRole("button", { name: "Simpan chat" }));
+      expect(await screen.findByText("Routing chat tersimpan: groq.")).toBeTruthy();
+      const postCall = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          url === "/api/routing/chat" &&
+          (init as RequestInit | undefined)?.method === "POST",
+      );
+      expect(postCall).toBeTruthy();
+      expect(JSON.parse(String((postCall?.[1] as RequestInit).body))).toEqual({
+        provider: "groq",
+        model: "llama-3.3-70b-versatile",
+        base_url: null,
+      });
+      expect(
+        fetchMock.mock.calls.filter(
+          ([url, init]) =>
+            typeof url === "string" &&
+            url.startsWith("/api/routing/") &&
+            (init as RequestInit | undefined)?.method === "POST",
+        ),
+      ).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
