@@ -53,6 +53,20 @@ export type WeeklyLinkedEvent = components["schemas"]["WeeklyLinkedEvent"];
 export interface ComputerAllowlist {
   apps: string[];
 }
+
+/**
+ * AST-09 telemetry toggle, hand-written here instead of
+ * generated: `npm run generate` is broken at this base (see the
+ * V2-35 note above), so the generated file cannot be rebuilt
+ * right now. This shape mirrors docs/openapi-telemetry.yaml
+ * exactly; move it to generated-types.ts once generation is
+ * repaired.
+ */
+export interface TelemetrySettings {
+  enabled: boolean;
+  env_override: boolean | null;
+  effective_enabled: boolean;
+}
 export interface ComputerAllowlistChange {
   app: string;
   allowed: boolean;
@@ -354,6 +368,26 @@ export function saveVoiceSettings(
   fetchFn: FetchFn = fetch,
 ): Promise<VoiceSettings> {
   return postJson("/api/voice/settings", settings, fetchFn);
+}
+
+/**
+ * Read the user's telemetry toggle (AST-09). Off by default
+ * for self-host; `env_override` says whether the operator's
+ * `PUSPA_TELEMETRY` flag decides instead.
+ */
+export function getTelemetrySettings(fetchFn: FetchFn = fetch): Promise<TelemetrySettings> {
+  return getJson<TelemetrySettings>("/api/telemetry/settings", fetchFn);
+}
+
+/**
+ * Save the user's telemetry toggle (AST-09). Saving the toggle
+ * never sends anything by itself; it only records the choice.
+ */
+export function saveTelemetrySettings(
+  settings: Pick<TelemetrySettings, "enabled">,
+  fetchFn: FetchFn = fetch,
+): Promise<TelemetrySettings> {
+  return postJson("/api/telemetry/settings", settings, fetchFn);
 }
 
 /**

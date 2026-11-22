@@ -5,17 +5,20 @@ import {
   finishProviderTokenLogin,
   getModelSettings,
   getProviders,
+  getTelemetrySettings,
   getVoiceSettings,
   logoutProvider,
   pollProviderDeviceLogin,
   saveByokKey,
   saveModelSettings,
+  saveTelemetrySettings,
   saveVoiceKey,
   saveVoiceSettings,
   startProviderLogin,
   subscribePush,
   type ModelSettings,
   type ProviderStatus,
+  type TelemetrySettings,
   type VoiceSettings,
 } from "../api/client";
 import { AutonomyDialPanel } from "../components/AutonomyDialPanel";
@@ -41,6 +44,11 @@ import {
   ttsProviderNeedsKey,
   withVoiceDefaults,
 } from "../state/voiceSettings";
+import {
+  defaultTelemetrySettings,
+  describeTelemetry,
+  withTelemetryDefaults,
+} from "../state/telemetrySettings";
 
 /** Base64url -> Uint8Array for the VAPID applicationServerKey. */
 function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
@@ -70,6 +78,12 @@ export function SettingsScreen() {
   const [voiceKey, setVoiceKey] = useState("");
   const [voiceKeyKind, setVoiceKeyKind] = useState<"asr" | "tts">("tts");
   const [voiceKeyBusy, setVoiceKeyBusy] = useState(false);
+  const [telemetrySettings, setTelemetrySettings] = useState<TelemetrySettings>(
+    defaultTelemetrySettings(),
+  );
+  const [telemetryLoaded, setTelemetryLoaded] = useState(false);
+  const [telemetryStatus, setTelemetryStatus] = useState("");
+  const [telemetryBusy, setTelemetryBusy] = useState(false);
 
   async function loadProviders() {
     try {
@@ -104,6 +118,17 @@ export function SettingsScreen() {
       .catch(() => {
         if (!cancelled)
           setVoiceStatus("Pilihan suara belum bisa dimuat; default Edge TTS dipakai.");
+      });
+    getTelemetrySettings()
+      .then((settings) => {
+        if (!cancelled) {
+          setTelemetrySettings(withTelemetryDefaults(settings));
+          setTelemetryLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled)
+          setTelemetryStatus("Pilihan telemetri belum bisa dimuat; default mati dipakai.");
       });
     return () => {
       cancelled = true;
@@ -270,6 +295,22 @@ export function SettingsScreen() {
       );
     } finally {
       setVoiceKeyBusy(false);
+    }
+  }
+
+  async function saveTelemetryChoice() {
+    setTelemetryBusy(true);
+    setTelemetryStatus("");
+    try {
+      const saved = await saveTelemetrySettings({ enabled: telemetrySettings.enabled });
+      setTelemetrySettings(withTelemetryDefaults(saved));
+      setTelemetryStatus("Pilihan telemetri tersimpan.");
+    } catch (err) {
+      setTelemetryStatus(
+        `Gagal menyimpan pilihan telemetri: ${err instanceof Error ? err.message : "error tak dikenal"}`,
+      );
+    } finally {
+      setTelemetryBusy(false);
     }
   }
 
@@ -670,6 +711,40 @@ export function SettingsScreen() {
         {voiceStatus ? (
           <p role="status" className="muted">
             {voiceStatus}
+          </p>
+        ) : null}
+      </div>
+      <div className="card">
+        <strong>Statistik pemakaian (telemetri)</strong>
+        <p>
+          Statistik pemakaian anonim untuk memandu perbaikan Puspa: jumlah pemakaian fitur dan
+          durasi, tanpa isi pesan, tanpa identitas, tanpa token. Mati secara default untuk
+          instalasi self-host.
+        </p>
+        <label>
+          <input
+            type="checkbox"
+            checked={telemetrySettings.env_override ?? telemetrySettings.enabled}
+            disabled={telemetrySettings.env_override !== null}
+            onChange={(event) =>
+              setTelemetrySettings({ ...telemetrySettings, enabled: event.target.checked })
+            }
+          />{" "}
+          Kirim statistik pemakaian anonim
+        </label>
+        <p className="muted">{describeTelemetry(telemetrySettings)}</p>
+        <button
+          type="button"
+          onClick={saveTelemetryChoice}
+          disabled={
+            telemetryBusy || !telemetryLoaded || telemetrySettings.env_override !== null
+          }
+        >
+          {telemetryBusy ? "Menyimpan…" : "Simpan pilihan telemetri"}
+        </button>
+        {telemetryStatus ? (
+          <p role="status" className="muted">
+            {telemetryStatus}
           </p>
         ) : null}
       </div>

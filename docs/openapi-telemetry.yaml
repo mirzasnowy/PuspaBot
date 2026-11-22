@@ -1,0 +1,94 @@
+# Anonymous usage telemetry toggle API contract (AST-09).
+#
+# Split out of docs/openapi-pwa.yaml on 22 Nov 2026 (telemetry
+# toggle in Settings, off by default for self-host): the
+# telemetry contract (1 endpoint + 1 schema) follows the
+# earlier voice split. The main spec references this file with
+# $ref stubs; the generated client is produced from the main
+# spec with openapi-typescript, which resolves external $refs.
+# The Error schema stays in the main spec and is referenced
+# back from here. The TypeScript shape is hand-written in
+# apps/pwa/src/api/client.ts until `npm run generate` works
+# again (see the AST-09 note there).
+openapi: 3.0.3
+info:
+  title: PuspaBot anonymous usage telemetry API
+  version: 1.0.0
+paths:
+  /api/telemetry/settings:
+    get:
+      tags: [settings]
+      summary: Read the user's telemetry toggle
+      description: |
+        Anonymous usage telemetry (AST-09): the stored Settings toggle, the `PUSPA_TELEMETRY`
+        environment override (if any), and the effective switch that actually decides whether
+        anything is sent. The toggle defaults to off; the environment flag wins when set.
+        No usage data ever passes through this route: it carries the toggle only.
+      responses:
+        "200":
+          description: Telemetry toggle state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelemetrySettings"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    post:
+      tags: [settings]
+      summary: Save the user's telemetry toggle
+      description: |
+        Anonymous usage telemetry (AST-09): persists the toggle only. A non-boolean `enabled`
+        is refused with 400: a privacy switch must never be set by a mistyped string. Saving
+        the toggle never sends anything by itself; it only records the choice.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+                  description: True switches anonymous usage telemetry on; false switches it off
+      responses:
+        "200":
+          description: Saved telemetry toggle state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelemetrySettings"
+        "400":
+          description: Bad body (not a JSON object, missing `enabled`, or a non-boolean value)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    TelemetrySettings:
+      type: object
+      description: |
+        The user's telemetry toggle (AST-09). `enabled` is the stored Settings toggle (off by
+        default); `env_override` is the `PUSPA_TELEMETRY` environment flag (`true` / `false` /
+        `null` when unset); `effective_enabled` is the switch that actually decides whether
+        anything is sent: the env flag wins when set, else the toggle, else off.
+      required: [enabled, env_override, effective_enabled]
+      properties:
+        enabled:
+          type: boolean
+        env_override:
+          type: boolean
+          nullable: true
+        effective_enabled:
+          type: boolean
