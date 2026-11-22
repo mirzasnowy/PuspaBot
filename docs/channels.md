@@ -1,13 +1,15 @@
-# Channels: Telegram + WhatsApp (Telegram and WhatsApp channels)
+# Channels: Telegram, WhatsApp, Discord, Slack and LINE
 
 Channels are **access channels, not the home**. The home stays the
 PWA. A channel is a door the user can knock on — Telegram first,
-WhatsApp second — and the same agent answers behind every door.
+WhatsApp second, Discord, Slack and LINE next — and the same agent
+answers behind every door.
 
 > **Honest limits, up front.** No live bot is verified in this
-> iteration. There is no real Telegram or WhatsApp token in scope,
-> no message was ever sent to a real Telegram/WhatsApp chat, and
-> nothing here contacts `api.telegram.org` or `graph.facebook.com`
+> iteration. There is no real Telegram, WhatsApp, Discord, Slack
+> or LINE token in scope, no message was ever sent to a real chat
+> on any of them, and nothing here contacts `api.telegram.org`,
+> `graph.facebook.com`, `discord.com`, `slack.com` or `api.line.me`
 > outside a test's `MockTransport`. What exists is the full
 > pipeline — adapters, authorisation, pairing, delivery ledger,
 > heartbeat — tested against fake HTTP transports. The first live
@@ -22,10 +24,11 @@ One core, many adapters (the hermes-agent gateway pattern,
 rewritten as PuspaBot code — nothing copied verbatim):
 
 ```
-Telegram update / WhatsApp webhook
+Telegram update / WhatsApp webhook / Discord poll / Slack poll / LINE webhook
         |
         v
-Adapter (telegram.py / whatsapp.py)   -- raw HTTPS via pinned httpx
+Adapter (telegram.py / whatsapp.py / discord.py / slack.py / line.py)
+        |  -- raw HTTPS via pinned httpx; no new dependency
         |  normalises to MessageEvent
         v
 GatewayRunner (run.py)               -- one live runner per profile
@@ -50,6 +53,9 @@ Module map (`puspa/channels/`):
 | `base.py` | `ChannelAdapter`: `parse_update`, `send_text`, `verify_webhook`, `poll_once`. |
 | `telegram.py` | Telegram Bot API over raw HTTPS. Long polling (`getUpdates`) + webhook parsing. `sendMessage` with 3 attempts, 1s/2s backoff. |
 | `whatsapp.py` | WhatsApp Cloud API over raw HTTPS. Webhook handshake (`hub.verify_token`), HMAC-SHA256 signature (`X-Hub-Signature-256`), `/{phone_number_id}/messages` send with the same retry shape. |
+| `discord.py` | Discord Bot API over raw HTTPS. REST polling (`GET /channels/{id}/messages?after=...`, no gateway websocket, no new dependency) + `MESSAGE_CREATE` parsing. Ed25519 interaction signature (`X-Signature-Ed25519`, pinned `cryptography`). `POST /channels/{id}/messages` send with the same retry shape. `check_token()` proves the token via `GET /users/@me`. |
+| `slack.py` | Slack Web API over raw HTTPS. REST polling (`conversations.history` with `oldest`, per channel) + Events API parsing. HMAC-SHA256 signing-secret signature (`X-Slack-Signature`, 5-minute replay window) and the URL-verification handshake. `chat.postMessage` send with the same retry shape. `check_token()` proves the token via `auth.test`. |
+| `line.py` | LINE Messaging API over raw HTTPS. Webhook-only (LINE has no polling endpoint): HMAC-SHA256 signature (`X-Line-Signature`, channel secret), `events[]` parsing. Push send (`POST /v2/bot/message/push`) for replies plus `reply_text()` with the one-use reply token. `check_token()` proves the token via the message quota endpoint. |
 | `authz.py` | `Allowlist` (`platform:chat_id` pairs) + `ChannelPairing` (6-digit codes, hash-only, 5-minute TTL, single use, 5 wrong codes lock a chat 10 minutes). |
 | `ledger.py` | Delivery ledger: in-memory + Postgres (`channel_deliveries`). Idempotency (`seen`) + per-attempt audit. |
 | `inbound.py` | The shared pipeline (guard -> pairing -> dedup -> authz -> agent -> reply). Returns an `InboundOutcome`; never raises for a drop. |
@@ -64,7 +70,9 @@ Module map (`puspa/channels/`):
 ## Message flow
 
 1. Telegram sends an `Update` (webhook POST) or the gateway polls
-   `getUpdates`. WhatsApp sends a webhook POST. The adapter turns
+   `getUpdates`. WhatsApp sends a webhook POST. Discord and Slack
+   are polled over REST (`poll_discord_once` /
+   `poll_slack_once`). LINE sends a webhook POST. The adapter turns
    the payload into `MessageEvent`s.
 2. The pipeline drops bot messages and the bot's own messages.
    Group messages go to the optional `group_handler` hook (group chat,
@@ -181,13 +189,51 @@ All tokens from the environment, never hardcoded, never logged:
 | `WHATSAPP_PHONE_NUMBER_ID` | The sender phone number id. |
 | `WHATSAPP_VERIFY_TOKEN` | Webhook verification token (GET handshake). |
 | `WHATSAPP_APP_SECRET` | App secret for the `X-Hub-Signature-256` check (recommended). |
+| `DISCORD_BOT_TOKEN` | Discord bot token. Enables Discord. |
+| `DISCORD_CHANNEL_IDS` | Comma-separated Discord channel ids the gateway polls. |
+| `DISCORD_PUBLIC_KEY` | Optional Ed25519 public key (hex) for the interaction signature check. |
+| `DISCORD_BOT_USER_ID` | Optional bot user id (bot-loop guard). |
+| `SLACK_BOT_TOKEN` | Slack bot token (`xoxb-...`). Enables Slack. |
+| `SLACK_CHANNEL_IDS` | Comma-separated Slack channel ids the gateway polls. |
+| `SLACK_SIGNING_SECRET` | Optional signing secret for the `X-Slack-Signature` check. |
+| `SLACK_BOT_USER_ID` | Optional bot user id (bot-loop guard). |
+| `LINE_CHANNEL_ACCESS_TOKEN` | LINE channel access token. Enables LINE. |
+| `LINE_CHANNEL_SECRET` | Optional channel secret for the `X-Line-Signature` check. |
+| `LINE_BOT_USER_ID` | Optional bot user id (bot-loop guard). |
 | `PUSPA_CHANNEL_ALLOWLIST` | `platform:chat_id,...` pairs answered without pairing. |
 | `PUSPA_CHANNEL_STATE_DIR` | Heartbeat/offset state dir (default `.puspa-channels`). |
 | `PUSPA_BOT_NAME` | Bot name in content-free notifications (default `PuspaBot`). |
 
-No new dependency was added: both adapters use the already-pinned
-`httpx==0.28.1`. (python-telegram-bot is LGPL and is not used; the
-Telegram Bot API is plain HTTPS and needs no library.)
+No new dependency was added: all five adapters use the
+already-pinned `httpx==0.28.1`. (python-telegram-bot is LGPL and
+is not used; the Telegram Bot API is plain HTTPS and needs no
+library. discord.py, slack-sdk and line-bot-sdk are not used
+either, for the same reason; Discord's Ed25519 check uses the
+already-pinned `cryptography` package.)
+
+## Honest limits
+
+- **No live bot verified.** No real Telegram/WhatsApp/Discord/
+  Slack/LINE token, no real DM answered, no real message sent.
+  Tests use `httpx.MockTransport` only.
+- **Discord inbound is REST polling, not the gateway
+  websocket.** Polling `GET /channels/{id}/messages` needs the
+  channel ids up front (`DISCORD_CHANNEL_IDS`) and the bot to
+  already be a member of each channel; a live gateway
+  (websocket) client would see DMs and new channels without a
+  list, but it needs a websocket dependency this transport
+  deliberately avoids.
+- **LINE is webhook-only.** LINE offers no polling endpoint, so
+  the adapter cannot fetch messages itself; a public webhook
+  URL is required for inbound LINE messages. The reply token is
+  one-use and short-lived: `reply_text()` only works while the
+  webhook handler still holds it, otherwise the pipeline's
+  push send is used.
+- **Slack polling needs channel membership + scope.** The bot
+  must be in each polled channel and the token needs
+  `channels:history` / `groups:history` / `im:history` for the
+  channel kinds polled; `conversations.history` only returns
+  messages the bot can see.
 
 ## Wiring to the agent core
 
@@ -200,11 +246,6 @@ lands, the seam fails closed (`ChannelError` inside the executor
 becomes an honest "could not handle that message" reply, never a
 fabricated answer). No second agent is built here.
 
-## Honest limits
-
-- **No live bot verified.** No real Telegram/WhatsApp token, no
-  real DM answered, no real message sent. Tests use
-  `httpx.MockTransport` only.
 - **DM-only by default.** Group messages are dropped unless a
   room is linked to the group chat (group chat, `docs/rooms-b6.md`):
   the link plus an @PuspaBot mention routes the message to the room.

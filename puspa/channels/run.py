@@ -5,7 +5,8 @@ One runner per profile, mirroring the hermes-agent shape
 delivery, notification, heartbeat — as separate modules, not one
 giant file):
 
-- owns the adapters (Telegram first, WhatsApp second),
+- owns the adapters (Telegram first, WhatsApp second, then
+  Discord, Slack, and LINE),
 - owns the pairing store, the allowlist, the delivery ledger, and
   the agent seam,
 - runs the inbound pipeline for every event, whichever adapter
@@ -38,11 +39,14 @@ from .authz import Allowlist, ChannelPairing
 from .base import ChannelAdapter
 from .config import ChannelConfig, ChannelConfigError, load_config
 from .delivery import DeliveryService
+from .discord import DiscordAdapter
 from .errors import SingleWriterError
 from .events import MessageEvent
 from .heartbeat import HeartbeatStore
 from .inbound import InboundOutcome, handle_inbound
 from .ledger import InMemoryDeliveryLedger
+from .line import LineAdapter
+from .slack import SlackAdapter
 from .telegram import TelegramAdapter
 from .whatsapp import WhatsAppAdapter
 
@@ -158,12 +162,66 @@ class GatewayRunner:
         assert isinstance(adapter, WhatsAppAdapter)
         return adapter
 
+    def discord_adapter(self) -> DiscordAdapter:
+        """Build (once) the Discord adapter from config."""
+        adapter = self._adapters.get("discord")
+        if adapter is None:
+            adapter = DiscordAdapter(
+                self.config.require_discord(),
+                channel_ids=self.config.discord_channel_ids,
+                public_key=self.config.discord_public_key,
+                bot_user_id=self.config.discord_bot_user_id,
+                http_client=self._http_client,
+            )
+            self._adapters["discord"] = adapter
+        assert isinstance(adapter, DiscordAdapter)
+        return adapter
+
+    def slack_adapter(self) -> SlackAdapter:
+        """Build (once) the Slack adapter from config."""
+        adapter = self._adapters.get("slack")
+        if adapter is None:
+            adapter = SlackAdapter(
+                self.config.require_slack(),
+                channel_ids=self.config.slack_channel_ids,
+                signing_secret=self.config.slack_signing_secret,
+                bot_user_id=self.config.slack_bot_user_id,
+                http_client=self._http_client,
+            )
+            self._adapters["slack"] = adapter
+        assert isinstance(adapter, SlackAdapter)
+        return adapter
+
+    def line_adapter(self) -> LineAdapter:
+        """Build (once) the LINE adapter from config."""
+        adapter = self._adapters.get("line")
+        if adapter is None:
+            adapter = LineAdapter(
+                self.config.require_line(),
+                channel_secret=self.config.line_channel_secret,
+                bot_user_id=self.config.line_bot_user_id,
+                http_client=self._http_client,
+            )
+            self._adapters["line"] = adapter
+        assert isinstance(adapter, LineAdapter)
+        return adapter
+
     def adapter_for(self, platform: str) -> ChannelAdapter:
-        """The adapter for a platform name (``telegram`` / ``whatsapp``)."""
+        """The adapter for a platform name.
+
+        ``telegram`` / ``whatsapp`` / ``discord`` / ``slack`` /
+        ``line``. LINE is webhook-only; it has no poll method.
+        """
         if platform == "telegram":
             return self.telegram_adapter()
         if platform == "whatsapp":
             return self.whatsapp_adapter()
+        if platform == "discord":
+            return self.discord_adapter()
+        if platform == "slack":
+            return self.slack_adapter()
+        if platform == "line":
+            return self.line_adapter()
         raise ChannelConfigError(f"unknown channel platform: {platform!r}")
 
     # -- inbound ----------------------------------------------------------
@@ -215,6 +273,38 @@ class GatewayRunner:
         outcomes = [self.handle_event(event) for event in events]
         self._telegram_offset = next_offset
         self.heartbeat_store.beat(last_offset=next_offset)
+        return outcomes
+
+    # -- polling (Discord / Slack) ------------------------------------------
+
+    def poll_discord_once(
+        self, *, channel_ids: list[str] | tuple[str, ...] | None = None
+    ) -> list[InboundOutcome]:
+        """One Discord REST-poll batch, processed through the pipeline.
+
+        Discord paging is by message id (kept in the adapter), so
+        there is no shared offset to persist; the heartbeat is
+        still recorded after every batch.
+        """
+        adapter = self.discord_adapter()
+        events = adapter.poll_once(channel_ids=channel_ids)
+        outcomes = [self.handle_event(event) for event in events]
+        self.heartbeat_store.beat(last_offset=self._telegram_offset)
+        return outcomes
+
+    def poll_slack_once(
+        self, *, channel_ids: list[str] | tuple[str, ...] | None = None
+    ) -> list[InboundOutcome]:
+        """One Slack ``conversations.history`` batch, through the pipeline.
+
+        Slack paging is by timestamp (kept in the adapter), so
+        there is no shared offset to persist; the heartbeat is
+        still recorded after every batch.
+        """
+        adapter = self.slack_adapter()
+        events = adapter.poll_once(channel_ids=channel_ids)
+        outcomes = [self.handle_event(event) for event in events]
+        self.heartbeat_store.beat(last_offset=self._telegram_offset)
         return outcomes
 
     def beat(self):
