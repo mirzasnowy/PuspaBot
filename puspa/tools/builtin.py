@@ -17,7 +17,14 @@ their home packages:
   directly); the adapter reads the resulting tool definitions off
   the returned record's public ``tools`` accessor.
 
-Importing this module registers both tools on the default registry.
+It also registers the browser + web tools from
+:mod:`puspa.tools.browser` (``browser_open``, ``browser_click``,
+``browser_fill``, ``web_search``, ``web_fetch``), which are new
+tools, not adapters: they live in the tools layer because they
+wrap the computer web bridge and plain HTTP, not a plugin or the
+chassis.
+
+Importing this module registers all of these tools on the default registry.
 ``puspa.tools.discover`` imports it automatically when it scans the
 ``puspa.tools`` package.
 """
@@ -28,10 +35,11 @@ from typing import Any
 
 from puspa.chassis.sandbox_tool import SandboxTool
 from puspa.plugins.loader import load_plugin
+from puspa.tools.browser import register_browser_tools
 from puspa.tools.narrowing import register_search_tools
 from puspa.tools.registry import ToolRegistry, default_registry, register
 
-__all__ = ["register_builtin_tools", "register_search_tools"]
+__all__ = ["register_browser_tools", "register_builtin_tools", "register_search_tools"]
 
 
 def _register_run_code(registry: ToolRegistry) -> None:
@@ -92,6 +100,10 @@ def register_builtin_tools(registry: ToolRegistry | None = None) -> ToolRegistry
     target = registry if registry is not None else default_registry()
     _register_run_code(target)
     _register_plugin_tools(target)
+    # COW-07: the browser + web tools, so a run whose catalog
+    # comes from the registry can open pages, click, fill forms,
+    # search the web, and fetch pages.
+    register_browser_tools(target)
     # G17: the overflow search tool, so a run whose catalog
     # overflowed can search the hidden tools through the registry.
     register_search_tools(target)

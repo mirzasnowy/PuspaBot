@@ -20,6 +20,13 @@
   tools (``run_code``, ``plugin_echo``) on the registry; imported by
   :func:`puspa.tools.registry.discover`, not by this package, so
   importing ``puspa.tools`` stays free of the chassis/plugins stack.
+  It also registers the browser + web tools from
+  :mod:`puspa.tools.browser`.
+- :mod:`puspa.tools.browser` -- the browser tools (``browser_open``,
+  ``browser_click``, ``browser_fill``) over the computer web bridge,
+  plus ``web_search`` (DuckDuckGo HTML, no key) and ``web_fetch``
+  (plain HTTP, clear error on JavaScript pages); exposed through the
+  ``web`` toolset preset in :mod:`puspa.tools.toolsets`.
 - :mod:`puspa.tools.narrowing` -- per-run skill narrowing + the
   ``search_tools`` overflow tool (G17): pick the skills that fit the
   user message, cap the offered set small, hide the rest behind
@@ -28,6 +35,7 @@
 """
 
 from .approval import ApprovalDenied, ApprovalGate, DangerLevel, classify_command
+from .browser import BROWSER_TOOL_NAMES, BrowserTools, register_browser_tools
 from .check import AvailabilityChecker, CheckResult, default_checker
 from .footprint import Capability, LayerRecommendation, recommend_layer
 from .narrowing import (
@@ -64,6 +72,7 @@ from .toolsets import (
     _PUSPA_CORE_TOOLS,
     CODING_TOOLSET,
     DEFAULT_TOOLSET,
+    WEB_TOOLSET,
     Toolset,
     ToolsetRegistry,
     default_toolsets,
@@ -72,6 +81,7 @@ from .toolsets import (
 )
 
 __all__ = [
+    "BROWSER_TOOL_NAMES",
     "CODING_TOOLSET",
     "DEFAULT_MAX_DIRECT_TOOLS",
     "DEFAULT_MAX_OFFERED_TOOLS",
@@ -80,10 +90,12 @@ __all__ = [
     "DEFAULT_TOOLSET",
     "SEARCH_TOOLS_NAME",
     "TOOL_LIMIT_REFUSED_EVENT",
+    "WEB_TOOLSET",
     "_PUSPA_CORE_TOOLS",
     "ApprovalDenied",
     "ApprovalGate",
     "AvailabilityChecker",
+    "BrowserTools",
     "Capability",
     "CheckResult",
     "DangerLevel",
@@ -112,6 +124,7 @@ __all__ = [
     "prepare_run_tools",
     "recommend_layer",
     "register",
+    "register_browser_tools",
     "register_search_tools",
     "schemas",
     "search_tools",
