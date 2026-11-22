@@ -10,8 +10,9 @@ mcp`` (serve Puspa's tools to outside agents over MCP stdio), ``puspa
 service`` (lifecycle of the local agent service: start, stop, restart,
 status, logs, update), ``puspa diagnostics export`` (a redacted diagnostics
 bundle for bug reports), ``puspa knowledge`` (document knowledge base: upload
-files and ask questions about them, AST-02), plus help. The full one-shot CLI
-lands in a later step of the split; until then any other subcommand prints help
+files and ask questions about them, AST-02), ``puspa wiki build`` / ``list``
+(COW-06: auto-curated knowledge wiki), plus help. The full one-shot CLI lands
+in a later step of the split; until then any other subcommand prints help
 and says so.
 """
 
@@ -22,6 +23,7 @@ import getpass
 import json
 import os
 import sys
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -43,7 +45,8 @@ FULL_CLI_NOTE = (
     "split; this build ships `puspa web` / `puspa serve`, `puspa memory "
     "export` / `import`, `puspa mcp`, `puspa service`, `puspa diagnostics export`, "
     "`puspa knowledge` (upload / list / ask / delete), "
-    "`puspa self-evolve`, `puspa skill list` / `search` / `install` / `create`, plus help."
+    "`puspa self-evolve`, `puspa skill list` / `search` / `install` / `create`, "
+    "`puspa wiki build` / `list`, plus help."
 )
 
 _KNOWN_COMMANDS = (
@@ -59,6 +62,7 @@ _KNOWN_COMMANDS = (
     "diagnostics",
     "knowledge",
     "self-evolve",
+    "wiki",
 )
 
 #: Environment variable holding the export passphrase (never a
@@ -343,6 +347,39 @@ def build_parser() -> argparse.ArgumentParser:
     # overwrite each other, so create is added to the same parser.
     skill_parser = add_skill_parser(sub)
     add_create_subcommand(skill_parser)
+
+    wiki = sub.add_parser(
+        "wiki",
+        help="Auto-curated knowledge wiki (COW-06).",
+        description=(
+            "Curate durable facts, decisions, and procedures from "
+            "consolidated conversations into a topic-organized Markdown "
+            "wiki under the Puspa home, or list the topics already built."
+        ),
+    )
+    wiki_sub = wiki.add_subparsers(dest="wiki_command", metavar="WIKI_COMMAND")
+    wiki_build = wiki_sub.add_parser(
+        "build",
+        help="Run one curation pass and write the wiki pages.",
+        description=(
+            "Read the consolidation signals (summaries, procedures, "
+            "active profile facts), group them into topics, and write "
+            "one Markdown page per topic under <home>/wiki/<user>."
+        ),
+    )
+    wiki_build.add_argument("--user", required=True, help="User id to curate for.")
+    wiki_build.add_argument(
+        "--home", default=None, help="Puspa home directory (defaults to PUSPA_HOME or ~/.puspa)."
+    )
+    wiki_list = wiki_sub.add_parser(
+        "list",
+        help="List the wiki topics already built for a user.",
+        description="List the wiki topics already built for a user.",
+    )
+    wiki_list.add_argument("--user", required=True, help="User id whose wiki to list.")
+    wiki_list.add_argument(
+        "--home", default=None, help="Puspa home directory (defaults to PUSPA_HOME or ~/.puspa)."
+    )
     add_knowledge_parser(sub)
     self_evolve = sub.add_parser(
         "self-evolve",
@@ -732,6 +769,74 @@ def _run_self_evolve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _require_uuid_user_id(user_id: str) -> str | None:
+    """A clean CLI error when ``--user`` is not a user id (UUID).
+
+    The memory tables key users by UUID, so a non-UUID id would
+    otherwise fail deep inside Postgres with a raw traceback.
+    Returns the error message, or None when the id is usable.
+    """
+    try:
+        uuid.UUID(str(user_id))
+    except (ValueError, AttributeError, TypeError):
+        return f"user id must be a UUID, got {user_id!r}"
+    return None
+
+
+def _run_wiki_build(args: argparse.Namespace) -> int:
+    """Run ``puspa wiki build`` (lazy import: ``--help`` stays fast)."""
+    from puspa.memory.wiki import build_wiki
+
+    bad = _require_uuid_user_id(args.user)
+    if bad is not None:
+        print(f"puspa wiki build: failed: {bad}", file=sys.stderr)
+        return 1
+    try:
+        report = build_wiki(args.user, home=args.home)
+    except ValueError as exc:
+        print(f"puspa wiki build: failed: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(report, indent=2, default=str))
+    print(
+        f"Wiki built: {report['pages_written']} page(s), "
+        f"{report['entries']} entr{'y' if report['entries'] == 1 else 'ies'} "
+        f"in {report['wiki_dir']}."
+    )
+    return 0
+
+
+def _run_wiki_list(args: argparse.Namespace) -> int:
+    """Run ``puspa wiki list`` (lazy import: ``--help`` stays fast)."""
+    from puspa.memory.wiki import list_pages
+
+    bad = _require_uuid_user_id(args.user)
+    if bad is not None:
+        print(f"puspa wiki list: failed: {bad}", file=sys.stderr)
+        return 1
+    try:
+        topics = list_pages(args.user, home=args.home)
+    except ValueError as exc:
+        print(f"puspa wiki list: failed: {exc}", file=sys.stderr)
+        return 1
+    if not topics:
+        print("No wiki pages yet. Run `puspa wiki build --user <id>` first.")
+        return 0
+    for topic in topics:
+        print(f"{topic['slug']} — {topic['title']} ({topic['entries']} entries)")
+    return 0
+
+
+def _run_wiki(args: argparse.Namespace) -> int:
+    """Dispatch ``puspa wiki build`` / ``puspa wiki list``."""
+    if args.wiki_command == "build":
+        return _run_wiki_build(args)
+    if args.wiki_command == "list":
+        return _run_wiki_list(args)
+    build_parser().parse_args(["wiki", "--help"])
+    return 0
+    return 0
+
+
 def _run_memory(args: argparse.Namespace) -> int:
     if args.memory_command == "export":
         return _run_memory_export(args)
@@ -768,6 +873,11 @@ def main(argv: list[str] | None = None) -> int:
         return _run_diagnostics(parsed)
     if parsed.command == "self-evolve":
         return _run_self_evolve(parsed)
+    if parsed.command == "wiki":
+        if parsed.wiki_command is None:
+            parser.print_help()
+            return 0
+        return _run_wiki(parsed)
     if parsed.command == "computer":
         if parsed.computer_command is None:
             parser.print_help()

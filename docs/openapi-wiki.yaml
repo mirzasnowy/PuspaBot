@@ -1,0 +1,250 @@
+# Auto-curated knowledge wiki API contract (COW-06).
+#
+# Split out of docs/openapi-pwa.yaml on 22 Nov 2026 (size-limit split):
+# the wiki contract (4 endpoints + 6 schemas) would have pushed the
+# main spec past its recorded baseline, so it earned its own file,
+# following the graph split precedent. The main spec does not yet
+# carry $ref stubs to this file; the generated client is produced
+# from the main spec, and the wiki screen uses its own typed
+# fetchers in apps/pwa/src/api/wiki.ts instead. The Error schema
+# stays in the main spec and is referenced back from here.
+openapi: 3.0.3
+info:
+  title: PuspaBot auto-curated knowledge wiki API
+  version: 1.0.0
+paths:
+  /api/wiki/topics:
+    get:
+      tags: [wiki]
+      summary: List the wiki topics built for the logged-in user
+      description: |
+        The topic list from the wiki manifest (`_index.json` under
+        the user's wiki directory). Empty when the wiki has never
+        been built. Each topic carries its slug, title, entry
+        count, sources, entities, and last build time.
+      responses:
+        "200":
+          description: Topic list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [topics]
+                properties:
+                  topics:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WikiTopic"
+        "401":
+          $ref: "openapi-pwa.yaml#/components/responses/Unauthorized"
+  /api/wiki/pages/{slug}:
+    get:
+      tags: [wiki]
+      summary: One wiki page as Markdown plus rendered HTML
+      description: |
+        The topic page: its Markdown source, the server-rendered
+        HTML (safe subset renderer: headings, bullets, bold, code,
+        links; all other markup escaped), and the source ids behind
+        every entry on the page.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9-]{0,59}$"
+      responses:
+        "200":
+          description: Wiki page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WikiPage"
+        "401":
+          $ref: "openapi-pwa.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "openapi-pwa.yaml#/components/responses/NotFound"
+  /api/wiki/build:
+    post:
+      tags: [wiki]
+      summary: Run one wiki curation pass now
+      description: |
+        Reads the consolidation signals (summaries, procedures,
+        active profile facts), groups them into topics, and writes
+        one Markdown page per topic. A rebuild overwrites the
+        generated files; stale topic files are removed.
+      responses:
+        "200":
+          description: Build report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WikiBuildReport"
+        "401":
+          $ref: "openapi-pwa.yaml#/components/responses/Unauthorized"
+  /api/wiki/graph:
+    get:
+      tags: [wiki]
+      summary: Read-only KnowledgeGraph subgraph for one wiki topic
+      description: |
+        The topic's nodes and the edges between them, from the same
+        KnowledgeGraph the second-brain view reads (seeded from the
+        user's episodic memory). Read-only: this API exposes no edit
+        route, and editing is B18's graph view, not this endpoint.
+      parameters:
+        - name: topic
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Topic subgraph
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WikiGraph"
+        "401":
+          $ref: "openapi-pwa.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "openapi-pwa.yaml#/components/responses/NotFound"
+components:
+  schemas:
+    WikiTopic:
+      type: object
+      required: [slug, title, entries, sources, entities, updated_at]
+      properties:
+        slug:
+          type: string
+          example: phone
+        title:
+          type: string
+          example: Phone
+        entries:
+          type: integer
+          example: 3
+        sources:
+          type: array
+          items:
+            type: string
+          example: ["fact:preference:shopping", "summary:sum-1"]
+        entities:
+          type: array
+          items:
+            type: string
+          example: ["phone", "tokopedia"]
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    WikiPage:
+      type: object
+      required: [slug, title, markdown, html, sources, entities, updated_at]
+      properties:
+        slug:
+          type: string
+          example: phone
+        title:
+          type: string
+          example: Phone
+        markdown:
+          type: string
+          description: The stored Markdown source of the page.
+        html:
+          type: string
+          description: Server-rendered HTML (safe subset).
+        sources:
+          type: array
+          items:
+            type: string
+        entities:
+          type: array
+          items:
+            type: string
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    WikiGraphNode:
+      type: object
+      required: [name, kind, description, sources, fact_count, seen_at, is_code_node]
+      properties:
+        name:
+          type: string
+          example: tokopedia
+        kind:
+          type: string
+          nullable: true
+        description:
+          type: string
+        sources:
+          type: array
+          items:
+            type: string
+        fact_count:
+          type: integer
+        seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_code_node:
+          type: boolean
+    WikiGraphEdge:
+      type: object
+      required: [subject, relation, object, sources]
+      properties:
+        subject:
+          type: string
+        relation:
+          type: string
+        object:
+          type: string
+        sources:
+          type: array
+          items:
+            type: string
+    WikiGraph:
+      type: object
+      required: [topic, title, nodes, edges, total_nodes, total_edges]
+      properties:
+        topic:
+          type: string
+          example: phone
+        title:
+          type: string
+          example: Phone
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/WikiGraphNode"
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/WikiGraphEdge"
+        total_nodes:
+          type: integer
+        total_edges:
+          type: integer
+    WikiBuildReport:
+      type: object
+      required: [user_id, wiki_dir, pages_written, files, generated_at, entries, topics]
+      properties:
+        user_id:
+          type: string
+        wiki_dir:
+          type: string
+        pages_written:
+          type: integer
+        files:
+          type: array
+          items:
+            type: string
+        generated_at:
+          type: string
+          format: date-time
+        entries:
+          type: integer
+        topics:
+          type: array
+          items:
+            type: string
