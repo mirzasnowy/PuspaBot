@@ -264,7 +264,8 @@ class SupportStore:
                 ),
             )
             if ledger is not None:
-                assert agent_id is not None  # resolved above when a ledger is given
+                if agent_id is None:
+                    raise RuntimeError("ledger given but no agent id resolved")
                 ledger.append_event(
                     task_id=support_id,
                     agent_id=agent_id,
@@ -287,7 +288,8 @@ class SupportStore:
                 "SELECT * FROM creator_support_purchases WHERE id = %s",
                 (support_id,),
             ).fetchone()
-            assert row is not None  # the purchase was just inserted above
+            if row is None:
+                raise RuntimeError("support purchase vanished right after insert")
         return _receipt(row)
 
     def get(self, support_id: str) -> dict:
@@ -328,7 +330,8 @@ class SupportStore:
                 "FROM creator_support_purchases WHERE work_id = %s",
                 (work_id,),
             ).fetchone()
-            assert totals is not None  # aggregate always returns one row
+            if totals is None:
+                raise RuntimeError("support totals aggregate returned no row")
         return {
             "work_id": work_id,
             "support_count": int(totals["support_count"]),
@@ -346,7 +349,8 @@ class SupportStore:
                 "FROM creator_support_purchases WHERE creator_id = %s",
                 (creator_id,),
             ).fetchone()
-            assert totals is not None  # aggregate always returns one row
+            if totals is None:
+                raise RuntimeError("creator credits aggregate returned no row")
         return {
             "user_id": creator_id,
             "credits_received": int(totals["credits_received"]),
