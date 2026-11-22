@@ -71,6 +71,39 @@ def _not_logged_in() -> JSONResponse:
     return JSONResponse({"error": render_server_line("error.not_logged_in")}, status_code=401)
 
 
+def _focus_recorder(dsn, user_id: str, day: datetime.date):
+    """Best-effort ledger recorder for the morning focus broadcast.
+
+    Returns a K18 bus recorder (see
+    :func:`puspa.mind.workspace.ledger_recorder`) that appends
+    one ``task_completed`` event per briefing under
+    ``morning-focus-<user>-<date>``. A database that cannot take
+    the event (down, or the ledger tables missing) records
+    nothing and returns None — the briefing is a read, so a
+    failed audit write must never fail the summary itself.
+    """
+    from ..ledger import Ledger
+    from ..ledger.errors import LedgerError
+
+    def record(broadcast_record: dict) -> str | None:
+        try:
+            event = Ledger(dsn).append_event(
+                task_id=f"morning-focus-{user_id}-{day.isoformat()}",
+                agent_id="puspa",
+                event_type="task_completed",
+                content={
+                    "job": "workspace_broadcast",
+                    "user_id": user_id,
+                    **broadcast_record,
+                },
+            )
+        except (psycopg.Error, LedgerError):
+            return None
+        return str(event["id"])
+
+    return record
+
+
 def _google_source_status(user_id: str, dsn) -> dict:
     """Calendar + Gmail availability from the stored Google token.
 
@@ -300,6 +333,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             holidays=holidays,
             prayer=prayer,
             source_status=source_status,
+            focus_record=_focus_recorder(dsn, user_id, day),
         )
 
     @app.post("/api/morning/notes/text")

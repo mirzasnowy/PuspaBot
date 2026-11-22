@@ -33,9 +33,9 @@ What this module IS, per the v2 design
   healthy range), with a slow decay toward baseline, so the
   state has a short stretch of time.
 - Broadcast and effect: when salience is high, F(t) offers a
-  broadcast candidate for the K18 workspace (the workspace
-  bus itself is not shipped yet, so the candidate is returned
-  and nothing broadcasts on its own). Salience is the loudest
+  broadcast candidate for the K18 workspace (the bus lives in
+  :mod:`puspa.mind.workspace`); the candidate is returned and
+  nothing broadcasts on its own). Salience is the loudest
   of arousal, the dominant concern's deficit and negative
   valence: a calm, healthy state is quiet and asks for
   nothing. The effects are the behaviour changes the design names: stress deepens
@@ -533,9 +533,9 @@ class FeltState:
         """The K18 workspace candidate, when F(t) is salient enough.
 
         Returns None when salience is below the broadcast bar or
-        the state is disabled. The K18 workspace bus is not
-        shipped yet, so this only builds the candidate — nothing
-        broadcasts on its own, and the caller owns the bus.
+        the state is disabled. The K18 workspace bus
+        (:mod:`puspa.mind.workspace`) takes this candidate — the
+        caller owns the bus, nothing broadcasts on its own.
         """
         if self.salience(now) < SALIENCE_BROADCAST:
             return None

@@ -82,6 +82,25 @@ else stays out of the way.
   competing writers.
 - Build: a workspace bus in the router; each module scores its candidate;
   the top score broadcasts; the broadcast is ledger-recorded.
+- Measured gain (22 Nov 2026, before building; experiment in
+  `hidden_files/k18-measurement`, 12 scenarios, ground truth fixed
+  before any arm ran): fixed order, first relevant candidate wins
+  7/12; score competition only (`score = 0.5*urgency + 0.3*relevance
+  + 0.2*confidence`) 8/12; score competition plus veto — a broadcast
+  that violates another module's hard constraint is skipped, the
+  next candidate broadcasts, and all vetoed means telling the user
+  why — 11/12, losing only the scenario where a flashy sale
+  outscores the routine bill the user asked to pay first. Score
+  alone gains +1, below the pre-registered bar of +2, so the veto
+  is what carries the gain and is part of the bus, not an option.
+  The 12 scenarios are promoted to a regression test in
+  `tests/test_global_workspace.py`, which must keep reproducing
+  11/12 for the full bus, 8/12 for score-only, and 7/12 for the
+  fixed-order baseline.
+- First live caller: the morning briefing
+  (`puspa.morning.summary.select_morning_focus`) — each briefing
+  section bids for the day's focus, and an event starting within
+  the hour vetoes every other section.
 
 ### K19 — Prediction and surprise
 
