@@ -1,5 +1,5 @@
-"""Team schema loader: the team tables come from migration 0043
-(``puspa/migrations/versions/0043_multi_agent_teams.sql``). This
+"""Team schema loader: the team tables come from migration 0044
+(``puspa/migrations/versions/0044_multi_agent_teams.sql``). This
 module is only the programmatic entry point — the test suite calls
 ``create_schema()`` so each test run starts from the same schema.
 See ``docs/multi-agent-teams.md`` for the design."""
@@ -24,22 +24,22 @@ TEAM_TABLES = (
 
 
 def schema_path() -> Path:
-    """Absolute path of migration 0043."""
+    """Absolute path of migration 0044."""
     return (
         Path(__file__).resolve().parents[2]
         / "puspa"
         / "migrations"
         / "versions"
-        / "0043_multi_agent_teams.sql"
+        / "0044_multi_agent_teams.sql"
     )
 
 
 def create_schema(dsn=None):
-    """Apply the tables (migration 0043).
+    """Apply the tables (migration 0044).
 
     Idempotent; safe to call before every test.
     """
-    apply_migrations(resolve_dsn(dsn), target="0043")
+    apply_migrations(resolve_dsn(dsn), target="0044")
 
 
 def reset_tables(dsn=None):

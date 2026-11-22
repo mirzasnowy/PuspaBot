@@ -34,7 +34,7 @@ Rules, all enforced here (never left to the caller):
   remove members or delete the team.
 - ``delete_team`` is owner-only and deletes the team row; members,
   conversations, and messages cascade in the database (``ON DELETE
-  CASCADE`` in migration 0043).
+  CASCADE`` in migration 0044).
 """
 
 from __future__ import annotations

@@ -28,7 +28,7 @@ from puspa.teams.errors import NotTeamOwnerError, TeamNotFoundError
 
 @pytest.fixture(autouse=True)
 def _team_schema(test_dsn):
-    """Team tables (0043)."""
+    """Team tables (0044)."""
     create_schema(test_dsn)
     reset_tables(test_dsn)
     yield
