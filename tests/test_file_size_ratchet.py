@@ -180,7 +180,13 @@ BASELINE_LINES = {
     # route registration plus the comment (same seam as the
     # diagnostics screen: no bootstrap data, the screen fetches
     # everything through its APIs). Resumes from 1239.
-    "puspa/pwa/app.py": 1239,
+    # NOTE (22 Nov 2026): the file already measured 1,348 lines at
+    # this item's base — the 1239 baseline above is stale against
+    # merged work (multimodal and later items), not against this
+    # item. Community gallery: +7 lines — the "gallery" screen in
+    # SCREENS, the gallery_api import and route registration plus
+    # the comment. Resumes from 1355.
+    "puspa/pwa/app.py": 1355,
     # PWA typed API client: every screen's fetch wrapper plus
     # the generated-types aliases in one file. Crossed 1000
     # lines in P-10 (21 Nov 2026): the replay fetchers (tasks,
@@ -394,7 +400,11 @@ BASELINE_LINES = {
     # $ref stub for the telemetry settings path (contract split
     # out to docs/openapi-telemetry.yaml). The ratchet resumes
     # from 2311.
-    "docs/openapi-pwa.yaml": 2311,
+    # Community gallery (22 Nov 2026): +12 lines — $ref stubs for
+    # the 6 gallery paths (contract split out to
+    # docs/openapi-gallery.yaml, same split precedent). The ratchet
+    # resumes from 2922.
+    "docs/openapi-pwa.yaml": 2922,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:

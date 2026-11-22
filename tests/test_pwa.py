@@ -48,12 +48,14 @@ def test_sixteen_screens_exist_including_rooms():
     eighteenth (the skill marketplace hub, COW-03), and Wiki is the
     nineteenth (the auto-curated knowledge wiki, COW-06), and
     Knowledge is the twentieth (the document knowledge
-    base, AST-02: upload files, ask about them).
+    base, AST-02: upload files, ask about them), and Gallery is
+    the twenty-first (the community gallery: published cultural
+    works, rated by other users).
 
-    The count is pinned on purpose: a twenty-first screen must be a
+    The count is pinned on purpose: a twenty-second screen must be a
     deliberate decision with its own ticket, not an accident.
     """
-    assert len(SCREENS) == 20
+    assert len(SCREENS) == 21
     assert set(SCREENS) == {
         "chat",
         "tasks",
@@ -84,6 +86,9 @@ def test_sixteen_screens_exist_including_rooms():
         "wiki",
         # Document knowledge base (AST-02): upload files, ask about them.
         "knowledge",
+        # Community gallery: published cultural works, rated by
+        # other users (one rating per user per work).
+        "gallery",
     }
 
 
