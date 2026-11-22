@@ -61,6 +61,11 @@ Module map (`puspa/channels/`):
 | `inbound.py` | The shared pipeline (guard -> pairing -> dedup -> authz -> agent -> reply). Returns an `InboundOutcome`; never raises for a drop. |
 | `delivery.py` | `DeliveryService`: send through an adapter, record pending -> sent/failed. Ledger failure never loses a send. |
 | `agent.py` | `TaskRunnerAgent`: one message = one `Task` with a single `respond` step on the existing `TaskRunner`. The production executor is a named follow-up. |
+| `engines.py` | `ExternalEngine` (one call: send message + context, get reply) + `ExternalEngineAgent` (the same `ChannelAgent` seam) + `EngineError`. Shared POST/GET with 3 attempts, 1s/2s backoff. |
+| `engines_dify.py` | `DifyEngine`: Dify Chat API (`POST /v1/chat-messages`, blocking). Conversation id remembered per Puspa conversation (in memory). |
+| `engines_coze.py` | `CozeEngine`: Coze Chat API v3 (create, poll retrieve, read answer). Conversation id remembered per Puspa conversation (in memory). |
+| `engines_bailian.py` | `BailianEngine`: Bailian DashScope application API (`POST /api/v1/apps/{app_id}/completion`). Puspa conversation key as `session_id`; explicit history sent as `messages`. |
+| `cli.py` | `puspa channels run` / `engines`: poll Telegram through the configured engine; list engines and their setup state. |
 | `notify.py` | Content-free notifications: the text is the bot name only, never message content (the DuskBot rule). |
 | `heartbeat.py` | `HeartbeatStore`: last beat + last polling offset in one JSON file per profile; restored at start. |
 | `run.py` | `GatewayRunner`: the facade. One live runner per profile (sessions and persistence (single-writer, full-text search, lineage) single writer, process-wide registry). |
@@ -203,13 +208,62 @@ All tokens from the environment, never hardcoded, never logged:
 | `PUSPA_CHANNEL_ALLOWLIST` | `platform:chat_id,...` pairs answered without pairing. |
 | `PUSPA_CHANNEL_STATE_DIR` | Heartbeat/offset state dir (default `.puspa-channels`). |
 | `PUSPA_BOT_NAME` | Bot name in content-free notifications (default `PuspaBot`). |
+| `PUSPA_CHANNEL_ENGINE` | Which engine answers a channel: `builtin` (default), `dify`, `coze`, or `bailian`. |
+| `DIFY_API_KEY` | The Dify app's API key (required when the engine is `dify`). |
+| `DIFY_BASE_URL` | Dify API base (default `https://api.dify.ai/v1`). |
+| `COZE_API_TOKEN` | The Coze personal access token (required when the engine is `coze`). |
+| `COZE_BOT_ID` | The Coze bot id to answer as (required when the engine is `coze`). |
+| `COZE_BASE_URL` | Coze API base (default `https://api.coze.com`). |
+| `BAILIAN_API_KEY` | The DashScope API key (required when the engine is `bailian`). |
+| `BAILIAN_APP_ID` | The Bailian application id (required when the engine is `bailian`). |
+| `BAILIAN_BASE_URL` | DashScope API base (default `https://dashscope-intl.aliyuncs.com`). |
 
-No new dependency was added: all five adapters use the
-already-pinned `httpx==0.28.1`. (python-telegram-bot is LGPL and
-is not used; the Telegram Bot API is plain HTTPS and needs no
-library. discord.py, slack-sdk and line-bot-sdk are not used
-either, for the same reason; Discord's Ed25519 check uses the
-already-pinned `cryptography` package.)
+No new dependency was added: all five channel adapters and all three
+engine adapters use the already-pinned `httpx==0.28.1`.
+(python-telegram-bot is LGPL and is not used; the Telegram Bot API
+is plain HTTPS and needs no library. discord.py, slack-sdk and
+line-bot-sdk are not used either, for the same reason; Discord's
+Ed25519 check uses the already-pinned `cryptography` package. The
+three engine adapters use the same pinned `httpx` — no Dify, Coze,
+or DashScope SDK, each platform API is plain HTTPS.)
+
+
+## Wiring to the agent core
+
+`TaskRunnerAgent` (`agent.py`) is the one narrow seam. One inbound
+message becomes one `Task` (single `respond` step) on the existing
+`TaskRunner` (`puspa.runtime.tasks`). The step executor is injected
+by the caller. The production executor — a call to the model
+through the Phase 0 chassis — is a **named follow-up**; until it
+lands, the seam fails closed (`ChannelError` inside the executor
+becomes an honest "could not handle that message" reply, never a
+fabricated answer). No second agent is built here.
+
+## External engines (AST-05)
+
+The built-in engine answers a channel by default. The user can
+plug an external agent platform in as the engine instead of
+rebuilding their agents there - the idea AstrBot bridges to
+(Dify, Coze, Alibaba Cloud Bailian). Patterns only: no AstrBot
+code was copied, and AstrBot is not a dependency.
+
+- One call per platform: `send(text, conversation_id, user_id,
+  history=()) -> str`. The conversation id is the Puspa session
+  key (`platform:chat_id`), so the platform keeps the thread
+  across turns.
+- The switch is `PUSPA_CHANNEL_ENGINE` (`builtin` / `dify` /
+  `coze` / `bailian`) or `puspa channels run --engine <name>`.
+  `puspa channels engines` lists each engine and whether its
+  key is set (keys are never printed).
+- A selected engine without its key fails at runner start with
+  `ChannelConfigError` naming the missing variable. A key the
+  platform rejects (HTTP 401/403) raises `EngineError` at the
+  adapter; the channel agent turns it into a short honest
+  failure notice naming the engine, exactly like the built-in
+  agent's failure notice.
+- `GatewayRunner` builds the agent from the config when no
+  explicit `agent=` is given, so existing callers that pass
+  their own agent see no change.
 
 ## Honest limits
 
@@ -234,18 +288,22 @@ already-pinned `cryptography` package.)
   `channels:history` / `groups:history` / `im:history` for the
   channel kinds polled; `conversations.history` only returns
   messages the bot can see.
-
-## Wiring to the agent core
-
-`TaskRunnerAgent` (`agent.py`) is the one narrow seam. One inbound
-message becomes one `Task` (single `respond` step) on the existing
-`TaskRunner` (`puspa.runtime.tasks`). The step executor is injected
-by the caller. The production executor — a call to the model
-through the Phase 0 chassis — is a **named follow-up**; until it
-lands, the seam fails closed (`ChannelError` inside the executor
-becomes an honest "could not handle that message" reply, never a
-fabricated answer). No second agent is built here.
-
+- **No live engine verified.** No real Dify/Coze/Bailian key
+  was used: every adapter test runs against a local fake
+  server. The request/response shapes come from the platforms'
+  public API docs (Dify chat-messages, Coze chat v3,
+  DashScope application completion); a real key may still
+  surface a shape the docs do not show.
+- **Engine conversation ids are in-memory.** Dify and Coze
+  conversation ids live in the adapter instance; a restart
+  starts a fresh platform conversation. Bailian uses the Puspa
+  conversation key itself as `session_id`, so its thread
+  resumes as long as the platform still holds it (one hour of
+  inactivity expires it).
+- **Coze answers by polling.** A v3 chat is asynchronous: one
+  send creates the chat, polls retrieve up to 30 times (1s
+  apart), then reads the answer. A slow bot can take up to
+  ~30s per message.
 - **DM-only by default.** Group messages are dropped unless a
   room is linked to the group chat (group chat, `docs/rooms-b6.md`):
   the link plus an @PuspaBot mention routes the message to the room.

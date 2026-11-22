@@ -37,8 +37,32 @@ Environment variables:
   ``platform:chat_id`` pairs the gateway answers without pairing.
 - ``PUSPA_CHANNEL_STATE_DIR`` — where heartbeat/offset state is
   kept (default: the current working directory's ``.puspa-channels``).
-- ``PUSPA_BOT_NAME`` — the bot name carried by content-free
+- ``PUSPA_BOT_NAME`` - the bot name carried by content-free
   notifications (default ``"Puspa"``).
+
+Engine (AST-05): which agent answers a channel message.
+
+- ``PUSPA_CHANNEL_ENGINE`` - ``builtin`` (PuspaBot's own
+  engine, the default), ``dify``, ``coze``, or ``bailian``.
+  An unknown value fails at load time.
+- ``DIFY_API_KEY`` - the Dify app's API key.
+  ``DIFY_BASE_URL`` - Dify API base
+  (default ``https://api.dify.ai/v1``; a self-hosted Dify uses
+  its own URL).
+- ``COZE_API_TOKEN`` - the Coze personal access token.
+  ``COZE_BOT_ID`` - the Coze bot id to answer as.
+  ``COZE_BASE_URL`` - Coze API base
+  (default ``https://api.coze.com``).
+- ``BAILIAN_API_KEY`` - the DashScope API key.
+  ``BAILIAN_APP_ID`` - the Bailian application id.
+  ``BAILIAN_BASE_URL`` - DashScope API base (default
+  ``https://dashscope-intl.aliyuncs.com``; China uses
+  ``https://dashscope.aliyuncs.com``).
+
+An external engine is built only when selected: asking for
+one without its key (or bot/app id) raises
+:class:`ChannelConfigError` naming the missing variable, at
+runner start - not at first message.
 """
 
 from __future__ import annotations
@@ -46,7 +70,13 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
+import httpx
+
 from .authz import Allowlist
+from .engines import ENGINE_NAMES, ExternalEngine
+from .engines_bailian import BAILIAN_DEFAULT_BASE_URL, BailianEngine
+from .engines_coze import COZE_DEFAULT_BASE_URL, CozeEngine
+from .engines_dify import DIFY_DEFAULT_BASE_URL, DifyEngine
 from .errors import ChannelError
 
 __all__ = ["ChannelConfig", "ChannelConfigError", "load_config"]
@@ -80,6 +110,22 @@ class ChannelConfig:
     allowlist: Allowlist = field(default_factory=Allowlist)
     state_dir: str = ".puspa-channels"
     bot_name: str = "Puspa"
+    engine: str = "builtin"
+    dify_api_key: str | None = None
+    dify_base_url: str = DIFY_DEFAULT_BASE_URL
+    coze_api_token: str | None = None
+    coze_bot_id: str | None = None
+    coze_base_url: str = COZE_DEFAULT_BASE_URL
+    bailian_api_key: str | None = None
+    bailian_app_id: str | None = None
+    bailian_base_url: str = BAILIAN_DEFAULT_BASE_URL
+
+    def __post_init__(self) -> None:
+        if self.engine not in ENGINE_NAMES:
+            raise ChannelConfigError(
+                f"unknown channel engine: {self.engine!r} "
+                f"(expected one of: {', '.join(ENGINE_NAMES)})"
+            )
 
     @property
     def telegram_enabled(self) -> bool:
@@ -128,6 +174,47 @@ class ChannelConfig:
             raise ChannelConfigError("LINE is not configured: set LINE_CHANNEL_ACCESS_TOKEN")
         return self.line_channel_access_token
 
+    def build_engine(self, http_client: httpx.Client | None = None) -> ExternalEngine | None:
+        """Build the configured external engine, or None for builtin.
+
+        Raises :class:`ChannelConfigError` naming the missing
+        variable when the selected engine has no key (Dify,
+        Coze, Bailian) or no bot/app id (Coze, Bailian).
+        """
+        if self.engine == "builtin":
+            return None
+        if self.engine == "dify":
+            if not self.dify_api_key:
+                raise ChannelConfigError("Dify engine selected but DIFY_API_KEY is not set")
+            return DifyEngine(
+                self.dify_api_key, base_url=self.dify_base_url, http_client=http_client
+            )
+        if self.engine == "coze":
+            if not self.coze_api_token:
+                raise ChannelConfigError("Coze engine selected but COZE_API_TOKEN is not set")
+            if not self.coze_bot_id:
+                raise ChannelConfigError("Coze engine selected but COZE_BOT_ID is not set")
+            return CozeEngine(
+                self.coze_api_token,
+                self.coze_bot_id,
+                base_url=self.coze_base_url,
+                http_client=http_client,
+            )
+        if self.engine == "bailian":
+            if not self.bailian_api_key:
+                raise ChannelConfigError("Bailian engine selected but BAILIAN_API_KEY is not set")
+            if not self.bailian_app_id:
+                raise ChannelConfigError("Bailian engine selected but BAILIAN_APP_ID is not set")
+            return BailianEngine(
+                self.bailian_api_key,
+                self.bailian_app_id,
+                base_url=self.bailian_base_url,
+                http_client=http_client,
+            )
+        raise ChannelConfigError(
+            f"unknown channel engine: {self.engine!r} (expected one of: {', '.join(ENGINE_NAMES)})"
+        )
+
 
 def _parse_ids(raw: str | None) -> tuple[str, ...]:
     return tuple(part.strip() for part in (raw or "").split(",") if part.strip())
@@ -157,4 +244,13 @@ def load_config(env: dict | None = None) -> ChannelConfig:
         allowlist=Allowlist.parse(source.get("PUSPA_CHANNEL_ALLOWLIST")),
         state_dir=source.get("PUSPA_CHANNEL_STATE_DIR", ".puspa-channels"),
         bot_name=source.get("PUSPA_BOT_NAME", "Puspa"),
+        engine=source.get("PUSPA_CHANNEL_ENGINE", "builtin"),
+        dify_api_key=source.get("DIFY_API_KEY") or None,
+        dify_base_url=source.get("DIFY_BASE_URL", DIFY_DEFAULT_BASE_URL),
+        coze_api_token=source.get("COZE_API_TOKEN") or None,
+        coze_bot_id=source.get("COZE_BOT_ID") or None,
+        coze_base_url=source.get("COZE_BASE_URL", COZE_DEFAULT_BASE_URL),
+        bailian_api_key=source.get("BAILIAN_API_KEY") or None,
+        bailian_app_id=source.get("BAILIAN_APP_ID") or None,
+        bailian_base_url=source.get("BAILIAN_BASE_URL", BAILIAN_DEFAULT_BASE_URL),
     )

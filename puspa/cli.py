@@ -11,7 +11,9 @@ service`` (lifecycle of the local agent service: start, stop, restart,
 status, logs, update), ``puspa diagnostics export`` (a redacted diagnostics
 bundle for bug reports), ``puspa knowledge`` (document knowledge base: upload
 files and ask questions about them, AST-02), ``puspa wiki build`` / ``list``
-(COW-06: auto-curated knowledge wiki), plus help. The full one-shot CLI lands
+(COW-06: auto-curated knowledge wiki), ``puspa channels run`` /
+``engines`` (channel gateway with a switchable engine: built-in,
+Dify, Coze, or Bailian, AST-05), plus help. The full one-shot CLI lands
 in a later step of the split; until then any other subcommand prints help
 and says so.
 """
@@ -27,6 +29,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+from puspa.channels.cli import add_channels_parser, run_channels
 from puspa.computer.cli import add_computer_parser, run_computer
 from puspa.knowledge.cli import add_knowledge_parser, run_knowledge
 from puspa.marketplace.cli import add_skill_parser
@@ -46,7 +49,7 @@ FULL_CLI_NOTE = (
     "export` / `import`, `puspa mcp`, `puspa service`, `puspa diagnostics export`, "
     "`puspa knowledge` (upload / list / ask / delete), "
     "`puspa self-evolve`, `puspa skill list` / `search` / `install` / `create`, "
-    "`puspa wiki build` / `list`, plus help."
+    "`puspa wiki build` / `list`, `puspa channels run` / `engines`, plus help."
 )
 
 _KNOWN_COMMANDS = (
@@ -55,6 +58,7 @@ _KNOWN_COMMANDS = (
     "memory",
     "conversation",
     "provider",
+    "channels",
     "computer",
     "mcp",
     "service",
@@ -340,6 +344,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="User id to check (defaults to PUSPA_USER_ID or 'local-user').",
     )
     add_computer_parser(sub)
+    add_channels_parser(sub)
     add_mcp_parser(sub)
     add_service_parser(sub)
     # One `skill` parser for both groups: hub list/search/install (COW-03)
@@ -902,6 +907,11 @@ def main(argv: list[str] | None = None) -> int:
             parser.print_help()
             return 0
         return run_service(parsed)
+    if parsed.command == "channels":
+        if parsed.channels_command is None:
+            parser.print_help()
+            return 0
+        return run_channels(parsed)
     parser.print_help()
     return 0
 

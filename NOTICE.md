@@ -831,3 +831,25 @@ standard library plus Puspa's existing modules (policy gateway,
 memory recall, ledger, price wedge, Bills module, scheduler,
 desktop hands); tests use injected fakes and the in-memory fake
 desktop backend.
+
+# NOTICE - PuspaBot queue, AST-05 (22 Nov 2026)
+
+## Pattern attribution (not code)
+
+- **AstrBotDevs/AstrBot** (https://github.com/AstrBotDevs/AstrBot,
+  GNU Affero General Public License v3.0), pattern only: the idea
+  of bridging to an external agent platform (Dify, Coze, Alibaba
+  Cloud Bailian) as the engine behind a channel, instead of
+  rebuilding the user's agents there. No AstrBot code was copied,
+  ported, vendored, or depended on: the three adapters in
+  `puspa/channels/engines_dify.py`, `engines_coze.py`, and
+  `engines_bailian.py` are Puspa's own code written from the
+  platforms' public API documentation, over the already-pinned
+  `httpx`, with no platform SDK added. Full license text: AGPL-3.0
+  (https://www.gnu.org/licenses/agpl-3.0.html).
+
+## New dependency: none
+
+No new dependency was added for AST-05. The adapters use only the
+already-pinned `httpx==0.28.1`; tests use `httpx.MockTransport`
+fake servers and never contact the real platforms.
