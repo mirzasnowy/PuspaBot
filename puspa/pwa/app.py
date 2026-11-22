@@ -660,6 +660,36 @@ def create_app(
 
     # -- end G31 ---------------------------------------------------------
 
+    # -- AST-10: local admin dashboard page ------------------------------
+    # Jinja-only on purpose, like /trial: the admin screen must work
+    # with no React build, and it is an operator surface, not a user
+    # screen. Login required; in hosted mode the surface does not
+    # exist here (the hosted operator panel lives in the private
+    # cloud backend), so it answers 403 with that reason instead of
+    # a redirect. The page is server-rendered from the same readers
+    # the /api/admin/* endpoints serve, so the numbers on the page
+    # and the numbers from the API cannot disagree.
+    @app.get("/admin", response_class=HTMLResponse)
+    def admin_page(request: Request):
+        user_id = need_user(request)
+        if user_id is None:
+            return RedirectResponse("/masuk")
+        from puspa.pwa import admin_api
+        from puspa.pwa.serve_modes import operator_panels_visible
+
+        if not operator_panels_visible(app.state.serve_mode):
+            return HTMLResponse(admin_api.HOSTED_REFUSAL, status_code=403)
+        return render(
+            "admin.html",
+            request,
+            {
+                "user_id": user_id,
+                "admin": admin_api.admin_page_context(app, user_id),
+            },
+        )
+
+    # -- end AST-10 ------------------------------------------------------
+
     # -- E-14: health endpoint (plan 7.4) --------------------------------
     # Public and login-free (see puspa/hosting/service_allow.py):
     # it reports whether the server is up and whether its embedding
@@ -1028,6 +1058,7 @@ def create_app(
     # fetch all their data through these APIs, so _context_screen
     # needs no new bootstrap data for them.
     from puspa.pwa import (
+        admin_api,
         approval_overlay_api,
         artifacts_api,
         chat_cards_api,
@@ -1174,6 +1205,11 @@ def create_app(
     # /api/telemetry/settings). Off by default; the sender in
     # puspa.telemetry only posts when the effective switch is on.
     telemetry_api.register_routes(app, need_user)
+    # AST-10: the local admin dashboard (GET/POST /api/admin/*).
+    # Local-only by design: in hosted mode the routes answer 403
+    # (see puspa.pwa.admin_api); the /admin page below renders
+    # the same data server-side for the Jinja template.
+    admin_api.register_routes(app, need_user)
     # -- end G28 ---------------------------------------------------------
 
     @app.post("/api/onboarding/waktu")

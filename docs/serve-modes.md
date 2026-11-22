@@ -10,8 +10,8 @@ panels are shown, not the app. Never two separate frontends.
 
 | Mode | Who | What the PWA shows |
 | --- | --- | --- |
-| `local` | The operator: a self-hoster running their own bot on their own machine | The full product screens **plus** operator panels on the Office screen: pairing status, gateway status, live log |
-| `hosted` | The end user: Free self-host and Plus/Pro/Team cloud users | The product screens only. The operator panels are hidden: the operator surface of a hosted deployment lives in the (private, not-yet-built) cloud backend, not in this repo |
+| `local` | The operator: a self-hoster running their own bot on their own machine | The full product screens **plus** operator panels on the Office screen: pairing status, gateway status, live log — and the local admin dashboard at `/admin` (instance config, sessions, usage stats, skills; see `docs/local-admin-dashboard.md`) |
+| `hosted` | The end user: Free self-host and Plus/Pro/Team cloud users | The product screens only. The operator panels are hidden: the operator surface of a hosted deployment lives in the (private, not-yet-built) cloud backend, not in this repo — `/admin` and `/api/admin/*` answer 403 there |
 
 Hosted serving itself is cloud work, not in this repo: the hosted
 backend (`puspa-cloud`) is private and not built yet. What PWA serve modes (local operator vs hosted)
