@@ -31,7 +31,7 @@ Rules, all enforced here so the API layer cannot forget them:
   work with its history, and the listing only ever shows
   ``published`` works.
 
-The schema lives in migration 0041_gallery (next to the other
+The schema lives in migration 0042_gallery (next to the other
 migrations) and is applied the same way.
 """
 
@@ -83,19 +83,19 @@ class RateLimitedError(GalleryError):
 
 
 def schema_path() -> Path:
-    """Absolute path of migration 0041_gallery."""
+    """Absolute path of migration 0042_gallery."""
     return (
         Path(__file__).resolve().parents[2]
         / "puspa"
         / "migrations"
         / "versions"
-        / "0041_gallery.sql"
+        / "0042_gallery.sql"
     )
 
 
 def create_schema(dsn=None):
-    """Apply the gallery tables (migration 0041_gallery). Idempotent; safe per test run."""
-    apply_migrations(resolve_dsn(dsn), target="0041")
+    """Apply the gallery tables (migration 0042_gallery). Idempotent; safe per test run."""
+    apply_migrations(resolve_dsn(dsn), target="0042")
 
 
 def reset_tables(dsn=None):

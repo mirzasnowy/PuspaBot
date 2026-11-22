@@ -1,4 +1,4 @@
--- Community gallery: published cultural works + their ratings (B16, migration 0041_gallery.sql).
+-- Community gallery: published cultural works + their ratings (B16, migration 0042_gallery.sql).
 --
 -- Creates gallery_works (one row per published B7 mockup: the owner,
 -- the snapshot of the design doc with its version, and provenance)
