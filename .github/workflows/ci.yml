@@ -22,6 +22,13 @@
 #              same 4-worker setup as the test lane. Target: under
 #              8 minutes. A change that shapes every test (conftest,
 #              migrations, CI config) runs the full suite instead.
+#   npm-wrapper — the npm install wrapper tests
+#              (tests/test_npm_wrapper.py) on ubuntu, windows, and
+#              macOS. The wrapper must install and run on all three:
+#              the postinstall fallback chain and the `puspa` shim
+#              are OS-sensitive (PEP 668 on Linux, the `py` launcher
+#              and `.cmd` shims on Windows), so a Linux-only run
+#              proves nothing about the other two.
 #   sandbox  — the live container + Chromium tests that can never run
 #              on the dev VM (its kernel rejects container namespaces):
 #              the 4 live tests in tests/test_sandbox.py, the Docker
@@ -100,6 +107,7 @@ jobs:
     outputs:
       python: ${{ steps.detect.outputs.python }}
       docs: ${{ steps.detect.outputs.docs }}
+      wrapper: ${{ steps.detect.outputs.wrapper }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -126,15 +134,19 @@ jobs:
           fi
           PYTHON=false
           DOCS=false
+          WRAPPER=false
           if [ "$FILES" = "__ALL__" ]; then
             PYTHON=true
             DOCS=true
+            WRAPPER=true
           else
             echo "$FILES" | grep -qE '\.py$|\.sql$|requirements.*\.txt$|pyproject\.toml$|^infra/|^.github/' && PYTHON=true
             echo "$FILES" | grep -qE '\.md$|^docs/' && DOCS=true
+            echo "$FILES" | grep -qE '^bin/|package\.json$|tests/test_npm_wrapper\.py$|^\.github/workflows/ci\.yml$' && WRAPPER=true
           fi
           echo "python=$PYTHON" >> "$GITHUB_OUTPUT"
           echo "docs=$DOCS" >> "$GITHUB_OUTPUT"
+          echo "wrapper=$WRAPPER" >> "$GITHUB_OUTPUT"
           echo "changed files:"
           echo "$FILES"
 
@@ -271,6 +283,40 @@ jobs:
           BASE="${{ github.event.pull_request.base.sha }}"
           git fetch --unshallow origin 2>/dev/null || git fetch --depth 1 origin "$BASE" 2>/dev/null || true
           python scripts/pr_lane.py --base "$BASE" --head "${{ github.sha }}"
+
+  npm-wrapper:
+    name: NPM wrapper tests (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.wrapper == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      # Entry-point tests read the installed console-script metadata,
+      # which only exists once the package itself is installed.
+      - name: Install the puspa package (editable)
+        run: python -m pip install -e . --no-deps
+
+      - name: Run the npm wrapper tests
+        run: python -m pytest tests/test_npm_wrapper.py -v
 
   sandbox:
     name: Sandbox + Chromium (live containers)
@@ -585,13 +631,13 @@ jobs:
   # failure or a cancellation fails the gate.
   all-checks-pass:
     name: All checks pass
-    needs: [changes, test, pr-lane, sandbox, checks, supply-chain, lint, format, typecheck]
+    needs: [changes, test, pr-lane, npm-wrapper, sandbox, checks, supply-chain, lint, format, typecheck]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Verify every lane passed
         run: |
-          for result in "${{ needs.changes.result }}" "${{ needs.test.result }}" "${{ needs.pr-lane.result }}" "${{ needs.sandbox.result }}" "${{ needs.checks.result }}" "${{ needs.supply-chain.result }}" "${{ needs.lint.result }}" "${{ needs.format.result }}" "${{ needs.typecheck.result }}"; do
+          for result in "${{ needs.changes.result }}" "${{ needs.test.result }}" "${{ needs.pr-lane.result }}" "${{ needs.npm-wrapper.result }}" "${{ needs.sandbox.result }}" "${{ needs.checks.result }}" "${{ needs.supply-chain.result }}" "${{ needs.lint.result }}" "${{ needs.format.result }}" "${{ needs.typecheck.result }}"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               echo "a lane failed or was cancelled: $result"
               exit 1

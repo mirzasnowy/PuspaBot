@@ -16,9 +16,12 @@ CI / E-02 work.
 
 from __future__ import annotations
 
+import errno
+import importlib.util
 import os
 import subprocess
 import sys
+import types
 from pathlib import Path
 
 import psycopg
@@ -29,6 +32,7 @@ from puspa.sessions import (
     open_persistence,
     open_persistence_reader,
 )
+from puspa.sessions import single_writer as single_writer_module
 from puspa.sessions.single_writer import (
     PostgresAdvisoryLock,
     SingleWriterLock,
@@ -103,6 +107,59 @@ def test_file_lock_second_acquire_is_refused(tmp_path):
     assert not second.held
     first.release()
     assert not first.held
+
+
+def test_file_lock_windows_mode_uses_msvcrt_on_a_sidecar(tmp_path, monkeypatch):
+    """Windows has no ``fcntl``: the module must import without it and
+    take the lock with ``msvcrt.locking`` on a sidecar file, never on
+    ``state.db`` itself (a Windows byte-range lock is mandatory and
+    would block SQLite's own reads). Run here as a Windows-mode copy of
+    the module with a fake ``msvcrt`` built on ``flock``, so the Linux
+    lane covers the Windows branch too."""
+    fcntl = pytest.importorskip("fcntl")
+    lk_unlck, lk_nblck = 0, 2  # the real msvcrt constants
+    calls: list[tuple[int, int]] = []
+
+    def locking(fd, mode, nbytes):
+        calls.append((mode, os.lseek(fd, 0, os.SEEK_CUR)))
+        if mode == lk_unlck:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            return
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise OSError(errno.EACCES, "Permission denied") from exc
+
+    fake_msvcrt = types.ModuleType("msvcrt")
+    fake_msvcrt.__dict__.update(LK_NBLCK=lk_nblck, LK_UNLCK=lk_unlck, locking=locking)
+    spec = importlib.util.spec_from_file_location(
+        "puspa.sessions._single_writer_windows", single_writer_module.__file__
+    )
+    assert spec is not None and spec.loader is not None
+    windows_copy = importlib.util.module_from_spec(spec)
+    with monkeypatch.context() as patch:
+        patch.setattr(sys, "platform", "win32")
+        patch.setitem(sys.modules, "msvcrt", fake_msvcrt)
+        patch.setitem(sys.modules, "fcntl", None)  # `import fcntl` would raise
+        spec.loader.exec_module(windows_copy)
+    assert not hasattr(windows_copy, "fcntl")
+
+    db_path = tmp_path / "state.db"
+    first = windows_copy.StateDbFileLock(db_path)
+    assert first.lock_path == tmp_path / "state.db.lock"
+    first.acquire()
+    assert first.held
+    assert not db_path.exists(), "state.db itself must not be touched or locked"
+    second = windows_copy.StateDbFileLock(db_path)
+    with pytest.raises(SingleWriterError):
+        second.acquire()
+    assert not second.held
+    first.release()
+    second.acquire()
+    assert second.held
+    second.release()
+    assert [mode for mode, _ in calls] == [lk_nblck, lk_nblck, lk_unlck, lk_nblck, lk_unlck]
+    assert {pos for _, pos in calls} == {0}, "msvcrt locks from the current position: seek to 0"
 
 
 def test_advisory_lock_second_acquire_is_refused(test_dsn):
