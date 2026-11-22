@@ -1,0 +1,373 @@
+# Missions with checklist API contract (V2-42, issue #219).
+#
+# Split out of docs/openapi-pwa.yaml on 22 Nov 2026 (missions
+# with checklist): the missions contract (7 endpoints + 7
+# schemas) would have pushed the main spec further past the
+# 2000-line hard cap, so it earned its own file, following the
+# personas split. The TypeScript shapes in
+# apps/pwa/src/api/client.ts are hand-written from this file
+# because `npm run generate` is broken at this base (see the
+# V2-35 note in client.ts); move them to generated-types.ts
+# once generation is repaired. The webhook surface (wake +
+# token rotation) lives in docs/openapi-missions-webhook.yaml,
+# split out of this file so neither passes the 400-line cap.
+openapi: 3.0.3
+info:
+  title: PuspaBot missions API
+  version: 1.0.0
+paths:
+  /api/missions:
+    get:
+      tags: [missions]
+      summary: List the caller's missions, newest first
+      responses:
+        "200":
+          description: Mission list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MissionList"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+    post:
+      tags: [missions]
+      summary: Create a mission with a checklist
+      description: |
+        `steps` is the checklist: a title string per step, or an
+        object with `title` plus a `question` and its `options`
+        for a step that needs a decision. A step with a question
+        pauses the mission until the user answers it (step-ask);
+        the agent never guesses. At least one step is required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MissionInput"
+      responses:
+        "200":
+          description: The created mission, checklist included
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Mission"
+        "400":
+          description: Empty goal, no steps, or a bad step
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/missions/{mission_id}:
+    get:
+      tags: [missions]
+      summary: One mission with its checklist
+      parameters:
+        - name: mission_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The mission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Mission"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: No such mission for this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/missions/{mission_id}/run:
+    post:
+      tags: [missions]
+      summary: Queue the mission's next step now
+      description: |
+        An immediate one-shot scheduler trigger, so the serve
+        loop runs the step in the background. The PWA never runs
+        a turn inline. Refused when the mission waits on a
+        step-ask (answer it first) or is already finished.
+      parameters:
+        - name: mission_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Queued, with the trigger id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MissionQueued"
+        "400":
+          description: Mission waiting or already finished
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: No such mission for this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/missions/{mission_id}/answer:
+    post:
+      tags: [missions]
+      summary: Answer the mission's open step-ask
+      description: |
+        `go: true` (with the answer, free text or one of the
+        offered options) sends the mission back to work; the
+        step runs next with the answer in its prompt. `go: false`
+        declines: the step is skipped and the mission stops.
+      parameters:
+        - name: mission_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MissionAnswer"
+      responses:
+        "200":
+          description: The mission after the answer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Mission"
+        "400":
+          description: Mission is not waiting for an answer
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: No such mission for this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/missions/{mission_id}/cancel:
+    post:
+      tags: [missions]
+      summary: Stop a mission
+      parameters:
+        - name: mission_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The stopped mission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Mission"
+        "400":
+          description: Mission is already finished
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: No such mission for this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/missions/{mission_id}/schedule:
+    post:
+      tags: [missions]
+      summary: Register the mission on the scheduler
+      description: |
+        `schedule` is a schedule dict (`{"type": "daily",
+        "time": "07:00", "timezone": "Asia/Jakarta"}`) or a short
+        string (`"every 2h"`, a cron pattern, an ISO time for a
+        one-shot). Each fire advances one checklist step.
+      parameters:
+        - name: mission_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [schedule]
+              properties:
+                schedule:
+                  description: Schedule dict or short schedule string
+      responses:
+        "200":
+          description: Scheduled, with the trigger id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MissionScheduled"
+        "400":
+          description: Bad schedule
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: No such mission for this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    MissionStep:
+      type: object
+      required: [title, status, result, question, options, answer]
+      properties:
+        title:
+          type: string
+        status:
+          type: string
+          enum: [pending, active, done, failed, skipped]
+        result:
+          type: string
+          nullable: true
+        question:
+          type: string
+          nullable: true
+          description: Step-ask question; null when the step needs no decision
+        options:
+          type: array
+          items:
+            type: string
+        answer:
+          type: string
+          nullable: true
+    Mission:
+      type: object
+      required: [id, user_id, title, goal, status, steps, webhook_token, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        title:
+          type: string
+        goal:
+          type: string
+        status:
+          type: string
+          enum: [active, waiting, done, failed, stopped]
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/MissionStep"
+        webhook_token:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    MissionList:
+      type: object
+      required: [missions]
+      properties:
+        missions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Mission"
+    MissionInput:
+      type: object
+      required: [goal, steps]
+      properties:
+        goal:
+          type: string
+        title:
+          type: string
+        steps:
+          type: array
+          description: Title strings, or objects with title plus an optional question and options
+          items:
+            type: object
+    MissionAnswer:
+      type: object
+      properties:
+        answer:
+          type: string
+        go:
+          type: boolean
+          description: True to continue with the answer, false to decline and stop the mission
+    MissionQueued:
+      type: object
+      required: [queued, mission_id, trigger_id]
+      properties:
+        queued:
+          type: boolean
+        mission_id:
+          type: string
+        trigger_id:
+          type: string
+    MissionScheduled:
+      type: object
+      required: [scheduled, mission_id, trigger_id, next_trigger_at]
+      properties:
+        scheduled:
+          type: boolean
+        mission_id:
+          type: string
+        trigger_id:
+          type: string
+        next_trigger_at:
+          type: string
+          format: date-time

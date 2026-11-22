@@ -47,6 +47,7 @@ TRIGGER_TYPES = (
     "longterm_consolidation",
     "initiative_digest",
     "self_evolution",
+    "mission",
 )
 
 #: Proactive trigger types pay from the interruption budget (K10):
@@ -416,6 +417,13 @@ def run_trigger_job(run: dict, *, turn_loop=None, dsn=None, now: datetime | None
         outcome["status"] = "skipped"
         outcome["reason"] = "trigger row is gone"
         return outcome
+    if row["type"] == "mission":
+        # A mission trigger (V2-42): one checklist step per
+        # fire, through the turn loop. Its own module owns the
+        # advance and the trigger's next fire time.
+        from .mission_triggers import run_mission_trigger
+
+        return run_mission_trigger(run, row, outcome, turn_loop=turn_loop, now=now, dsn=dsn)
     schedule = _routine_schedule_of(row)
     task_text = (row["workflow"] or "").strip()
     if schedule is None or not task_text:

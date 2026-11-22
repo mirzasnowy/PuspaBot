@@ -1,0 +1,99 @@
+# Missions webhook API contract (V2-42, issue #219).
+#
+# Split out of docs/openapi-missions.yaml on 22 Nov 2026: the
+# webhook surface (wake + token rotation) is the one missions
+# surface that needs no login, so it earned its own file and
+# neither spec passes the 400-line cap. The TypeScript shapes
+# in apps/pwa/src/api/missions.ts are hand-written from the
+# missions spec because `npm run generate` is broken at this
+# base (see the V2-35 note in client.ts); move them to
+# generated-types.ts once generation is repaired.
+openapi: 3.0.3
+info:
+  title: PuspaBot missions webhook API
+  version: 1.0.0
+paths:
+  /api/missions/{mission_id}/webhook/rotate:
+    post:
+      tags: [missions]
+      summary: Give the mission a fresh webhook token
+      description: The old token stops working at once.
+      parameters:
+        - name: mission_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The new token
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [webhook_token]
+                properties:
+                  webhook_token:
+                    type: string
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "404":
+          description: No such mission for this user
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/missions/webhook/{token}:
+    post:
+      tags: [missions]
+      summary: Wake a mission from outside
+      description: |
+        No login: the token in the URL is the credential. The
+        payload is recorded in the ledger and the mission's next
+        step is queued on the scheduler. An unknown token is 404
+        without saying whether any mission exists.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Arbitrary payload, recorded in the ledger
+      responses:
+        "200":
+          description: Woken (queued, waiting, or already finished)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MissionWoken"
+        "404":
+          description: Unknown webhook token
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+components:
+  schemas:
+    MissionWoken:
+      type: object
+      required: [ok, status, mission_id]
+      properties:
+        ok:
+          type: boolean
+        status:
+          type: string
+          enum: [queued, waiting, already_finished]
+        mission_id:
+          type: string
+        trigger_id:
+          type: string
