@@ -168,7 +168,14 @@ BASELINE_LINES = {
     # create_app, and the personas route registration (13 lines of
     # code + 1 from `ruff format`), plus 1 line from the merged
     # docstring naming both screens. Resumes from 1219.
-    "puspa/pwa/app.py": 1219,
+    # Redacted diagnostics export (22 Nov 2026): +8 lines — the
+    # "diagnostics" screen in SCREENS, its route registration, and
+    # the diagnostics_api import. Anonymous usage telemetry
+    # (22 Nov 2026): +5 lines — the telemetry_api import and route
+    # registration plus the comment (same seam as the voice routes:
+    # no new screen, no new table). Both items merged: 1219 + 8 + 5.
+    # Resumes from 1232.
+    "puspa/pwa/app.py": 1232,
     # PWA typed API client: every screen's fetch wrapper plus
     # the generated-types aliases in one file. Crossed 1000
     # lines in P-10 (21 Nov 2026): the replay fetchers (tasks,
@@ -197,7 +204,11 @@ BASELINE_LINES = {
     # persona fetchers (list, read, create, update, delete,
     # activate) and their five type aliases. Both items' growth
     # is deliberate, not silent. The ratchet resumes from 1623.
-    "apps/pwa/src/api/client.ts": 1623,
+    # Anonymous usage telemetry (22 Nov 2026): +34 lines — the
+    # TelemetrySettings interface (hand-written, generation is
+    # broken: see the AST-09 note in client.ts) plus the
+    # get/save fetchers. The ratchet resumes from 1657.
+    "apps/pwa/src/api/client.ts": 1657,
     # Reuse audit of third-party code (license + scope notes per repo).
     "docs/reuse.md": 1220,
     # Shared-room delegation (B6): the delegation board, task
@@ -369,8 +380,11 @@ BASELINE_LINES = {
     # (same line); the contract itself lives in
     # docs/openapi-artifacts.yaml. Personas adds +6 lines: $ref
     # stubs for the 3 personas paths (contract split out to
-    # docs/openapi-personas.yaml). The ratchet resumes from 2309.
-    "docs/openapi-pwa.yaml": 2309,
+    # docs/openapi-personas.yaml). Telemetry adds +2 lines: the
+    # $ref stub for the telemetry settings path (contract split
+    # out to docs/openapi-telemetry.yaml). The ratchet resumes
+    # from 2311.
+    "docs/openapi-pwa.yaml": 2311,
     # Shared-rooms API contract: grew past the soft cap with the
     # B13 draft contract (6 paths + 3 schemas on top of rooms /
     # delegation / splits), now 1,247 lines. It stays one file:

@@ -160,6 +160,8 @@ paths:
     $ref: './openapi-voice.yaml#/paths/~1api~1voice~1key'
   /api/voice/speak:
     $ref: './openapi-voice.yaml#/paths/~1api~1voice~1speak'
+  /api/telemetry/settings:
+    $ref: './openapi-telemetry.yaml#/paths/~1api~1telemetry~1settings'
   /api/receipts/upload:
     $ref: './openapi-receipts.yaml#/paths/~1api~1receipts~1upload'
   /api/receipts/confirm:

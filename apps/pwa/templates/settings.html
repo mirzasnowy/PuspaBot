@@ -10,6 +10,11 @@
 <div class="kartu"><strong>Akun dan perangkat</strong><p>Daftar sesi dan perangkat bisa dilihat dan dicabut (sesi Fase 0).</p></div>
 <div class="kartu"><strong>Persetujuan data</strong><p>Teks v1-2026-11-17 (Fase 1). Persetujuan dicatat di Buku Kerja.</p></div>
 <div class="kartu"><strong>Rekor Otonomi</strong><p>Di MVP semua aksi tetap T0 (tanya setiap kali). Rekor dikumpulkan; usulan naik ke T2 untuk aksi nol-risiko muncul setelah 10 persetujuan berturut-turut tanpa edit.</p></div>
+<div class="kartu"><strong>Statistik pemakaian (telemetri)</strong><p>Statistik pemakaian anonim untuk memandu perbaikan Puspa: jumlah pemakaian fitur dan durasi, tanpa isi pesan, tanpa identitas, tanpa token. Mati secara default untuk instalasi self-host.</p>
+<label><input id="telemetry-enabled" type="checkbox"> Kirim statistik pemakaian anonim</label>
+<p id="telemetry-note" class="pesan-sub"></p>
+<button id="btn-telemetry" type="button">Simpan pilihan telemetri</button>
+<p id="telemetry-status" class="pesan-sub"></p></div>
 <script>
 document.getElementById('btn-notif').addEventListener('click', async function() {
   var status = document.getElementById('notif-status');
@@ -21,5 +26,34 @@ document.getElementById('btn-notif').addEventListener('click', async function() 
   if (izin !== 'granted') { status.textContent = 'Peringatan: izin notifikasi tidak diberikan; pengingat hanya tampil di aplikasi.'; return; }
   status.textContent = 'Notifikasi diizinkan. Uji kirim dicatat di onboarding (langganan push disimpan di server).';
 });
+(function() {
+  var box = document.getElementById('telemetry-enabled');
+  var note = document.getElementById('telemetry-note');
+  var status = document.getElementById('telemetry-status');
+  var btn = document.getElementById('btn-telemetry');
+  function describe(s) {
+    if (s.env_override === true) return 'Diaktifkan oleh operator lewat PUSPA_TELEMETRY=1; saklar di sini tidak mengubahnya.';
+    if (s.env_override === false) return 'Dimatikan oleh operator lewat PUSPA_TELEMETRY=0; saklar di sini tidak mengubahnya.';
+    return s.enabled ? 'Aktif: Puspa mengirim statistik pemakaian anonim ke endpoint yang dikonfigurasi operator.' : 'Mati (default untuk self-host): tidak ada statistik yang dikirim.';
+  }
+  fetch('/api/telemetry/settings', {credentials: 'same-origin'}).then(function(r) { return r.json(); }).then(function(s) {
+    box.checked = !!s.effective_enabled;
+    box.disabled = s.env_override !== null;
+    btn.disabled = s.env_override !== null;
+    note.textContent = describe(s);
+  }).catch(function() { note.textContent = 'Pilihan telemetri belum bisa dimuat; default mati dipakai.'; });
+  btn.addEventListener('click', async function() {
+    status.textContent = '';
+    var r = await fetch('/api/telemetry/settings', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({enabled: box.checked})});
+    if (r.ok) {
+      var s = await r.json();
+      box.checked = !!s.effective_enabled;
+      note.textContent = describe(s);
+      status.textContent = 'Pilihan telemetri tersimpan.';
+    } else {
+      status.textContent = 'Gagal menyimpan pilihan telemetri.';
+    }
+  });
+})();
 </script>
 {% endblock %}

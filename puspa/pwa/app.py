@@ -1051,6 +1051,7 @@ def create_app(
         personas_api,
         proof_api,
         replay_api,
+        telemetry_api,
     )
     # The hosted-only APIs (room sharing, room membership, payments)
     # live in the hosted service and mount their routes there; the
@@ -1160,6 +1161,10 @@ def create_app(
     from puspa.pwa import morning_api
 
     morning_api.register_routes(app, need_user)
+    # AST-09: the telemetry toggle in Settings (GET/POST
+    # /api/telemetry/settings). Off by default; the sender in
+    # puspa.telemetry only posts when the effective switch is on.
+    telemetry_api.register_routes(app, need_user)
     # -- end G28 ---------------------------------------------------------
 
     @app.post("/api/onboarding/waktu")
