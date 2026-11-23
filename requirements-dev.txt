@@ -19,7 +19,7 @@ mutmut==3.8.1
 # tests use them. Pinned 20 Nov 2026; the baselines in
 # tests/test_bandit_baseline.py and tests/test_blind_except_ratchet.py
 # were measured against exactly these versions.
-bandit==1.8.6
+bandit==1.9.4
 # E-17 per-worker databases + PR lane (plan section 9.1): pytest-xdist
 # runs the suite on 4 workers, each with its own database cloned
 # from a migrated template (tests/worker_db.py). Dev-only: only the
