@@ -64,6 +64,11 @@ jobs:
       - name: build release
         working-directory: apps/desktop
         run: cargo build --release
+      - name: Create installer output directory
+        # makensis does not create the output directory itself: with
+        # no installer-out it fails with "Can't open output file".
+        run: New-Item -ItemType Directory -Force -Path installer-out
+
       - name: NSIS installer
         run: makensis /DOUTDIR=${{ github.workspace }}\installer-out apps\desktop\installer\windows.nsi
       - name: upload installer
