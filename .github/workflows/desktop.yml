@@ -100,7 +100,7 @@ jobs:
         run: |
           $makensis = "C:\Program Files (x86)\NSIS\makensis.exe"
           if (-not (Test-Path $makensis)) { Write-Error "makensis not found at $makensis"; exit 1 }
-          & $makensis -V4 /DOUTDIR=${{ github.workspace }}\installer-out ${{ github.workspace }}\apps\desktop\installer\windows.nsi
+          & $makensis -DOUTDIR=${{ github.workspace }}\installer-out ${{ github.workspace }}\apps\desktop\installer\windows.nsi
       - name: upload installer
         uses: actions/upload-artifact@v4
         with:

@@ -14,6 +14,12 @@
 !define APPVERSION "0.1.0"
 !define EXE "puspabot.exe"
 
+; OUTDIR comes from the CI call (-DOUTDIR=...); the fallback keeps
+; a local makensis run working without the define.
+!ifndef OUTDIR
+  !define OUTDIR "installer-out"
+!endif
+
 OutFile "${OUTDIR}/PuspaBot-Setup.exe"
 InstallDir "$PROGRAMFILES\${APPNAME}"
 RequestExecutionLevel admin
