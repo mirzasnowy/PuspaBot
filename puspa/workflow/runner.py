@@ -24,8 +24,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from puspa.feature_flags import FLAG_WORKFLOW, require_enabled
 from puspa.workflow import approvals
@@ -38,7 +38,7 @@ from puspa.workflow.blocks import (
 from puspa.workflow.manifest import compute_manifest, subset_permission
 from puspa.workflow.triggers import validate_trigger
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 
 class WorkflowError(Exception):
@@ -46,7 +46,7 @@ class WorkflowError(Exception):
 
 
 def _connect(dsn=None):
-    return psycopg.connect(
+    return _db_connect(
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
     )
 

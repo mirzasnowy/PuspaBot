@@ -68,8 +68,8 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Any
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from puspa.migrations import apply_migrations
 
@@ -87,7 +87,7 @@ from .causal import CausalHypothesis, CausalLedger
 from .model import WorldModel
 
 #: DSN default (peer auth sebagai user OS, tanpa password).
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 _BELIEF_TYPES = {
     "price_beliefs": _PriceBelief,
@@ -186,7 +186,7 @@ def save_world_state(user_id, agent_id, model, *, dsn=None) -> dict:
     """
     state = model.state if isinstance(model, WorldModel) else model
     payload = state_to_json(state)
-    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn:
+    with _db_connect(_resolve_dsn(dsn), row_factory=dict_row) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO world_beliefs (user_id, agent_id, state)"
@@ -209,7 +209,7 @@ def save_world_state(user_id, agent_id, model, *, dsn=None) -> dict:
 
 def load_world_state(user_id, agent_id, *, dsn=None) -> dict | None:
     """Load a saved world state, or None when nothing was saved."""
-    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+    with _db_connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT state FROM world_beliefs WHERE user_id = %s AND agent_id = %s",
             (str(user_id), str(agent_id)),
@@ -236,7 +236,7 @@ def load_world_model(user_id, agent_id, *, dsn=None) -> WorldModel | None:
 
 def delete_world_state(user_id, agent_id, *, dsn=None) -> bool:
     """Delete the saved row for one (user, agent). Tests only."""
-    with psycopg.connect(_resolve_dsn(dsn)) as conn:
+    with _db_connect(_resolve_dsn(dsn)) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "DELETE FROM world_beliefs WHERE user_id = %s AND agent_id = %s",
@@ -299,7 +299,7 @@ def save_belief_versions(user_id, agent_id, history, *, dsn=None) -> int:
     rows = [version for key in history for version in history.history(key)]
     if not rows:
         return 0
-    with psycopg.connect(_resolve_dsn(dsn)) as conn:
+    with _db_connect(_resolve_dsn(dsn)) as conn:
         with conn.cursor() as cur:
             cur.executemany(
                 "INSERT INTO belief_versions"
@@ -331,7 +331,7 @@ def save_belief_versions(user_id, agent_id, history, *, dsn=None) -> int:
 
 def load_belief_history(user_id, agent_id, *, dsn=None) -> BitemporalBeliefStore | None:
     """Load the full version history, or None when nothing was saved."""
-    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+    with _db_connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT belief_key, version, value, valid_from, valid_to,"
             " known_from, known_to, supersedes FROM belief_versions"
@@ -367,7 +367,7 @@ def beliefs_known_at(
         query += " AND belief_key = %s"
         params.append(belief_key)
     query += " ORDER BY belief_key"
-    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+    with _db_connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
         cur.execute(query, params)
         rows = cur.fetchall()
     return [_belief_version_to_dict(_belief_row_to_version(row)) for row in rows]
@@ -387,8 +387,12 @@ def beliefs_valid_at(
     if at.tzinfo is None:
         raise ValueError("at must be a timezone-aware datetime")
     query = (
-        "SELECT DISTINCT ON (belief_key) belief_key, version, value,"
-        " valid_from, valid_to, known_from, known_to, supersedes"
+        "SELECT belief_key, version, value,"
+        " valid_from, valid_to, known_from, known_to, supersedes FROM ("
+        " SELECT belief_key, version, value,"
+        " valid_from, valid_to, known_from, known_to, supersedes,"
+        " ROW_NUMBER() OVER (PARTITION BY belief_key"
+        " ORDER BY version DESC) AS rn"
         " FROM belief_versions"
         " WHERE user_id = %s AND agent_id = %s"
         " AND valid_from <= %s AND (valid_to IS NULL OR valid_to > %s)"
@@ -397,8 +401,8 @@ def beliefs_valid_at(
     if belief_key is not None:
         query += " AND belief_key = %s"
         params.append(belief_key)
-    query += " ORDER BY belief_key, version DESC"
-    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+    query += ") WHERE rn = 1 ORDER BY belief_key"
+    with _db_connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
         cur.execute(query, params)
         rows = cur.fetchall()
     return [_belief_version_to_dict(_belief_row_to_version(row)) for row in rows]
@@ -406,7 +410,7 @@ def beliefs_valid_at(
 
 def delete_belief_history(user_id, agent_id, *, dsn=None) -> bool:
     """Delete all saved belief versions for one (user, agent). Tests only."""
-    with psycopg.connect(_resolve_dsn(dsn)) as conn:
+    with _db_connect(_resolve_dsn(dsn)) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "DELETE FROM belief_versions WHERE user_id = %s AND agent_id = %s",
@@ -471,7 +475,7 @@ def save_causal_hypotheses(user_id, agent_id, ledger, *, dsn=None) -> int:
     rows = [CausalHypothesis.from_dict(row) for row in ledger.list_all(include_terminal=True)]
     if not rows:
         return 0
-    with psycopg.connect(_resolve_dsn(dsn)) as conn:
+    with _db_connect(_resolve_dsn(dsn)) as conn:
         with conn.cursor() as cur:
             cur.executemany(
                 "INSERT INTO causal_hypotheses"
@@ -525,7 +529,7 @@ def load_causal_ledger(user_id, agent_id, *, dsn=None) -> CausalLedger | None:
     contradicted ones (history is preserved); the read path
     (`CausalLedger.expect`) filters to active ones.
     """
-    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+    with _db_connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT id, cause, effect, effect_value, condition, strength,"
             " evidence, created_at, expires_at, valid_from, valid_to,"
@@ -569,7 +573,7 @@ def causal_hypotheses_valid_at(
         query += " AND cause = %s"
         params.append(cause)
     query += " ORDER BY cause, condition, effect"
-    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+    with _db_connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
         cur.execute(query, params)
         rows = cur.fetchall()
     return [_causal_hypothesis_to_dict(_causal_row_to_hypothesis(row)) for row in rows]
@@ -577,7 +581,7 @@ def causal_hypotheses_valid_at(
 
 def delete_causal_hypotheses(user_id, agent_id, *, dsn=None) -> bool:
     """Delete all saved causal hypotheses for one (user, agent). Tests only."""
-    with psycopg.connect(_resolve_dsn(dsn)) as conn:
+    with _db_connect(_resolve_dsn(dsn)) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "DELETE FROM causal_hypotheses WHERE user_id = %s AND agent_id = %s",
@@ -637,7 +641,7 @@ def save_agent_models(user_id, agent_id, store, *, dsn=None) -> int:
         raise ValueError("store must be an AgentGoalStore or a WorldModel")
     if not models:
         return 0
-    with psycopg.connect(_resolve_dsn(dsn)) as conn:
+    with _db_connect(_resolve_dsn(dsn)) as conn:
         with conn.cursor() as cur:
             cur.executemany(
                 "INSERT INTO agent_goal_models"
@@ -691,7 +695,7 @@ def load_agent_models(user_id, agent_id, *, dsn=None) -> AgentGoalStore | None:
     preserved); the read path (`AgentGoalModel.active_goals`,
     `WorldModel.predict_agent`) filters to live ones.
     """
-    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+    with _db_connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT contact_id, goals, observations, replies, reply_delays,"
             " channels, last_day, predictions, stats FROM agent_goal_models"
@@ -709,7 +713,7 @@ def load_agent_models(user_id, agent_id, *, dsn=None) -> AgentGoalStore | None:
 
 def delete_agent_models(user_id, agent_id, *, dsn=None) -> bool:
     """Delete all saved goal models for one (user, agent). Tests only."""
-    with psycopg.connect(_resolve_dsn(dsn)) as conn:
+    with _db_connect(_resolve_dsn(dsn)) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "DELETE FROM agent_goal_models WHERE user_id = %s AND agent_id = %s",

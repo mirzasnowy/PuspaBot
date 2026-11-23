@@ -39,13 +39,16 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-import psycopg
-
+from puspa import db as _db
 from puspa.accounts.ports import resolve_dsn as _port_resolve_dsn
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "versions"
+
+#: The translated set (D-SQLite-6): same version numbers and file
+#: names as ``versions/``, same tables and columns, SQLite dialect.
+MIGRATIONS_DIR_SQLITE = Path(__file__).resolve().parent / "versions_sqlite"
 
 # The one piece of DDL this module is allowed to hold: the bookkeeping
 # table itself. Every other CREATE TABLE lives in a migration file.
@@ -82,12 +85,29 @@ class Migration:
 
 
 def resolve_dsn(dsn: str | None = None) -> str:
-    """Postgres DSN: argument, then env, then the local test default.
+    """DSN resolution (D-SQLite-2): argument, then env, then default.
 
     Delegates to :func:`puspa.accounts.ports.resolve_dsn`, the one
     canonical resolution order in the tree.
     """
     return _port_resolve_dsn(dsn)
+
+
+def _resolve_directory(
+    directory: Path | None, dsn: str | None
+) -> Path:
+    """The migration directory for this backend (D-SQLite-6).
+
+    An explicit ``directory`` always wins (the hosted service keeps
+    its own full set there). Otherwise a SQLite DSN reads the
+    translated ``versions_sqlite/`` set and a Postgres DSN reads
+    ``versions/``.
+    """
+    if directory is not None:
+        return directory
+    if _db.is_sqlite_dsn(resolve_dsn(dsn)):
+        return MIGRATIONS_DIR_SQLITE
+    return MIGRATIONS_DIR
 
 
 def list_migrations(directory: Path | None = None) -> list[Migration]:
@@ -149,7 +169,7 @@ def _split_sections(path: Path) -> tuple[str, str]:
     return up_sql, down_sql
 
 
-def _applied_versions(conn: psycopg.Connection) -> dict[str, str]:
+def _applied_versions(conn: _db.Connection) -> dict[str, str]:
     """Applied versions from schema_migrations (creates the table first)."""
     with conn.cursor() as cur:
         cur.execute(SCHEMA_MIGRATIONS_DDL)
@@ -175,12 +195,15 @@ def apply_migrations(
     Returns the versions applied by this call, in order. A second call
     is a no-op. Each migration runs in its own transaction. ``directory``
     overrides the versions directory (the hosted service keeps its own
-    full set there); it defaults to this package's ``versions/``.
+    full set there); it defaults to this package's ``versions/`` for a
+    Postgres DSN and ``versions_sqlite/`` for a SQLite DSN.
     """
+    directory = _resolve_directory(directory, dsn)
+    sqlite = _db.is_sqlite_dsn(resolve_dsn(dsn))
     migrations = list_migrations(directory)
     _check_target(migrations, target)
     applied: list[str] = []
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
+    with _db.connect(resolve_dsn(dsn)) as conn:
         recorded = _applied_versions(conn)
         unknown = sorted(set(recorded) - {m.version for m in migrations})
         if unknown:
@@ -196,6 +219,11 @@ def apply_migrations(
             if target is not None and migration.version > target:
                 break
             with conn.cursor() as cur:
+                if sqlite:
+                    # SQLite only opens an implicit transaction for
+                    # DML, so DDL would otherwise commit statement
+                    # by statement instead of per migration.
+                    cur.execute("BEGIN IMMEDIATE")
                 cur.execute(migration.up_sql)
                 cur.execute(
                     "INSERT INTO schema_migrations (version) VALUES (%s)",
@@ -216,11 +244,13 @@ def rollback_migrations(
     Raises MigrationError on an irreversible migration instead of
     rolling it back. ``directory`` overrides the versions directory.
     """
+    directory = _resolve_directory(directory, dsn)
+    sqlite = _db.is_sqlite_dsn(resolve_dsn(dsn))
     migrations = list_migrations(directory)
     if target != "":
         _check_target(migrations, target)
     rolled_back: list[str] = []
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
+    with _db.connect(resolve_dsn(dsn)) as conn:
         recorded = _applied_versions(conn)
         for migration in reversed(migrations):
             if migration.version <= target:
@@ -234,6 +264,8 @@ def rollback_migrations(
                     f"{_irreversible_reason(migration.down_sql)}"
                 )
             with conn.cursor() as cur:
+                if sqlite:
+                    cur.execute("BEGIN IMMEDIATE")
                 cur.execute(migration.down_sql)
                 cur.execute(
                     "DELETE FROM schema_migrations WHERE version = %s",
@@ -258,8 +290,9 @@ def migration_status(
 
     ``directory`` overrides the versions directory.
     """
+    directory = _resolve_directory(directory, dsn)
     migrations = list_migrations(directory)
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
+    with _db.connect(resolve_dsn(dsn)) as conn:
         recorded = _applied_versions(conn)
     return [
         {

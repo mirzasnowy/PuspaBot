@@ -38,7 +38,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-import psycopg
+from puspa.db import Error as _db_Error
 
 from puspa.ledger import Ledger
 
@@ -128,7 +128,7 @@ class LedgerComputerAudit:
                 event_type=AUDIT_EVENT_TYPE,
                 content=dict(entry),
             )
-        except (psycopg.Error, OSError, ValueError) as exc:
+        except (*_db_Error, OSError, ValueError) as exc:
             self.last_error = str(exc)
             return False
         self.last_error = None
@@ -150,7 +150,7 @@ class LedgerComputerAudit:
                 event_type=event_type,
                 content={"computer_stop": state, "actor": actor, "reason": reason},
             )
-        except (psycopg.Error, OSError, ValueError) as exc:
+        except (*_db_Error, OSError, ValueError) as exc:
             self.last_error = str(exc)
             return False
         self.last_error = None
@@ -162,7 +162,7 @@ class LedgerComputerAudit:
         ``last_error`` says why."""
         try:
             events = self.ledger.recent_events(datetime(1970, 1, 1, tzinfo=UTC), limit=1000)
-        except (psycopg.Error, OSError, ValueError) as exc:
+        except (*_db_Error, OSError, ValueError) as exc:
             self.last_error = str(exc)
             return []
         self.last_error = None

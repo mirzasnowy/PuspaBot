@@ -24,7 +24,7 @@ using its login resolver.
 
 from __future__ import annotations
 
-import psycopg
+from puspa.db import Error as _db_Error
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -65,7 +65,7 @@ def _resolve_catalog_locale(request: Request, need_user) -> str:
         return DEFAULT_LOCALE
     try:
         return get_language(user_id, dsn=_dsn(request))
-    except (ValueError, psycopg.Error):
+    except (ValueError, *_db_Error):
         return DEFAULT_LOCALE
 
 
@@ -79,7 +79,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             return _not_logged_in()
         try:
             return _public_state(user_id, _dsn(request))
-        except (ValueError, psycopg.Error) as exc:
+        except (ValueError, *_db_Error) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
 
     @app.post("/api/language")
@@ -95,7 +95,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
                 raise ValueError("language settings need a 'locale' string")
             saved = save_language(user_id, data["locale"], dsn=_dsn(request))
             return saved.to_public_dict()
-        except (ValueError, psycopg.Error) as exc:
+        except (ValueError, *_db_Error) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
 
     @app.get("/api/i18n/catalog")

@@ -27,8 +27,8 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from ..memory import episodic
 from ..memory.schema import resolve_dsn
@@ -62,7 +62,7 @@ class StubNotifier:
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def start_onboarding(user_id, dsn=None):
@@ -210,13 +210,18 @@ def run_first_task(user_id, event_type, target, dsn=None, ledger=None, agent_id=
     duration = time.monotonic() - start
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
+            # The duration is bound from Python: the Postgres form
+            # EXTRACT(EPOCH FROM (now() - started_at)) has no
+            # SQLite equivalent, and this is the only EXTRACT site
+            # in the tree. The value is the same wall-clock span
+            # the query measured (start was taken at the top of
+            # this function, just before the work ran).
             cur.execute(
                 "UPDATE onboarding SET first_task = %s, "
                 "first_result_verified = false, current_step = 4, "
-                "completed_at = now(), duration_seconds = "
-                "EXTRACT(EPOCH FROM (now() - started_at)) "
+                "completed_at = now(), duration_seconds = %s "
                 "WHERE user_id = %s RETURNING *",
-                (f"{event_type}:{target}", user_id),
+                (f"{event_type}:{target}", duration, user_id),
             )
             row = cur.fetchone()
             if row is None:

@@ -37,8 +37,8 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from ..evidence.proof import user_agent_ids
 
@@ -51,7 +51,7 @@ __all__ = [
 ]
 
 #: Default DSN (peer auth as the OS user, no password).
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 #: Migration that owns the artifacts table: ``create_schema``
 #: applies it through the migration runner — table DDL lives
@@ -154,7 +154,7 @@ class ArtifactStore:
         apply_migrations(self.dsn, target=ARTIFACTS_MIGRATION)
 
     def _connect(self):
-        return psycopg.connect(self.dsn, row_factory=dict_row)
+        return _db_connect(self.dsn, row_factory=dict_row)
 
     def require_agent_owner(self, user_id: str, agent_id: str) -> None:
         """403 when ``agent_id`` is not one of ``user_id``'s agents."""

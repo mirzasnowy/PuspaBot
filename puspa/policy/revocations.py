@@ -30,15 +30,15 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect, errors as pg_errors, Connection as _db_Connection
+from puspa.db import dict_row
 
 from puspa.migrations import apply_migrations
 
 __all__ = ["RevocationError", "RevocationList"]
 
 #: Default DSN (peer auth as the OS user, no password).
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 #: Migration that creates the revocation tables.
 REVOCATION_MIGRATION = "0020"
@@ -87,8 +87,8 @@ class RevocationList:
 
     # -- connections ----------------------------------------------------
 
-    def _connect(self, *, for_read: bool = False) -> psycopg.Connection[dict[str, Any]]:
-        conn = psycopg.connect(self.dsn, row_factory=dict_row)
+    def _connect(self, *, for_read: bool = False) -> _db_Connection[dict[str, Any]]:
+        conn = _db_connect(self.dsn, row_factory=dict_row)
         if for_read and self.read_role is not None:
             with conn.cursor() as cur:
                 cur.execute(f"SET ROLE {self.read_role}")
@@ -120,7 +120,7 @@ class RevocationList:
                     )
                     row = cur.fetchone()
                 conn.commit()
-        except psycopg.errors.UndefinedTable as exc:
+        except pg_errors.UndefinedTable as exc:
             raise RevocationError(
                 "token_revocations table is missing; run RevocationList.create_schema() first"
             ) from exc
@@ -157,7 +157,7 @@ class RevocationList:
                 )
                 row = cur.fetchone()
                 conn.commit()
-        except psycopg.errors.UndefinedTable as exc:
+        except pg_errors.UndefinedTable as exc:
             raise RevocationError(
                 "agent_revocations table is missing; run RevocationList.create_schema() first"
             ) from exc
@@ -178,7 +178,7 @@ class RevocationList:
                     (agent_id,),
                 )
                 row = cur.fetchone()
-        except psycopg.errors.UndefinedTable as exc:
+        except pg_errors.UndefinedTable as exc:
             raise RevocationError(
                 "agent_revocations table is missing; run RevocationList.create_schema() first"
             ) from exc
@@ -195,7 +195,7 @@ class RevocationList:
                     (jti,),
                 )
                 return cur.fetchone() is not None
-        except psycopg.errors.UndefinedTable as exc:
+        except pg_errors.UndefinedTable as exc:
             raise RevocationError(
                 "token_revocations table is missing; run RevocationList.create_schema() first"
             ) from exc

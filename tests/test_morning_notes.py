@@ -100,9 +100,9 @@ def test_save_note_stores_note_and_tracked_tasks(make_user, test_dsn):
     assert len(saved["actions"]) == 4
     assert all(action["task_id"] for action in saved["actions"])
     # Each action is a tracked task in the P-02 task store.
-    import psycopg
+    from puspa.db import connect as _db_connect
 
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         rows = conn.execute(
             "SELECT id, purpose, status FROM tasks WHERE user_id = %s ORDER BY created_at",
             (user["user_id"],),

@@ -9,7 +9,7 @@ from __future__ import annotations
 from puspa.accounts.ports import resolve_dsn
 from puspa.migrations import apply_migrations
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 
 def create_schema(dsn=None):

@@ -28,10 +28,10 @@ from __future__ import annotations
 import os
 from datetime import date
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 # Hasil cek yang dicatat (sumber -> ringkasan). `boleh_baca_live`
 # False berarti gerbang menahan pembacaan live sampai keputusan Nero.
@@ -86,7 +86,7 @@ LIVE_READ_ALLOWED = {"PLN", "PDAM", "airtime", "paket data"}
 
 
 def _connect(dsn=None):
-    return psycopg.connect(
+    return _db_connect(
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
     )
 

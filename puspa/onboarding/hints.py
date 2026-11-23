@@ -31,8 +31,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from puspa.migrations import apply_migrations
 
@@ -200,7 +200,7 @@ def create_schema(dsn=None) -> None:
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def seen_flags(user_id, dsn=None) -> set[str]:

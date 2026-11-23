@@ -18,16 +18,16 @@ from __future__ import annotations
 import os
 from datetime import UTC, datetime
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from puspa.evidence.evidence import reliability_score
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 
 def _connect(dsn=None):
-    return psycopg.connect(
+    return _db_connect(
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
     )
 

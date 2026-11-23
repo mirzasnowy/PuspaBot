@@ -30,7 +30,7 @@ import os
 import uuid
 from typing import Protocol
 
-import psycopg
+from puspa.db import connect as _db_connect
 
 from puspa.evidence.evidence import record_evidence
 from puspa.evidence.verifier import verify
@@ -48,7 +48,7 @@ from puspa.pricing.readers import ResultRead
 from puspa.pricing.tos import may_read
 
 MARKETPLACE = ("Tokopedia", "Shopee", "Blibli")
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 
 class _ListingReader(Protocol):
@@ -61,7 +61,7 @@ class _ListingReader(Protocol):
 def _record_reading(user_id: str, source: str, category: str, verdict: str, dsn=None) -> None:
     """Tulis satu pembacaan ke `pembacaan_sumber` (bahan Skor Keandalan)."""
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    with psycopg.connect(dsn) as conn:
+    with _db_connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO source_readings (user_id, sumber, category, vonis)"
@@ -73,7 +73,7 @@ def _record_reading(user_id: str, source: str, category: str, verdict: str, dsn=
 
 def _record_token(task_id: str, user_id: str, token: int, dsn=None) -> None:
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    with psycopg.connect(dsn) as conn:
+    with _db_connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO token_metrics (task_id, user_id, type, token)"

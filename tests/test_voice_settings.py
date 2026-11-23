@@ -11,7 +11,7 @@ used are obviously fake and are only ever sent to a mock
 transport, never to a real host.
 """
 
-import psycopg
+from puspa.db import connect as _db_connect
 import pytest
 
 from puspa.pwa.voice_settings import (
@@ -39,7 +39,7 @@ def user(make_user):
 def _voice_settings_table(test_dsn):
     create_schema(test_dsn)
     yield
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         conn.execute("TRUNCATE voice_settings")
         conn.commit()
 
@@ -133,7 +133,7 @@ def test_voice_key_round_trip_lives_in_vault_only(user, test_dsn, vault_master_k
     public = settings.to_public_dict()
     assert FAKE_VOICE_KEY not in str(public)
     # The row itself holds no key column at all.
-    with psycopg.connect(test_dsn) as conn, conn.cursor() as cur:
+    with _db_connect(test_dsn) as conn, conn.cursor() as cur:
         cur.execute("SELECT * FROM voice_settings WHERE user_id = %s", (user["user_id"],))
         row = cur.fetchone()
     assert FAKE_VOICE_KEY not in str(row)

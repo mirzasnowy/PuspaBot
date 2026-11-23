@@ -42,7 +42,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-import psycopg
+from puspa.db import Error as _db_Error
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -107,12 +107,12 @@ def load_signals(user_id: str, *, dsn=None, now: datetime | None = None) -> list
             event for event in events if event_belongs_to_user(event, user_id, agent_ids, dsn=dsn)
         ]
         signals.extend(signals_from_events(own))
-    except psycopg.Error:
+    except _db_Error:
         pass
     try:
         drafts = PostgresDraftStore(dsn).list_drafts(user_id)
         signals.extend(signals_from_drafts(drafts))
-    except psycopg.Error:
+    except _db_Error:
         pass
     return signals
 

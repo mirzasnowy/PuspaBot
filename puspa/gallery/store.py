@@ -39,10 +39,11 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from puspa.accounts.ports import resolve_dsn
 from puspa.migrations import apply_migrations
@@ -100,7 +101,7 @@ def create_schema(dsn=None):
 
 def reset_tables(dsn=None):
     """Empty the gallery tables (for tests)."""
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
+    with _db_connect(resolve_dsn(dsn)) as conn:
         conn.execute("TRUNCATE " + ", ".join(GALLERY_TABLES) + " CASCADE")
         conn.commit()
 
@@ -147,7 +148,7 @@ class GalleryStore:
             )
         validate_doc(doc)
         work_id = f"gal-{uuid.uuid4().hex[:12]}"
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+        with _db_connect(self.dsn, row_factory=dict_row) as conn:
             existing = conn.execute(
                 "SELECT id, owner_id, status FROM gallery_works WHERE mockup_id = %s",
                 (doc["id"],),
@@ -198,7 +199,7 @@ class GalleryStore:
 
     def list_published(self) -> list[dict]:
         """Every published work, newest first, each with its aggregate + count."""
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+        with _db_connect(self.dsn, row_factory=dict_row) as conn:
             rows = conn.execute(
                 "SELECT w.*, COUNT(r.user_id) AS rating_count, AVG(r.rating) AS average_rating "
                 "FROM gallery_works w LEFT JOIN gallery_ratings r ON r.work_id = w.id "
@@ -212,7 +213,7 @@ class GalleryStore:
         Unpublished works are visible only to their owner; everyone
         else gets a KeyError, the same as a missing work.
         """
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+        with _db_connect(self.dsn, row_factory=dict_row) as conn:
             row = conn.execute(
                 "SELECT w.*, COUNT(r.user_id) AS rating_count, AVG(r.rating) AS average_rating "
                 "FROM gallery_works w LEFT JOIN gallery_ratings r ON r.work_id = w.id "
@@ -243,7 +244,7 @@ class GalleryStore:
 
     def snapshot(self, work_id: str) -> dict:
         """The published design doc of a work (for rendering); KeyError when unpublished."""
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+        with _db_connect(self.dsn, row_factory=dict_row) as conn:
             row = conn.execute(
                 "SELECT doc FROM gallery_works WHERE id = %s AND status = 'published'",
                 (work_id,),
@@ -276,7 +277,7 @@ class GalleryStore:
         review = review.strip()
         if len(review) > MAX_REVIEW_CHARS:
             raise GalleryError(f"review must be at most {MAX_REVIEW_CHARS} characters")
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+        with _db_connect(self.dsn, row_factory=dict_row) as conn:
             work = conn.execute(
                 "SELECT id, owner_id, version, status FROM gallery_works WHERE id = %s",
                 (work_id,),
@@ -301,10 +302,18 @@ class GalleryStore:
                 (work_id, user_id),
             ).fetchone()
             if previous is not None:
+                # The cooldown cutoff is computed in Python and
+                # bound as a value: the Postgres form
+                # `now() - (%s || ' seconds')::interval` has no
+                # SQLite equivalent (the cast strips to a text
+                # subtraction), and no other product code uses it.
+                cooldown_since = datetime.now(UTC) - timedelta(
+                    seconds=per_work_cooldown_seconds
+                )
                 cooling = conn.execute(
                     "SELECT COUNT(*) AS n FROM gallery_ratings WHERE work_id = %s "
-                    "AND user_id = %s AND updated_at >= now() - (%s || ' seconds')::interval",
-                    (work_id, user_id, str(per_work_cooldown_seconds)),
+                    "AND user_id = %s AND updated_at >= %s",
+                    (work_id, user_id, cooldown_since),
                 ).fetchone()
                 assert cooling is not None  # COUNT(*) always returns one row
                 if cooling["n"]:
@@ -347,7 +356,7 @@ class GalleryStore:
         a KeyError, the same as a missing work. Ratings are kept, so
         re-publishing restores the work with its history.
         """
-        with psycopg.connect(self.dsn) as conn:
+        with _db_connect(self.dsn) as conn:
             cursor = conn.execute(
                 "UPDATE gallery_works SET status = 'unpublished', updated_at = now() "
                 "WHERE id = %s AND owner_id = %s AND status = 'published'",

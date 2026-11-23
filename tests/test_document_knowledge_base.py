@@ -6,7 +6,7 @@ API + screen. PDF is refused everywhere: no PDF parser exists
 in this repo and this item adds none.
 """
 
-import psycopg
+from puspa.db import connect as _db_connect
 import pytest
 from fastapi.testclient import TestClient
 
@@ -35,7 +35,7 @@ REFUND_TEXT = (
 def _knowledge_tables(test_dsn):
     create_schema(test_dsn)
     yield
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         conn.execute("TRUNCATE knowledge_chunks, knowledge_documents CASCADE")
         conn.commit()
 

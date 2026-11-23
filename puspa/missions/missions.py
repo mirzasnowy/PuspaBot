@@ -30,9 +30,9 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-import psycopg
+from puspa.db import connect as _db_connect, dict_row as _db_dict_row
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 #: Mission states. ``waiting`` means one step asked the user a
 #: question and the mission pauses until it is answered.
@@ -53,7 +53,7 @@ def _now() -> datetime:
 
 
 def _connect(dsn=None):
-    return psycopg.connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN))
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN))
 
 
 def create_schema(dsn=None) -> None:
@@ -254,7 +254,7 @@ def create_mission(
 
 def get_mission(mission_id: str, user_id: str, *, dsn=None) -> Mission:
     """One mission of one user, or raise when it is not theirs."""
-    with _connect(dsn) as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+    with _connect(dsn) as conn, conn.cursor(row_factory=_db_dict_row) as cur:
         cur.execute(
             "SELECT id, user_id, title, goal, status, steps, webhook_token,"
             " created_at, updated_at FROM missions WHERE id = %s AND user_id = %s",
@@ -268,7 +268,7 @@ def get_mission(mission_id: str, user_id: str, *, dsn=None) -> Mission:
 
 def list_missions(user_id: str, *, dsn=None) -> list[Mission]:
     """All missions of one user, newest first."""
-    with _connect(dsn) as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+    with _connect(dsn) as conn, conn.cursor(row_factory=_db_dict_row) as cur:
         cur.execute(
             "SELECT id, user_id, title, goal, status, steps, webhook_token,"
             " created_at, updated_at FROM missions WHERE user_id = %s"

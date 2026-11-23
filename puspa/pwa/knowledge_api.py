@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-import psycopg
+from puspa.db import Error as _db_Error
 from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import JSONResponse
 
@@ -79,7 +79,7 @@ def upload_one_document(
 
     Raises :class:`ValueError` when the file type, size, or
     content is not acceptable (the endpoint turns it into a
-    400); raises :class:`psycopg.Error` on a database failure.
+    400); raises :class:`_db_Error` on a database failure.
     """
     suffix = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if suffix == ".pdf":
@@ -130,7 +130,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             return _not_logged_in()
         try:
             return {"documents": list_user_documents(user_id, dsn=request.app.state.dsn)}
-        except psycopg.Error as exc:
+        except _db_Error as exc:
             return JSONResponse({"error": str(exc)}, status_code=500)
 
     @app.post("/api/knowledge/upload")
@@ -153,7 +153,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             )
         except ValueError as exc:
             return _bad_request(str(exc))
-        except psycopg.Error as exc:
+        except _db_Error as exc:
             return JSONResponse({"error": str(exc)}, status_code=500)
         return {"ok": True, "document": document}
 
@@ -168,7 +168,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             return ask_documents(user_id, q, limit=limit, dsn=request.app.state.dsn)
         except ValueError as exc:
             return _bad_request(str(exc))
-        except psycopg.Error as exc:
+        except _db_Error as exc:
             return JSONResponse({"error": str(exc)}, status_code=500)
 
     @app.delete("/api/knowledge/documents/{document_id}")
@@ -178,7 +178,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             return _not_logged_in()
         try:
             deleted = delete_one_document(user_id, document_id, dsn=request.app.state.dsn)
-        except psycopg.Error as exc:
+        except _db_Error as exc:
             return JSONResponse({"error": str(exc)}, status_code=500)
         if not deleted:
             return JSONResponse({"error": "document not found"}, status_code=404)

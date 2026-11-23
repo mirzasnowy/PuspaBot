@@ -154,9 +154,9 @@ def verify_escrowed_key(escrow_path, dsn=None, *, limit: int = 10) -> dict:
         raise KeyEscrowError("escrowed key is not valid base64") from exc
     if len(master) != 32:
         raise KeyEscrowError("escrowed key must be 32 bytes")
-    import psycopg
+    from puspa.db import connect as _db_connect
 
-    with psycopg.connect(resolve_dsn(dsn)) as conn, conn.cursor() as cur:
+    with _db_connect(resolve_dsn(dsn)) as conn, conn.cursor() as cur:
         cur.execute("SELECT user_id, name, ciphertext FROM vault LIMIT %s", (limit,))
         rows = cur.fetchall()
     failures = []

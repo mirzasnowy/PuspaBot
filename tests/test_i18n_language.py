@@ -28,7 +28,7 @@ from puspa.pwa.language import (
     save_settings,
 )
 
-ALL_KEYS = 62
+ALL_KEYS = 63
 
 
 @pytest.fixture

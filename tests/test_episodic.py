@@ -1,6 +1,7 @@
 """Tes Episodik — lapis 2 memori + index pgvector (C54)."""
 
-import psycopg
+from puspa.db import connect as _db_connect
+from puspa.db import is_sqlite_dsn as _db_is_sqlite_dsn
 import pytest
 
 from puspa.memory import episodic
@@ -55,8 +56,13 @@ def test_embedding_deterministic_and_normalized():
 
 def test_index_pgvector_exists(test_dsn):
     """Index HNSW episodik benar-benar terpasang di Postgres."""
+    if _db_is_sqlite_dsn(test_dsn):
+        pytest.skip(
+            "SQLite has no pgvector HNSW index by design "
+            "(D-SQLite-4: brute-force cosine in Python)"
+        )
 
-    with psycopg.connect(test_dsn) as conn, conn.cursor() as cur:
+    with _db_connect(test_dsn) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT indexname FROM pg_indexes WHERE tablename = 'episodic' "
             "AND indexname = 'idx_episodik_embedding'"

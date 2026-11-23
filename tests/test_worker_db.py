@@ -1,5 +1,11 @@
 """Tests for per-worker databases + the marker split (E-17, plan 9.1).
 
+Two backends (COW-10): the default lane is SQLite files — the
+template is a migrated file, each worker copies it to its own
+file — and the Postgres lane (template database + CREATE DATABASE
+... TEMPLATE clones) still runs when a Postgres server is
+reachable, guarded by :func:`_postgres_available`.
+
 - Pure helpers: DSN parsing, template/worker database names.
 - Template: built once from the migrations, rebuilt when stale.
 - Isolation: two worker databases hold the same rows independently.
@@ -21,22 +27,31 @@ import psycopg
 import pytest
 from worker_db import (
     build_dsn,
+    create_sqlite_worker_db,
     create_worker_db,
+    drop_run_sqlite_worker_dbs,
     drop_run_worker_dbs,
+    drop_sqlite_worker_db,
     drop_worker_db,
+    ensure_sqlite_template_path,
     ensure_template_dsn,
     maintenance_dsn,
     migrations_fingerprint,
     parse_dsn,
     prune_stale_worker_dbs,
+    sqlite_db_dir,
+    sqlite_migrations_fingerprint,
+    sqlite_template_path,
+    sqlite_worker_path,
     template_db_name,
     with_dbname,
     worker_db_name,
 )
 
-from puspa.migrations.runner import list_migrations
+from puspa.db import connect as _db_connect
+from puspa.migrations.runner import MIGRATIONS_DIR_SQLITE, list_migrations
 
-# Every test in this file needs a live Postgres server: the tests
+# Every test in this file needs a live database: the tests
 # connect directly (``scratch_base`` reads ``PUSPA_TEST_DSN``
 # from the environment), so the marker split cannot see the
 # database need from the fixture closure (E-17). The pure
@@ -49,12 +64,25 @@ BASE_DSN = os.environ.get(
     "PUSPA_TEST_DSN", "dbname=puspa_test_w1 user=root host=/var/run/postgresql"
 )
 
-#: Base DSN for the scratch databases this file creates. The name
-#: carries the process id, so two workers running this file at the
-#: same time never share a template or a worker database.
-SCRATCH_BASE = f"dbname=puspa_test_e17_{os.getpid()} " + " ".join(
-    f"{key}={value}" for key, value in parse_dsn(BASE_DSN).items() if key != "dbname"
+#: Postgres scratch base: always a Postgres DSN, independent of
+#: the suite's own PUSPA_TEST_DSN (which is a SQLite file now).
+#: The name carries the process id, so two workers running this
+#: file at the same time never share a template or a worker
+#: database.
+POSTGRES_SCRATCH_BASE = (
+    f"dbname=puspa_test_e17_{os.getpid()} user=root host=/var/run/postgresql"
 )
+POSTGRES_MAINTENANCE = "dbname=postgres user=root host=/var/run/postgresql"
+
+
+def _postgres_available() -> bool:
+    """True when a Postgres server answers on the local socket."""
+    try:
+        with psycopg.connect(POSTGRES_MAINTENANCE, connect_timeout=3) as conn:
+            conn.execute("SELECT 1")
+        return True
+    except Exception:
+        return False
 
 
 def _db_names(dsn: str) -> set[str]:
@@ -70,13 +98,40 @@ def _drop_quietly(dsn: str, name: str) -> None:
 
 @pytest.fixture
 def scratch_base():
-    """Scratch base DSN; template + worker DBs dropped afterwards."""
-    yield SCRATCH_BASE
-    names = _db_names(SCRATCH_BASE)
-    stem = parse_dsn(SCRATCH_BASE)["dbname"]
+    """Scratch Postgres base DSN; template + worker DBs dropped afterwards."""
+    if not _postgres_available():
+        pytest.skip("no Postgres server reachable for the Postgres lane")
+    yield POSTGRES_SCRATCH_BASE
+    names = _db_names(POSTGRES_SCRATCH_BASE)
+    stem = parse_dsn(POSTGRES_SCRATCH_BASE)["dbname"]
     for name in sorted(names):
         if name.startswith(stem):
-            _drop_quietly(SCRATCH_BASE, name)
+            _drop_quietly(POSTGRES_SCRATCH_BASE, name)
+
+
+@pytest.fixture
+def sqlite_scratch_dir(tmp_path, monkeypatch):
+    """Fresh directory for SQLite template + worker files."""
+    directory = tmp_path / "db"
+    directory.mkdir()
+    monkeypatch.setenv("PUSPA_TEST_DB_DIR", str(directory))
+    yield directory
+    for path in directory.glob("puspa_test*.db*"):
+        path.unlink(missing_ok=True)
+
+
+def _sqlite_versions(path: str) -> list[str]:
+    with _db_connect(path) as conn:
+        rows = conn.execute("SELECT version FROM schema_migrations").fetchall()
+    return [str(row[0]) for row in rows]
+
+
+def _sqlite_tables(path: str) -> set[str]:
+    with _db_connect(path) as conn:
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()
+    return {str(row[0]) for row in rows}
 
 
 # --- pure helpers (no database) -------------------------------------------
@@ -116,7 +171,102 @@ def test_migrations_fingerprint_changes_with_content(tmp_path):
     assert migrations_fingerprint(tmp_path) != before
 
 
-# --- template database ------------------------------------------------------
+def test_sqlite_worker_paths(sqlite_scratch_dir):
+    assert sqlite_worker_path(None, "gw0", "abc123") == (
+        sqlite_scratch_dir / "puspa_test_abc123_gw0.db"
+    )
+    assert sqlite_worker_path(None, "gw2", "") == (
+        sqlite_scratch_dir / "puspa_test_gw2.db"
+    )
+    explicit = str(sqlite_scratch_dir / "mine.db")
+    assert sqlite_worker_path(explicit, "gw0", "abc123") == (
+        sqlite_scratch_dir / "mine_abc123_gw0.db"
+    )
+
+
+def test_sqlite_migrations_fingerprint_changes_with_content(tmp_path):
+    first = tmp_path / "0001_a.sql"
+    first.write_text("-- migrate:up\nSELECT 1;\n-- migrate:down\nSELECT 1;\n")
+    before = sqlite_migrations_fingerprint(tmp_path)
+    first.write_text("-- migrate:up\nSELECT 2;\n-- migrate:down\nSELECT 1;\n")
+    assert sqlite_migrations_fingerprint(tmp_path) != before
+
+
+def test_sqlite_migrations_fingerprint_covers_the_sqlite_set():
+    assert sqlite_migrations_fingerprint() == sqlite_migrations_fingerprint(
+        MIGRATIONS_DIR_SQLITE
+    )
+    assert len(list(sqlite_template_path().parent.glob("*.db")) or []) >= 0
+
+
+# --- SQLite template file ---------------------------------------------------
+
+
+def test_sqlite_template_is_built_from_the_migrations(sqlite_scratch_dir):
+    template = ensure_sqlite_template_path()
+    assert Path(template).exists()
+    assert Path(template).parent == sqlite_scratch_dir
+    assert len(_sqlite_versions(template)) == 45
+    assert {"users", "events", "agents"} <= _sqlite_tables(template)
+    # A second call reuses the template instead of rebuilding it.
+    assert ensure_sqlite_template_path() == template
+
+
+def test_sqlite_stale_template_is_rebuilt(sqlite_scratch_dir):
+    template = ensure_sqlite_template_path()
+    stale = sqlite_scratch_dir / "puspa_test_template_deadbeef.db"
+    stale.write_bytes(b"stale")
+    Path(template).unlink()
+    rebuilt = ensure_sqlite_template_path()
+    assert rebuilt == template
+    assert not stale.exists()
+    assert len(_sqlite_versions(rebuilt)) == 45
+
+
+# --- SQLite per-worker isolation --------------------------------------------
+
+
+def test_sqlite_two_workers_get_isolated_files(sqlite_scratch_dir):
+    """Two workers, same rows, different files, no collision."""
+    run_id = "sqliteiso"
+    path_a = create_sqlite_worker_db(None, "gw0", run_id)
+    path_b = create_sqlite_worker_db(None, "gw1", run_id)
+    assert path_a != path_b
+    try:
+        for path in (path_a, path_b):
+            with _db_connect(path) as conn:
+                conn.execute("CREATE TABLE e17_probe (id INT PRIMARY KEY, v TEXT)")
+                conn.execute("INSERT INTO e17_probe VALUES (1, 'same-key')")
+                conn.commit()
+        with _db_connect(path_a) as conn:
+            conn.execute("INSERT INTO e17_probe VALUES (2, 'only-in-a')")
+            conn.commit()
+        with _db_connect(path_b) as conn:
+            rows = conn.execute("SELECT id FROM e17_probe ORDER BY id").fetchall()
+        assert [row[0] for row in rows] == [1]
+    finally:
+        drop_sqlite_worker_db(path_a)
+        drop_sqlite_worker_db(path_b)
+    assert not Path(path_a).exists()
+    assert not Path(path_b).exists()
+
+
+def test_sqlite_drop_run_drops_only_that_run(sqlite_scratch_dir):
+    """Controller cleanup drops one run's files, not another's."""
+    create_sqlite_worker_db(None, "gw0", "sqliterun1")
+    create_sqlite_worker_db(None, "gw1", "sqliterun1")
+    create_sqlite_worker_db(None, "gw0", "sqliterun2")
+    dropped = drop_run_sqlite_worker_dbs(None, "sqliterun1")
+    assert sorted(dropped) == [
+        str(sqlite_worker_path(None, "gw0", "sqliterun1")),
+        str(sqlite_worker_path(None, "gw1", "sqliterun1")),
+    ]
+    assert Path(sqlite_worker_path(None, "gw0", "sqliterun2")).exists()
+    assert not Path(sqlite_worker_path(None, "gw0", "sqliterun1")).exists()
+    drop_sqlite_worker_db(str(sqlite_worker_path(None, "gw0", "sqliterun2")))
+
+
+# --- Postgres template database (guarded: needs a live server) --------------
 
 
 def test_template_is_built_from_the_migrations(scratch_base):
@@ -146,7 +296,7 @@ def test_stale_template_is_rebuilt(scratch_base):
     assert len(versions) == len(list_migrations())
 
 
-# --- per-worker isolation ---------------------------------------------------
+# --- Postgres per-worker isolation (guarded) --------------------------------
 
 
 def test_two_workers_get_isolated_databases(scratch_base):
@@ -218,17 +368,8 @@ def test_prune_drops_only_old_and_idle_worker_databases(scratch_base):
 # --- xdist wiring, end to end ----------------------------------------------
 
 
-def test_xdist_run_gives_each_worker_its_own_database(tmp_path, scratch_base):
-    """A real ``pytest -n 2`` run: two workers, two databases.
-
-    The probe file records the DSN each worker sees. The run
-    passes only when both workers ran and their databases differ,
-    and the worker databases are gone afterwards (dropped by the
-    session teardown in tests/conftest.py).
-    """
-    probe = BUILD_ROOT / "tests" / f"test_e17_probe_{os.getpid()}.py"
-    out_file = tmp_path / "worker_dsns.txt"
-    probe.write_text(
+def _probe_source() -> str:
+    return (
         "import os\n"
         "from pathlib import Path\n\n\n"
         "def test_records_worker_dsn():\n"
@@ -251,33 +392,81 @@ def test_xdist_run_gives_each_worker_its_own_database(tmp_path, scratch_base):
         "        os.environ.get('PUSPA_TEST_DSN', '') + '\\n'\n"
         "    )\n"
     )
+
+
+def _run_probe(probe: Path, env: dict) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-n",
+            "2",
+            "--dist",
+            "load",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            str(probe),
+        ],
+        cwd=BUILD_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=600,
+    )
+
+
+def test_xdist_run_gives_each_worker_its_own_database(tmp_path):
+    """A real ``pytest -n 2`` run: two workers, two SQLite files.
+
+    The probe file records the DSN each worker sees. The run
+    passes only when both workers ran and their files differ,
+    and the worker files are gone afterwards (dropped by the
+    session teardown in tests/conftest.py). The shared template
+    file stays.
+    """
+    probe = BUILD_ROOT / "tests" / f"test_e17_probe_{os.getpid()}.py"
+    out_file = tmp_path / "worker_dsns.txt"
+    probe.write_text(_probe_source())
+    env = dict(os.environ)
+    env["PUSPA_TEST_DSN"] = str(tmp_path / "scratch.db")
+    env["E17_PROBE_OUT"] = str(out_file)
+    env["NO_PROXY"] = "localhost,127.0.0.1"
+    env["no_proxy"] = "localhost,127.0.0.1"
+    try:
+        result = _run_probe(probe, env)
+        assert result.returncode == 0, result.stdout + result.stderr
+        dsns = {
+            line.strip()
+            for line in out_file.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        }
+        assert len(dsns) == 2, f"expected 2 worker DSNs, got: {sorted(dsns)}"
+        assert all(dsn.endswith(".db") for dsn in dsns)
+        assert len({Path(dsn).name for dsn in dsns}) == 2
+        # Teardown dropped the worker files; the template stays.
+        assert not any(Path(dsn).exists() for dsn in dsns)
+        assert sqlite_template_path().exists()
+    finally:
+        probe.unlink(missing_ok=True)
+
+
+def test_xdist_run_gives_each_worker_its_own_postgres_database(
+    tmp_path, scratch_base
+):
+    """The same wiring on the Postgres lane (needs a live server)."""
+    probe = BUILD_ROOT / "tests" / f"test_e17_pg_probe_{os.getpid()}.py"
+    out_file = tmp_path / "worker_dsns.txt"
+    probe.write_text(_probe_source())
     env = dict(os.environ)
     env["PUSPA_TEST_DSN"] = scratch_base
     env["E17_PROBE_OUT"] = str(out_file)
     env["NO_PROXY"] = "localhost,127.0.0.1"
     env["no_proxy"] = "localhost,127.0.0.1"
     try:
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "pytest",
-                "-n",
-                "2",
-                "--dist",
-                "load",
-                "-q",
-                "-p",
-                "no:cacheprovider",
-                str(probe),
-            ],
-            cwd=BUILD_ROOT,
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=600,
-        )
+        result = _run_probe(probe, env)
         assert result.returncode == 0, result.stdout + result.stderr
         dsns = {
             line.strip()

@@ -11,9 +11,9 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import psycopg
+from puspa.db import connect as _db_connect
 import pytest
-from psycopg.rows import dict_row
+from puspa.db import dict_row
 
 from puspa.memory import durable
 from puspa.memory.facts import MemoryFactStore, PostgresFactStore, record_fact
@@ -416,7 +416,7 @@ def test_journal_entry_round_trip_in_memory_store():
 
 
 def _insert_summary(test_dsn, user_id, text, event_ids):
-    with psycopg.connect(test_dsn, row_factory=dict_row) as conn:
+    with _db_connect(test_dsn, row_factory=dict_row) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO summaries (user_id, period_start, period_end, summary, event_ids, created_at) "

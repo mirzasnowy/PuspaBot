@@ -14,7 +14,7 @@ sent to the mock transport, never to a real host.
 """
 
 import httpx
-import psycopg
+from puspa.db import connect as _db_connect
 import pytest
 
 from puspa.accounts.vault import put as vault_put
@@ -45,7 +45,7 @@ def user(make_user):
 def _routing_table(test_dsn):
     create_schema(test_dsn)
     yield
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         conn.execute("TRUNCATE capability_routing")
         conn.commit()
 

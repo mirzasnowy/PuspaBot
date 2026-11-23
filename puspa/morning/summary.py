@@ -40,7 +40,7 @@ import datetime
 import re
 from collections.abc import Callable
 
-import psycopg
+from puspa.db import connect as _db_connect
 
 from ..memory.schema import resolve_dsn
 from ..mind.workspace import Candidate, WorkspaceBus
@@ -182,7 +182,7 @@ def open_tasks_for_user(user_id: str, *, dsn=None) -> list[dict]:
     """The user's open tasks from the ``tasks`` table (P-02 store)."""
     if not user_id:
         raise ValueError("user_id must be a non-empty string")
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
+    with _db_connect(resolve_dsn(dsn)) as conn:
         rows = conn.execute(
             "SELECT id, purpose, status, created_at FROM tasks "
             "WHERE user_id = %s AND status = ANY(%s) "

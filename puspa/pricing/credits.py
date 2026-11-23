@@ -9,9 +9,10 @@ from __future__ import annotations
 import os
 from datetime import UTC, datetime
 
-import psycopg
+from puspa.db import connect as _db_connect
+from puspa.db import maybe_begin_immediate as _db_begin_immediate
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 CREDIT_FREE_PER_MONTH = 15
 COST_CHECK_DETAIL = 1
 
@@ -28,7 +29,7 @@ def remaining_credit(user_id: str, dsn=None, month: str | None = None) -> int:
     """Sisa kredit bulan ini (default 15 bila belum ada baris)."""
     month = month or _current_month()
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+    with _db_connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT sisa FROM monthly_credits WHERE user_id = %s AND month = %s", (user_id, month)
         )
@@ -43,7 +44,11 @@ def use_credit(
     utang diam-diam)."""
     month = month or _current_month()
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    with psycopg.connect(dsn) as conn:
+    with _db_connect(dsn) as conn:
+        # Money must not leak: the insert, the balance read and
+        # the debit are one write transaction (BEGIN IMMEDIATE on
+        # SQLite; FOR UPDATE does the same job on Postgres).
+        _db_begin_immediate(conn)
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO monthly_credits (user_id, month, sisa)"

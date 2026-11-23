@@ -130,11 +130,11 @@ def test_runner_state_resumes_after_restart(test_dsn):
 
 def test_postgres_owner_recorded_on_row(test_dsn):
     """The saved row carries the user id and app name."""
-    import psycopg
+    from puspa.db import connect as _db_connect
 
     store = PostgresSessionStore(test_dsn)
     store.save("sess-owner", {"k": "v"}, user_id="user-9")
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         row = conn.execute(
             "SELECT user_id, app_name FROM runtime_session_states WHERE session_id = %s",
             ("sess-owner",),

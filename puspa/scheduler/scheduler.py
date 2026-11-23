@@ -24,12 +24,13 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-import psycopg
+from puspa.db import connect as _db_connect, dict_row as _db_dict_row
+from puspa.db import maybe_begin_immediate as _db_begin_immediate
 
 from puspa.ledger.kill_switch import is_kill_switch_active
 from puspa.proactivity.budget import Initiative, InterruptionBudget
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 HEARTBEAT_STALE_SECONDS = 120
 TRIGGER_TYPES = (
     "schedule",
@@ -90,7 +91,7 @@ class Trigger:
 
 
 def _connect(dsn=None):
-    return psycopg.connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN))
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN))
 
 
 def create_trigger(
@@ -134,7 +135,11 @@ def list_due_triggers(dsn=None, now: datetime | None = None) -> list[Trigger]:
     """Pemicu aktif yang sudah jatuh tempo, diklaim SKIP LOCKED."""
     now = now or _now()
     with _connect(dsn) as conn:
-        with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+        # Serialise the due-list read with writers (BEGIN
+        # IMMEDIATE on SQLite; FOR UPDATE SKIP LOCKED does the
+        # same job on Postgres).
+        _db_begin_immediate(conn)
+        with conn.cursor(row_factory=_db_dict_row) as cur:
             cur.execute(
                 "SELECT id, user_id, type, schedule, workflow, next_trigger_at, active"
                 " FROM triggers WHERE active AND next_trigger_at <= %s"
@@ -260,7 +265,7 @@ def run_missed(
     """
     now = now or _now()
     cutoff = now - timedelta(hours=1)
-    with _connect(dsn) as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+    with _connect(dsn) as conn, conn.cursor(row_factory=_db_dict_row) as cur:
         cur.execute(
             "SELECT id, user_id, type, schedule, workflow, next_trigger_at, active"
             " FROM triggers WHERE active AND next_trigger_at <= %s"
@@ -318,7 +323,7 @@ def is_healthy(dsn=None, now: datetime | None = None) -> bool:
 
 def _trigger_row(trigger_id: str, dsn=None) -> dict | None:
     """One triggers row as a dict, or None when it does not exist."""
-    with _connect(dsn) as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+    with _connect(dsn) as conn, conn.cursor(row_factory=_db_dict_row) as cur:
         cur.execute(
             "SELECT id, user_id, type, schedule, workflow, next_trigger_at, active"
             " FROM triggers WHERE id = %s",

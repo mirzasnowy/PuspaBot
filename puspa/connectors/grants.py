@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import os
 
-import psycopg
+from puspa.db import connect as _db_connect, dict_row as _db_dict_row
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 ALLOWED_CONNECTORS = ("gmail", "drive", "calendar")
 SCOPE_PER_CONNECTOR = {
     "gmail": ["read", "create_draft", "send"],
@@ -26,7 +26,7 @@ class GrantError(Exception):
 
 
 def _connect(dsn=None):
-    return psycopg.connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN))
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN))
 
 
 def give_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> dict:
@@ -69,7 +69,7 @@ def revoke_connector(user_id: str, agent_id: str, connector: str, dsn=None) -> N
 
 def list_connectors(user_id: str, agent_id: str, dsn=None) -> list[dict]:
     """Konektor + scope + status terhubung untuk satu agen."""
-    with _connect(dsn) as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+    with _connect(dsn) as conn, conn.cursor(row_factory=_db_dict_row) as cur:
         cur.execute(
             "SELECT connector, scope, terhubung AS connected FROM agent_connectors"
             " WHERE user_id = %s AND agent_id = %s ORDER BY connector",

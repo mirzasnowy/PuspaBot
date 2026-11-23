@@ -16,15 +16,16 @@ from __future__ import annotations
 import os
 from datetime import UTC, date, datetime
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
+from puspa.db import maybe_begin_immediate as _db_begin_immediate
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 DAILY_READ_LIMIT = 20
 
 
 def _connect(dsn=None):
-    return psycopg.connect(
+    return _db_connect(
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
     )
 
@@ -85,6 +86,10 @@ def _use_budget(user_id: str, amount: int, dsn, day: date) -> bool:
     """Pakai anggaran baca; False bila sudah habis (sampler berhenti,
     bukan membaca diam-diam melewati batas)."""
     with _connect(dsn) as conn, conn.cursor() as cur:
+        # The insert, the balance read and the debit are one write
+        # transaction (BEGIN IMMEDIATE on SQLite; FOR UPDATE does
+        # the same job on Postgres).
+        _db_begin_immediate(conn)
         cur.execute(
             "INSERT INTO read_budgets (user_id, date, amount) VALUES (%s, %s, 0)"
             " ON CONFLICT (user_id, date) DO NOTHING",

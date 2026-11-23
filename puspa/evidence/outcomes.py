@@ -34,8 +34,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from puspa.accounts.ports import resolve_dsn
 from puspa.ledger import Ledger
@@ -319,7 +319,7 @@ def _query_outcomes(
         f"AND {where} ORDER BY created_at ASC, id ASC LIMIT %s"
     )
     params.append(limit)
-    with psycopg.connect(resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+    with _db_connect(resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
         cur.execute(query, params)
         rows = cur.fetchall()
     return [_record_from_row(row) for row in rows]
@@ -381,7 +381,7 @@ def get_outcome(dsn, outcome_id: str) -> OutcomeRecord | None:
         UUID(str(outcome_id))
     except (ValueError, TypeError, AttributeError):
         return None
-    with psycopg.connect(resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+    with _db_connect(resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
         cur.execute("SELECT * FROM events WHERE id = %s", (str(outcome_id),))
         row = cur.fetchone()
     if row is None or row["type"] != OUTCOME_EVENT_TYPE:

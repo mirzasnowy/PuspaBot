@@ -22,12 +22,14 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import secrets
 import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Annotated
 
-import psycopg
+from puspa.db import Error as _db_Error
+from puspa.db import resolve_dsn as _resolve_dsn
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -131,15 +133,23 @@ def create_app(
     # files (same test seam pattern as the transcriber above).
     # None means the switcher resolves the user's real home.
     persona_home=None,
+    # COW-10: Google login seam (same pattern as the voice seams
+    # above): an httpx client for the token + JWKS endpoints, so
+    # tests can inject a fake and no real Google is needed. None
+    # means each call builds its own client.
+    google_http_client=None,
 ) -> FastAPI:
     """Bangun aplikasi FastAPI PWA."""
     app = FastAPI(title="Puspa")
     jinja = _jinja(template_dir)
-    app.state.dsn = dsn or os.environ.get(
-        "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql"
-    )
+    app.state.dsn = _resolve_dsn(dsn)
     app.state.test_user_id = test_user_id
     app.state.persona_home = persona_home
+    app.state.google_http_client = google_http_client
+    # COW-10: one-time desktop login codes: code -> (user_id,
+    # expires_at). Minted by the Google callback for a desktop
+    # login, consumed once by POST /api/desktop/session.
+    app.state.desktop_codes: dict[str, tuple[str, float]] = {}
     # Anotasi tipe tidak bisa ditulis pada atribut non-self
     # (app.state.*), jadi tipenya dicatat di variabel lokal dulu.
     chat_state: dict[str, list[dict]] = defaultdict(list)
@@ -400,31 +410,135 @@ def create_app(
         )
 
     @app.get("/auth/google")
-    def auth_google(request: Request):
+    def auth_google(request: Request, desktop_port: int | None = None):
         from puspa.auth.google_oauth import build_auth_url
 
         client_id = os.environ.get("PUSPA_GOOGLE_CLIENT_ID", "")
-        redirect = os.environ.get(
-            "PUSPA_GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback"
+        # COW-10: no env override -> derive the redirect from the
+        # request's own base URL, so a desktop backend on a random
+        # free port gets its own loopback redirect (Google allows
+        # any port on loopback redirect URIs) instead of port 8000.
+        redirect = os.environ.get("PUSPA_GOOGLE_REDIRECT_URI") or (
+            str(request.base_url).rstrip("/") + "/auth/google/callback"
         )
         if not client_id:
             return JSONResponse(
                 {"error": render_server_line("error.google_login_not_configured")},
                 status_code=503,
             )
-        url, _state, _verifier = build_auth_url(client_id, redirect)
-        return RedirectResponse(url)
+        if desktop_port is not None and not 1024 <= desktop_port <= 65535:
+            return JSONResponse({"error": "desktop_port tidak valid"}, status_code=400)
+        auth = build_auth_url(client_id, redirect)
+        # COW-10: the PKCE verifier + state ride in an httpOnly
+        # cookie so the callback can verify the round trip; a
+        # desktop login also carries the app's loopback port, so
+        # the callback can hand the login back to the native app.
+        response = RedirectResponse(auth["url"])
+        response.set_cookie(
+            "puspa_oauth",
+            json.dumps(
+                {
+                    "state": auth["state"],
+                    "code_verifier": auth["code_verifier"],
+                    "desktop_port": desktop_port,
+                }
+            ),
+            max_age=600,
+            httponly=True,
+            samesite="lax",
+        )
+        return response
 
     @app.get("/auth/google/callback")
     def auth_callback(request: Request, code: str = "", state: str = ""):
-        return JSONResponse(
-            {
-                "notes": "callback login Google ditangani lengkap di Fase 1"
-                " (complete_google_login); pasang client_id + client_secret"
-                " lalu lanjutkan di sini.",
-                "code_accepted": bool(code),
-            }
+        from puspa.auth.google_oauth import (
+            OAuthError,
+            complete_google_login,
+            fetch_jwks,
+            google_client_secret,
         )
+
+        try:
+            saved = json.loads(request.cookies.get("puspa_oauth", "{}"))
+        except json.JSONDecodeError:
+            saved = {}
+        if not code or not state or saved.get("state") != state:
+            return JSONResponse(
+                {"error": render_server_line("error.oauth_state_mismatch")},
+                status_code=400,
+            )
+        client_id = os.environ.get("PUSPA_GOOGLE_CLIENT_ID", "")
+        # COW-10: same rule as /auth/google above — the token
+        # exchange must use the redirect URI the browser was sent
+        # with, i.e. this backend's own base URL when no env
+        # override is set.
+        redirect = os.environ.get("PUSPA_GOOGLE_REDIRECT_URI") or (
+            str(request.base_url).rstrip("/") + "/auth/google/callback"
+        )
+        try:
+            secret = google_client_secret()
+        except OAuthError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=503)
+        try:
+            jwks = fetch_jwks(app.state.google_http_client)
+            login = complete_google_login(
+                code,
+                saved["code_verifier"],
+                client_id,
+                secret,
+                redirect,
+                jwks,
+                device_label="desktop" if saved.get("desktop_port") else "web",
+                http_client=app.state.google_http_client,
+                dsn=app.state.dsn,
+            )
+        except OAuthError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        desktop_port = saved.get("desktop_port")
+        if desktop_port:
+            # COW-10: desktop login — the browser never gets the
+            # session cookie. Instead the app gets a one-time code
+            # on its loopback listener and exchanges it for a
+            # session token at POST /api/desktop/session. The code
+            # is single-use and lives 5 minutes; the session token
+            # itself never travels in a URL.
+            one_time = secrets.token_urlsafe(32)
+            app.state.desktop_codes[one_time] = (login["user_id"], time.time() + 300)
+            response = RedirectResponse(
+                f"http://127.0.0.1:{desktop_port}/puspabot-callback?code={one_time}"
+            )
+        else:
+            response = RedirectResponse("/masuk")
+            response.set_cookie(
+                "puspa_sesi",
+                login["session_token"],
+                max_age=30 * 24 * 3600,
+                httponly=True,
+                samesite="lax",
+            )
+        response.delete_cookie("puspa_oauth")
+        return response
+
+    @app.post("/api/desktop/session")
+    async def exchange_desktop_session(request: Request):
+        # COW-10: exchange a one-time desktop login code (minted by
+        # the Google callback) for a session token. The code is
+        # consumed on first use, valid or expired.
+        from puspa.accounts.ports import create_session
+
+        try:
+            body = await request.json()
+        except json.JSONDecodeError:
+            body = {}
+        code = (body.get("code") or "").strip()
+        entry = app.state.desktop_codes.pop(code, None)
+        if entry is None:
+            return JSONResponse({"error": "kode tidak dikenal"}, status_code=401)
+        user_id, expires_at = entry
+        if time.time() > expires_at:
+            return JSONResponse({"error": "kode kedaluwarsa"}, status_code=401)
+        token = create_session(user_id, "desktop", dsn=app.state.dsn)
+        return {"ok": True, "session_token": token, "user_id": user_id}
 
     for screen in SCREENS:
 
@@ -491,7 +605,7 @@ def create_app(
                 from puspa.runtime.agents import list_agents
 
                 ctx["agents"] = list_agents(user_id, dsn=app.state.dsn)
-            except (psycopg.Error, ValueError, TypeError, AttributeError):
+            except (*_db_Error, ValueError, TypeError, AttributeError):
                 ctx["agents"] = []
         elif screen in ("replay", "artifacts"):
             # P-10: the replay screen needs the same agent list
@@ -502,7 +616,7 @@ def create_app(
                 from puspa.runtime.agents import list_agents
 
                 ctx["agents"] = list_agents(user_id, dsn=app.state.dsn)
-            except (psycopg.Error, ValueError, TypeError, AttributeError):
+            except (*_db_Error, ValueError, TypeError, AttributeError):
                 ctx["agents"] = []
         elif screen == "hub":
             from puspa.pwa import hub_api
@@ -651,7 +765,7 @@ def create_app(
                             )
                             + "\n\n"
                         )
-            except (psycopg.Error, ValueError, TypeError, KeyError, AttributeError):
+            except (*_db_Error, ValueError, TypeError, KeyError, AttributeError):
                 # Room activity is best effort: the office frame
                 # above already went out, and the stream must not
                 # die because the room lookup failed. The narrowed
@@ -828,6 +942,19 @@ def create_app(
             }
         )
         return {"ok": True, "message": message}
+
+    @app.get("/api/chat/messages")
+    def list_chat_messages(request: Request):
+        # COW-10: the native desktop app reads the live thread from
+        # here (the PWA seeds its messages from the bootstrap HTML
+        # at page load and has no way to fetch new ones). Same
+        # in-memory thread the pages render.
+        user_id = need_user(request)
+        if user_id is None:
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
+        return {"messages": list(app.state.chat[user_id])}
 
     @app.post("/api/agen")
     async def api_create_agent(

@@ -1,12 +1,12 @@
 """Tes Skor Keandalan (§3.4) + Lapor Salah (§3.8 revisi 7)."""
 
-import psycopg
+from puspa.db import connect as _db_connect
 
 from puspa.moat import reliability, report
 
 
 def _content_pembacaan(test_dsn, user_id, source, category, verified, total):
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         with conn.cursor() as cur:
             for i in range(total):
                 verdict = "Verified" if i < verified else "Uncertain"

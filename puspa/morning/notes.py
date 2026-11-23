@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import re
 
-import psycopg
+from puspa.db import connect as _db_connect
 
 from ..memory.schema import resolve_dsn
 from ..runtime.agents import ensure_puspa_agent
@@ -297,7 +297,7 @@ def save_note(
     summary = summarise_note_text(raw_text)
     agent_id = ensure_puspa_agent(user_id, dsn=dsn)
     stored_actions = []
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
+    with _db_connect(resolve_dsn(dsn)) as conn:
         with conn.cursor() as cur:
             for action in actions:
                 task_id = create_task_id()
@@ -331,7 +331,7 @@ def list_notes(user_id: str, *, dsn=None, limit: int = 20) -> list[dict]:
     """The user's notes, newest first (actions embedded)."""
     if not user_id:
         raise ValueError("user_id must be a non-empty string")
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
+    with _db_connect(resolve_dsn(dsn)) as conn:
         rows = conn.execute(
             "SELECT id, source, title, summary, actions, created_at FROM morning_notes "
             "WHERE user_id = %s ORDER BY created_at DESC LIMIT %s",
@@ -354,7 +354,7 @@ def get_note(user_id: str, note_id: str, *, dsn=None) -> dict | None:
     """One note with its full text, or None when missing/foreign."""
     if not user_id or not note_id:
         return None
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
+    with _db_connect(resolve_dsn(dsn)) as conn:
         row = conn.execute(
             "SELECT id, source, title, raw_text, summary, actions, created_at "
             "FROM morning_notes WHERE id = %s AND user_id = %s",

@@ -250,10 +250,10 @@ def test_verifier_does_not_use_evidence_cache(make_user, test_dsn):
 
 def test_score_low_lowers_verdict(make_user, test_dsn):
     """Sumber < 80% Terverifikasi -> hasil maksimal Belum pasti (§3.4)."""
-    import psycopg
+    from puspa.db import connect as _db_connect
 
     user = _siapkan_product(make_user, test_dsn)
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         with conn.cursor() as cur:
             for i in range(10):
                 verdict = "Verified" if i < 5 else "Cannot be determined"

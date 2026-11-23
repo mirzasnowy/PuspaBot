@@ -22,9 +22,10 @@ import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import psycopg
+from puspa.db import connect as _db_connect
+from puspa.db import is_sqlite_dsn as _is_sqlite_dsn
 import pytest
-from psycopg import errors as pg_errors
+from puspa.db import errors as pg_errors
 
 from puspa.accounts.vault import put as vault_put
 from puspa.harness import CodingHarness, CodingTask, LocalTestExecutor
@@ -48,6 +49,9 @@ ACTOR = "operator-nero"
 REASON = "stop the agent for inspection"
 
 TEST_CODE = '\nassert add(2, 3) == 5\nassert add(-1, 1) == 0\nprint("ALL TESTS PASSED")\n'
+_SQLITE_ROLE_SKIP = "Postgres role enforcement has no SQLite equivalent (D-SQLite-5: ownership is enforced in code, not by roles)"
+
+
 BUGGY_IMPL = "def add(a, b):\n    return a - b\n"
 FIXED_IMPL = "def add(a, b):\n    return a + b\n"
 
@@ -60,10 +64,10 @@ def _program(impl: str) -> str:
 def _reset_flag(test_dsn):
     """The flag row is NOT truncated by the shared conftest fixture,
     so this module resets it around every test."""
-    with psycopg.connect(test_dsn, autocommit=True) as conn:
+    with _db_connect(test_dsn, autocommit=True) as conn:
         conn.execute("DELETE FROM kill_switch")
     yield
-    with psycopg.connect(test_dsn, autocommit=True) as conn:
+    with _db_connect(test_dsn, autocommit=True) as conn:
         conn.execute("DELETE FROM kill_switch")
 
 
@@ -88,7 +92,7 @@ def _append(ledger, task_id=TASK_ID, event_type="task_created", content=None):
 
 def _as_app_role(test_dsn):
     """A connection running as the agent role (SET ROLE puspa_app)."""
-    conn = psycopg.connect(test_dsn, autocommit=True)
+    conn = _db_connect(test_dsn, autocommit=True)
     conn.execute("SET ROLE puspa_app")
     return conn
 
@@ -143,6 +147,8 @@ def test_audit_writer_appends_as_app_role_and_chain_verifies(writer):
 
 
 def test_agent_role_cannot_update_or_delete_events(test_dsn, ledger, writer):
+    if _is_sqlite_dsn(test_dsn):
+        pytest.skip(_SQLITE_ROLE_SKIP)
     event = _append(ledger)
     with _as_app_role(test_dsn) as conn:
         # SELECT and INSERT are allowed for the application role.
@@ -163,6 +169,8 @@ def test_agent_role_cannot_update_or_delete_events(test_dsn, ledger, writer):
 
 
 def test_tamper_probe_reports_both_writes_blocked(writer):
+    if _is_sqlite_dsn(writer.dsn):
+        pytest.skip(_SQLITE_ROLE_SKIP)
     event = writer.append_event(
         task_id=TASK_ID,
         agent_id=AGENT_ID,
@@ -178,6 +186,8 @@ def test_tamper_probe_reports_both_writes_blocked(writer):
 
 
 def test_agent_role_cannot_touch_kill_switch_table(test_dsn):
+    if _is_sqlite_dsn(test_dsn):
+        pytest.skip(_SQLITE_ROLE_SKIP)
     with _as_app_role(test_dsn) as conn:
         # SELECT is allowed: the agent may read the flag.
         conn.execute("SELECT * FROM kill_switch")
@@ -281,7 +291,7 @@ def test_kill_switch_blocks_scheduler_tick_and_trigger(test_dsn, make_user, ledg
     assert result == []
     assert seen == []
     assert run_trigger(trigger, dsn=test_dsn, kill_switch=kill_switch) is None
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         rows = conn.execute("SELECT COUNT(*) FROM trigger_runs").fetchone()
     assert rows[0] == 0
 
@@ -295,6 +305,8 @@ def test_kill_switch_blocks_scheduler_tick_and_trigger(test_dsn, make_user, ledg
 
 
 def test_agent_cannot_deactivate_kill_switch(test_dsn, ledger, kill_switch):
+    if _is_sqlite_dsn(test_dsn):
+        pytest.skip(_SQLITE_ROLE_SKIP)
     kill_switch.activate(
         actor=ACTOR, reason=REASON, ledger=ledger, task_id=TASK_ID, agent_id=AGENT_ID
     )
@@ -374,7 +386,7 @@ def _seed_user_data(test_dsn, user, ledger):
     slices.grant_slice(
         user_id, agent_id, "sub-1", "rice", ["profile"], "token-ref-test", dsn=test_dsn
     )
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO procedures (user_id, service) VALUES (%s, 'pay_bill')",
@@ -447,7 +459,7 @@ def test_export_contains_all_user_data_without_secrets(
     # "password_hash" / "ciphertext" do appear in the file's own
     # `excluded` list, which names what was left out — so the
     # check below compares the actual stored values, not labels.)
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         stored_hash = conn.execute(
             "SELECT password_hash FROM users WHERE id = %s", (str(user["user_id"]),)
         ).fetchone()[0]

@@ -46,8 +46,8 @@ import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect, errors as pg_errors
+from puspa.db import dict_row
 
 if TYPE_CHECKING:
     from .ledger import Ledger
@@ -56,7 +56,7 @@ if TYPE_CHECKING:
 APP_ROLE = "puspa_app"
 
 #: Default DSN (peer auth as the OS user, no password).
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 #: The single flag row id.
 FLAG_ID = 1
@@ -100,7 +100,7 @@ class KillSwitch:
         self.dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
 
     def _connect(self):
-        return psycopg.connect(self.dsn, row_factory=dict_row)
+        return _db_connect(self.dsn, row_factory=dict_row)
 
     def create_schema(self) -> None:
         """Create the ledger schema (which includes the flag table).
@@ -125,7 +125,7 @@ class KillSwitch:
             with self._connect() as conn, conn.cursor() as cur:
                 cur.execute("SELECT * FROM kill_switch WHERE id = %s", (FLAG_ID,))
                 return _row_to_state(cur.fetchone())
-        except psycopg.errors.UndefinedTable as exc:
+        except pg_errors.UndefinedTable as exc:
             raise KillSwitchError(
                 "kill_switch table is missing; run KillSwitch.create_schema() "
                 "before reading the flag"
@@ -255,12 +255,12 @@ class KillSwitch:
                     )
                     row = cur.fetchone()
                 conn.commit()
-        except psycopg.errors.UndefinedTable as exc:
+        except pg_errors.UndefinedTable as exc:
             raise KillSwitchError(
                 "kill_switch table is missing; run KillSwitch.create_schema() "
                 "before flipping the flag"
             ) from exc
-        except psycopg.errors.InsufficientPrivilege as exc:
+        except pg_errors.InsufficientPrivilege as exc:
             raise KillSwitchError(
                 "this connection may not flip the kill switch "
                 "(the agent role has SELECT only on the flag table)"

@@ -59,10 +59,10 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-import psycopg
+from puspa.db import connect as _db_connect
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from psycopg.rows import dict_row
+from puspa.db import dict_row
 
 from puspa.accounts.ports import resolve_dsn
 from puspa.i18n.server_lines import render as render_server_line
@@ -218,7 +218,7 @@ def _invite_row(row) -> RoomInvite:
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def _emit_activity(request: Request, room_id: str, kind: str, actor: str, summary: str) -> None:

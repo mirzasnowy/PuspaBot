@@ -15,16 +15,16 @@ from __future__ import annotations
 import os
 from datetime import UTC, datetime, timedelta
 
-import psycopg
-from psycopg.rows import dict_row
-from psycopg.types.json import Jsonb
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
+from puspa.db import Jsonb
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 TTL_MINUTES = 30
 
 
 def _connect(dsn=None):
-    return psycopg.connect(
+    return _db_connect(
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
     )
 

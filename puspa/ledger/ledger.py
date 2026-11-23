@@ -36,9 +36,15 @@ import re
 from datetime import UTC, datetime
 from uuid import UUID
 
-import psycopg
-from psycopg.rows import dict_row
-from psycopg.types.json import Jsonb
+from puspa.db import (
+    Connection as _db_Connection,
+)
+from puspa.db import Jsonb
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
+from puspa.db import errors as pg_errors
+from puspa.db import maybe_begin_immediate as _db_begin_immediate
+from puspa.db import parse_timestamp as _db_parse_timestamp
 
 from puspa.migrations import apply_migrations
 
@@ -57,7 +63,7 @@ GENESIS = "GENESIS"
 APP_ROLE = "puspa_app"
 
 #: DSN default (peer auth sebagai user OS, tanpa password).
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 #: Himpunan event_type kejadian tertutup — 33 event_type (definisi 2.3 revisi 7:
 #: 22 event_type lama + 9 event_type baru alur/modul/pemicu/laporan/persetujuan,
@@ -176,7 +182,7 @@ class Ledger:
         self.role = role
 
     def _connect(self, **kwargs):
-        conn = psycopg.connect(self.dsn, row_factory=dict_row, **kwargs)
+        conn = _db_connect(self.dsn, row_factory=dict_row, **kwargs)
         if self.role is not None:
             with conn.cursor() as cur:
                 cur.execute(f"SET ROLE {self.role}")
@@ -249,7 +255,7 @@ class Ledger:
                 valid_at=valid_at,
                 with_valid_at=True,
             )
-        except psycopg.errors.UndefinedColumn:
+        except pg_errors.UndefinedColumn:
             # Database predates the K3 migration: no valid_at
             # column yet. Retry without it; the event still
             # appends and the chain still holds.
@@ -427,28 +433,53 @@ class Ledger:
     ) -> UUID:
         """Insert one event on ``conn``; no commit.
 
-        The advisory lock, the DB `now()`, the previous hash, the
-        hash computation, and the INSERT are one transaction
-        owned by the caller, so the value that enters the hash is
-        exactly the value that is stored. ``with_valid_at``
-        selects the INSERT shape: True forces the column, False
-        leaves it out (a database that predates the K3
-        migration), None detects the column first with a catalog
-        lookup, so no failed statement ever poisons the caller's
-        transaction (a failed statement would abort it: Postgres
-        aborts the whole transaction on the first error).
+        The per-task lock (advisory lock on Postgres,
+        ``BEGIN IMMEDIATE`` on SQLite), the DB `now()`, the
+        previous hash, the hash computation, and the INSERT are
+        one transaction owned by the caller, so the value that
+        enters the hash is exactly the value that is stored.
+        ``with_valid_at`` selects the INSERT shape: True forces
+        the column, False leaves it out (a database that predates
+        the K3 migration), None detects the column first with a
+        catalog lookup, so no failed statement ever poisons the
+        caller's transaction (a failed statement would abort it:
+        Postgres aborts the whole transaction on the first error).
         """
         with conn.cursor(row_factory=dict_row) as cur:
             if with_valid_at is None:
+                if isinstance(conn, _db_Connection):
+                    # SQLite has no information_schema: read the
+                    # column list straight from the table. The rows
+                    # follow the connection's row factory (dicts
+                    # when dict_row was requested, tuples otherwise),
+                    # so the name is read by key or by position.
+                    info = conn.execute(
+                        "PRAGMA table_info(events)"
+                    ).fetchall()
+                    with_valid_at = any(
+                        (row["name"] if isinstance(row, dict) else row[1])
+                        == "valid_at"
+                        for row in info
+                    )
+                else:
+                    cur.execute(
+                        "SELECT 1 FROM information_schema.columns "
+                        "WHERE table_name = 'events' AND column_name = 'valid_at'"
+                    )
+                    with_valid_at = cur.fetchone() is not None
+            # One writer per task: on Postgres the advisory lock,
+            # on SQLite BEGIN IMMEDIATE (serialises all appends,
+            # which is right for the single-user desktop).
+            if isinstance(conn, _db_Connection):
+                _db_begin_immediate(conn)
+            else:
                 cur.execute(
-                    "SELECT 1 FROM information_schema.columns "
-                    "WHERE table_name = 'events' AND column_name = 'valid_at'"
+                    "SELECT pg_advisory_xact_lock(hashtext(%s))", (task_id,)
                 )
-                with_valid_at = cur.fetchone() is not None
-            # Kunci per tugas: dua append bersamaan tidak boleh bercabang.
-            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (task_id,))
             cur.execute("SELECT now() AS created_at")
-            created_at = cur.fetchone()["created_at"]
+            created_at = _db_parse_timestamp(
+                cur.fetchone()["created_at"]
+            )
             cur.execute(
                 "SELECT hash FROM events WHERE task_id = %s "
                 "ORDER BY created_at DESC, id DESC LIMIT 1",

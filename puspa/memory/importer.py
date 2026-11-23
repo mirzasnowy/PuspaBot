@@ -77,8 +77,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from puspa.ledger.ledger import GENESIS, canonical_json, compute_event_hash
 
@@ -791,7 +791,7 @@ class PostgresImportStore:
         self.dsn = resolve_dsn(dsn)
 
     def _connect(self):
-        return psycopg.connect(self.dsn, row_factory=dict_row)
+        return _db_connect(self.dsn, row_factory=dict_row)
 
     def create_batch(self, user_id: str, source: str, counts: dict[str, int]) -> dict[str, Any]:
         import json

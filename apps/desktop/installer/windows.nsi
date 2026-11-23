@@ -5,22 +5,24 @@
 ; v1 database: the full SQLite port (Nero, 23 Nov ~09:52 WIB);
 ; the installer installs no database — the backend creates its
 ; SQLite file on first run.
-; NOTE: makensis runs from the repo root (see .github/workflows/
-; desktop.yml), so every path below is repo-root-relative.
+; NOTE: makensis resolves relative paths from the directory of
+; this script (apps/desktop/installer/), NOT from the directory
+; makensis was started in — so the paths below are relative to
+; this script's own directory.
 
 !define APPNAME "PuspaBot"
 !define APPVERSION "0.1.0"
 !define EXE "puspabot.exe"
 
-OutFile "${OUTDIR}\PuspaBot-Setup.exe"
+OutFile "${OUTDIR}/PuspaBot-Setup.exe"
 InstallDir "$PROGRAMFILES\${APPNAME}"
 RequestExecutionLevel admin
-Icon "apps\desktop\installer\puspa.ico"
-UninstallIcon "apps\desktop\installer\puspa.ico"
+Icon "puspa.ico"
+UninstallIcon "puspa.ico"
 
 Section "Install"
   SetOutPath "$INSTDIR"
-  File "apps\desktop\target\release\${EXE}"
+  File "../target/release/${EXE}"
   WriteUninstaller "$INSTDIR\uninstall.exe"
   CreateDirectory "$SMPROGRAMS\${APPNAME}"
   CreateShortcut "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk" "$INSTDIR\${EXE}"

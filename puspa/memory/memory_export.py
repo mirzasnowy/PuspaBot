@@ -71,11 +71,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-import psycopg
+from puspa.db import connect as _db_connect, errors as pg_errors
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from psycopg.rows import dict_row
+from puspa.db import dict_row
 
 from puspa.memory.schema import resolve_dsn
 from puspa.memory.trust import redact_secrets
@@ -419,7 +419,7 @@ def verify_archive(path: str | Path, passphrase: str | None = None) -> dict:
 
 
 def _connect(dsn: str | None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def _agent_ids(user_id: str, conn) -> list[str]:
@@ -576,7 +576,7 @@ def _causal(user_id: str, agent_ids: list[str], dsn: str | None) -> list[dict]:
     for agent_id in agent_ids:
         try:
             ledger = load_causal_ledger(user_id, agent_id, dsn=dsn)
-        except psycopg.errors.UndefinedTable:
+        except pg_errors.UndefinedTable:
             return []
         if ledger is None:
             continue
@@ -594,7 +594,7 @@ def _ignorance(user_id: str, agent_ids: list[str], dsn: str | None) -> list[dict
     for agent_id in agent_ids:
         try:
             model = load_world_model(user_id, agent_id, dsn=dsn)
-        except psycopg.errors.UndefinedTable:
+        except pg_errors.UndefinedTable:
             return []
         if model is None:
             continue

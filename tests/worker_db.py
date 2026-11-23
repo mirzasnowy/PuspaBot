@@ -34,6 +34,17 @@ Two ``pytest -n`` runs in the SAME worktree at the same time get
 different run ids (one per controller invocation), so their
 worker databases never collide.
 
+SQLite mode (COW-10, the default): the same shape, with files
+instead of databases. ``ensure_sqlite_template_path`` builds a
+migrated template FILE once (``puspa_test_template_<fp>.db`` in
+``PUSPA_TEST_DB_DIR`` or the system temp dir), keyed by a
+fingerprint of ``versions_sqlite/``; creation is serialized with
+a file lock (``fcntl.flock``). ``create_sqlite_worker_db``
+copies that file to a per-worker path (``<stem>_<run>_<worker>.db``)
+and returns the path as the DSN. A SOLO run gets its own copy
+too (``<stem>_<run>_solo.db``), dropped at session end. The
+template file is never written to by a test.
+
 Honest limits:
 
 - ``fsync`` is a cluster-wide setting, so this module cannot turn
@@ -57,8 +68,11 @@ Honest limits:
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
+import shutil
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -66,9 +80,15 @@ from pathlib import Path
 import psycopg
 
 from puspa.migrations import apply_migrations
-from puspa.migrations.runner import MIGRATIONS_DIR
+from puspa.migrations.runner import MIGRATIONS_DIR, MIGRATIONS_DIR_SQLITE
 
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+
+#: Default SQLite test database: a file in the system temp dir.
+#: The Postgres DSN above stays the default for the hosted lane
+#: (``PUSPA_TEST_DSN`` set to a Postgres DSN); the SQLite path
+#: below is the default when no DSN is set at all.
+DEFAULT_SQLITE_PATH = str(Path(tempfile.gettempdir()) / "puspa_test.db")
 
 #: Longest database name Postgres accepts.
 MAX_DB_NAME_LEN = 63
@@ -335,3 +355,144 @@ def _worker_birth(comment: str | None) -> float | None:
 def new_run_id() -> str:
     """A fresh run id: unique per pytest invocation."""
     return uuid.uuid4().hex[:12]
+
+
+# ---------------------------------------------------------------------------
+# SQLite mode (COW-10): one file per worker, copied from a template file.
+# ---------------------------------------------------------------------------
+
+
+def sqlite_db_dir() -> Path:
+    """Directory for SQLite test files (env override, else tmp)."""
+    return Path(os.environ.get("PUSPA_TEST_DB_DIR", tempfile.gettempdir()))
+
+
+def sqlite_migrations_fingerprint(directory: Path | None = None) -> str:
+    """SHA-256 over the sorted SQLite migration file names + contents."""
+    digest = hashlib.sha256()
+    for path in sorted((directory or MIGRATIONS_DIR_SQLITE).glob("*.sql")):
+        digest.update(path.name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def sqlite_template_path() -> Path:
+    """Template file path for the current SQLite migrations."""
+    fingerprint = sqlite_migrations_fingerprint()[:16]
+    return sqlite_db_dir() / f"puspa_test_template_{fingerprint}.db"
+
+
+def _sqlite_file_lock():
+    """Exclusive lock file guarding template builds (best effort).
+
+    Returns a context manager holding an ``fcntl.flock`` lock, or a
+    no-op when ``fcntl`` is unavailable (non-POSIX hosts).
+    """
+    lock_path = sqlite_db_dir() / "puspa_test_template.lock"
+    try:
+        import fcntl
+    except ImportError:
+        return contextlib.nullcontext()
+
+    @contextlib.contextmanager
+    def _locked():
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(lock_path, "w", encoding="utf-8") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+
+    return _locked()
+
+
+def _copy_sqlite_file(source: Path, target: Path) -> None:
+    """Copy a SQLite file plus its WAL sidecars, when present."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, target)
+    for suffix in ("-wal", "-shm"):
+        sidecar = Path(str(source) + suffix)
+        if sidecar.exists():
+            shutil.copyfile(sidecar, Path(str(target) + suffix))
+
+
+def _remove_sqlite_file(path: Path) -> None:
+    """Remove a SQLite file plus its WAL sidecars, when present."""
+    for candidate in (path, Path(str(path) + "-wal"), Path(str(path) + "-shm")):
+        with contextlib.suppress(FileNotFoundError):
+            candidate.unlink()
+
+
+def ensure_sqlite_template_path() -> str:
+    """Create (or reuse) the migrated template file; return its path.
+
+    The template holds the fully migrated schema and nothing else.
+    Rebuilding is automatic when the SQLite migration fingerprint
+    changes. Safe to call concurrently: creation runs under one
+    file lock per template directory.
+    """
+    template = sqlite_template_path()
+    with _sqlite_file_lock():
+        if template.exists():
+            return str(template)
+        for stale in sqlite_db_dir().glob("puspa_test_template_*.db"):
+            _remove_sqlite_file(stale)
+        apply_migrations(dsn=str(template))
+    return str(template)
+
+
+def sqlite_worker_path(
+    base_dsn: str | None = None, worker_id: str = "gw0", run_id: str = ""
+) -> Path:
+    """Worker file path: stem from the base DSN + run id + worker id.
+
+    A bare base DSN (or none) uses the ``puspa_test`` stem in the
+    test directory; an explicit SQLite path keeps its own stem
+    and directory, so workers never write to the named file.
+    """
+    if base_dsn:
+        base_path = Path(base_dsn)
+        directory = base_path.parent
+        stem = base_path.stem
+    else:
+        directory = sqlite_db_dir()
+        stem = "puspa_test"
+    suffix = f"_{run_id}_{worker_id}" if run_id else f"_{worker_id}"
+    return directory / f"{stem}{suffix}.db"
+
+
+def create_sqlite_worker_db(
+    base_dsn: str | None = None, worker_id: str = "gw0", run_id: str = ""
+) -> str:
+    """Copy the template file into a fresh per-worker file.
+
+    Returns the file path (the DSN). No two workers ever share a
+    file, so isolation is total by construction.
+    """
+    template = ensure_sqlite_template_path()
+    target = sqlite_worker_path(base_dsn, worker_id, run_id)
+    _remove_sqlite_file(target)
+    _copy_sqlite_file(Path(template), target)
+    return str(target)
+
+
+def drop_sqlite_worker_db(path: str) -> None:
+    """Remove one worker file (best effort at session end)."""
+    _remove_sqlite_file(Path(path))
+
+
+def drop_run_sqlite_worker_dbs(
+    base_dsn: str | None = None, run_id: str = ""
+) -> list[str]:
+    """Remove every worker file of one run (controller cleanup)."""
+    target = sqlite_worker_path(base_dsn, "gw*", run_id)
+    dropped: list[str] = []
+    for path in target.parent.glob(target.name):
+        if path.suffix != ".db":
+            continue
+        _remove_sqlite_file(path)
+        dropped.append(str(path))
+    return dropped

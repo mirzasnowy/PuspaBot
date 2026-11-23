@@ -79,10 +79,10 @@ import json
 from dataclasses import asdict
 from datetime import UTC, datetime
 
-import psycopg
+from puspa.db import connect as _db_connect
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
-from psycopg.rows import dict_row
+from puspa.db import dict_row
 
 from ..i18n.server_lines import render as render_server_line
 from ..ledger import Ledger
@@ -387,7 +387,7 @@ class MemoryReadService:
 
     def consent_status(self, user_id: str) -> dict:
         """The user's data-consent state: granted, withdrawn, or none."""
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn, conn.cursor() as cur:
+        with _db_connect(self.dsn, row_factory=dict_row) as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT text_version, approved_at, withdrawn_at FROM data_consents "
                 "WHERE user_id = %s ORDER BY approved_at DESC LIMIT 1",
@@ -417,7 +417,7 @@ class MemoryReadService:
         the forget / account-delete path). Raises KeyError when
         the user never gave consent. Idempotent: withdrawing twice
         reports the same withdrawn state."""
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+        with _db_connect(self.dsn, row_factory=dict_row) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "UPDATE data_consents SET withdrawn_at = now() "

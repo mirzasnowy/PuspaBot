@@ -7,7 +7,7 @@ one input to the effective switch — the ``PUSPA_TELEMETRY``
 environment flag wins when set (see tests/test_telemetry.py).
 """
 
-import psycopg
+from puspa.db import connect as _db_connect
 import pytest
 
 from puspa.telemetry.settings import (
@@ -27,7 +27,7 @@ def user(make_user):
 def _telemetry_settings_table(test_dsn):
     create_schema(test_dsn)
     yield
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         conn.execute("TRUNCATE telemetry_settings")
         conn.commit()
 

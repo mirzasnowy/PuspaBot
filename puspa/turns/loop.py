@@ -50,7 +50,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from psycopg import Error as PsycopgError
+from puspa.db import Error as PsycopgError
 
 from puspa.observability import metrics as observability_metrics
 from puspa.observability import tracing as observability_tracing
@@ -1056,7 +1056,12 @@ class TurnLoop:
             return
         try:
             held = bool(self.takeover_hold(agent_id))
-        except (AttributeError, TypeError, ValueError, OSError, PsycopgError):
+        except (AttributeError, TypeError, ValueError, OSError):
+            return
+        except PsycopgError:
+            # PsycopgError is a (sqlite, psycopg) tuple alias: it
+            # cannot sit inside another except tuple, so it gets
+            # its own clause with the same fail-open body.
             return
         if held:
             raise TurnInterrupted(

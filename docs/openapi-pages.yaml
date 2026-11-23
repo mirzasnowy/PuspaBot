@@ -51,6 +51,7 @@ paths:
     get:
       tags: [pages]
       summary: Google OAuth callback
+      description: Verifies the OAuth state against the puspa_oauth cookie, exchanges the code for a session (complete_google_login), then redirects. A browser login sets the puspa_sesi cookie and goes to /masuk; a desktop login (started with desktop_port) redirects to the app loopback http://127.0.0.1:<port>/puspabot-callback?code=<one-time-code> instead, and the app exchanges the code at POST /api/desktop/session.
       parameters:
         - name: code
           in: query
@@ -61,17 +62,20 @@ paths:
           schema:
             type: string
       responses:
-        "200":
-          description: Callback acknowledgement (full login is completed in puspa.auth)
+        "302":
+          description: Redirect to /masuk (browser login) or the desktop loopback (desktop login)
+        "400":
+          description: State mismatch or token exchange failed
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  notes:
-                    type: string
-                  code_accepted:
-                    type: boolean
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "503":
+          description: Google login not configured (PUSPA_GOOGLE_CLIENT_SECRET empty)
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
   /chat:
     get:
       tags: [pages]

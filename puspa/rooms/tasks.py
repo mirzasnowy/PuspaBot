@@ -33,8 +33,8 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from puspa.accounts.ports import resolve_dsn
 from puspa.evidence.outcomes import write_outcome
@@ -93,7 +93,7 @@ def _task_row(row) -> RoomTask:
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def summarize_messages(messages: list[dict]) -> str:

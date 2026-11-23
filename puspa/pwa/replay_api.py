@@ -42,7 +42,7 @@ task-id parameter.
 
 from __future__ import annotations
 
-import psycopg
+from puspa.db import Error as _db_Error
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
@@ -181,7 +181,7 @@ def _record_export_artifact(
             media_type="image/gif",
             content=gif,
         )
-    except (ArtifactError, psycopg.Error):
+    except (ArtifactError, *_db_Error):
         return
 
 

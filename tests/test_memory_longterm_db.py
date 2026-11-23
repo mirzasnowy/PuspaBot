@@ -7,9 +7,9 @@ scheduler wiring. No live model and no network.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-import psycopg
+from puspa.db import connect as _db_connect
 import pytest
 
 from puspa.memory import episodic, longterm
@@ -26,10 +26,14 @@ NOW = datetime(2026, 11, 22, 5, 0, tzinfo=UTC)
 
 
 def _backdate_episodes(episode_ids, days, test_dsn):
-    with psycopg.connect(test_dsn) as conn:
+    # The timestamp is computed in Python and bound as a value:
+    # Postgres-only make_interval() has no SQLite equivalent and
+    # no product code uses it, so the test does not rely on it.
+    backdated = datetime.now(UTC) - timedelta(days=days)
+    with _db_connect(test_dsn) as conn:
         conn.execute(
-            "UPDATE episodic SET created_at = now() - make_interval(days => %s) WHERE id = ANY(%s)",
-            (days, episode_ids),
+            "UPDATE episodic SET created_at = %s WHERE id = ANY(%s)",
+            (backdated, episode_ids),
         )
         conn.commit()
 

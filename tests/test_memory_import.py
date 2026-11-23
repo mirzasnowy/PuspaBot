@@ -545,12 +545,12 @@ def test_db_export_wipe_import_round_trip_passes_amnesia(test_dsn, make_user, tm
     )
     archive = _build_archive(tmp_path, _twenty_facts())
     # Wipe: delete every fact row and the durable document.
-    import psycopg
+    from puspa.db import connect as _db_connect
 
     active = fact_store.list_user(user_id, statuses=("active",))
     assert len(active) == 20
     fact_store.delete_rows([fact["id"] for fact in active], user_id)
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         conn.execute("DELETE FROM durable_memory WHERE user_id = %s", (user_id,))
         conn.commit()
     assert fact_store.list_user(user_id, statuses=("active",)) == []

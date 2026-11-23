@@ -32,11 +32,12 @@ from __future__ import annotations
 
 import os
 
-import psycopg
+from puspa.db import connect as _db_connect
+from puspa.db import is_sqlite_dsn as _db_is_sqlite_dsn
 
 from puspa.migrations import apply_migrations
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 TABLES = (
     "agent_meta",
@@ -65,13 +66,22 @@ def create_schema(dsn: str | None = None) -> None:
     apply_migrations(dsn, target="0028")
     password = os.environ.get("PUSPA_APP_PASSWORD")
     if password:
-        with psycopg.connect(dsn, autocommit=True) as conn:
+        with _db_connect(dsn, autocommit=True) as conn:
             conn.execute("ALTER ROLE puspa_app WITH LOGIN PASSWORD %s", (password,))
 
 
 def reset_tables(dsn: str | None = None) -> None:
     """Kosongkan semua tabel Fase 2 (hanya untuk tes)."""
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    with psycopg.connect(dsn) as conn:
+    with _db_connect(dsn) as conn:
+        if _db_is_sqlite_dsn(dsn):
+            # SQLite has no TRUNCATE: the translator turns it into
+            # DELETEs, which fire the delete-guard trigger on
+            # agent_meta (Postgres TRUNCATE bypasses DELETE
+            # triggers, so the wipe never met the guard there).
+            # This reset is a test-only wipe, so it clears the
+            # guard flag first; the guard still blocks ordinary
+            # DELETEs of the mandatory Puspa row.
+            conn.execute("UPDATE agent_meta SET required = 0 WHERE required")
         conn.execute("TRUNCATE " + ", ".join(TABLES) + " CASCADE")
         conn.commit()

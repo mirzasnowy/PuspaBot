@@ -240,9 +240,9 @@ def test_db_cold_check_passes_twenty_of_twenty(test_dsn, make_user):
 
 
 def _find_amnesia_event(test_dsn, user_id):
-    import psycopg
+    from puspa.db import connect as _db_connect, dict_row as _db_dict_row
 
-    with psycopg.connect(test_dsn) as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+    with _db_connect(test_dsn) as conn, conn.cursor(row_factory=_db_dict_row) as cur:
         cur.execute(
             "SELECT * FROM events WHERE type = 'task_completed' "
             "AND content ->> 'job' = 'amnesia_check' "

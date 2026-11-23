@@ -10,7 +10,7 @@ name = "puspabot"
 path = "src/main.rs"
 
 [dependencies]
-iced = { version = "0.13", features = ["tokio", "image"] }
+iced = { version = "0.13", features = ["tokio", "image", "canvas"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "blocking"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "net", "io-util"] }
 serde = { version = "1", features = ["derive"] }

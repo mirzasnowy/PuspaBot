@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import os
 
-import psycopg
+from puspa.db import connect as _db_connect
 
 from puspa.migrations import apply_migrations
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 TABLES = (
     "workflows",
     "workflow_versions",
@@ -26,7 +26,7 @@ TABLES = (
 
 
 def _connect(dsn=None):
-    return psycopg.connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN))
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN))
 
 
 def create_schema(dsn=None) -> None:

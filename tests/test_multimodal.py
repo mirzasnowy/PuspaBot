@@ -17,7 +17,7 @@ the only key value is obviously fake
 import base64
 
 import httpx
-import psycopg
+from puspa.db import connect as _db_connect
 import pytest
 from fastapi.testclient import TestClient
 
@@ -267,7 +267,7 @@ def test_image_message_flows_through_the_turn_loop(store):
 def _routing_table(test_dsn):
     create_schema(test_dsn)
     yield
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         conn.execute("TRUNCATE capability_routing")
         conn.commit()
 

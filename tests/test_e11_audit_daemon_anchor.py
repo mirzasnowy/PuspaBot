@@ -26,7 +26,7 @@ import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import psycopg
+from puspa.db import connect as _db_connect
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -204,7 +204,7 @@ def test_anchor_detects_rewritten_past(ledger, test_dsn, tmp_path):
     today = datetime.now(UTC).date()
     anchor_day(test_dsn, store, day=today)
     # An owner rewrites the head row's hash (what the anchor guards).
-    with psycopg.connect(test_dsn, autocommit=True) as conn:
+    with _db_connect(test_dsn, autocommit=True) as conn:
         conn.execute("UPDATE events SET hash = 'tampered' WHERE id = %s", (head["id"],))
     ok, problems = verify_anchor(test_dsn, store, day=today)
     assert ok is False
@@ -223,7 +223,7 @@ def test_anchor_and_chain_cover_different_rewrites(ledger, test_dsn, tmp_path):
     store = LocalAnchorStore(tmp_path / "anchors")
     today = datetime.now(UTC).date()
     anchor_day(test_dsn, store, day=today)
-    with psycopg.connect(test_dsn, autocommit=True) as conn:
+    with _db_connect(test_dsn, autocommit=True) as conn:
         conn.execute("UPDATE events SET hash = 'tampered' WHERE id = %s", (first["id"],))
     ok, _problems = verify_anchor(test_dsn, store, day=today)
     assert ok is True  # head unchanged: the anchor cannot see this one

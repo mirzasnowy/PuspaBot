@@ -28,7 +28,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-import psycopg
+from puspa.db import dict_row as _db_dict_row
 
 from .scheduler import Trigger, create_trigger
 from .schedules import next_occurrence, schedule_from_record, validate_schedule
@@ -188,7 +188,7 @@ def list_routines(user_id: str, *, dsn=None) -> list[Routine]:
     """All routines of one user, soonest first (paused ones included)."""
     from .scheduler import _connect
 
-    with _connect(dsn) as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+    with _connect(dsn) as conn, conn.cursor(row_factory=_db_dict_row) as cur:
         cur.execute(
             "SELECT id, user_id, type, schedule, workflow, next_trigger_at, active"
             " FROM triggers WHERE user_id = %s AND type = %s"
@@ -208,7 +208,7 @@ def _set_active(routine_id: str, user_id: str, active: bool, *, dsn=None) -> Rou
     """Pause (active=False) or resume (active=True) one routine."""
     from .scheduler import _connect
 
-    with _connect(dsn) as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+    with _connect(dsn) as conn, conn.cursor(row_factory=_db_dict_row) as cur:
         cur.execute(
             "UPDATE triggers SET active = %s WHERE id = %s AND user_id = %s AND type = %s"
             " RETURNING id, user_id, type, schedule, workflow, next_trigger_at, active",

@@ -40,8 +40,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import Connection as _db_Connection
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
+from puspa.memory.embeddings import cosine_distance, parse_stored_vector
 
 from puspa.accounts.ports import resolve_dsn
 from puspa.memory.embeddings import EMBEDDING_DIM, HashEmbedding
@@ -168,7 +170,7 @@ def read_document_file(path: str | Path) -> tuple[str, str, str]:
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def _vector_literal(vector) -> str:
@@ -350,6 +352,67 @@ def delete_document(user_id: str, document_id: str, *, dsn=None) -> bool:
     return deleted
 
 
+#: Most candidates the SQLite brute-force search scores (D-SQLite-4):
+#: the newest chunks for this user and embedder.
+BRUTE_FORCE_CANDIDATES = 2000
+
+
+def _ask_sqlite(conn, user_id, embedder_id, dimension, vector, limit):
+    """Brute-force cosine search (D-SQLite-4, no pgvector).
+
+    The newest candidate chunks are scored in Python with
+    :func:`cosine_distance` (exact, not approximate) and the
+    closest ``limit`` are returned as plain dicts in the same
+    shape as the pgvector path below (``distance`` included).
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT c.id, c.document_id, c.chunk_index, c.content, "
+            "d.filename, d.title, c.embedding "
+            "FROM knowledge_chunks c "
+            "JOIN knowledge_documents d ON d.id = c.document_id "
+            "WHERE c.user_id = %s AND c.embedder_id = %s AND c.dimension = %s "
+            "ORDER BY c.created_at DESC LIMIT %s",
+            (user_id, embedder_id, dimension, BRUTE_FORCE_CANDIDATES),
+        )
+        scored = []
+        for row in cur.fetchall():
+            stored = parse_stored_vector(row["embedding"])
+            if stored is None:
+                continue
+            scored.append((cosine_distance(vector, stored), row))
+    scored.sort(key=lambda item: item[0])
+    return [
+        {
+            "id": row["id"],
+            "document_id": row["document_id"],
+            "chunk_index": row["chunk_index"],
+            "content": row["content"],
+            "filename": row["filename"],
+            "title": row["title"],
+            "distance": distance,
+        }
+        for distance, row in scored[:limit]
+    ]
+
+
+def _ask_pgvector(conn, user_id, embedder_id, dimension, vector, limit):
+    """The Postgres path: pgvector ``<=>`` ranks the chunks."""
+    vector = _vector_literal(vector)
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT c.id, c.document_id, c.chunk_index, c.content, "
+            "d.filename, d.title, "
+            "c.embedding <=> %s::vector AS distance "
+            "FROM knowledge_chunks c "
+            "JOIN knowledge_documents d ON d.id = c.document_id "
+            "WHERE c.user_id = %s AND c.embedder_id = %s AND c.dimension = %s "
+            "ORDER BY distance ASC LIMIT %s",
+            (vector, user_id, embedder_id, dimension, limit),
+        )
+        return cur.fetchall()
+
+
 def ask(
     user_id: str,
     question: str,
@@ -375,19 +438,16 @@ def ask(
     embedder = embedder or HashEmbedding()
     embedder_id = embedder_id_of(embedder)
     dimension = dimension_of(embedder)
-    vector = _vector_literal(embedder.embed(question))
-    with _connect(dsn) as conn, conn.cursor() as cur:
-        cur.execute(
-            "SELECT c.id, c.document_id, c.chunk_index, c.content, "
-            "d.filename, d.title, "
-            "c.embedding <=> %s::vector AS distance "
-            "FROM knowledge_chunks c "
-            "JOIN knowledge_documents d ON d.id = c.document_id "
-            "WHERE c.user_id = %s AND c.embedder_id = %s AND c.dimension = %s "
-            "ORDER BY distance ASC LIMIT %s",
-            (vector, user_id, embedder_id, dimension, limit),
-        )
-        rows = cur.fetchall()
+    vector = embedder.embed(question)
+    with _connect(dsn) as conn:
+        if isinstance(conn, _db_Connection):
+            rows = _ask_sqlite(
+                conn, user_id, embedder_id, dimension, vector, limit
+            )
+        else:
+            rows = _ask_pgvector(
+                conn, user_id, embedder_id, dimension, vector, limit
+            )
     citations = [
         {
             "chunk_id": str(row["id"]),

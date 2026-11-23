@@ -13,7 +13,7 @@ import json
 import os
 import threading
 
-import psycopg
+from puspa.db import connect as _db_connect
 
 from puspa.migrations import apply_migrations
 
@@ -25,7 +25,7 @@ __all__ = [
     "process_once",
 ]
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 
 def ensure_receipts_schema(dsn: str | None = None) -> None:
@@ -74,7 +74,7 @@ class PostgresReceiptStore:
         ensure_receipts_schema(self.dsn)
 
     def claim(self, key: str, payload: dict | None = None) -> bool:
-        with psycopg.connect(self.dsn, autocommit=True) as conn:
+        with _db_connect(self.dsn, autocommit=True) as conn:
             row = conn.execute(
                 "INSERT INTO event_receipts (idempotency_key, payload)"
                 " VALUES (%s, %s::jsonb) ON CONFLICT (idempotency_key)"
@@ -84,7 +84,7 @@ class PostgresReceiptStore:
         return row is not None
 
     def seen(self, key: str) -> bool:
-        with psycopg.connect(self.dsn) as conn:
+        with _db_connect(self.dsn) as conn:
             row = conn.execute(
                 "SELECT 1 FROM event_receipts WHERE idempotency_key = %s",
                 (key,),
@@ -92,7 +92,7 @@ class PostgresReceiptStore:
         return row is not None
 
     def receipt(self, key: str) -> dict | None:
-        with psycopg.connect(self.dsn) as conn:
+        with _db_connect(self.dsn) as conn:
             row = conn.execute(
                 "SELECT payload FROM event_receipts WHERE idempotency_key = %s",
                 (key,),

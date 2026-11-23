@@ -15,14 +15,14 @@ import itertools
 import os
 import uuid
 
-import psycopg
+from puspa.db import connect as _db_connect
 import pytest
-from psycopg import errors as pg_errors
+from puspa.db import errors as pg_errors
 
 from puspa.ledger import EVENT_TYPES, GENESIS, Ledger
 from puspa.ledger.errors import InvalidEventTypeError
 
-DSN = os.environ.get("PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
+DSN = os.environ.get("PUSPA_TEST_DSN", None)
 AGEN = "agen-tes"
 
 #: 9 event_type baru revisi 7 (definisi 2.3, daftar harfiah).
@@ -103,7 +103,7 @@ def task_id(ledger):
     """tugas_id unik per tes; barisnya dibersihkan setelah tes selesai."""
     tid = f"tes-{uuid.uuid4().hex[:12]}"
     yield tid
-    with psycopg.connect(DSN, autocommit=True) as conn:
+    with _db_connect(DSN, autocommit=True) as conn:
         conn.execute("DELETE FROM events WHERE task_id = %s", (tid,))
 
 
@@ -174,7 +174,7 @@ def test_event_type_unknown_rejected_python_and_db(ledger, task_id):
 
     # Level DB: INSERT langsung via SQL dengan event_type sembarang gagal
     # karena CHECK constraint — walau melewati validasi Python.
-    with psycopg.connect(DSN, autocommit=True) as conn, pytest.raises(pg_errors.CheckViolation):
+    with _db_connect(DSN, autocommit=True) as conn, pytest.raises(pg_errors.CheckViolation):
         conn.execute(
             "INSERT INTO events "
             "(task_id, agent_id, type, content, previous_hash, hash) "
@@ -188,7 +188,7 @@ def test_event_type_unknown_rejected_python_and_db(ledger, task_id):
 def test_check_db_accepts_new_event_type_direct_insert(ledger, task_id, event_type):
     # INSERT langsung via SQL (tanpa Ledger) dengan tiap event_type baru harus
     # lolos CHECK — membuktikan schema.sql, bukan hanya JENIS_KEJADIAN.
-    with psycopg.connect(DSN, autocommit=True) as conn:
+    with _db_connect(DSN, autocommit=True) as conn:
         row = conn.execute(
             "INSERT INTO events "
             "(task_id, agent_id, type, content, previous_hash, hash) "

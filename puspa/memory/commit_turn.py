@@ -80,8 +80,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, NoReturn
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from puspa.ledger import Ledger
 from puspa.migrations import apply_migrations
@@ -355,7 +355,7 @@ class PostgresRetryQueue:
             apply_migrations(self.dsn, target=_RETRY_QUEUE_MIGRATION)
 
     def _connect(self):
-        return psycopg.connect(self.dsn, row_factory=dict_row)
+        return _db_connect(self.dsn, row_factory=dict_row)
 
     def enqueue(self, payload: dict, error: str) -> str:
         """Queue one failed commit; return the queue row id."""
@@ -635,7 +635,7 @@ def _commit_postgres(
     now: datetime,
 ) -> dict:
     """Postgres write-through: ledger plus durable memory, one transaction."""
-    conn = psycopg.connect(dsn, row_factory=dict_row)
+    conn = _db_connect(dsn, row_factory=dict_row)
     try:
         with conn.cursor(row_factory=dict_row) as cur:
             event_ids: list[str] = []

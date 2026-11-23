@@ -293,13 +293,13 @@ def default_bill_status(ctx: HandlerContext, arguments: dict) -> dict:
 
 def default_schedule_list(ctx: HandlerContext, arguments: dict) -> dict:
     """The user's triggers, soonest first (read-only, user-scoped)."""
-    import psycopg
+    from puspa.db import connect as _db_connect
 
     limit = _limit(arguments, "limit", 20, 100)
     dsn = _dsn(ctx)
     if dsn is None:
         raise ValueError("no Postgres DSN available (set PUSPA_TEST_DSN)")
-    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+    with _db_connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT id, type, schedule, workflow, next_trigger_at, active"
             " FROM triggers WHERE user_id = %s"

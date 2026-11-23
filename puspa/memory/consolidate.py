@@ -25,8 +25,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from . import procedural, profile
 from .limits import truncate_narrative
@@ -159,7 +159,7 @@ def reflect_and_propose(user_id, episodes, *, agent_id=None, propose=None, dsn=N
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def _extractive_summary(episodes):

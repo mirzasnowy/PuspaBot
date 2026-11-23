@@ -29,8 +29,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from puspa.ledger import Ledger
 
@@ -268,7 +268,7 @@ class WriteAheadLog:
         Ledger API is per-task.
         """
         with (
-            psycopg.connect(self._ledger.dsn, row_factory=dict_row) as conn,
+            _db_connect(self._ledger.dsn, row_factory=dict_row) as conn,
             conn.cursor() as cur,
         ):
             cur.execute(

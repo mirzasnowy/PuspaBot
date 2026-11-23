@@ -45,9 +45,9 @@ def test_tick_runs_scheduled_workflow_and_shifts_to_next_month(
     # Jalan alur tercatat (berhenti di siapkan bayar -> menunggu persetujuan).
     assert result[0]["run"]["status"] == "pending_approval"
     # Jadwal berikutnya = 25 Desember (bukan 26 November / +1 hari).
-    import psycopg
+    from puspa.db import connect as _db_connect
 
-    with psycopg.connect(test_dsn) as conn, conn.cursor() as cur:
+    with _db_connect(test_dsn) as conn, conn.cursor() as cur:
         cur.execute("SELECT next_trigger_at FROM triggers WHERE id = %s", (trigger.id,))
         next_time = cur.fetchone()[0]
     assert (next_time.year, next_time.month, next_time.day) == (2026, 12, 25)
@@ -75,8 +75,8 @@ def test_missed_tick_runs_once_and_is_reported(make_user, test_dsn, permission_u
         tick_workflow(dsn=test_dsn, now=datetime(2026, 11, 27, 7, 6, tzinfo=UTC), missed=True) == []
     )
     # Kejadian pemicu_terlewat tercatat di Buku Kerja.
-    import psycopg
+    from puspa.db import connect as _db_connect
 
-    with psycopg.connect(test_dsn) as conn, conn.cursor() as cur:
+    with _db_connect(test_dsn) as conn, conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM events WHERE type = 'trigger_missed'")
         assert cur.fetchone()[0] >= 1

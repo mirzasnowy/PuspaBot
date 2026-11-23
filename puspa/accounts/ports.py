@@ -17,11 +17,10 @@ Postgres database:
   :func:`owner_of`, :func:`owner_of_token`,
   :func:`create_agent_schema`, :func:`create_account_schema`.
 
-The local implementations operate on Postgres through
-:func:`resolve_dsn` (the same test database the rest of the suite
-uses). The SQLite backend is a separate future workstream: when it
-lands, these functions gain a SQLite implementation behind the same
-names; nothing here pretends SQLite is live today.
+The local implementations operate on the database behind
+:func:`puspa.db.connect` (SQLite by default, Postgres when the DSN
+says so) through :func:`resolve_dsn` (the same test database the
+rest of the suite uses).
 
 Safety properties kept from the original implementation:
 
@@ -42,11 +41,14 @@ import hashlib
 import os
 import secrets
 
-import psycopg
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHash, VerificationError, VerifyMismatchError
-from psycopg import errors as pg_errors
+from puspa import db
+from puspa.db import errors as pg_errors
 
+#: The hosted Postgres default. The live default is the SQLite file
+#: (see :func:`puspa.db.resolve_dsn`); this stays as the explicit
+#: hosted DSN for deployments that still point at Postgres.
 DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
 
 __all__ = [
@@ -96,13 +98,17 @@ _PASSWORD_HASHER = PasswordHasher(time_cost=2, memory_cost=65536, parallelism=1)
 
 
 def resolve_dsn(dsn: str | None = None) -> str:
-    """Postgres DSN: explicit argument, then env ``PUSPA_DSN`` /
-    ``PUSPA_TEST_DSN``, then the local peer-auth default."""
-    return dsn or os.environ.get("PUSPA_DSN") or os.environ.get("PUSPA_TEST_DSN") or DEFAULT_DSN
+    """DSN resolution (D-SQLite-2): explicit argument, then env, then default.
+
+    Delegates to :func:`puspa.db.resolve_dsn`, the one canonical
+    resolution order in the tree. A Postgres DSN passed explicitly
+    or through the environment is returned unchanged.
+    """
+    return db.resolve_dsn(dsn)
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn))
+    return db.connect(resolve_dsn(dsn))
 
 
 def _normalize_email(email):
@@ -342,7 +348,7 @@ def register_agent(agent_id, user_id, dsn=None):
         raise ValueError("user_id must be a non-empty string")
     agent_id = agent_id.strip()
     user_id = user_id.strip()
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
+    with db.connect(resolve_dsn(dsn)) as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT user_id FROM agents WHERE agent_id = %s", (agent_id,))
             row = cur.fetchone()
@@ -366,7 +372,7 @@ def owner_of(agent_id, dsn=None):
     anyone)."""
     if not isinstance(agent_id, str) or not agent_id.strip():
         return None
-    with psycopg.connect(resolve_dsn(dsn)) as conn, conn.cursor() as cur:
+    with db.connect(resolve_dsn(dsn)) as conn, conn.cursor() as cur:
         cur.execute("SELECT user_id FROM agents WHERE agent_id = %s", (agent_id.strip(),))
         row = cur.fetchone()
     return str(row[0]) if row is not None else None

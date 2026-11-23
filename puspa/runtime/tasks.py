@@ -578,31 +578,37 @@ class TaskRunner:
 
 
 def claim_next_task(dsn: str, agent_id: str) -> dict | None:
-    """Ambil satu tugas `diterima` lewat SELECT FOR UPDATE SKIP LOCKED.
+    """Ambil satu tugas `diterima` lewat klaim atomik.
 
     Kembalikan baris tugas (dict) atau None bila antrean kosong.
-    Tanpa broker tambahan (§2.3).
+    Tanpa broker tambahan (§2.3). The claim is one
+    ``UPDATE ... RETURNING``: the status condition sits in the
+    UPDATE's own WHERE clause as well as in the candidate
+    subquery, so two writers racing for the same task cannot
+    both claim it (on Postgres the row lock waits, then
+    re-checks the condition; on SQLite the single writer
+    serialises the statements).
     """
     import os
 
-    import psycopg
+    from puspa.db import connect as _db_connect, dict_row as _db_dict_row
 
     dsn = dsn or os.environ.get(
-        "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql"
+        "PUSPA_TEST_DSN", None
     )
-    with psycopg.connect(dsn, row_factory=psycopg.rows.dict_row) as conn:
+    with _db_connect(dsn, row_factory=_db_dict_row) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT * FROM tasks WHERE agent_id = %s AND status = 'accepted'"
-                " ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED",
+                "UPDATE tasks SET status = 'running'"
+                " WHERE id = (SELECT id FROM tasks"
+                " WHERE agent_id = %s AND status = 'accepted'"
+                " ORDER BY created_at ASC LIMIT 1)"
+                " AND status = 'accepted' RETURNING *",
                 (agent_id,),
             )
             row = cur.fetchone()
-            if row is None:
-                return None
-            cur.execute("UPDATE tasks SET status = 'running' WHERE id = %s", (row["id"],))
         conn.commit()
-    return dict(row)
+    return dict(row) if row is not None else None
 
 
 def create_task_id() -> str:

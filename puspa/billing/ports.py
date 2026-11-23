@@ -48,9 +48,9 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, time, timedelta
 
-import psycopg
-from psycopg.rows import dict_row
-from psycopg.types.json import Jsonb
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
+from puspa.db import Jsonb
 
 from puspa.accounts.ports import resolve_dsn
 
@@ -184,7 +184,7 @@ class PostgresUsageStore:
         create_usage_schema(self.dsn)
 
     def append(self, row: UsageRow) -> UsageRow:
-        with psycopg.connect(self.dsn) as conn:
+        with _db_connect(self.dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "INSERT INTO billing_usage_rows"
@@ -244,7 +244,7 @@ class PostgresUsageStore:
         )
 
     def rows_for_user(self, user_id: str, since: datetime | None = None) -> list[UsageRow]:
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn, conn.cursor() as cur:
+        with _db_connect(self.dsn, row_factory=dict_row) as conn, conn.cursor() as cur:
             if since is None:
                 cur.execute(
                     "SELECT * FROM billing_usage_rows WHERE user_id = %s ORDER BY recorded_at",
@@ -260,7 +260,7 @@ class PostgresUsageStore:
             return [self._from_db(r) for r in cur.fetchall()]
 
     def rows_for_task(self, user_id: str, task_id: str) -> list[UsageRow]:
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn, conn.cursor() as cur:
+        with _db_connect(self.dsn, row_factory=dict_row) as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM billing_usage_rows"
                 " WHERE user_id = %s AND task_id = %s ORDER BY recorded_at",

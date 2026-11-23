@@ -56,8 +56,8 @@ import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from . import facts as facts_module
 from .limits import MEMORY_MAX_BYTES, MEMORY_MAX_LINES, truncate_narrative
@@ -407,7 +407,7 @@ class PostgresDurableStore:
         self.dsn = resolve_dsn(dsn)
 
     def _connect(self):
-        return psycopg.connect(self.dsn, row_factory=dict_row)
+        return _db_connect(self.dsn, row_factory=dict_row)
 
     def save_document(self, user_id, content, content_hash, generated_at, source_counts):
         with self._connect() as conn:

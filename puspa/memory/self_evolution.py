@@ -83,8 +83,9 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
+from puspa.db import parse_timestamp as _db_parse_timestamp
 
 from puspa.ledger import Ledger
 
@@ -143,7 +144,7 @@ def _validate_session_id(session_id):
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def session_last_activity(session_id, *, user_id=None, dsn=None):
@@ -180,7 +181,10 @@ def session_last_activity(session_id, *, user_id=None, dsn=None):
                 (user_id,),
             )
         row = cur.fetchone()
-    return row["last_seen"] if row else None
+    # max() is an expression, so SQLite returns its value as raw
+    # text (no column type to convert from); normalise it back to
+    # a datetime, exactly as the Postgres driver would return.
+    return _db_parse_timestamp(row["last_seen"]) if row else None
 
 
 def is_idle(session_id, *, idle_seconds=DEFAULT_IDLE_SECONDS, user_id=None, dsn=None, now=None):

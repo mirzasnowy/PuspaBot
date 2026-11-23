@@ -55,9 +55,9 @@ import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 
-import psycopg
-from psycopg.rows import dict_row
-from psycopg.types.json import Jsonb
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
+from puspa.db import Jsonb
 
 from .schema import resolve_dsn
 
@@ -70,7 +70,7 @@ LEARNED_PREFIX = "learned:"
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def _row_to_procedure(row):

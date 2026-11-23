@@ -1,6 +1,6 @@
 """Tes watchlist + sampler (§3.8) dan cache bukti bersama (§3.8)."""
 
-import psycopg
+from puspa.db import connect as _db_connect
 
 from puspa.graphs.identity import add_product
 from puspa.pricing import cache as cache_evidence
@@ -38,7 +38,7 @@ def test_sampler_respects_budget_20_per_day(make_user, test_dsn):
     assert result["dibaca"] == [product["id"]]
     assert result["remaining_budget"] == 19
     # Habiskan anggaran -> sampler melewati barang, bukan membaca diam-diam.
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE read_budgets SET amount = 20 WHERE user_id = %s", (user["user_id"],)
@@ -80,7 +80,7 @@ def test_cache_evidence_ttl_30_minute_and_statistics(test_dsn):
     assert cache_evidence.take("Tokopedia:https://x", dsn=test_dsn)["evidence_id"] == "bukti-1"
     assert cache_evidence.take("Tokopedia:https://tidak-ada", dsn=test_dsn) is None
     # Kedaluwarsa -> None (pemanggil wajib baca ulang sumber).
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE evidence_cache SET expires_at = now() - INTERVAL '1 hour'"

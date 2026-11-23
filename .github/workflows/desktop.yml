@@ -7,9 +7,10 @@
 #   build    — cargo build --release on windows-latest, then NSIS
 #              installer (makensis is preinstalled on the runner).
 # The Windows installer cannot be built on the Linux dev VM; CI is
-# the only place it is produced. The database decision for v1
-# (SQLite port vs Postgres first-run) is still open — this workflow
-# deliberately does not depend on it.
+# the only place it is produced. The database decision for v1 is
+# made (full SQLite port, Nero 23 Nov ~09:52 WIB); the installer
+# installs no database — the backend creates its SQLite file on
+# first run.
 
 name: desktop
 

@@ -61,7 +61,7 @@ builds its server-rendered context from the same readers.
 
 from __future__ import annotations
 
-import psycopg
+from puspa.db import Error as _db_Error
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -245,7 +245,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             return refused
         try:
             return read_config(request.app, user_id)
-        except (ValueError, psycopg.Error) as exc:
+        except (ValueError, *_db_Error) as exc:
             return _bad_request(exc)
 
     @app.post("/api/admin/config")
@@ -280,7 +280,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
                     raise ValueError("telemetry_enabled must be a boolean")
                 save_telemetry_settings(user_id, body["telemetry_enabled"], dsn=_dsn(request))
             return read_config(request.app, user_id)
-        except (ValueError, psycopg.Error) as exc:
+        except (ValueError, *_db_Error) as exc:
             return _bad_request(exc)
 
     @app.get("/api/admin/sessions")
@@ -292,7 +292,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             return refused
         try:
             return read_sessions(request.app, user_id)
-        except (ValueError, psycopg.Error) as exc:
+        except (ValueError, *_db_Error) as exc:
             return _bad_request(exc)
 
     @app.post("/api/admin/sessions/{session_id}/revoke")
@@ -304,7 +304,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             return refused
         try:
             revoked = revoke_session_by_id(session_id, user_id, dsn=_dsn(request))
-        except (ValueError, psycopg.Error):
+        except (ValueError, *_db_Error):
             return JSONResponse({"error": f"no session {session_id!r}"}, status_code=404)
         if not revoked:
             return JSONResponse({"error": f"no session {session_id!r}"}, status_code=404)
@@ -319,7 +319,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             return refused
         try:
             revoke_all_sessions(user_id, dsn=_dsn(request))
-        except (ValueError, psycopg.Error) as exc:
+        except (ValueError, *_db_Error) as exc:
             return _bad_request(exc)
         return {"ok": True, "revoked_all": True}
 
@@ -332,7 +332,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             return refused
         try:
             return read_usage(request.app, user_id)
-        except (ValueError, psycopg.Error) as exc:
+        except (ValueError, *_db_Error) as exc:
             return _bad_request(exc)
 
     @app.get("/api/admin/skills")

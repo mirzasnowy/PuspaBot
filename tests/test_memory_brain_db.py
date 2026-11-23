@@ -14,8 +14,9 @@ Covers, against the real `puspa_test` database:
 """
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
-import psycopg
+from puspa.db import connect as _db_connect
 import pytest
 
 from puspa.graphs.identity import (
@@ -41,10 +42,14 @@ def _make_verified_procedure(user_id, service, step, test_dsn):
 
 
 def _backdate_procedure(procedure_id, days, test_dsn):
-    with psycopg.connect(test_dsn) as conn:
+    # The timestamp is computed in Python and bound as a value:
+    # Postgres-only make_interval() has no SQLite equivalent and
+    # no product code uses it, so the test does not rely on it.
+    backdated = datetime.now(UTC) - timedelta(days=days)
+    with _db_connect(test_dsn) as conn:
         conn.execute(
-            "UPDATE procedures SET updated_at = now() - make_interval(days => %s) WHERE id = %s",
-            (days, procedure_id),
+            "UPDATE procedures SET updated_at = %s WHERE id = %s",
+            (backdated, procedure_id),
         )
         conn.commit()
 
@@ -230,7 +235,7 @@ def test_consolidate_idle_with_reflect_proposes_reliable_service(make_user, test
             event_id=str(uuid.uuid4()),
             dsn=test_dsn,
         )
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         conn.execute(
             "UPDATE episodic SET created_at = now() - interval '45 days' WHERE user_id = %s",
             (u["user_id"],),
@@ -263,7 +268,7 @@ def test_consolidate_idle_without_reflect_creates_no_proposals(make_user, test_d
             event_id=str(uuid.uuid4()),
             dsn=test_dsn,
         )
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         conn.execute(
             "UPDATE episodic SET created_at = now() - interval '45 days' WHERE user_id = %s",
             (u["user_id"],),

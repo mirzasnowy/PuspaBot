@@ -23,7 +23,7 @@ collector endpoint only when the effective switch is on.
 
 from __future__ import annotations
 
-import psycopg
+from puspa.db import Error as _db_Error
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -63,7 +63,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             return _not_logged_in()
         try:
             return _public_state(user_id, _dsn(request))
-        except (ValueError, psycopg.Error) as exc:
+        except (ValueError, *_db_Error) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
 
     @app.post("/api/telemetry/settings")
@@ -85,7 +85,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             }
         except ValueError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
-        except psycopg.Error as exc:
+        except _db_Error as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
 
     return app

@@ -24,13 +24,13 @@ from __future__ import annotations
 import os
 import re
 
-import psycopg
-from psycopg.rows import dict_row
-from psycopg.types.json import Jsonb
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
+from puspa.db import Jsonb
 
 from puspa.memory import procedural as _prosedural
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 REQUIRED_FIX_TESTS = 3
 
 # Pola yang menandakan data pribadi terselip di langkah prosedur:
@@ -46,7 +46,7 @@ class ServiceError(Exception):
 
 
 def _connect(dsn=None):
-    return psycopg.connect(
+    return _db_connect(
         dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
     )
 

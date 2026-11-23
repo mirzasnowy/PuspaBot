@@ -37,8 +37,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from puspa.accounts.ports import resolve_dsn
 from puspa.rooms.errors import NotRoomMemberError
@@ -64,7 +64,7 @@ DEFAULT_REMINDER_TIMEZONE = "Asia/Jakarta"
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def meeting_task_ids(room_id: str, *, dsn=None) -> set[str]:

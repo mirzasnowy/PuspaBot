@@ -60,7 +60,8 @@ import os
 import sys
 from pathlib import Path
 
-import psycopg
+from puspa.db import connect as _db_connect, Error as _db_Error, Connection as _db_Connection
+from puspa.db import is_sqlite_dsn as _db_is_sqlite_dsn
 
 from puspa.accounts.ports import resolve_dsn as _port_resolve_dsn
 
@@ -126,7 +127,7 @@ __all__ = [
 
 #: Default Postgres DSN (peer auth as the OS user, no password).
 #: Same default as the ledger and the accounts package.
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 #: Namespace mixed into the advisory-lock key so this lock can never
 #: collide with another advisory-lock user in the same database.
@@ -241,13 +242,34 @@ class PostgresAdvisoryLock:
     the lock with ``pg_try_advisory_lock`` (never waits: contention
     is a refusal, not a queue). Closing the connection releases the
     lock, so a crashed holder frees it automatically.
+
+    On a SQLite DSN there is no advisory lock: the same contract
+    is kept with a second file lock (``StateDbFileLock``) on a
+    sidecar file next to the database file, named after the same
+    deterministic key. A crashed holder frees it when the process
+    dies, exactly like the connection close above.
     """
 
     def __init__(self, dsn: str, agent_id: str) -> None:
         self.dsn = dsn
         self.agent_id = agent_id
         self.key = advisory_lock_key(agent_id)
-        self._conn: psycopg.Connection | None = None
+        self._conn: _db_Connection | None = None
+        self._file_lock: StateDbFileLock | None = None
+
+    def _sqlite_lock_path(self) -> Path:
+        """The sidecar lock file for this agent on a SQLite DSN."""
+        import tempfile
+
+        dsn = self.dsn
+        for prefix in ("sqlite://", "sqlite:"):
+            if dsn.startswith(prefix):
+                dsn = dsn[len(prefix) :]
+                break
+        if dsn in ("", ":memory:"):
+            return Path(tempfile.gettempdir()) / f"puspa-writer-{self.key}.lock"
+        db_path = Path(dsn).expanduser()
+        return db_path.parent / f"{db_path.name}.{self.key}.lock"
 
     def acquire(self) -> None:
         """Take the advisory lock, or raise :class:`SingleWriterError`.
@@ -256,12 +278,26 @@ class PostgresAdvisoryLock:
         error: a writer that cannot prove it is the single writer
         does not open.
         """
-        if self._conn is not None:
+        if self._conn is not None or self._file_lock is not None:
+            return
+        if _db_is_sqlite_dsn(self.dsn):
+            lock = StateDbFileLock(self._sqlite_lock_path())
+            try:
+                lock.acquire()
+            except SingleWriterError:
+                raise
+            except OSError as exc:
+                raise SingleWriterError(
+                    f"cannot verify the single-writer claim for agent "
+                    f"{self.agent_id!r}: the SQLite writer lock cannot "
+                    f"be opened ({exc}); refusing to open the writer"
+                ) from exc
+            self._file_lock = lock
             return
         try:
-            conn = psycopg.connect(self.dsn, connect_timeout=_CONNECT_TIMEOUT_SECONDS)
+            conn = _db_connect(self.dsn, connect_timeout=_CONNECT_TIMEOUT_SECONDS)
             conn.autocommit = True
-        except psycopg.Error as exc:
+        except _db_Error as exc:
             raise SingleWriterError(
                 f"cannot verify the single-writer claim for agent "
                 f"{self.agent_id!r}: Postgres is unreachable ({exc}); "
@@ -270,7 +306,7 @@ class PostgresAdvisoryLock:
         try:
             row = conn.execute("SELECT pg_try_advisory_lock(%s)", (self.key,)).fetchone()
             held = bool(row and row[0])
-        except psycopg.Error as exc:
+        except _db_Error as exc:
             conn.close()
             raise SingleWriterError(
                 f"cannot verify the single-writer claim for agent "
@@ -287,11 +323,14 @@ class PostgresAdvisoryLock:
 
     def release(self) -> None:
         """Release the lock and close the connection. Idempotent."""
+        if self._file_lock is not None:
+            self._file_lock.release()
+            self._file_lock = None
         conn, self._conn = self._conn, None
         if conn is not None:
             try:
                 conn.execute("SELECT pg_advisory_unlock(%s)", (self.key,))
-            except psycopg.Error:
+            except _db_Error:
                 pass
             finally:
                 conn.close()
@@ -299,7 +338,9 @@ class PostgresAdvisoryLock:
     @property
     def held(self) -> bool:
         """True while this object holds the advisory lock."""
-        return self._conn is not None
+        return self._conn is not None or (
+            self._file_lock is not None and self._file_lock.held
+        )
 
     def __enter__(self) -> PostgresAdvisoryLock:
         self.acquire()

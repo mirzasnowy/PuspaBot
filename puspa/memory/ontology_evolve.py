@@ -67,8 +67,8 @@ import copy
 import uuid
 from datetime import UTC, datetime
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from . import profile
 from .ontology_review import (
@@ -540,7 +540,7 @@ def run_shadow(*, facts, hypotheses, repairs, now=None):
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def _db_supersede_facts(user_id, fact_ids, *, dsn, now):

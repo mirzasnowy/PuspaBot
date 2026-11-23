@@ -162,7 +162,7 @@ def test_review_default_record_fact_writes_to_g7_store():
     """
     import uuid
 
-    import psycopg
+    from puspa.db import connect as _db_connect
 
     from puspa.memory import create_schema
     from puspa.memory.profile import list_facts
@@ -194,7 +194,7 @@ def test_review_default_record_fact_writes_to_g7_store():
         assert facts[0]["source"] == "inferred"
         assert "dark mode" in facts[0]["value"]
     finally:
-        with psycopg.connect(
+        with _db_connect(
             resolve_dsn(),
             autocommit=True,
         ) as conn:

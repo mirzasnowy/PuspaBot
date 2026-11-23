@@ -356,3 +356,54 @@ def cosine_similarity(left: list[float], right: list[float]) -> float:
     if len(left) != len(right):
         raise ValueError("vector dimensions differ")
     return sum(a * b for a, b in zip(left, right))
+
+
+def cosine_distance(left: list[float], right: list[float]) -> float:
+    """Cosine distance (``1 - cosine``) of two vectors.
+
+    Unlike :func:`cosine_similarity`, the vectors are normalised
+    here, so a stored vector that lost a little norm to rounding
+    still scores exactly like pgvector's ``<=>`` operator. A zero
+    vector has no direction: its distance to everything is 1.
+    """
+    if len(left) != len(right):
+        raise ValueError("vector dimensions differ")
+    left_norm = math.sqrt(sum(a * a for a in left))
+    right_norm = math.sqrt(sum(b * b for b in right))
+    if left_norm == 0.0 or right_norm == 0.0:
+        return 1.0
+    dot = sum(a * b for a, b in zip(left, right))
+    return 1.0 - dot / (left_norm * right_norm)
+
+
+def parse_stored_vector(value) -> list[float] | None:
+    """A stored embedding as floats, whatever form it is in.
+
+    Postgres pgvector stores the ``"[0.1, 0.2, ...]"`` literal the
+    writers bind; SQLite stores that same literal as text in the
+    BLOB column (D-SQLite-4: no pgvector, brute-force cosine in
+    Python). A struct-packed float32 blob is accepted too, so a
+    future writer can store binary without changing the readers.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)):
+        return [float(v) for v in value]
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        raw = bytes(value)
+        if len(raw) % 4 != 0:
+            return None
+        import struct
+
+        return list(struct.unpack(f"<{len(raw) // 4}f", raw))
+    if isinstance(value, str):
+        try:
+            import json
+
+            parsed = json.loads(value)
+        except ValueError:
+            return None
+        if isinstance(parsed, list):
+            return [float(v) for v in parsed]
+        return None
+    return None
