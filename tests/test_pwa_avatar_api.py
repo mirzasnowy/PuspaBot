@@ -68,10 +68,14 @@ def test_upload_stores_one_photo_per_user_and_serves_it_back(client):
     assert body["photo_url"] == "/api/agent/avatar/photo"
     assert body["mime_type"] == "image/png"
     assert body["updated_at"]
-    # Stored under the user's own dir, one file only.
+    # Stored under the user's own dir, one photo file only (the
+    # avatar-source.json marker beside it records which avatar
+    # is active and is not a photo).
     kept = client.inbox / client.user_id / "avatar"
     assert kept.is_dir()
-    assert [p.name for p in kept.iterdir()] == ["avatar.png"]
+    assert [p.name for p in kept.iterdir() if p.name.startswith("avatar.")] == [
+        "avatar.png"
+    ]
     # The status endpoint agrees, and the bytes round-trip.
     status = client.get("/api/agent/avatar").json()
     assert status["has_photo"] is True
@@ -84,7 +88,9 @@ def test_upload_stores_one_photo_per_user_and_serves_it_back(client):
 def test_upload_replaces_the_previous_photo_and_old_extension(client):
     assert _upload(client).status_code == 200
     kept = client.inbox / client.user_id / "avatar"
-    assert [p.name for p in kept.iterdir()] == ["avatar.png"]
+    assert [p.name for p in kept.iterdir() if p.name.startswith("avatar.")] == [
+        "avatar.png"
+    ]
     # A jpeg upload replaces the png; no stale file lingers.
     import io
 
@@ -93,7 +99,9 @@ def test_upload_replaces_the_previous_photo_and_old_extension(client):
     resp = _upload(client, photo=buf.getvalue(), mime="image/jpeg", name="puspa.jpg")
     assert resp.status_code == 200
     assert resp.json()["mime_type"] == "image/jpeg"
-    assert [p.name for p in kept.iterdir()] == ["avatar.jpg"]
+    assert [p.name for p in kept.iterdir() if p.name.startswith("avatar.")] == [
+        "avatar.jpg"
+    ]
     served = client.get("/api/agent/avatar/photo")
     assert served.headers["content-type"] == "image/jpeg"
 
@@ -115,7 +123,8 @@ def test_delete_removes_the_photo_and_is_idempotent(client):
     assert _upload(client).status_code == 200
     resp = client.delete("/api/agent/avatar/photo")
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True, "has_photo": False}
+    assert resp.json() == {"ok": True, "has_photo": False, "source": "default"}
+    assert client.get("/api/agent/avatar").json()["source"] == "default"
     assert client.get("/api/agent/avatar").json()["has_photo"] is False
     assert client.get("/api/agent/avatar/photo").status_code == 404
     # Deleting again is still ok.
@@ -139,3 +148,56 @@ def test_routes_require_login(tmp_path):
         assert c.get("/api/agent/avatar").status_code == 401
         assert c.get("/api/agent/avatar/photo").status_code == 401
         assert c.delete("/api/agent/avatar/photo").status_code == 401
+
+
+def test_builtin_avatar_set_serves_the_shipped_file(client):
+    from puspa.pwa.avatar_api import BUILTIN_AVATARS, _BUILTIN_DIR
+
+    resp = client.post("/api/agent/avatar/builtin", json={"name": "sakura"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["has_photo"] is True
+    assert body["source"] == "builtin:sakura"
+    assert body["mime_type"] == "image/png"
+    photo = client.get("/api/agent/avatar/photo")
+    assert photo.status_code == 200
+    assert photo.content == (_BUILTIN_DIR / BUILTIN_AVATARS["sakura"]).read_bytes()
+    # Switching to another flower replaces the first one wholesale.
+    resp = client.post("/api/agent/avatar/builtin", json={"name": "tulip"})
+    assert resp.json()["source"] == "builtin:tulip"
+    kept = client.inbox / client.user_id / "avatar"
+    assert sorted(p.name for p in kept.iterdir()) == [
+        "avatar-source.json",
+        "avatar.png",
+    ]
+    # GET /api/agent/avatar agrees with the stored choice.
+    assert client.get("/api/agent/avatar").json()["source"] == "builtin:tulip"
+
+
+def test_builtin_avatar_unknown_name_is_rejected(client):
+    assert client.post("/api/agent/avatar/builtin", json={"name": "robot"}).status_code == 400
+    assert client.post("/api/agent/avatar/builtin", json={"name": "cat"}).status_code == 400
+    assert client.post("/api/agent/avatar/builtin", json={}).status_code == 400
+    assert client.post("/api/agent/avatar/builtin", json={"name": 7}).status_code == 400
+    # Nothing was stored by the rejected picks.
+    assert client.get("/api/agent/avatar").json()["has_photo"] is False
+
+
+def test_builtin_then_upload_replaces_and_reports_upload(client):
+    assert client.post("/api/agent/avatar/builtin", json={"name": "rose"}).status_code == 200
+    assert _upload(client).status_code == 200
+    body = client.get("/api/agent/avatar").json()
+    assert body["source"] == "upload"
+    assert body["mime_type"] == "image/png"
+
+
+def test_upload_reports_upload_source_and_default_before_any_photo(client):
+    assert client.get("/api/agent/avatar").json()["source"] == "default"
+    assert _upload(client).status_code == 200
+    assert client.get("/api/agent/avatar").json()["source"] == "upload"
+
+
+def test_builtin_route_requires_login(tmp_path):
+    app = create_app(share_inbox_dir=tmp_path / "inbox")
+    with TestClient(app, raise_server_exceptions=False) as c:
+        assert c.post("/api/agent/avatar/builtin", json={"name": "tulip"}).status_code == 401

@@ -41,7 +41,7 @@ def test_hint_by_flag_unknown_is_none():
 @pytest.mark.parametrize(
     "flag,context",
     [
-        ("first_modules_visit", {"screen": "modules", "first_visit": True}),
+        ("first_modules_visit", {"screen": "modul", "first_visit": True}),
         ("first_approval", {"approval_requested": True}),
         ("first_memory_use", {"memory_used": True}),
         ("first_costly_task", {"task_cost_idr": 2000}),
@@ -62,7 +62,7 @@ def test_each_hint_triggers_only_on_its_own_branch(flag, context):
 @pytest.mark.parametrize(
     "flag,context",
     [
-        ("first_modules_visit", {"screen": "modules", "first_visit": False}),
+        ("first_modules_visit", {"screen": "modul", "first_visit": False}),
         ("first_modules_visit", {"screen": "chat", "first_visit": True}),
         ("first_modules_visit", {}),
         ("first_approval", {"approval_requested": False}),
@@ -87,7 +87,7 @@ def test_empty_context_triggers_nothing():
 def test_due_hints_only_unseen_triggered(make_user, test_dsn):
     u = make_user()
     create_schema(test_dsn)
-    context = {"screen": "modules", "first_visit": True, "approval_requested": True}
+    context = {"screen": "modul", "first_visit": True, "approval_requested": True}
     due = due_hints(u["user_id"], context, dsn=test_dsn)
     assert [hint["flag"] for hint in due] == ["first_modules_visit", "first_approval"]
     mark_seen(u["user_id"], "first_modules_visit", dsn=test_dsn)

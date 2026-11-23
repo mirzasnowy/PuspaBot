@@ -108,6 +108,10 @@ ROLES = (ROLE_OWNER, ROLE_MEMBER, ROLE_GUEST)
 #: invites the second person.
 MAX_ROOM_SIZE = 5
 
+#: Cap on invited agents per room (PWA inbox, 24 Nov 2026): a
+#: room is a small team, not an agent farm.
+MAX_ROOM_AGENTS = 6
+
 #: Roles that may invite others into the room (guests may not).
 INVITER_ROLES = (ROLE_OWNER, ROLE_MEMBER)
 
@@ -135,6 +139,22 @@ class RoomMember:
     joined_at: datetime
 
 
+@dataclass(frozen=True)
+class RoomAgent:
+    """One invited agent: which room, which agent, who invited it, when.
+
+    Agents are not members: a member is a user (``room_members``
+    holds UUID user ids), an agent is one of the inviter's own
+    agents (``agent_meta`` ids like ``puspa-<uuid>`` /
+    ``agen-<hex>``), so they live in ``room_agents``.
+    """
+
+    room_id: str
+    agent_id: str
+    added_by: str
+    added_at: datetime
+
+
 def _validate_uuid(value, what: str) -> str:
     try:
         return str(uuid.UUID(str(value)))
@@ -157,6 +177,15 @@ def _member_row(row) -> RoomMember:
         user_id=str(row["user_id"]),
         role=row["role"],
         joined_at=row["joined_at"],
+    )
+
+
+def _agent_row(row) -> RoomAgent:
+    return RoomAgent(
+        room_id=str(row["room_id"]),
+        agent_id=str(row["agent_id"]),
+        added_by=str(row["added_by"]),
+        added_at=row["added_at"],
     )
 
 
@@ -212,12 +241,13 @@ class RoomStore:
         return room
 
     def list_rooms_for_user(self, user_id: str) -> list[Room]:
-        """All rooms the user belongs to, oldest first."""
+        """All rooms the user belongs to, newest first (inbox order:
+        a room just created shows at the top of the chat list)."""
         user_id = _validate_uuid(user_id, "user_id")
         with _connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT r.* FROM rooms r JOIN room_members m ON m.room_id = r.id "
-                "WHERE m.user_id = %s ORDER BY r.created_at, r.id",
+                "WHERE m.user_id = %s ORDER BY r.created_at DESC, r.id DESC",
                 (user_id,),
             )
             return [_room_row(row) for row in cur.fetchall()]
@@ -370,6 +400,90 @@ class RoomStore:
             raise NotRoomOwnerError(f"user {removed_by} may not remove members of room {room_id}")
         self._remove_member_row(room_id, user_id)
 
+    # -- invited agents -------------------------------------------------
+
+    def _agent_owner(self, conn, agent_id: str) -> str | None:
+        """The user id owning ``agent_id`` (``agent_meta``), or None
+        when the agent does not exist."""
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT user_id FROM agent_meta WHERE agent_id = %s",
+                (agent_id,),
+            )
+            row = cur.fetchone()
+        return str(row["user_id"]) if row is not None else None
+
+    def add_agent(self, room_id: str, agent_id: str, *, added_by: str) -> RoomAgent:
+        """Invite one of the inviter's own agents into the room
+        (owner-only). Re-inviting an agent that is already in is a
+        no-op. Inviting a seventh agent raises ``RoomFullError``.
+
+        Raises ``ValueError`` for an empty id or an unknown agent,
+        ``NotRoomOwnerError`` when the caller is not a room owner
+        or the agent belongs to someone else.
+        """
+        if not isinstance(agent_id, str) or not agent_id.strip():
+            raise ValueError("agent_id must be a non-empty string")
+        agent_id = agent_id.strip()
+        room_id = _validate_uuid(room_id, "room_id")
+        added_by = _validate_uuid(added_by, "added_by")
+        self._require_owner(room_id, added_by)
+        with _connect(self.dsn) as conn, conn.cursor() as cur:
+            owner = self._agent_owner(conn, agent_id)
+            if owner is None:
+                raise ValueError(f"unknown agent: {agent_id!r}")
+            if owner != added_by:
+                raise NotRoomOwnerError(f"agent {agent_id!r} does not belong to this user")
+            cur.execute(
+                "SELECT agent_id FROM room_agents WHERE room_id = %s AND agent_id = %s",
+                (room_id, agent_id),
+            )
+            if cur.fetchone() is not None:
+                cur.execute(
+                    "SELECT * FROM room_agents WHERE room_id = %s AND agent_id = %s",
+                    (room_id, agent_id),
+                )
+                return _agent_row(cur.fetchone())
+            cur.execute(
+                "SELECT COUNT(*) FROM room_agents WHERE room_id = %s",
+                (room_id,),
+            )
+            if int(cur.fetchone()["count"]) >= MAX_ROOM_AGENTS:
+                raise RoomFullError(
+                    f"room {room_id} already has {MAX_ROOM_AGENTS} agents"
+                )
+            cur.execute(
+                "INSERT INTO room_agents (room_id, agent_id, added_by) "
+                "VALUES (%s, %s, %s) RETURNING *",
+                (room_id, agent_id, added_by),
+            )
+            agent = _agent_row(cur.fetchone())
+            conn.commit()
+        return agent
+
+    def remove_agent(self, room_id: str, agent_id: str, *, removed_by: str) -> None:
+        """Remove an invited agent (owner-only). Idempotent when the
+        agent is not in the room."""
+        room_id = _validate_uuid(room_id, "room_id")
+        removed_by = _validate_uuid(removed_by, "removed_by")
+        self._require_owner(room_id, removed_by)
+        with _connect(self.dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM room_agents WHERE room_id = %s AND agent_id = %s",
+                (room_id, agent_id),
+            )
+            conn.commit()
+
+    def list_agents(self, room_id: str) -> list[RoomAgent]:
+        """All agents invited into a room, by invite time."""
+        room = self.require_room(room_id)
+        with _connect(self.dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM room_agents WHERE room_id = %s ORDER BY added_at, agent_id",
+                (room.id,),
+            )
+            return [_agent_row(row) for row in cur.fetchall()]
+
     def leave_room(self, room_id: str, *, user_id: str) -> None:
         """Leave the room. The leaver's private room memories
         (visibility ``private``) and their money approvals are
@@ -483,6 +597,18 @@ def set_role(room_id: str, user_id: str, role: str, *, changed_by: str, dsn=None
 
 def remove_member(room_id: str, user_id: str, *, removed_by: str, dsn=None) -> None:
     _store(dsn).remove_member(room_id, user_id, removed_by=removed_by)
+
+
+def add_agent(room_id: str, agent_id: str, *, added_by: str, dsn=None) -> RoomAgent:
+    return _store(dsn).add_agent(room_id, agent_id, added_by=added_by)
+
+
+def remove_agent(room_id: str, agent_id: str, *, removed_by: str, dsn=None) -> None:
+    _store(dsn).remove_agent(room_id, agent_id, removed_by=removed_by)
+
+
+def list_room_agents(room_id: str, dsn=None) -> list[RoomAgent]:
+    return _store(dsn).list_agents(room_id)
 
 
 def leave_room(room_id: str, *, user_id: str, dsn=None) -> None:

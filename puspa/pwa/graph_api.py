@@ -61,7 +61,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from ..i18n.server_lines import render as render_server_line
 from ..ledger import Ledger
@@ -147,6 +147,16 @@ def _edge_dict(triple: Triple) -> dict:
         "object": triple.object,
         "sources": sorted(triple.source_ids),
     }
+
+
+def _obsidian_link(name: str) -> str:
+    """A node name safe inside an Obsidian [[wikilink]].
+
+    ``|`` starts an alias and ``]`` closes the link, so both
+    are replaced; anything else in a normalized entity name is
+    link-safe.
+    """
+    return name.replace("|", "/").replace("]", "").replace("[", "")
 
 
 class GraphViewService:
@@ -279,6 +289,63 @@ class GraphViewService:
             "limit": limit,
             "offset": offset,
         }
+
+    def export_obsidian(
+        self, user_id: str, *, agent_id: str | None = None
+    ) -> str:
+        """The whole graph as one Obsidian markdown file.
+
+        One section per node (``## [[name]]``), each fact a bullet
+        with the other end as a ``[[wikilink]]`` so every
+        relationship is a clickable link in Obsidian, both ways:
+        outgoing facts link their object, incoming facts link
+        their subject. Nodes are capped at 1000 (the file states
+        the cap when it bites); the export reads the same graph
+        the screen shows, corrections included.
+        """
+        graph = self.graph_for(user_id, agent_id=agent_id)
+        names = sorted(graph.nodes)
+        capped = len(names) > 1000
+        names = names[:1000]
+        lines = [
+            "# Puspa knowledge graph",
+            "",
+            "Exported from PuspaBot for Obsidian. Each section is one",
+            "note; [[wikilinks]] jump between notes.",
+            "",
+        ]
+        if capped:
+            lines += [
+                "Only the first 1000 nodes are included in this export.",
+                "",
+            ]
+        if not names:
+            lines += ["Graf masih kosong.", ""]
+        triples = sorted(
+            graph.edges.values(),
+            key=lambda t: (t.subject, t.relation, t.object),
+        )
+        for name in names:
+            lines.append(f"## [[{_obsidian_link(name)}]]")
+            entity = graph.nodes[name]
+            if entity.kind:
+                lines.append(f"Kind: {entity.kind}")
+            outgoing = [t for t in triples if t.subject == name]
+            incoming = [t for t in triples if t.object == name]
+            for triple in outgoing:
+                lines.append(
+                    f"- {name} — {triple.relation} — "
+                    f"[[{_obsidian_link(triple.object)}]]"
+                )
+            for triple in incoming:
+                lines.append(
+                    f"- [[{_obsidian_link(triple.subject)}]] — "
+                    f"{triple.relation} — {name}"
+                )
+            if not outgoing and not incoming:
+                lines.append("- (belum ada hubungan)")
+            lines.append("")
+        return "\n".join(lines)
 
     def inspect_node(self, user_id: str, name: str, *, agent_id: str | None = None) -> dict:
         """One node: its facts (triples) and provenance (passages)."""
@@ -717,6 +784,24 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             )
         except ValueError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.get("/api/graph/export/obsidian")
+    async def export_obsidian_endpoint(request: Request):
+        user_id = need_user(request)
+        if user_id is None:
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
+        markdown = _service(request).export_obsidian(
+            user_id, agent_id=_agent_id(request, user_id)
+        )
+        return PlainTextResponse(
+            markdown,
+            media_type="text/markdown",
+            headers={
+                "Content-Disposition": 'attachment; filename="puspa-graph.md"',
+            },
+        )
 
     @app.get("/api/graph/nodes/{name:path}")
     def node_endpoint(request: Request, name: str):

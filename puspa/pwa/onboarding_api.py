@@ -61,6 +61,13 @@ from ..i18n import DEFAULT_LOCALE
 from ..i18n.server_lines import render as render_server_line
 from ..onboarding import hints as hints_engine
 from ..onboarding import onboarding as onboarding_core
+from ..persona.switcher import (
+    create_persona,
+    persona_dir,
+    set_active_persona,
+    slugify_name,
+    update_persona,
+)
 
 __all__ = [
     "dismiss_hint",
@@ -166,6 +173,109 @@ def _json_body(request_body) -> dict:
     return request_body
 
 
+#: What Puspa is used for (onboarding step 1): fixed choices, the
+#: user picks one or more. The ids are stable; the labels are what
+#: the screen shows and what the generated agent file records.
+PURPOSES = (
+    ("price_compare", "Bandingkan harga", "Cari harga termurah di Tokopedia, Shopee, dan Blibli."),
+    ("pay_bills", "Bayar tagihan", "Bayar PLN, PDAM, pulsa, dan paket data tepat waktu."),
+    ("research", "Riset & belajar", "Kumpulkan sumber dan susun ringkasan untuk skripsi atau kerja."),
+    ("organize", "Atur jadwal & tugas", "Ingatkan deadline dan rapikan daftar tugas harian."),
+    ("create", "Bikin konten & desain", "Susun draf tulisan dan mockup desain bersama tim agen."),
+)
+
+#: What the agent uses and accesses (onboarding step 3). This is
+#: the transparency list: each source is named in plain words,
+#: and the generated USER.md records exactly the sources the user
+#: confirmed. Passwords and OTPs are never on this list: the agent
+#: never reads sensitive fields.
+DATA_SOURCES = (
+    ("chat", "Pesan chat", "Apa yang kamu tulis ke Puspa di chat."),
+    ("memory", "Memori & fakta", "Fakta yang kamu simpan atau Puspa pelajari; bisa diedit di Edit Pengetahuan."),
+    ("connectors", "Konektor yang kamu sambungkan", "Gmail, Drive, atau Kalender — hanya yang kamu pilih di onboarding atau di layar Konektor."),
+    ("receipts", "Struk & tagihan", "Foto struk dan tagihan yang kamu minta dicek atau dibayar."),
+)
+
+_STYLE_LINES = {
+    "santai": "Bahasa sehari-hari, slang, singkat, hangat.",
+    "rapi": "Bahasa baku yang sopan, kalimat lengkap.",
+    "campur": "Campur bahasa Indonesia dan Inggris, informal.",
+}
+
+
+def build_agent_files(
+    *,
+    agent_name: str,
+    user_name: str,
+    style: str,
+    purposes: list[str],
+    needs: str,
+    data_sources: list[str],
+) -> dict[str, str]:
+    """Render the agent's three Markdown files from onboarding answers.
+
+    Pure function, no disk writes: the caller saves the result with
+    ``create_persona`` / ``update_persona`` (the V2-25 persona
+    files, ``SOUL.md`` / ``IDENTITY.md`` / ``USER.md``). Every
+    answer the user gave appears in the files verbatim, so the
+    generated file can be checked against the answers.
+    """
+    name = agent_name.strip() or "Puspa"
+    user = user_name.strip()
+    style_line = _STYLE_LINES.get(style, _STYLE_LINES["santai"])
+    purpose_labels = [
+        label for pid, label, _ in PURPOSES if pid in purposes
+    ]
+    source_labels = [
+        label for sid, label, _ in DATA_SOURCES if sid in data_sources
+    ]
+    purposes_md = (
+        "\n".join(f"- {label}" for label in purpose_labels)
+        if purpose_labels
+        else "- (belum dipilih)"
+    )
+    sources_md = (
+        "\n".join(f"- {label}" for label in source_labels)
+        if source_labels
+        else "- (belum ada)"
+    )
+    needs_md = needs.strip() or "(belum ditulis)"
+    soul = f"""# Soul
+
+You are {name}, a personal AI agent. Be warm, direct, and plain:
+short sentences, everyday words, no jargon unless the user asks
+for it. Say what you did and what is left, with real counts,
+never a guessed percentage. If you do not know something, say so
+instead of guessing.
+
+Gaya bicara: {style_line}
+
+Kegunaan utama (dipilih saat onboarding):
+{purposes_md}
+
+Kebutuhan pengguna:
+{needs_md}
+
+Selalu minta persetujuan sebelum membayar apa pun.
+"""
+    identity = f"""# Identity
+
+Name: {name}
+
+You are {name}, a personal AI agent the user runs themselves.
+"""
+    user_md = f"""# About the user
+
+- Name: {user or "(fill in what to call you)"}
+- Language: Bahasa Indonesia
+- Notes: {needs_md}
+
+Data yang dipakai agen (dikonfirmasi saat onboarding):
+{sources_md}
+"""
+    return {"soul": soul, "identity": identity, "user": user_md}
+
+
 def register_routes(app: FastAPI, need_user) -> FastAPI:
     """Mount the onboarding + hints routes on ``app``."""
 
@@ -245,6 +355,71 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             return first_task(
                 user_id, data.get("event_type"), data.get("target"), dsn=app.state.dsn
             )
+        except (ValueError, KeyError) as exc:
+            return _bad_request(exc)
+
+    @app.post("/api/onboarding/agent-file")
+    async def onboarding_agent_file_endpoint(request: Request):
+        """Auto-write the agent Markdown files from onboarding answers.
+
+        Body: ``{"agent_name", "user_name", "style", "purposes"[],
+        "needs", "data_sources"[]}``. The three files (SOUL.md,
+        IDENTITY.md, USER.md) are written with the V2-25 persona
+        mechanism and the new persona is activated, so the agent
+        reads them from the next turn. Idempotent: re-running with
+        the same agent name updates the same persona instead of
+        failing. Returns the file texts, so the screen can show
+        exactly what was written.
+        """
+        user_id, error = _require_user(request)
+        if error is not None:
+            return error
+        try:
+            data = _json_body(await request.json())
+            agent_name = data.get("agent_name")
+            if not isinstance(agent_name, str) or not agent_name.strip():
+                raise ValueError("agent_name harus string tak kosong")
+            style = data.get("style") or "santai"
+            if style not in _STYLE_LINES:
+                raise ValueError("style harus santai, rapi, atau campur")
+            purposes = data.get("purposes") or []
+            needs = data.get("needs") or ""
+            sources = data.get("data_sources") or []
+            if not isinstance(purposes, list) or not isinstance(sources, list):
+                raise ValueError("purposes dan data_sources harus list")
+            if not isinstance(needs, str):
+                raise ValueError("needs harus string")
+            files = build_agent_files(
+                agent_name=agent_name,
+                user_name=data.get("user_name") or "",
+                style=style,
+                purposes=[str(p) for p in purposes],
+                needs=needs,
+                data_sources=[str(s) for s in sources],
+            )
+            home = getattr(request.app.state, "persona_home", None)
+            slug = slugify_name(agent_name)
+            if persona_dir(home, slug).exists():
+                record = update_persona(
+                    home,
+                    slug,
+                    name=agent_name.strip(),
+                    soul=files["soul"],
+                    identity=files["identity"],
+                    user=files["user"],
+                    style=style,
+                )
+            else:
+                record = create_persona(
+                    home,
+                    agent_name.strip(),
+                    soul=files["soul"],
+                    identity=files["identity"],
+                    user=files["user"],
+                    style=style,
+                )
+            set_active_persona(home, slug)
+            return {**record, **files}
         except (ValueError, KeyError) as exc:
             return _bad_request(exc)
 

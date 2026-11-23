@@ -137,12 +137,52 @@ paths:
             application/json:
               schema:
                 $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/agent/avatar/builtin:
+    post:
+      tags: [agents]
+      summary: Pick a built-in flower avatar
+      description: |
+        Copies one of the built-in flower avatars shipped with
+        the PWA (tulip, sunflower, rose, sakura) into the user's
+        avatar dir as the profile photo, replacing any upload.
+        400 for an unknown name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  enum: [tulip, sunflower, rose, sakura]
+                  description: Built-in flower avatar name
+      responses:
+        "200":
+          description: Built-in avatar stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvatarStatus"
+        "400":
+          description: Unknown builtin avatar name
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
 components:
   schemas:
     AvatarStatus:
       type: object
       description: Whether a custom agent photo is set, and where to fetch it.
-      required: [ok, has_photo, photo_url, updated_at, mime_type]
+      required: [ok, has_photo, photo_url, updated_at, mime_type, source]
       properties:
         ok:
           type: boolean
@@ -161,6 +201,9 @@ components:
           type: string
           nullable: true
           description: image/jpeg, image/png, image/webp, or image/gif while a photo is set
+        source:
+          type: string
+          description: '"default" (no photo), "upload" (user-uploaded photo), or "builtin:<name>" (a built-in flower avatar)'
     AvatarMissing:
       type: object
       description: No agent photo is set yet.
@@ -181,3 +224,6 @@ components:
           type: boolean
         has_photo:
           type: boolean
+        source:
+          type: string
+          description: '"default" once the photo is gone'

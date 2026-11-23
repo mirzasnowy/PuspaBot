@@ -639,6 +639,14 @@ def create_app(
         token = lite_mode.decode_trial_cookie(request.cookies.get(lite_mode.TRIAL_COOKIE))
         return lite_mode.check_trial(user_id, secret=app.state.trial_secret, token=token)
 
+    @app.get("/api/trial/status")
+    def trial_status_endpoint(request: Request):
+        """Trial state as JSON (Space port: Trial screen)."""
+        user_id = need_user(request)
+        if user_id is None:
+            return JSONResponse({"error": "belum masuk"}, status_code=401)
+        return _trial_state_for(request, user_id).to_dict()
+
     @app.get("/trial", response_class=HTMLResponse)
     def trial_page(request: Request):
         user_id = need_user(request)
@@ -957,9 +965,22 @@ def create_app(
             )
         return {"messages": list(app.state.chat[user_id])}
 
+    @app.get("/api/agen")
+    def api_list_agents(request: Request):
+        """The user's agents, Puspa first (the inbox agent picker
+        and the create-group invite list read this)."""
+        user_id = need_user(request)
+        if user_id is None:
+            return JSONResponse(
+                {"error": render_server_line("error.not_logged_in")}, status_code=401
+            )
+        from puspa.runtime.agents import list_agents
+
+        return {"agents": list_agents(user_id, dsn=app.state.dsn)}
+
     @app.post("/api/agen")
     async def api_create_agent(
-        request: Request, name: str = Form(...), role: str = Form(""), purpose: str = Form("")
+        request: Request, name: str = Form(...), role: str = Form(""), purpose: str = Form(""), avatar: str = Form("default")
     ):
         user_id = need_user(request)
         if user_id is None:
@@ -969,7 +990,7 @@ def create_app(
         from puspa.runtime.agents import create_agent
 
         try:
-            return create_agent(user_id, name, role, purpose, dsn=app.state.dsn)
+            return create_agent(user_id, name, role, purpose, avatar=avatar, dsn=app.state.dsn)
         except Exception as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
 
@@ -1323,6 +1344,10 @@ def create_app(
     # Multiple switchable personas (one active at a time; the
     # turn loop reads the active one fresh every turn).
     personas_api.register_routes(app, need_user)
+    # Space port: the real billing tiers for the Paket screen.
+    from puspa.pwa import billing_api
+
+    billing_api.register_routes(app, need_user)
     from puspa.pwa import rooms_api
 
     rooms_api.register_routes(app, need_user)

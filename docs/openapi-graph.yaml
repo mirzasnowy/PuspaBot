@@ -66,6 +66,32 @@ paths:
             application/json:
               schema:
                 $ref: "./openapi-pwa.yaml#/components/schemas/Error"
+  /api/graph/export/obsidian:
+    get:
+      tags: [graph]
+      summary: Export the knowledge graph as Obsidian markdown
+      description: |
+        One markdown file for Obsidian: one section per node
+        (`## [[name]]`), each fact a bullet with the other end as
+        a `[[wikilink]]`, so every relationship is a clickable
+        link in Obsidian, both ways. Reads the same graph the
+        screen shows (seeded from episodic memory, then the
+        user's ledger corrections replayed). Capped at 1000
+        nodes; the file says so when the cap bites. Downloads
+        as `puspa-graph.md`.
+      responses:
+        "200":
+          description: Obsidian markdown file
+          content:
+            text/markdown:
+              schema:
+                type: string
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "./openapi-pwa.yaml#/components/schemas/Error"
   /api/graph/nodes/{name}:
     get:
       tags: [graph]

@@ -15,7 +15,7 @@ only decides which unseen hints that branch makes due.
 Trigger branches (``context`` keys, all optional):
 
 - ``screen`` + ``first_visit``: the screen the user just opened for
-  the first time this install (e.g. ``"modules"``).
+  the first time this install (e.g. ``"modul"``).
 - ``approval_requested``: the user just received their first
   approval request.
 - ``memory_used``: the user just used memory for the first time
@@ -72,7 +72,7 @@ HINTS: tuple[Hint, ...] = (
         trigger="first_modules_visit",
         title=render_server_line("hint.first_modules_visit.title"),
         body=render_server_line("hint.first_modules_visit.body"),
-        screen="modules",
+        screen="modul",
         action_label=render_server_line("hint.first_modules_visit.action_label"),
     ),
     Hint(
@@ -80,7 +80,7 @@ HINTS: tuple[Hint, ...] = (
         trigger="first_approval",
         title=render_server_line("hint.first_approval.title"),
         body=render_server_line("hint.first_approval.body"),
-        screen="tasks",
+        screen="tugas",
         action_label=render_server_line("hint.first_approval.action_label"),
     ),
     Hint(
@@ -88,7 +88,7 @@ HINTS: tuple[Hint, ...] = (
         trigger="first_memory_use",
         title=render_server_line("hint.first_memory_use.title"),
         body=render_server_line("hint.first_memory_use.body"),
-        screen="memory",
+        screen="memori",
         action_label=render_server_line("hint.first_memory_use.action_label"),
     ),
     Hint(
@@ -179,7 +179,7 @@ def hint_triggered(hint: Hint, context: dict | None) -> bool:
     """
     ctx = context or {}
     if hint.trigger == "first_modules_visit":
-        return ctx.get("screen") == "modules" and bool(ctx.get("first_visit"))
+        return ctx.get("screen") == "modul" and bool(ctx.get("first_visit"))
     if hint.trigger == "first_approval":
         return bool(ctx.get("approval_requested"))
     if hint.trigger == "first_memory_use":

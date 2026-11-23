@@ -159,11 +159,11 @@ def test_hints_due_then_seen(make_user, test_dsn):
     user_id = make_user()["user_id"]
     create_hint_schema(test_dsn)
     with TestClient(_build_app(user_id, test_dsn)) as client:
-        resp = client.get("/api/onboarding/hints?screen=modules&first_visit=true")
+        resp = client.get("/api/onboarding/hints?screen=modul&first_visit=true")
         assert resp.status_code == 200
         hints = resp.json()["hints"]
         assert [hint["flag"] for hint in hints] == ["first_modules_visit"]
-        assert hints[0]["screen"] == "modules"
+        assert hints[0]["screen"] == "modul"
         assert "http" not in hints[0]["body"]
 
         # No branch reached: no hints due.
@@ -177,7 +177,7 @@ def test_hints_due_then_seen(make_user, test_dsn):
             "seen": True,
         }
         # Seen once, never due again.
-        assert client.get("/api/onboarding/hints?screen=modules&first_visit=true").json() == {
+        assert client.get("/api/onboarding/hints?screen=modul&first_visit=true").json() == {
             "hints": []
         }
         # Unknown flag is a 400, not a silent no-op.
