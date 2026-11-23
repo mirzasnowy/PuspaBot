@@ -198,8 +198,7 @@ fn create_shortcuts(dir: &Path) -> io::Result<()> {
     use mslnk::ShellLink;
     let target = dir.join(APP_EXE);
     let target_str = target.to_string_lossy().into_owned();
-    let mut link = ShellLink::new(&target_str)
-        .map_err(|e| io::Error::other(e.to_string()))?;
+    let mut link = ShellLink::new(&target_str).map_err(|e| io::Error::other(e.to_string()))?;
     link.set_working_dir(Some(dir.to_string_lossy().into_owned()));
     link.set_icon_location(Some(format!("{target_str},0")));
     if let Some(menu) = start_menu_dir() {
