@@ -29,9 +29,17 @@ RequestExecutionLevel admin
 ; Icon "puspa.ico"
 ; UninstallIcon "puspa.ico"
 
+; ROOTDIR is the apps/desktop directory; the CI call passes it as
+; an absolute path (-DROOTDIR=...), otherwise it is the script's
+; parent directory. The binary path is absolute in CI so the File
+; lookup cannot depend on relative-path resolution.
+!ifndef ROOTDIR
+  !define ROOTDIR ".."
+!endif
+
 Section "Install"
   SetOutPath "$INSTDIR"
-  File "../target/release/${EXE}"
+  File "${ROOTDIR}\target\release\${EXE}"
   WriteUninstaller "$INSTDIR\uninstall.exe"
   CreateDirectory "$SMPROGRAMS\${APPNAME}"
   CreateShortcut "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk" "$INSTDIR\${EXE}"

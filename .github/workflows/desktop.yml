@@ -113,7 +113,7 @@ jobs:
         # read without the full job log.
         shell: cmd
         run: |
-          "C:\Program Files (x86)\NSIS\makensis.exe" %GITHUB_WORKSPACE%\apps\desktop\installer\windows.nsi > makensis.log 2>&1
+          "C:\Program Files (x86)\NSIS\makensis.exe" -DROOTDIR=%GITHUB_WORKSPACE%\apps\desktop %GITHUB_WORKSPACE%\apps\desktop\installer\windows.nsi > makensis.log 2>&1
           set MAKENSIS_EXIT=%ERRORLEVEL%
           type makensis.log
           exit /b %MAKENSIS_EXIT%
