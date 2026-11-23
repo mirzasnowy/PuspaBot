@@ -137,6 +137,13 @@ fn main() -> iced::Result {
         .theme(|_: &App| puspa_theme())
         .window(iced::window::Settings {
             size: iced::Size::new(1280.0, 800.0),
+            // App icon from the official brand asset
+            // (puspabot-assets/brand/puspa_app_icon_reference.png).
+            icon: iced::window::icon::from_file_data(
+                include_bytes!("../assets/puspa-icon.png"),
+                None,
+            )
+            .ok(),
             ..iced::window::Settings::default()
         })
         .run_with(App::new)
