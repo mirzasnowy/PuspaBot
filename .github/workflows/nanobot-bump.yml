@@ -102,7 +102,7 @@ jobs:
 
       - name: Open the bump pull request
         if: steps.check.outputs.code == '10'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: chore/nanobot-bump-${{ github.run_number }}
           commit-message: "chore(chassis): bump nanobot pin"
