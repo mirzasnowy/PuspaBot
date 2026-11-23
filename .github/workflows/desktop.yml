@@ -94,13 +94,11 @@ jobs:
           Write-Host "all installer inputs present"
 
       - name: NSIS installer
-        # Call makensis by its full path: the bare name still failed
-        # in under a second even with the directory on PATH, so PATH
-        # resolution is not trusted here.
+        # PowerShell kept failing this call in under a second with no
+        # usable error, so run makensis under cmd instead.
+        shell: cmd
         run: |
-          $makensis = "C:\Program Files (x86)\NSIS\makensis.exe"
-          if (-not (Test-Path $makensis)) { Write-Error "makensis not found at $makensis"; exit 1 }
-          & $makensis -DOUTDIR=${{ github.workspace }}\installer-out ${{ github.workspace }}\apps\desktop\installer\windows.nsi
+          "C:\Program Files (x86)\NSIS\makensis.exe" -DOUTDIR=%GITHUB_WORKSPACE%\installer-out %GITHUB_WORKSPACE%\apps\desktop\installer\windows.nsi
       - name: upload installer
         uses: actions/upload-artifact@v4
         with:
