@@ -84,8 +84,17 @@ jobs:
           Add-Content $env:GITHUB_PATH "C:\Program Files (x86)\NSIS"
           & $makensis /VERSION
 
+      - name: Verify installer inputs
+        # Fail here with a clear name when an input is missing, so a
+        # later makensis failure cannot be a missing file in disguise.
+        run: |
+          foreach ($p in @("apps\desktop\target\release\puspabot.exe", "apps\desktop\installer\windows.nsi", "apps\desktop\installer\puspa.ico", "installer-out")) {
+            if (-not (Test-Path $p)) { Write-Error "missing installer input: $p"; exit 1 }
+          }
+          Write-Host "all installer inputs present"
+
       - name: NSIS installer
-        run: makensis /DOUTDIR=${{ github.workspace }}\installer-out apps\desktop\installer\windows.nsi
+        run: makensis -V4 /DOUTDIR=${{ github.workspace }}\installer-out ${{ github.workspace }}\apps\desktop\installer\windows.nsi
       - name: upload installer
         uses: actions/upload-artifact@v4
         with:
