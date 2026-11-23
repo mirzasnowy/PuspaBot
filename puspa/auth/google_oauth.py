@@ -19,8 +19,12 @@ Keamanan:
 - `state` acak per login (lawan CSRF); pemanggil wajib memeriksa
   state yang kembali sama dengan yang dikirim.
 - `code_verifier` acak 43-128 karakter, `code_challenge` S256.
-- Client secret + token TIDAK PERNAH ditulis ke file/log — secret
-  hanya dari env `PUSPA_GOOGLE_CLIENT_SECRET`.
+- Client secret TIDAK PERNAH ditulis ke log. Asalnya: env
+  `PUSPA_GOOGLE_CLIENT_SECRET` dulu, kalau kosong baru file
+  konfigurasi milik user (`%APPDATA%\\Puspa\\google-oauth.json` di
+  Windows, `~/.config/puspabot/google-oauth.json` di Unix) yang
+  ditulis layar Pengaturan aplikasi desktop, mode 0600 di Unix.
+  Backend sendiri tidak pernah menulis secret ke file.
 - Akun Google-only: baris `pengguna` dibuat dengan hash kata sandi
   acak yang tidak diketahui siapa pun (kolom `password_hash` NOT NULL
   di skema Fase 0); login kata sandi tidak dipakai lagi.
@@ -33,6 +37,7 @@ import hashlib
 import json
 import os
 import secrets
+from pathlib import Path
 
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
@@ -50,6 +55,76 @@ ISSUER = "https://accounts.google.com"
 LOGIN_SCOPES = ("openid", "email", "profile")
 
 VAULT_NAME = "google_oauth"
+
+#: Env override for the OAuth config file (tests and power users).
+OAUTH_CONFIG_FILE_ENV = "PUSPA_OAUTH_CONFIG_FILE"
+
+
+def oauth_config_path() -> Path:
+    """The user-owned OAuth config file.
+
+    `%APPDATA%\\Puspa\\google-oauth.json` on Windows,
+    `$XDG_CONFIG_HOME/puspabot/google-oauth.json` (else
+    `~/.config/puspabot/google-oauth.json`) elsewhere. The desktop
+    app's settings screen writes it; the backend only reads it.
+    """
+    override = os.environ.get(OAUTH_CONFIG_FILE_ENV, "")
+    if override:
+        return Path(override)
+    if os.name == "nt":
+        return Path(os.environ.get("APPDATA", ".")) / "Puspa" / "google-oauth.json"
+    xdg = os.environ.get("XDG_CONFIG_HOME", "")
+    base = Path(xdg) if xdg else Path.home() / ".config"
+    return base / "puspabot" / "google-oauth.json"
+
+
+def _read_oauth_config_file() -> dict:
+    """The config file as a dict, or {} when it is missing, corrupt,
+    or not a JSON object. Never raises: a bad file is the same as
+    no file, never a crash at login time."""
+    try:
+        raw = oauth_config_path().read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def google_client_id() -> str:
+    """Client ID: env `PUSPA_GOOGLE_CLIENT_ID` wins, else the
+    user-owned config file. Empty when neither has one."""
+    return os.environ.get("PUSPA_GOOGLE_CLIENT_ID", "") or str(
+        _read_oauth_config_file().get("client_id", "") or ""
+    )
+
+
+def google_client_secret():
+    """Client secret: env `PUSPA_GOOGLE_CLIENT_SECRET` wins, else
+    the user-owned config file. Never written to a log."""
+    secret = os.environ.get("PUSPA_GOOGLE_CLIENT_SECRET") or str(
+        _read_oauth_config_file().get("client_secret", "") or ""
+    )
+    if not secret:
+        raise OAuthError(
+            "Login Google belum dikonfigurasi: tidak ada client secret "
+            "di env atau di file konfigurasi"
+        )
+    return secret
+
+
+def google_oauth_configured() -> bool:
+    """True when a Google login can start: client ID + secret both
+    present, from env or the config file."""
+    if not google_client_id():
+        return False
+    try:
+        google_client_secret()
+    except OAuthError:
+        return False
+    return True
 
 
 class OAuthError(Exception):
@@ -360,10 +435,3 @@ def complete_google_login(
         "new": new,
     }
 
-
-def google_client_secret():
-    """Client secret Google hanya dari env (tidak pernah dari file)."""
-    secret = os.environ.get("PUSPA_GOOGLE_CLIENT_SECRET")
-    if not secret:
-        raise OAuthError("PUSPA_GOOGLE_CLIENT_SECRET tidak diset")
-    return secret

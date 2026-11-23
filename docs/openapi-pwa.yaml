@@ -194,6 +194,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/desktop/config:
+    get:
+      tags: [auth]
+      summary: Check whether Google login is configured
+      description: Tells the native desktop app whether a Google login can start (client ID + secret present, from env or the user-owned config file), so the app can show a human message instead of opening the browser to an error. No auth needed: the local backend only runs on localhost.
+      responses:
+        "200":
+          description: Configuration status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [google_configured]
+                properties:
+                  google_configured:
+                    type: boolean
+                    description: True when a Google login can start
   /api/chat/attachments/{attachment_id}:
     get:
       tags: [chat]
