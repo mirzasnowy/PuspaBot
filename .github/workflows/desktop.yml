@@ -94,11 +94,14 @@ jobs:
           Write-Host "all installer inputs present"
 
       - name: NSIS installer
+        # No -DOUTDIR: the define kept failing the call in under a
+        # second, so the script's own fallback OUTDIR is used
+        # (installer-out under the checkout root, created above).
         # Capture makensis output to a log file so a failure can be
         # read without the full job log.
         shell: cmd
         run: |
-          "C:\Program Files (x86)\NSIS\makensis.exe" -DOUTDIR=%GITHUB_WORKSPACE%\installer-out %GITHUB_WORKSPACE%\apps\desktop\installer\windows.nsi > makensis.log 2>&1
+          "C:\Program Files (x86)\NSIS\makensis.exe" %GITHUB_WORKSPACE%\apps\desktop\installer\windows.nsi > makensis.log 2>&1
           set MAKENSIS_EXIT=%ERRORLEVEL%
           type makensis.log
           exit /b %MAKENSIS_EXIT%
@@ -110,22 +113,6 @@ jobs:
           name: makensis-log
           path: makensis.log
           if-no-files-found: error
-
-      - name: Post makensis log on failure
-        # The log cannot be downloaded from the dev VM (the artifact
-        # host is unreachable there), so surface it as a PR comment
-        # where it can be read. Remove this step once the installer
-        # is green.
-        if: failure()
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $log = Get-Content makensis.log -Raw -ErrorAction SilentlyContinue
-          if (-not $log) { $log = "(makensis.log missing or empty)" }
-          $body = "makensis failed on the COW-10 PR (run $env:GITHUB_RUN_ID). Log:`n$log"
-          $payload = @{ body = $body } | ConvertTo-Json
-          Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/mirzasnowy/PuspaBot/issues/225/comments" -Headers @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json" } -Body $payload -ContentType "application/json"
       - name: upload installer
         uses: actions/upload-artifact@v4
         with:
