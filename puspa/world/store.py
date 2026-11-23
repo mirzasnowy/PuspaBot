@@ -113,7 +113,7 @@ _STATE_KEYS = (
 )
 
 
-def _resolve_dsn(dsn: str | None) -> str:
+def _resolve_dsn(dsn: str | None) -> str | None:
     return dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
 
 

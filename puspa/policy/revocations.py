@@ -88,7 +88,7 @@ class RevocationList:
 
     # -- connections ----------------------------------------------------
 
-    def _connect(self, *, for_read: bool = False) -> _db_Connection[dict[str, Any]]:
+    def _connect(self, *, for_read: bool = False) -> _db_Connection:
         conn = _db_connect(self.dsn, row_factory=dict_row)
         if for_read and self.read_role is not None:
             with conn.cursor() as cur:

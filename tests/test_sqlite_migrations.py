@@ -68,7 +68,9 @@ def test_rollback_and_reapply_last_migration(tmp_path):
 
 def _split_top_level(body: str) -> list[str]:
     """Split a CREATE TABLE body on top-level commas only."""
-    parts, depth, current = [], 0, []
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
     for char in body:
         if char == "(":
             depth += 1

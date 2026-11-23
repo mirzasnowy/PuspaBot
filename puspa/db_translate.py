@@ -457,9 +457,10 @@ def translate_sql(
                     out.append(_now_with_modifier(interval.group(1), interval.group(2)))
                     i = interval.end()
                     continue
-                if _RE_NOW.match(sql, i):
+                now_match = _RE_NOW.match(sql, i)
+                if now_match:
                     out.append(_NOW_EXPR)
-                    i = _RE_NOW.match(sql, i).end()
+                    i = now_match.end()
                     continue
             if lower == "current_timestamp":
                 interval = _RE_CURRENT_TS_INTERVAL.match(sql, i)
@@ -468,11 +469,13 @@ def translate_sql(
                     i = interval.end()
                     continue
                 match = _RE_CURRENT_TS.match(sql, i)
+                assert match is not None  # lower is "current_timestamp", so it matches
                 out.append(_NOW_EXPR)
                 i = match.end()
                 continue
             if lower == "current_date":
                 match = _RE_CURRENT_DATE.match(sql, i)
+                assert match is not None  # lower is "current_date", so it matches
                 out.append("(date('now'))")
                 i = match.end()
                 continue

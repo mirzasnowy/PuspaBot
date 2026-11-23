@@ -577,7 +577,7 @@ class TaskRunner:
         return list(self._event)
 
 
-def claim_next_task(dsn: str, agent_id: str) -> dict | None:
+def claim_next_task(dsn: str | None, agent_id: str) -> dict | None:
     """Ambil satu tugas `diterima` lewat klaim atomik.
 
     Kembalikan baris tugas (dict) atau None bila antrean kosong.

@@ -110,7 +110,7 @@ class ReplayError(Exception):
         self.status = status
 
 
-def _require_owner(user_id: str, agent_id: str, *, dsn: str) -> None:
+def _require_owner(user_id: str, agent_id: str, *, dsn: str | None) -> None:
     """403 when ``agent_id`` is not one of ``user_id``'s agents."""
     if not isinstance(user_id, str) or not user_id:
         raise ValueError("user_id must be a non-empty string")

@@ -50,6 +50,7 @@ import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from types import ModuleType
 
 from .db_translate import split_statements, translate_sql
 
@@ -60,7 +61,7 @@ try:
     # stands alone and only the SQLite path is usable then.
     from psycopg.types.json import Jsonb as _PgJsonb
 except ImportError:  # pragma: no cover - psycopg is installed here
-    _PgJsonb = None
+    _PgJsonb = None  # type: ignore[misc, assignment]
 
 #: Environment variable holding the desktop database file path.
 SQLITE_PATH_ENV = "PUSPA_SQLITE_PATH"
@@ -140,7 +141,10 @@ def parse_timestamp(value):
     return value
 
 
-class Jsonb(_PgJsonb if _PgJsonb is not None else object):
+_BaseJsonb: type = _PgJsonb if _PgJsonb is not None else object
+
+
+class Jsonb(_BaseJsonb):
     """A JSON value bound to a JSONB column (psycopg's Jsonb).
 
     Subclasses psycopg's Jsonb so a raw psycopg connection on the
@@ -199,6 +203,8 @@ dict_row = _DictRow()
 #: (``except (ValueError, *_db_Error)``) or give it its own
 #: clause. And never raise an alias: a tuple is not callable;
 #: raise the concrete error the backend would really raise.
+_psycopg: ModuleType | None
+_pg_errors: ModuleType | None
 try:
     import psycopg as _psycopg
     import psycopg.errors as _pg_errors
@@ -601,7 +607,9 @@ class Connection:
 
     @autocommit.setter
     def autocommit(self, value: bool):
-        self._raw.isolation_level = None if value else ""
+        # typeshed omits "" (sqlite3's default: legacy implicit
+        # transactions), so this assignment needs an ignore.
+        self._raw.isolation_level = None if value else ""  # type: ignore[assignment]
 
     def begin_immediate(self):
         """Take the write lock now (D-SQLite-7).
@@ -652,7 +660,9 @@ def _sqlite_connect(path: str, autocommit: bool, row_factory=None) -> Connection
         path,
         detect_types=sqlite3.PARSE_DECLTYPES,
         timeout=30.0,
-        isolation_level=None if autocommit else "",
+        # "" is sqlite3's default (legacy implicit transactions);
+        # typeshed's literal omits it, see the autocommit setter.
+        isolation_level=None if autocommit else "",  # type: ignore[arg-type]
         check_same_thread=False,
     )
     raw.execute("PRAGMA journal_mode=WAL")

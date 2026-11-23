@@ -149,9 +149,10 @@ def create_app(
     # COW-10: one-time desktop login codes: code -> (user_id,
     # expires_at). Minted by the Google callback for a desktop
     # login, consumed once by POST /api/desktop/session.
-    app.state.desktop_codes: dict[str, tuple[str, float]] = {}
     # Anotasi tipe tidak bisa ditulis pada atribut non-self
     # (app.state.*), jadi tipenya dicatat di variabel lokal dulu.
+    desktop_codes: dict[str, tuple[str, float]] = {}
+    app.state.desktop_codes = desktop_codes
     chat_state: dict[str, list[dict]] = defaultdict(list)
     app.state.chat = chat_state
     app.state.event = []
