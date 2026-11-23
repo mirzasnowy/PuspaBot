@@ -3,11 +3,11 @@
 ; (apps/desktop/target/release/puspabot.exe). The Python backend is
 ; NOT bundled: it is downloaded at first run by the app itself.
 ; v1 database: the full SQLite port (Nero, 23 Nov ~09:52 WIB);
-; the installer installs no database — the backend creates its
+; the installer installs no database - the backend creates its
 ; SQLite file on first run.
 ; NOTE: makensis resolves relative paths from the directory of
 ; this script (apps/desktop/installer/), NOT from the directory
-; makensis was started in — so the paths below are relative to
+; makensis was started in - so the paths below are relative to
 ; this script's own directory.
 
 !define APPNAME "PuspaBot"

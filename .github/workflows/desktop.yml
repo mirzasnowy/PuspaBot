@@ -94,11 +94,22 @@ jobs:
           Write-Host "all installer inputs present"
 
       - name: NSIS installer
-        # PowerShell kept failing this call in under a second with no
-        # usable error, so run makensis under cmd instead.
+        # Capture makensis output to a log file so a failure can be
+        # read without the full job log.
         shell: cmd
         run: |
-          "C:\Program Files (x86)\NSIS\makensis.exe" -DOUTDIR=%GITHUB_WORKSPACE%\installer-out %GITHUB_WORKSPACE%\apps\desktop\installer\windows.nsi
+          "C:\Program Files (x86)\NSIS\makensis.exe" -DOUTDIR=%GITHUB_WORKSPACE%\installer-out %GITHUB_WORKSPACE%\apps\desktop\installer\windows.nsi > makensis.log 2>&1
+          set MAKENSIS_EXIT=%ERRORLEVEL%
+          type makensis.log
+          exit /b %MAKENSIS_EXIT%
+
+      - name: Upload makensis log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: makensis-log
+          path: makensis.log
+          if-no-files-found: error
       - name: upload installer
         uses: actions/upload-artifact@v4
         with:
