@@ -5,7 +5,8 @@
 #   clippy   — cargo clippy -- -D warnings
 #   test     — cargo test (unit tests: lifecycle manager, API client)
 #   build    — cargo build --release on windows-latest, then NSIS
-#              installer (makensis is preinstalled on the runner).
+#              installer (NSIS is installed by the workflow when
+#              missing; it is not preinstalled on the runner).
 # The Windows installer cannot be built on the Linux dev VM; CI is
 # the only place it is produced. The database decision for v1 is
 # made (full SQLite port, Nero 23 Nov ~09:52 WIB); the installer
@@ -69,11 +70,19 @@ jobs:
         # no installer-out it fails with "Can't open output file".
         run: New-Item -ItemType Directory -Force -Path installer-out
 
-      - name: Add NSIS to PATH
-        # NSIS is preinstalled on the runner, but its directory is
-        # not on PATH in later steps (choco installs do not propagate
-        # PATH across steps), so `makensis` fails as not found.
-        run: Add-Content $env:GITHUB_PATH "C:\Program Files (x86)\NSIS"
+      - name: Install NSIS
+        # windows-latest runners do not pre-install NSIS: without
+        # this step `makensis` is not found and the installer step
+        # fails in one second. Install only when missing, then put
+        # it on PATH for the next step and prove it runs.
+        run: |
+          $makensis = "C:\Program Files (x86)\NSIS\makensis.exe"
+          if (-not (Test-Path $makensis)) {
+            choco install nsis -y --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          Add-Content $env:GITHUB_PATH "C:\Program Files (x86)\NSIS"
+          & $makensis /VERSION
 
       - name: NSIS installer
         run: makensis /DOUTDIR=${{ github.workspace }}\installer-out apps\desktop\installer\windows.nsi
