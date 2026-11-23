@@ -93,6 +93,18 @@ jobs:
           }
           Write-Host "all installer inputs present"
 
+      - name: Smoke-test makensis
+        # Bisect the 0-second failure: a trivial script with no File,
+        # no Icon and no defines. If this fails too, makensis itself
+        # (or its invocation) is broken; if it passes, windows.nsi
+        # is the problem.
+        shell: cmd
+        run: |
+          echo OutFile "installer-out\smoke-test.exe" > smoke.nsi
+          echo Section >> smoke.nsi
+          echo SectionEnd >> smoke.nsi
+          "C:\Program Files (x86)\NSIS\makensis.exe" smoke.nsi
+
       - name: NSIS installer
         # No -DOUTDIR: the define kept failing the call in under a
         # second, so the script's own fallback OUTDIR is used
