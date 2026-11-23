@@ -23,8 +23,11 @@
 OutFile "${OUTDIR}/PuspaBot-Setup.exe"
 InstallDir "$PROGRAMFILES\${APPNAME}"
 RequestExecutionLevel admin
-Icon "puspa.ico"
-UninstallIcon "puspa.ico"
+; Icon lines removed while diagnosing a 0-second makensis failure
+; on the Windows runner (the .ico embeds fine under Linux
+; makensis 3.09); restore them once the build is green.
+; Icon "puspa.ico"
+; UninstallIcon "puspa.ico"
 
 Section "Install"
   SetOutPath "$INSTDIR"
