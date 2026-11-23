@@ -567,6 +567,25 @@ def create_app(
 
         return {"google_configured": google_oauth_configured()}
 
+    @app.get("/api/me")
+    def me(request: Request):
+        # PWA parity (M8-fix): the native app shows the user's real
+        # name and credit allowance in the sidebar and on Saya. No
+        # demo data: the email comes from the session's user row and
+        # the allowance is the free tier's monthly credits from the
+        # billing config (15/month). Email is None only when the
+        # user row is missing (dev/test users).
+        user_id = need_user(request)
+        if user_id is None:
+            return JSONResponse({"error": "belum masuk"}, status_code=401)
+        from puspa.auth.google_oauth import find_email_by_id
+        from puspa.billing.config import FREE_CREDITS_PER_MONTH
+
+        return {
+            "email": find_email_by_id(user_id, dsn=app.state.dsn),
+            "credits_monthly": FREE_CREDITS_PER_MONTH,
+        }
+
     for screen in SCREENS:
 
         def _create_page(screen=screen):

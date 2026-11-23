@@ -360,6 +360,14 @@ def find_user_by_email(email, dsn=None):
     return str(row["id"]) if row else None
 
 
+def find_email_by_id(user_id, dsn=None):
+    """Cari email dari user_id (untuk GET /api/me)."""
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute("SELECT email FROM users WHERE id = %s", (user_id,))
+        row = cur.fetchone()
+    return row["email"] if row else None
+
+
 def create_google_user(email, dsn=None):
     """Buat pengguna Google-only (hash kata sandi acak tak diketahui).
 
