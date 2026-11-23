@@ -110,6 +110,22 @@ jobs:
           name: makensis-log
           path: makensis.log
           if-no-files-found: error
+
+      - name: Post makensis log on failure
+        # The log cannot be downloaded from the dev VM (the artifact
+        # host is unreachable there), so surface it as a PR comment
+        # where it can be read. Remove this step once the installer
+        # is green.
+        if: failure()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $log = Get-Content makensis.log -Raw -ErrorAction SilentlyContinue
+          if (-not $log) { $log = "(makensis.log missing or empty)" }
+          $body = "makensis failed on the COW-10 PR (run $env:GITHUB_RUN_ID). Log:`n$log"
+          $payload = @{ body = $body } | ConvertTo-Json
+          Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/mirzasnowy/PuspaBot/issues/225/comments" -Headers @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json" } -Body $payload -ContentType "application/json"
       - name: upload installer
         uses: actions/upload-artifact@v4
         with:
