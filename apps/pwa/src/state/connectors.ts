@@ -8,10 +8,21 @@ import type { Agent } from "../api/client";
 
 export type ConnectorName = "gmail" | "drive" | "calendar";
 
-export const CONNECTORS: { name: ConnectorName; label: string; scope: string }[] = [
-  { name: "gmail", label: "Gmail", scope: "Read mail" },
-  { name: "drive", label: "Drive", scope: "Read files" },
-  { name: "calendar", label: "Calendar", scope: "Read events" },
+export const CONNECTORS: {
+  name: ConnectorName;
+  label: string;
+  scope: string;
+  /** Real official logo (Nero, 24 Nov), served from the PWA static dir. */
+  logo: string;
+}[] = [
+  { name: "gmail", label: "Gmail", scope: "Read mail", logo: "/static/logos/gmail.png" },
+  { name: "drive", label: "Drive", scope: "Read files", logo: "/static/logos/drive.png" },
+  {
+    name: "calendar",
+    label: "Calendar",
+    scope: "Read events",
+    logo: "/static/logos/calendar.png",
+  },
 ];
 
 export interface ConnectorsState {
@@ -51,24 +62,46 @@ export interface ChannelStatus {
   kind: "connector" | "messaging";
   status: "connected" | "available" | "not_available";
   note: string;
+  /** Real official logo (Nero, 24 Nov), served from the PWA static dir. */
+  logo: string;
 }
 
 export function channelList(): ChannelStatus[] {
   return [
-    { name: "Gmail", kind: "connector", status: "available", note: "Grant per agent below." },
-    { name: "Drive", kind: "connector", status: "available", note: "Grant per agent below." },
-    { name: "Calendar", kind: "connector", status: "available", note: "Grant per agent below." },
+    {
+      name: "Gmail",
+      kind: "connector",
+      status: "available",
+      note: "Grant per agent below.",
+      logo: "/static/logos/gmail.png",
+    },
+    {
+      name: "Drive",
+      kind: "connector",
+      status: "available",
+      note: "Grant per agent below.",
+      logo: "/static/logos/drive.png",
+    },
+    {
+      name: "Calendar",
+      kind: "connector",
+      status: "available",
+      note: "Grant per agent below.",
+      logo: "/static/logos/calendar.png",
+    },
     {
       name: "Telegram",
       kind: "messaging",
       status: "not_available",
       note: "Planned after MVP (G14 gateway).",
+      logo: "/static/logos/telegram.png",
     },
     {
       name: "WhatsApp",
       kind: "messaging",
       status: "not_available",
       note: "Planned after MVP (G14 gateway).",
+      logo: "/static/logos/whatsapp.png",
     },
   ];
 }

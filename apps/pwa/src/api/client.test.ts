@@ -33,6 +33,7 @@ import {
   parseSseEvent,
   postJson,
   sendChat,
+  setBuiltinAvatar,
   setConnector,
   setDialCeiling,
   stopAll,
@@ -634,5 +635,28 @@ describe("artifacts browser", () => {
 
   it("artifactDownloadUrl builds the download URL", () => {
     expect(artifactDownloadUrl("puspa-1", "art-1")).toBe("/api/artifacts/puspa-1/art-1");
+  });
+});
+
+describe("setBuiltinAvatar", () => {
+  it("posts the flower name and returns the avatar status", async () => {
+    const body = {
+      ok: true,
+      has_photo: true,
+      photo_url: "/api/agent/avatar/photo",
+      updated_at: 1780000000,
+      mime_type: "image/webp",
+      source: "builtin:tulip",
+    };
+    const fetchFn = mockFetch(body);
+    const result = await setBuiltinAvatar("tulip", fetchFn as never);
+    expect(result).toEqual(body);
+    expect(fetchFn).toHaveBeenCalledWith(
+      "/api/agent/avatar/builtin",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ name: "tulip" }),
+      }),
+    );
   });
 });

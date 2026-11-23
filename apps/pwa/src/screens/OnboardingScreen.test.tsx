@@ -21,6 +21,15 @@ function mockOnboardingFetch() {
     if (url === "/api/onboarding/start") {
       return json({ started: true, current_step: 0 });
     }
+    if (url === "/api/onboarding/agent-file") {
+      return json({
+        slug: "puspa",
+        name: body.agent_name,
+        soul: `# ${body.agent_name}\nGaya bicara: ${body.style}\nTujuan: ${body.purposes.join(", ")}`,
+        identity: `Name: ${body.agent_name}\n`,
+        user: `Name: ${body.user_name}\nGaya: ${body.style}`,
+      });
+    }
     if (url === "/api/onboarding/step1") {
       return json({
         started: true,
@@ -67,49 +76,111 @@ function mockOnboardingFetch() {
   return { mock, calls };
 }
 
+/** Walk welcome → purpose → personalize → data, landing on the agent phase. */
+async function walkToAgentPhase(user: ReturnType<typeof userEvent.setup>) {
+  await screen.findByText("Selamat Datang");
+  await user.click(screen.getByRole("button", { name: "Mulai Sekarang" }));
+  await screen.findByText("Untuk apa Puspa dipakai?");
+  await user.click(screen.getByRole("button", { name: /Bandingkan harga/ }));
+  await user.click(screen.getByRole("button", { name: "Lanjut" }));
+  // The stepper also shows the label, so match the heading only.
+  await screen.findByRole("heading", { name: "Personalisasi" });
+  await user.type(screen.getByLabelText(/Nama kamu/), "Nero");
+  await user.click(screen.getByRole("radio", { name: /Rapi/ }));
+  await user.click(screen.getByRole("button", { name: "Lanjut" }));
+  await screen.findByText("Data apa saja yang dipakai?");
+  await user.click(screen.getByLabelText(/Aku mengerti/));
+  await user.click(screen.getByRole("button", { name: "Lanjut" }));
+  await screen.findByText("Beri nama agentmu");
+}
+
 describe("OnboardingScreen", () => {
-  it("opens step 1 with the three speaking styles", async () => {
+  it("opens the welcome phase first, not step 1", async () => {
+    window.localStorage.clear();
     const { mock } = mockOnboardingFetch();
     vi.stubGlobal("fetch", mock);
     try {
       render(<OnboardingScreen />);
-      expect(await screen.findByText("Langkah 1: nama dan gaya bicara")).toBeTruthy();
-      expect(screen.getByText("Santai")).toBeTruthy();
-      expect(screen.getByText("Rapi")).toBeTruthy();
-      expect(screen.getByText("Campur kode")).toBeTruthy();
-      expect(screen.getByText(/Langkah 1 dari 4/)).toBeTruthy();
+      expect(await screen.findByText("Selamat Datang")).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "Mulai Sekarang" }),
+      ).toBeTruthy();
+      expect(screen.getByText("Tujuan")).toBeTruthy();
+      expect(screen.getByText("Personalisasi")).toBeTruthy();
+      expect(screen.getByText("Nama agent")).toBeTruthy();
+      expect(screen.queryByText("Langkah 1: nama dan gaya bicara")).toBeNull();
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it("refuses an empty name without calling the server", async () => {
+  it("refuses an empty agent name without calling the server", async () => {
+    window.localStorage.clear();
     const { mock, calls } = mockOnboardingFetch();
     vi.stubGlobal("fetch", mock);
     try {
       render(<OnboardingScreen />);
-      await screen.findByText("Langkah 1: nama dan gaya bicara");
+      const user = userEvent.setup();
+      await walkToAgentPhase(user);
       const callsBefore = calls.length;
-      const form = screen.getByRole("form", { name: /Langkah 1/ });
-      fireEvent.submit(form);
-      expect(await screen.findByText("Nama tidak boleh kosong.")).toBeTruthy();
+      const nameInput = screen.getByLabelText(/Nama agent/);
+      await user.clear(nameInput);
+      const submit = screen.getByRole("button", { name: "Buat File Agent" });
+      expect(submit).toHaveProperty("disabled", true);
+      fireEvent.click(submit);
+      expect(
+        calls.filter((call) => call.url === "/api/onboarding/agent-file"),
+      ).toHaveLength(0);
       expect(calls.length).toBe(callsBefore);
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it("walks all four steps and ends on the done state", async () => {
+  it("walks the whole flow and ends on the done state", async () => {
+    window.localStorage.clear();
     const { mock, calls } = mockOnboardingFetch();
     vi.stubGlobal("fetch", mock);
     try {
       render(<OnboardingScreen />);
       const user = userEvent.setup();
-      await screen.findByText("Langkah 1: nama dan gaya bicara");
+      await walkToAgentPhase(user);
 
-      await user.type(screen.getByLabelText(/Nama kamu/), "Nero");
-      await user.click(screen.getByRole("radio", { name: /Rapi/ }));
-      await user.click(screen.getByRole("button", { name: "Lanjut ke langkah 2" }));
+      // Agent name is pre-filled with "Puspa"; write the agent file.
+      expect(
+        (screen.getByLabelText(/Nama agent/) as HTMLInputElement).value,
+      ).toBe("Puspa");
+      await user.click(
+        screen.getByRole("button", { name: "Buat File Agent" }),
+      );
+      expect(await screen.findByText("File agentmu sudah ditulis")).toBeTruthy();
+      // The generated file shows the answers verbatim.
+      expect(screen.getByText(/Gaya bicara: rapi/)).toBeTruthy();
+      expect(screen.getByText(/Tujuan: price_compare/)).toBeTruthy();
+      await user.click(screen.getByRole("tab", { name: "IDENTITY.md" }));
+      expect(screen.getByText(/Name: Puspa/)).toBeTruthy();
+      await user.click(screen.getByRole("tab", { name: "USER.md" }));
+      expect(screen.getByText(/Name: Nero/)).toBeTruthy();
+
+      const fileCall = calls.find(
+        (call) => call.url === "/api/onboarding/agent-file",
+      );
+      expect(fileCall?.body).toEqual(
+        expect.objectContaining({
+          agent_name: "Puspa",
+          user_name: "Nero",
+          style: "rapi",
+          purposes: ["price_compare"],
+        }),
+      );
+      // Phase A records G28 step 1 with the same answers.
+      const step1Call = calls.find((call) => call.url === "/api/onboarding/step1");
+      expect(step1Call?.body).toEqual({ name: "Nero", style: "rapi" });
+
+      // Phase B starts at step 2 — step 1 was already recorded.
+      await user.click(
+        screen.getByRole("button", { name: "Lanjut ke Notifikasi" }),
+      );
       expect(await screen.findByText("Langkah 2: uji notifikasi")).toBeTruthy();
 
       await user.click(
@@ -134,8 +205,6 @@ describe("OnboardingScreen", () => {
       ).toBeTruthy();
       expect(screen.getByText(/Tagihan bulanan/)).toBeTruthy();
 
-      const step1Call = calls.find((call) => call.url === "/api/onboarding/step1");
-      expect(step1Call?.body).toEqual({ name: "Nero", style: "rapi" });
       const taskCall = calls.find((call) => call.url === "/api/onboarding/first-task");
       expect(taskCall?.body).toEqual({
         event_type: "compare_prices",
@@ -147,6 +216,7 @@ describe("OnboardingScreen", () => {
   });
 
   it("shows a load error when the status fetch fails", async () => {
+    window.localStorage.clear();
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("jaringan putus")));
     try {
       render(<OnboardingScreen />);

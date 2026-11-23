@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saved designs — unbuilt features (PuspaBot)</title>
+<!--
+  SAVED DESIGNS — NOT LINKED FROM ANY NAVIGATION.
+  These are the designs of features that do NOT exist in the
+  product yet. They are kept so the design work is not lost,
+  and so a future build starts from the agreed look instead of
+  from scratch. Nothing in the app links here.
+
+  PROVENANCE (read first): the Space export (live v11) did not
+  inline the original pwa-saved-designs.html — the string
+  "pwa-saved-designs" appears 0 times in the export. This file
+  is a RECONSTRUCTION from the 23 Nov 2026 audit record (the
+  feature list, where each feature sat in the UI, and the Space
+  design language). Sections marked "reconstructed" follow the
+  record; exact copy and wording from the original file could
+  not be recovered. When a feature is built for real, delete
+  its section here and build the screen in src/screens/space/
+  wired to a real API.
+-->
+<style>
+  :root{
+    --red:#D7404D; --red-dark:#B92F3C; --pink:#F08BA0; --peach:#F6C89F;
+    --cream:#FFF5F2; --leaf:#4CAF50; --charcoal:#1C1C1C; --muted:#8F8A8F;
+    --border:#F0DDE0; --bg:#FFF5F2; --surface:#FFFFFF; --surface-2:#FFF0EC;
+    --ink:#1C1C1C; --ink-2:#5c5457; --line:#F0DDE0;
+    --r-md:16px; --r-lg:24px; --r-pill:999px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:Geist,Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+  .page{max-width:720px;margin:0 auto;padding:28px 20px 64px}
+  h1.page{font-size:34px;font-weight:800;letter-spacing:-.02em;margin:8px 0 6px}
+  h2{font-size:20px;margin:28px 0 8px}
+  p.muted{color:var(--ink-2);font-size:14.5px;line-height:1.55}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+    padding:16px;margin:12px 0}
+  .row-item{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--line)}
+  .row-item:last-child{border-bottom:none}
+  .sq-ic{width:40px;height:40px;flex:0 0 40px;border-radius:12px;display:grid;place-items:center;
+    background:var(--surface-2);color:var(--red-dark);font-size:20px}
+  .sq-ic.peach{background:#FDF0E4;color:#C47A1E}
+  .sq-ic.green{background:#EAF6EC;color:#2E7D32}
+  .sq-ic.blue{background:#EAF1FE;color:#2F6FD0}
+  .row-item b{font-size:15.5px}
+  .row-item small{display:block;color:var(--ink-2);font-weight:400}
+  .chev{margin-left:auto;color:var(--muted)}
+  .tag{display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;
+    background:var(--surface-2);color:var(--red-dark)}
+  .tag.gray{background:#F3EDEF;color:var(--ink-2)}
+  .tag.green{background:#EAF6EC;color:#2E7D32}
+  .warnbox{background:#FFF7E6;border:1px solid #F6C89F;border-radius:var(--r-md);
+    padding:12px 14px;font-size:14px;margin:12px 0}
+  .btn{display:inline-block;padding:12px 20px;border-radius:var(--r-pill);font-weight:700;
+    background:var(--red);color:#fff;text-decoration:none}
+  .btn.ghost{background:var(--surface);border:1px solid var(--line);color:var(--ink)}
+  .note{font-size:12.5px;color:var(--muted);border-left:3px solid var(--pink);
+    padding:2px 0 2px 10px;margin:8px 0}
+  .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);
+    padding:14px;text-align:left}
+  .tile b{display:block;margin-top:8px}
+  .tile small{color:var(--ink-2)}
+</style>
+</head>
+<body>
+<div class="page">
+  <span class="tag">Saved design — unbuilt</span>
+  <h1 class="page">Desain tersimpan</h1>
+  <p class="muted">
+    Fitur-fitur di bawah ini belum ada di produk, jadi tidak tampil di aplikasi.
+    Desainnya disimpan di sini supaya tidak hilang. File ini hasil rekonstruksi
+    dari catatan audit 23 Nov 2026 — bukan salinan persis file aslinya
+    (lihat README di folder ini).
+  </p>
+
+  <!-- ============ BERANDA (removed tab, 23 Nov) ============ -->
+  <h2>Beranda (tab yang dihapus)</h2>
+  <p class="note">Reconstructed: tab Beranda dihapus atas perintah Nero 23 Nov — PWA jadi
+  4 tab (Chat, Tugas, Memori, Saya). Desain aslinya: sapaan + ringkasan hari.</p>
+  <div class="card">
+    <p style="margin:0 0 4px"><b style="font-size:20px">Selamat pagi, Mirza</b></p>
+    <p class="muted" style="margin:0">Rabu, 23 November — 3 tugas hari ini, 1 tagihan menunggu.</p>
+    <div class="row-item"><span class="sq-ic">✓</span><b>3 tugas hari ini<small>2 selesai · 1 berjalan</small></b><span class="chev">›</span></div>
+    <div class="row-item"><span class="sq-ic peach">⚡</span><b>Tagihan PLN menunggu<small>Rp125.500 · jatuh tempo 25 Nov</small></b><span class="chev">›</span></div>
+    <div class="row-item"><span class="sq-ic green">☀</span><b>Ringkasan Pagi<small>Sudah siap dibaca</small></b><span class="chev">›</span></div>
+  </div>
+
+  <!-- ============ PATUNGAN (B11) ============ -->
+  <h2>Patungan (B11)</h2>
+  <p class="note">Reconstructed: bagi-bayar grup. Muncul dari Ruang Bersama — satu
+  pengeluaran dibagi ke anggota ruang, masing-masing bayar bagiannya.</p>
+  <div class="card">
+    <p style="margin:0 0 4px"><b>Patungan — Makan malam tim</b></p>
+    <p class="muted" style="margin:0">Total Rp480.000 · 4 orang · Rp120.000/orang</p>
+    <div class="row-item"><span class="sq-ic">M</span><b>Mirza<small>Lunas</small></b><span class="tag green">Lunas</span></div>
+    <div class="row-item"><span class="sq-ic peach">A</span><b>Andi<small>Menunggu</small></b><span class="tag gray">Menunggu</span></div>
+    <div class="row-item"><span class="sq-ic blue">S</span><b>Sari<small>Menunggu</small></b><span class="tag gray">Menunggu</span></div>
+    <a class="btn" href="#" onclick="return false">Ingatkan yang belum bayar</a>
+  </div>
+
+  <!-- ============ PRELOVED ============ -->
+  <h2>Preloved</h2>
+  <p class="note">Reconstructed: jual-beli barang bekas di Marketplace. Satu kartu
+  per barang: foto, harga, kondisi, penjual.</p>
+  <div class="card">
+    <div class="row-item"><span class="sq-ic">▣</span><b>MacBook Air M1<small>Rp8.500.000 · Kondisi 90% · Jakarta</small></b><span class="chev">›</span></div>
+    <div class="row-item"><span class="sq-ic">▣</span><b>Kamera Fujifilm X100V<small>Rp14.000.000 · Kondisi 95% · Bandung</small></b><span class="chev">›</span></div>
+  </div>
+
+  <!-- ============ TRY-ON & VIDEO ============ -->
+  <h2>Try-On &amp; Video</h2>
+  <p class="note">Reconstructed: coba produk secara virtual (gambar/video) dari
+  Galeri — sebelum membeli, lihat dulu produknya dipakai.</p>
+  <div class="card">
+    <p style="margin:0 0 8px"><b>Try-On — Kacamata Aviator</b></p>
+    <p class="muted" style="margin:0">Unggah fotomu, lalu lihat kacamata ini di wajahmu. Video
+    15 detik: putar 360° sebelum memutuskan.</p>
+    <p style="margin:12px 0 0"><a class="btn ghost" href="#" onclick="return false">Unggah foto</a></p>
+  </div>
+
+  <!-- ============ QRIS ============ -->
+  <h2>QRIS</h2>
+  <p class="note">Reconstructed: bayar dengan QRIS dari layar Bayar Tagihan —
+  satu kode QR untuk semua e-wallet dan m-banking.</p>
+  <div class="card">
+    <p style="margin:0 0 4px"><b>Bayar dengan QRIS</b></p>
+    <p class="muted" style="margin:0">Tampilkan kode QR ini ke penjual, atau pindai kode QR
+    penjual untuk membayar tagihanmu.</p>
+    <div class="warnbox">QRIS belum tersambung ke pembayaran apa pun — desain saja.</div>
+  </div>
+
+  <!-- ============ ANTI-FRAUD ============ -->
+  <h2>Anti-Fraud</h2>
+  <p class="note">Reconstructed: peringatan penipuan di Keuangan — transaksi
+  mencurigakan ditandai sebelum uang keluar.</p>
+  <div class="card">
+    <p style="margin:0 0 4px"><b>Anti-Fraud</b></p>
+    <p class="muted" style="margin:0">Puspa memeriksa setiap pembayaran ke nomor atau rekening
+    baru. Kalau polanya mirip penipuan, pembayaran ditahan dan minta
+    persetujuanmu dulu.</p>
+    <div class="warnbox">Contoh: rekening baru, nominal besar pertama kali,
+    jam di luar kebiasaan.</div>
+  </div>
+
+  <!-- ============ NOTULEN (B10) ============ -->
+  <h2>Notulen (B10)</h2>
+  <p class="note">Reconstructed: notulen rapat otomatis dari Ruang Bersama —
+  rekaman/chat rapat diringkas jadi keputusan dan tugas.</p>
+  <div class="card">
+    <p style="margin:0 0 4px"><b>Notulen — Rapat skripsi, 21 Nov</b></p>
+    <div class="row-item"><span class="sq-ic green">✓</span><b>Keputusan<small>Bab 2 selesai minggu ini</small></b></div>
+    <div class="row-item"><span class="sq-ic peach">→</span><b>Tugas baru<small>Andi: kirim draf Bab 2 ke Puspa</small></b></div>
+  </div>
+
+  <!-- ============ CO-DRAFTING ============ -->
+  <h2>Co-Drafting</h2>
+  <p class="note">Reconstructed: tulis draf bersama di Ruang Bersama — anggota
+  ruang mengedit dokumen yang sama, Puspa merapikan bahasanya.</p>
+  <div class="card">
+    <p style="margin:0 0 4px"><b>Co-Drafting — Proposal skripsi</b></p>
+    <p class="muted" style="margin:0">3 orang sedang mengedit. Puspa menyorot bagian yang
+    kalimatnya belum konsisten dan menawarkan perbaikan.</p>
+  </div>
+
+  <!-- ============ IMPOR MEMORI ============ -->
+  <h2>Impor Memori</h2>
+  <p class="note">Reconstructed: layar terpisah dari Ekspor (satu fungsi, satu
+  pintu masuk). Impor file memori dari aplikasi lain ke Puspa.</p>
+  <div class="card">
+    <p style="margin:0 0 4px"><b>Impor Memori</b></p>
+    <p class="muted" style="margin:0">Pilih file .json atau .md hasil ekspor dari aplikasi
+    lain. Puspa membaca isinya, menunjukkan apa yang akan masuk,
+    dan minta konfirmasimu sebelum menyimpan.</p>
+    <p style="margin:12px 0 0"><a class="btn ghost" href="#" onclick="return false">Pilih file</a></p>
+  </div>
+
+  <!-- ============ PANEL OPERATOR ============ -->
+  <h2>Panel Operator</h2>
+  <p class="note">Reconstructed: panel khusus operator (milik Nero, bukan
+  pengguna) — antrean, kesehatan server, dan pemakaian. Ini
+  bagian privat (hosting), bukan produk publik.</p>
+  <div class="card">
+    <p style="margin:0 0 4px"><b>Panel Operator</b></p>
+    <p class="muted" style="margin:0">Antrean tugas berjalan, pemakaian kredit per tenant,
+    dan status server — hanya untuk operator.</p>
+  </div>
+
+  <!-- ============ PPOB TILES ============ -->
+  <h2>Tile PPOB yang disembunyikan</h2>
+  <p class="note">Reconstructed: keempat tile ini pernah ada di layar Bayar
+  Tagihan dan dihapus di audit — PPOB kini tepat 4 tile (PLN,
+  PDAM, Pulsa, Paket Data).</p>
+  <div class="tiles">
+    <div class="tile"><span class="sq-ic blue">▦</span><b>Internet &amp; TV</b><small>Langganan internet dan TV kabel</small></div>
+    <div class="tile"><span class="sq-ic green">✚</span><b>BPJS</b><small>Iuran BPJS Kesehatan &amp; Ketenagakerjaan</small></div>
+    <div class="tile"><span class="sq-ic peach">◈</span><b>E-Wallet</b><small>Top up GoPay, OVO, DANA</small></div>
+    <div class="tile"><span class="sq-ic">▸</span><b>Voucher Game</b><small>Voucher game dan item digital</small></div>
+  </div>
+
+  <p class="muted" style="margin-top:32px">
+    — Akhir desain tersimpan. Kalau satu fitur di atas dibangun beneran,
+    hapus bagiannya dari file ini dan bangun layarnya di
+    <code>src/screens/space/</code> dengan API asli.
+  </p>
+</div>
+</body>
+</html>

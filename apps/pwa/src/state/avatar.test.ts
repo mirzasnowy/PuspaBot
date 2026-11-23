@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AvatarStatus, OfficeProjection } from "../api/client";
-import { avatarPhotoSrc, avatarStatus, DEFAULT_AVATAR_SRC } from "./avatar";
+import { activeBuiltinId, avatarPhotoSrc, avatarStatus, BUILTIN_AVATARS, DEFAULT_AVATAR_SRC } from "./avatar";
 
 function officeWith(statuses: string[]): OfficeProjection {
   return {
@@ -64,5 +64,26 @@ describe("avatarPhotoSrc", () => {
 
   it("uses the photo URL without a version when updated_at is missing", () => {
     expect(avatarPhotoSrc(avatarWith(true, null))).toBe("/api/agent/avatar/photo");
+  });
+});
+
+describe("built-in flower avatars (Nero, 24 Nov)", () => {
+  it("lists four flowers and no animals", () => {
+    expect(BUILTIN_AVATARS.map((option) => option.id)).toEqual([
+      "tulip",
+      "sunflower",
+      "rose",
+      "sakura",
+    ]);
+    expect(BUILTIN_AVATARS.every((option) => option.src.endsWith(".png"))).toBe(true);
+  });
+
+  it("activeBuiltinId reads the source marker", () => {
+    expect(activeBuiltinId(null)).toBeNull();
+    expect(activeBuiltinId({ ...avatarWith(false, null), source: "default" })).toBeNull();
+    expect(activeBuiltinId({ ...avatarWith(true, 1), source: "upload" })).toBeNull();
+    expect(activeBuiltinId({ ...avatarWith(true, 1), source: "builtin:rose" })).toBe(
+      "rose",
+    );
   });
 });

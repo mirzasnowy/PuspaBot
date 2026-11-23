@@ -11,7 +11,7 @@ function modulesHint(): OnboardingHint {
     trigger: "first_modules_visit",
     title: "Modules add abilities",
     body: "A module adds one ability to Puspa.",
-    screen: "modules",
+    screen: "modul",
     action_label: "Open Modules",
   };
 }
@@ -39,16 +39,16 @@ describe("HintBanner", () => {
     const fetchMock = mockFetchForHint(modulesHint());
     vi.stubGlobal("fetch", fetchMock);
     try {
-      render(<HintBanner screen="modules" bootstrap={{}} />);
+      render(<HintBanner screen="modul" bootstrap={{}} />);
       expect(await screen.findByText("Modules add abilities")).toBeTruthy();
       expect(screen.getByText("A module adds one ability to Puspa.")).toBeTruthy();
       // The hint points at the screen already open, so no action link.
       expect(screen.queryByRole("link")).toBeNull();
       const query = String(fetchMock.mock.calls[0][0]);
-      expect(query).toContain("screen=modules");
+      expect(query).toContain("screen=modul");
       expect(query).toContain("first_visit=true");
       expect(JSON.parse(window.localStorage.getItem(VISITED_KEY) ?? "[]")).toEqual([
-        "modules",
+        "modul",
       ]);
     } finally {
       vi.unstubAllGlobals();
@@ -76,11 +76,11 @@ describe("HintBanner", () => {
     const fetchMock = mockFetchForHint(modulesHint());
     vi.stubGlobal("fetch", fetchMock);
     try {
-      render(<HintBanner screen="tasks" bootstrap={{}} />);
+      render(<HintBanner screen="tugas" bootstrap={{}} />);
       expect(await screen.findByText("Modules add abilities")).toBeTruthy();
       // From another screen the hint offers its action link.
       expect(screen.getByRole("link", { name: "Open Modules" }).getAttribute("href")).toBe(
-        "/modules",
+        "/modul",
       );
       fireEvent.click(screen.getByRole("button", { name: /Tutup petunjuk/ }));
       expect(screen.queryByText("Modules add abilities")).toBeNull();
