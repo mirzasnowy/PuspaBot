@@ -40,9 +40,10 @@ import datetime
 from typing import Annotated
 
 import httpx
-import psycopg
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
+
+from puspa.db import Error as _db_Error
 
 from ..accounts.vault import VaultError
 from ..auth.google_oauth import load_tokens
@@ -97,7 +98,7 @@ def _focus_recorder(dsn, user_id: str, day: datetime.date):
                     **broadcast_record,
                 },
             )
-        except (psycopg.Error, LedgerError):
+        except (*_db_Error, LedgerError):
             return None
         return str(event["id"])
 
@@ -115,7 +116,7 @@ def _google_source_status(user_id: str, dsn) -> dict:
     """
     try:
         tokens = load_tokens(user_id, dsn=dsn)
-    except (psycopg.Error, VaultError):
+    except (*_db_Error, VaultError):
         return {
             "calendar": {
                 "status": "unavailable",
@@ -300,7 +301,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
                 "status": "ok",
                 "detail": f"{len(open_tasks)} open task(s).",
             }
-        except psycopg.Error:
+        except _db_Error:
             open_tasks = None
             source_status["tasks"] = {
                 "status": "unavailable",
@@ -403,7 +404,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             return _not_logged_in()
         try:
             notes = list_notes(user_id, dsn=request.app.state.dsn, limit=limit)
-        except psycopg.Error:
+        except _db_Error:
             return JSONResponse(
                 {"error": "notes could not be read (database error)"}, status_code=500
             )
@@ -416,7 +417,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             return _not_logged_in()
         try:
             note = get_note(user_id, note_id, dsn=request.app.state.dsn)
-        except psycopg.Error:
+        except _db_Error:
             return JSONResponse(
                 {"error": "note could not be read (database error)"}, status_code=500
             )

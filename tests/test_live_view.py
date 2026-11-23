@@ -18,9 +18,9 @@ from __future__ import annotations
 
 import uuid
 
-import psycopg
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.pwa.live_view import (
     LedgerFrameSource,
     TakeoverError,
@@ -37,10 +37,10 @@ def store(test_dsn):
     """Takeover store on the test database, emptied per test."""
     storage = TakeoverStore(test_dsn)
     storage.create_schema()
-    with psycopg.connect(test_dsn, autocommit=True) as conn:
+    with _db_connect(test_dsn, autocommit=True) as conn:
         conn.execute("TRUNCATE takeover_holds")
     yield storage
-    with psycopg.connect(test_dsn, autocommit=True) as conn:
+    with _db_connect(test_dsn, autocommit=True) as conn:
         conn.execute("TRUNCATE takeover_holds")
 
 

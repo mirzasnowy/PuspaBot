@@ -17,9 +17,9 @@ the live PWA serves.
 
 from __future__ import annotations
 
-import psycopg
 from fastapi.testclient import TestClient
 
+from puspa.db import connect as _db_connect
 from puspa.policy import RevocationList
 from puspa.pwa.app import create_app
 
@@ -32,7 +32,7 @@ def _revocations(test_dsn):
     """Durable revocation list on the test database, emptied per test."""
     store = RevocationList(test_dsn)
     store.create_schema()
-    with psycopg.connect(test_dsn, autocommit=True) as conn:
+    with _db_connect(test_dsn, autocommit=True) as conn:
         conn.execute("TRUNCATE token_revocations, agent_revocations")
     return store
 

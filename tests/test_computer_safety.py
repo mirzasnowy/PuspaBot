@@ -11,7 +11,6 @@ import json
 import os
 import uuid
 
-import psycopg
 import pytest
 
 from puspa.computer.backend import FakeBackend
@@ -21,6 +20,7 @@ from puspa.computer.mcp import handle_tool
 from puspa.computer.safety import MASKED, ScreenTextSafety, ledger_event_log
 from puspa.computer.tree import node_to_dict, snapshot_to_dict
 from puspa.computer.vision import FakeOcrBackend, OcrWord
+from puspa.db import connect as _db_connect
 from puspa.ledger import Ledger
 from puspa.localexec import PermissionDecision
 
@@ -28,7 +28,7 @@ pytestmark = pytest.mark.unit
 
 APPROVE_ONCE = PermissionDecision.APPROVE_ONCE
 
-DSN = os.environ.get("PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
+DSN = os.environ.get("PUSPA_TEST_DSN", None)
 
 
 class FakePrompt:
@@ -278,5 +278,5 @@ def test_ledger_adapter_writes_a_real_ledger_event(ledger):
         assert rows[0]["content"]["kind"] == "screen_injection_ignored"
         assert rows[0]["content"]["source"] == "snapshot"
     finally:
-        with psycopg.connect(DSN, autocommit=True) as conn:
+        with _db_connect(DSN, autocommit=True) as conn:
             conn.execute("DELETE FROM events WHERE task_id = %s", (task_id,))

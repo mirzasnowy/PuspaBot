@@ -56,9 +56,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
-import psycopg
-from psycopg.errors import UniqueViolation
-from psycopg.rows import dict_row
+from puspa.db import IntegrityError as UniqueViolation
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from ..evidence.proof import user_agent_ids
 from ..ledger import Ledger
@@ -103,7 +103,7 @@ LIVE_TAIL_LIMIT = 20
 TERMINAL_TASK_EVENTS = frozenset({"task_completed", "task_failed", "task_stopped"})
 
 #: Default DSN (peer auth as the OS user, no password).
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 #: Migration that owns the holds table (and the takeover event
 #: types in the ledger CHECK): ``create_schema`` applies it
@@ -184,7 +184,7 @@ class TakeoverStore:
         apply_migrations(self.dsn, target=TAKEOVER_MIGRATION)
 
     def _connect(self):
-        return psycopg.connect(self.dsn, row_factory=dict_row)
+        return _db_connect(self.dsn, row_factory=dict_row)
 
     def hold(
         self, agent_id: str, held_by_user_id: str, *, reason: str = "", task_id: str | None = None

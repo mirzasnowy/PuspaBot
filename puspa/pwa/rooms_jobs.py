@@ -14,10 +14,11 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 
-import psycopg
-from psycopg.rows import dict_row
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import Connection as _db_Connection
+from puspa.db import Error as _db_Error
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 from puspa.rooms import RoomMemoryStore, RoomStore
 from puspa.rooms.errors import (
     GuestReadOnlyError,
@@ -48,7 +49,7 @@ def _iso(value: datetime | None) -> str | None:
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 @dataclass(frozen=True)
@@ -161,7 +162,16 @@ def run_job(dsn, job_id: str, *, actor_user_id: str) -> RoomJob:
     RoomStore(dsn).require_room(job.room_id)
     _require_writer(dsn, job.room_id, actor_user_id)
     with _connect(dsn) as conn:
-        conn.execute("SELECT pg_advisory_lock(hashtext(%s))", (job.room_id,))
+        # One job per room at a time: on Postgres the session
+        # advisory lock is held across the handler; SQLite has no
+        # session lock and holding BEGIN IMMEDIATE across the
+        # handler would stall every other writer, so on SQLite
+        # the lock is skipped and the queue relies on the atomic
+        # claim below (claim in a short transaction, handler
+        # outside it, mark done in a short transaction).
+        sqlite = isinstance(conn, _db_Connection)
+        if not sqlite:
+            conn.execute("SELECT pg_advisory_lock(hashtext(%s))", (job.room_id,))
         try:
             with conn.cursor() as cur:
                 cur.execute(
@@ -176,13 +186,14 @@ def run_job(dsn, job_id: str, *, actor_user_id: str) -> RoomJob:
             claimed = _job_row(row)
             return _finish_job(dsn, conn, claimed)
         finally:
-            conn.execute("SELECT pg_advisory_unlock(hashtext(%s))", (job.room_id,))
+            if not sqlite:
+                conn.execute("SELECT pg_advisory_unlock(hashtext(%s))", (job.room_id,))
 
 
 def _finish_job(dsn, conn, job: RoomJob) -> RoomJob:
     try:
         result = _run_job_handler(dsn, job)
-    except (RoomError, ValueError, KeyError, TypeError, AttributeError, psycopg.Error) as exc:
+    except (RoomError, ValueError, KeyError, TypeError, AttributeError, *_db_Error) as exc:
         # A failed job must not kill the queue: record the failure
         # on the job row and let the next job run.
         return _mark_job(conn, job.id, status="failed", error=str(exc))

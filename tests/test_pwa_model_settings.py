@@ -14,9 +14,9 @@ only ever sent to the mock transport, never to a real host.
 """
 
 import httpx
-import psycopg
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.pwa.model_settings import (
     DEFAULT_LOCAL_BASE_URL,
     DEFAULT_LOCAL_MODEL,
@@ -46,7 +46,7 @@ def user(make_user):
 def _model_settings_table(test_dsn):
     create_schema(test_dsn)
     yield
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         conn.execute("TRUNCATE model_settings")
         conn.commit()
 
@@ -191,7 +191,7 @@ def test_save_selection_refuses_key_material(user, test_dsn, key_field):
 def test_byok_key_never_in_selection_row(user, test_dsn, vault_master_key):
     save_selection(user["user_id"], {"source": "byok", "provider": "openrouter"}, dsn=test_dsn)
     save_byok_key(user["user_id"], "openrouter", FAKE_BYOK_KEY, dsn=test_dsn)
-    with psycopg.connect(test_dsn) as conn, conn.cursor() as cur:
+    with _db_connect(test_dsn) as conn, conn.cursor() as cur:
         cur.execute("SELECT source, base_url, model, provider FROM model_settings")
         row = cur.fetchone()
         cur.execute("SELECT ciphertext FROM vault")

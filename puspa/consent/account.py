@@ -18,8 +18,8 @@ pengguna DI LUAR Buku Kerja.
 
 from __future__ import annotations
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from ..memory import consolidate, episodic, procedural, profile
 from ..memory.schema import resolve_dsn
@@ -27,7 +27,7 @@ from .consent import list_consents
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def export_account(user_id, dsn=None):

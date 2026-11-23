@@ -42,9 +42,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import psycopg
-from psycopg.rows import dict_row
-
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
+from puspa.db import errors as pg_errors
 from puspa.memory.embeddings import (
     DEFAULT_FASTEMBED_MODEL,
     HashEmbedding,
@@ -341,7 +341,7 @@ def _tier_window(
 
 
 def _connect(dsn: str | None = None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def _state_row(conn: Any) -> dict[str, Any] | None:
@@ -361,7 +361,7 @@ def get_embedding_state(dsn: str | None = None) -> dict[str, Any]:
     try:
         with _connect(dsn) as conn:
             row = _state_row(conn)
-    except psycopg.errors.UndefinedTable:
+    except pg_errors.UndefinedTable:
         return _default_state()
     if row is None:
         return _default_state()

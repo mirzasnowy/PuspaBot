@@ -31,9 +31,9 @@ import json
 import os
 from pathlib import Path
 
-import psycopg
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.ledger import EVENT_TYPES
 from puspa.policy.conflicts import (
     CONFLICT_KINDS,
@@ -61,7 +61,7 @@ from puspa.turns.messages import InternalMessage
 from puspa.turns.turn_api import ModelReply
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DSN = os.environ.get("PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
+DSN = os.environ.get("PUSPA_TEST_DSN", None)
 
 #: The concrete scenario used through the file: Puspa's price
 #: comparison recommends a product whose seller gains more
@@ -84,7 +84,7 @@ def _seller_action() -> ProposedAction:
 
 def _dsn_available() -> bool:
     try:
-        with psycopg.connect(DSN, connect_timeout=2) as conn:
+        with _db_connect(DSN, connect_timeout=2) as conn:
             conn.execute("SELECT 1")
         return True
     except Exception:

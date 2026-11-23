@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import uuid
 
-import psycopg
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.policy import RevocationList, StopError
 from puspa.pwa.stop_all import STOP_ALL_TARGET_SECONDS, stop_all_for_user
 from puspa.runtime.subagents import SubagentPool
@@ -25,10 +25,10 @@ def revocations(test_dsn):
     """Durable revocation list on the test database, emptied per test."""
     store = RevocationList(test_dsn)
     store.create_schema()
-    with psycopg.connect(test_dsn, autocommit=True) as conn:
+    with _db_connect(test_dsn, autocommit=True) as conn:
         conn.execute("TRUNCATE token_revocations, agent_revocations")
     yield store
-    with psycopg.connect(test_dsn, autocommit=True) as conn:
+    with _db_connect(test_dsn, autocommit=True) as conn:
         conn.execute("TRUNCATE token_revocations, agent_revocations")
 
 
@@ -149,7 +149,7 @@ def test_stop_all_leaves_other_users_agents_alone(make_user, test_dsn, ledger, r
     )
     assert [entry["agent_id"] for entry in report.agents_stopped] == [user["agent_id"]]
     # The other user's agent has no revocation row.
-    with psycopg.connect(test_dsn) as conn, conn.cursor() as cur:
+    with _db_connect(test_dsn) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT COUNT(*) FROM agent_revocations WHERE agent_id = %s",
             (other["agent_id"],),

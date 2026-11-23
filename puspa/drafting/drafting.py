@@ -42,10 +42,9 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-import psycopg
-from psycopg.rows import dict_row
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 from puspa.evidence.outcomes import write_outcome
 from puspa.ledger import Ledger
 from puspa.memory import facts as facts_module
@@ -244,7 +243,7 @@ class PostgresDraftStore:
         self.dsn = resolve_dsn(dsn)
 
     def _connect(self):
-        return psycopg.connect(self.dsn, row_factory=dict_row)
+        return _db_connect(self.dsn, row_factory=dict_row)
 
     def insert_draft(self, draft: Draft) -> Draft:
         with self._connect() as conn:

@@ -89,9 +89,9 @@ def test_delete_does_not_delete_run_history(make_user, test_dsn):
     assert result["success"] is True
     delete_workflow(workflow["id"], user_id=user_id, dsn=test_dsn)
     assert get_workflow(workflow["id"], user_id=user_id, dsn=test_dsn)["status"] == "deleted"
-    import psycopg
+    from puspa.db import connect as _db_connect
 
-    with psycopg.connect(test_dsn) as conn, conn.cursor() as cur:
+    with _db_connect(test_dsn) as conn, conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM workflow_runs WHERE workflow_id = %s", (workflow["id"],))
         assert cur.fetchone()[0] == 1  # riwayat jalan tetap ada
 

@@ -1,0 +1,133 @@
+# Desktop CI — native client (Rust + iced, no webview).
+#
+# Runs only when the desktop app or this workflow changes.
+#   fmt      — cargo fmt --check
+#   clippy   — cargo clippy -- -D warnings
+#   test     — cargo test (unit tests: lifecycle manager, API client)
+#   build    — cargo build --release on windows-latest, then NSIS
+#              installer (NSIS is installed by the workflow when
+#              missing; it is not preinstalled on the runner).
+# The Windows installer cannot be built on the Linux dev VM; CI is
+# the only place it is produced. The database decision for v1 is
+# made (full SQLite port, Nero 23 Nov ~09:52 WIB); the installer
+# installs no database — the backend creates its SQLite file on
+# first run.
+
+name: desktop
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "apps/desktop/**"
+      - ".github/workflows/desktop.yml"
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - ".github/workflows/desktop.yml"
+
+jobs:
+  rust-check:
+    name: fmt + clippy + test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop
+      - name: fmt
+        working-directory: apps/desktop
+        run: cargo fmt --check
+      - name: clippy
+        working-directory: apps/desktop
+        run: cargo clippy --all-targets -- -D warnings
+      - name: test
+        working-directory: apps/desktop
+        run: cargo test
+
+  build-windows:
+    name: Windows release + NSIS installer
+    runs-on: windows-latest
+    needs: rust-check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop
+      - name: build release
+        working-directory: apps/desktop
+        run: cargo build --release
+      - name: Create installer output directory
+        # makensis does not create the output directory itself: with
+        # no installer-out it fails with "Can't open output file".
+        run: New-Item -ItemType Directory -Force -Path installer-out
+
+      - name: Install NSIS
+        # windows-latest runners do not pre-install NSIS: without
+        # this step `makensis` is not found and the installer step
+        # fails in one second. Install only when missing, then put
+        # it on PATH for the next step and prove it runs.
+        run: |
+          $makensis = "C:\Program Files (x86)\NSIS\makensis.exe"
+          if (-not (Test-Path $makensis)) {
+            choco install nsis -y --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          Add-Content $env:GITHUB_PATH "C:\Program Files (x86)\NSIS"
+          & $makensis /VERSION
+
+      - name: Verify installer inputs
+        # Fail here with a clear name when an input is missing, so a
+        # later makensis failure cannot be a missing file in disguise.
+        run: |
+          foreach ($p in @("apps\desktop\target\release\puspabot.exe", "apps\desktop\installer\windows.nsi", "apps\desktop\installer\puspa.ico", "installer-out")) {
+            if (-not (Test-Path $p)) { Write-Error "missing installer input: $p"; exit 1 }
+          }
+          Write-Host "all installer inputs present"
+
+      - name: Smoke-test makensis
+        # Bisect the 0-second failure: a trivial script with no File,
+        # no Icon and no defines. If this fails too, makensis itself
+        # (or its invocation) is broken; if it passes, windows.nsi
+        # is the problem.
+        shell: cmd
+        run: |
+          echo OutFile "installer-out\smoke-test.exe" > smoke.nsi
+          echo Section >> smoke.nsi
+          echo SectionEnd >> smoke.nsi
+          "C:\Program Files (x86)\NSIS\makensis.exe" smoke.nsi
+
+      - name: NSIS installer
+        # No -DOUTDIR: the define kept failing the call in under a
+        # second, so the script's own fallback OUTDIR is used
+        # (installer-out under the checkout root, created above).
+        # Capture makensis output to a log file so a failure can be
+        # read without the full job log.
+        shell: cmd
+        run: |
+          "C:\Program Files (x86)\NSIS\makensis.exe" -DROOTDIR=%GITHUB_WORKSPACE%\apps\desktop -DOUTDIR=%GITHUB_WORKSPACE%\installer-out %GITHUB_WORKSPACE%\apps\desktop\installer\windows.nsi > makensis.log 2>&1
+          set MAKENSIS_EXIT=%ERRORLEVEL%
+          type makensis.log
+          exit /b %MAKENSIS_EXIT%
+
+      - name: Upload makensis log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: makensis-log
+          path: makensis.log
+          if-no-files-found: error
+      - name: upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: puspabot-windows-installer
+          path: installer-out/PuspaBot-Setup.exe
+          if-no-files-found: error

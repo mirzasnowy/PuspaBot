@@ -24,9 +24,9 @@ import sys
 import types
 from pathlib import Path
 
-import psycopg
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.sessions import (
     SingleWriterError,
     open_persistence,
@@ -184,8 +184,29 @@ def test_advisory_lock_unreachable_database_fails_closed():
 
 
 def test_failed_advisory_acquire_releases_the_file_lock(test_dsn, tmp_path):
+    from puspa.db import is_sqlite_dsn as _is_sqlite_dsn
+
     db_path = tmp_path / "state.db"
-    holder = psycopg.connect(test_dsn, autocommit=True)
+    if _is_sqlite_dsn(test_dsn):
+        # On SQLite there is no pg_try_advisory_lock to hold: the
+        # raw call is a translator no-op that returns 1 and holds
+        # nothing. The holder takes the same sidecar file lock the
+        # advisory layer uses instead, so the refused open below
+        # exercises the same release path.
+        holder = PostgresAdvisoryLock(test_dsn, "agent-e07-d")
+        holder.acquire()
+        try:
+            lock = SingleWriterLock(db_path, "agent-e07-d", dsn=test_dsn)
+            with pytest.raises(SingleWriterError):
+                lock.acquire()
+            assert not lock.file_held and not lock.advisory_held, (
+                "A refused open must leave nothing held: the flock taken first\n"
+                "    is released again when the advisory lock fails."
+            )
+        finally:
+            holder.release()
+        return
+    holder = _db_connect(test_dsn, autocommit=True)
     assert holder.execute(
         "SELECT pg_try_advisory_lock(%s)",
         (advisory_lock_key("agent-e07-d"),),

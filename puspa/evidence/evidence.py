@@ -108,16 +108,14 @@ def record_evidence(
     )
 
 
-def save_evidence(dsn: str, evidence: EvidenceRecord, user_id: str, task_id: str) -> None:
+def save_evidence(dsn: str | None, evidence: EvidenceRecord, user_id: str, task_id: str) -> None:
     """Simpan rekaman bukti ke Postgres (tabel `bukti` Fase 2)."""
     import os
 
-    import psycopg
+    from puspa.db import connect as _db_connect
 
-    dsn = dsn or os.environ.get(
-        "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql"
-    )
-    with psycopg.connect(dsn) as conn:
+    dsn = dsn or os.environ.get("PUSPA_TEST_DSN", None)
+    with _db_connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO evidence (evidence_id, task_id, user_id, klaim, value, unit,"

@@ -34,13 +34,14 @@ import json
 import os
 import secrets
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from ..memory.schema import resolve_dsn
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
+JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs"
 REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 ISSUER = "https://accounts.google.com"
@@ -123,6 +124,20 @@ def exchange_code(code, code_verifier, client_id, client_secret, redirect_uri, h
     if "access_token" not in tokens:
         raise OAuthError("token endpoint tidak mengembalikan access_token")
     return tokens
+
+
+def fetch_jwks(http_client=None):
+    """Ambil JWKS Google untuk verifikasi id_token."""
+    if http_client is None:
+        import httpx
+
+        with httpx.Client(timeout=30) as client:
+            resp = client.get(JWKS_URL)
+    else:
+        resp = http_client.get(JWKS_URL)
+    if resp.status_code != 200:
+        raise OAuthError(f"JWKS endpoint menolak: HTTP {resp.status_code}")
+    return resp.json()
 
 
 def refresh_tokens(refresh_token, client_id, client_secret, http_client=None):
@@ -258,7 +273,7 @@ def delete_tokens(user_id, dsn=None):
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def find_user_by_email(email, dsn=None):
@@ -276,7 +291,8 @@ def create_google_user(email, dsn=None):
     Kembalikan user_id. Raise ValueError kalau email sudah terdaftar.
     """
     from argon2 import PasswordHasher
-    from psycopg import errors as pg_errors
+
+    from puspa.db import errors as pg_errors
 
     email_n = email.strip().lower()
     if not email_n:

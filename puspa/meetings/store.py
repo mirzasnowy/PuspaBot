@@ -52,11 +52,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
 
-import psycopg
-from psycopg.rows import dict_row
-from psycopg.types.json import Jsonb
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import Jsonb, dict_row
+from puspa.db import connect as _db_connect
 from puspa.evidence.outcomes import write_outcome
 from puspa.ledger import Ledger
 from puspa.rooms.errors import NotRoomMemberError
@@ -111,7 +109,7 @@ def _record_row(row) -> MeetingMinutesRecord:
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def _resolve_owner(

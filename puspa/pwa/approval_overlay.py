@@ -71,7 +71,7 @@ __all__ = [
 ]
 
 #: Default DSN (peer auth as the OS user, no password).
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 #: Decisions a user can make on one pending overlay.
 DECISIONS = frozenset({"approved", "rejected"})

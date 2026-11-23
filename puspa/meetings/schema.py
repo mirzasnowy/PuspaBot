@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import psycopg
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import connect as _db_connect
 from puspa.migrations import apply_migrations
 
 __all__ = ["MEETINGS_TABLES", "create_schema", "reset_tables", "schema_path"]
@@ -37,6 +36,6 @@ def reset_tables(dsn=None):
     """Empty the meeting-minutes table (for tests). The ``rooms``
     table is untouched.
     """
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
+    with _db_connect(resolve_dsn(dsn)) as conn:
         conn.execute("TRUNCATE " + ", ".join(MEETINGS_TABLES) + " CASCADE")
         conn.commit()

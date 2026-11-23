@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import psycopg
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import Connection as _db_Connection
+from puspa.db import connect as _db_connect
 from puspa.migrations import apply_migrations
 
 __all__ = ["TEAM_TABLES", "create_schema", "reset_tables", "schema_path"]
@@ -47,13 +47,23 @@ def reset_tables(dsn=None):
     tables that reference them; the ``users`` table is untouched.
     Tables that do not exist yet are skipped.
     """
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
+    with _db_connect(resolve_dsn(dsn)) as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
-                "AND tablename = ANY(%s)",
-                (list(TEAM_TABLES),),
-            )
+            if isinstance(conn, _db_Connection):
+                # SQLite has no pg_tables catalog: sqlite_master
+                # holds the same existence check.
+                placeholders = ", ".join(["%s"] * len(TEAM_TABLES))
+                cur.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"  # nosec B608 - only the placeholder count is spliced in (len of a module constant); all table names are bound parameters
+                    f" AND name IN ({placeholders})",
+                    tuple(TEAM_TABLES),
+                )
+            else:
+                cur.execute(
+                    "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+                    "AND tablename = ANY(%s)",
+                    (list(TEAM_TABLES),),
+                )
             existing = [row[0] for row in cur.fetchall()]
         if existing:
             conn.execute("TRUNCATE " + ", ".join(existing) + " CASCADE")

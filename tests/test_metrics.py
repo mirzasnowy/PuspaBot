@@ -2,9 +2,9 @@
 
 from datetime import UTC
 
-import psycopg
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.graphs import service as graf
 from puspa.graphs.identity import add_product, link_listing
 from puspa.moat import library, metrics
@@ -82,7 +82,7 @@ def test_token_ratio_counts_weekly(make_user, test_dsn):
 
     user = make_user()
     now = datetime.now(UTC)
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         with conn.cursor() as cur:
             for i in range(4):
                 cur.execute(
@@ -104,7 +104,7 @@ def test_token_ratio_counts_weekly(make_user, test_dsn):
 
 def test_reliability_all_sources_measured(make_user, test_dsn):
     user = make_user()
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO source_readings (user_id, sumber, category, vonis)"

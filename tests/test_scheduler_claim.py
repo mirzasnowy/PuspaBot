@@ -9,9 +9,9 @@ import os
 import time
 from datetime import UTC, datetime, timedelta
 
-import psycopg
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.scheduler.claim import (
     DEFAULT_DSN,
     InMemoryWorkQueue,
@@ -37,7 +37,7 @@ pytestmark = pytest.mark.integration
 def _cleanup(item_ids):
     if not item_ids:
         return
-    with psycopg.connect(DSN, autocommit=True) as conn:
+    with _db_connect(DSN, autocommit=True) as conn:
         conn.execute("DELETE FROM work_items WHERE id = ANY(%s)", (list(item_ids),))
 
 

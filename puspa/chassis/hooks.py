@@ -442,12 +442,11 @@ def load_learned_skills_from_procedures(dsn, user_id: str) -> LearnedSkillStore:
     learning loop owns writes; this function only reads its drafts
     so the hook layer can check them.
     """
-    import psycopg
-    from psycopg.rows import dict_row
-
+    from puspa.db import connect as _db_connect
+    from puspa.db import dict_row
     from puspa.memory.schema import resolve_dsn
 
-    with psycopg.connect(resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+    with _db_connect(resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT service, step, status, source_event_id FROM procedures "
             "WHERE user_id = %s ORDER BY created_at DESC",

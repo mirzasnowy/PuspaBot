@@ -14,14 +14,15 @@ import json
 import os
 import uuid
 
-import psycopg
 import pytest
-from psycopg import errors as pg_errors
 
+from puspa.db import connect as _db_connect
+from puspa.db import errors as pg_errors
+from puspa.db import is_sqlite_dsn as _is_sqlite_dsn
 from puspa.ledger import APP_ROLE, EVENT_TYPES, GENESIS, Ledger
 from puspa.ledger.errors import InvalidEventTypeError
 
-DSN = os.environ.get("PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql")
+DSN = os.environ.get("PUSPA_TEST_DSN", None)
 AGEN = "agen-tes"
 
 
@@ -38,7 +39,7 @@ def task_id(ledger):
     """tugas_id unik per tes; barisnya dibersihkan setelah tes selesai."""
     tid = f"tes-{uuid.uuid4().hex[:12]}"
     yield tid
-    with psycopg.connect(DSN, autocommit=True) as conn:
+    with _db_connect(DSN, autocommit=True) as conn:
         conn.execute("DELETE FROM events WHERE task_id = %s", (tid,))
 
 
@@ -100,7 +101,7 @@ def test_verify_chain_detects_silent_changes(ledger, task_id):
 
     # Ubah satu isi lewat SQL langsung sebagai pemilik DB (superuser/owner
     # bisa UPDATE; peran aplikasi tidak — lihat tes izin di bawah).
-    with psycopg.connect(DSN, autocommit=True) as conn:
+    with _db_connect(DSN, autocommit=True) as conn:
         conn.execute(
             "UPDATE events SET content = %s::jsonb WHERE id = %s",
             (json.dumps({"price": 999}), stopped_subagents["id"]),
@@ -121,12 +122,20 @@ def test_event_type_outside_closed_set_rejected(ledger, task_id):
 
 
 def test_update_delete_rejected_for_application_role(ledger, task_id):
+    # DSN is captured at import time, before the fixture publishes
+    # the test database in the environment: resolve it now.
+    dsn = DSN or os.environ.get("PUSPA_TEST_DSN")
+    if dsn and _is_sqlite_dsn(dsn):
+        pytest.skip(
+            "Postgres role enforcement has no SQLite equivalent "
+            "(D-SQLite-5: ownership is enforced in code, not by roles)"
+        )
     ev = _append(ledger, task_id, event_type="task_created", content={"a": 1})
     # INSERT peran aplikasi diuji di tugas terpisah, supaya baris mentah itu
     # tidak mencemari rantai tugas yang sedang diverifikasi.
     task_sisip = f"{task_id}-sisip"
 
-    with psycopg.connect(DSN, autocommit=True) as conn:
+    with _db_connect(DSN, autocommit=True) as conn:
         conn.execute(f"SET ROLE {APP_ROLE}")
         try:
             # SELECT dan INSERT diizinkan untuk peran aplikasi.
@@ -152,7 +161,7 @@ def test_update_delete_rejected_for_application_role(ledger, task_id):
     # Baris asli tetap utuh dan rantai tetap valid.
     ok, _ = ledger.verify_chain(task_id)
     assert ok is True
-    with psycopg.connect(DSN, autocommit=True) as conn:
+    with _db_connect(DSN, autocommit=True) as conn:
         conn.execute("DELETE FROM events WHERE task_id = %s", (task_sisip,))
 
 
@@ -174,7 +183,7 @@ def test_two_tasks_have_independent_chains(ledger, task_id):
         assert ok_a is True
         assert ok_b is True
     finally:
-        with psycopg.connect(DSN, autocommit=True) as conn:
+        with _db_connect(DSN, autocommit=True) as conn:
             conn.execute("DELETE FROM events WHERE task_id = %s", (task_lain,))
 
 

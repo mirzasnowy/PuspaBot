@@ -3,6 +3,7 @@
   "error.action_content_must_be_dict": "action content must be a dict",
   "error.action_not_approved": "action not approved yet (status: {status})",
   "error.google_login_not_configured": "Google login is not configured (PUSPA_GOOGLE_CLIENT_ID is empty)",
+  "error.oauth_state_mismatch": "Google login state does not match (try logging in again)",
   "error.no_spending_enforcer": "no spending-limit enforcer; payment refused",
   "error.not_logged_in": "not signed in",
   "error.only_owner_may_approve": "only the user owner may approve",

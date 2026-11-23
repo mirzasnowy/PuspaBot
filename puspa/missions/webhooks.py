@@ -24,7 +24,7 @@ import json
 import secrets
 from datetime import UTC, datetime, timedelta
 
-import psycopg
+from puspa.db import dict_row as _db_dict_row
 
 from .missions import (
     Mission,
@@ -41,7 +41,7 @@ PAYLOAD_MAX_CHARS = 2000
 
 def _mission_by_token(token: str, *, dsn=None) -> Mission:
     """The mission a webhook token belongs to, or raise."""
-    with _connect(dsn) as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+    with _connect(dsn) as conn, conn.cursor(row_factory=_db_dict_row) as cur:
         cur.execute(
             "SELECT id, user_id, title, goal, status, steps, webhook_token,"
             " created_at, updated_at FROM missions WHERE webhook_token = %s",

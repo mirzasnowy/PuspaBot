@@ -43,8 +43,8 @@ from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 __all__ = [
     "AnchorConflict",
@@ -59,7 +59,7 @@ __all__ = [
 ]
 
 #: Default DSN (peer auth as the OS user, no password).
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 
 def _canonical_json(obj) -> bytes:
@@ -103,11 +103,14 @@ def collect_heads(dsn: str | None, *, before: datetime) -> dict[str, dict[str, A
     if before.tzinfo is None:
         raise AnchorError("before must be a timezone-aware datetime")
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    with psycopg.connect(dsn, row_factory=dict_row) as conn, conn.cursor() as cur:
+    with _db_connect(dsn, row_factory=dict_row) as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT DISTINCT ON (task_id) task_id, hash, created_at "
-            "FROM events WHERE created_at < %s "
-            "ORDER BY task_id, created_at DESC, id DESC",
+            "SELECT task_id, hash, created_at FROM ("
+            " SELECT task_id, hash, created_at,"
+            " ROW_NUMBER() OVER (PARTITION BY task_id"
+            " ORDER BY created_at DESC, id DESC) AS rn"
+            " FROM events WHERE created_at < %s"
+            ") WHERE rn = 1",
             (before,),
         )
         heads = {row["task_id"]: dict(row) for row in cur.fetchall()}

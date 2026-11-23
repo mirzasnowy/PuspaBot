@@ -15,11 +15,10 @@ from __future__ import annotations
 
 import os
 
-import psycopg
-
+from puspa.db import connect as _db_connect
 from puspa.migrations import apply_migrations
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 TABLES = (
     "canonical_products",
@@ -53,6 +52,6 @@ def create_schema(dsn: str | None = None) -> None:
 def reset_tables(dsn: str | None = None) -> None:
     """Empty all Phase 3 tables (tests only)."""
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    with psycopg.connect(dsn) as conn:
+    with _db_connect(dsn) as conn:
         conn.execute("TRUNCATE " + ", ".join(TABLES) + " CASCADE")
         conn.commit()

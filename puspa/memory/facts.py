@@ -42,8 +42,8 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from .schema import resolve_dsn
 
@@ -167,7 +167,7 @@ class PostgresFactStore:
         self.dsn = resolve_dsn(dsn)
 
     def _connect(self):
-        return psycopg.connect(self.dsn, row_factory=dict_row)
+        return _db_connect(self.dsn, row_factory=dict_row)
 
     def insert(self, record):
         with self._connect() as conn:

@@ -43,10 +43,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-import psycopg
-from psycopg.rows import dict_row
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from .errors import GuestReadOnlyError, NotRoomMemberError
 from .rooms import ROLE_GUEST, RoomStore, _validate_uuid
@@ -94,7 +93,7 @@ def _memory_row(row) -> RoomMemory:
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 class RoomMemoryStore:

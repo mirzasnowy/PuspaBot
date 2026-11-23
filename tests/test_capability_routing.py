@@ -14,9 +14,9 @@ only ever sent to the mock transport, never to a real host.
 """
 
 import httpx
-import psycopg
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.memory.embeddings import EmbeddingUnavailable, OpenAICompatibleEmbedding
 from puspa.pwa.capability_routing import (
     CAPABILITIES,
@@ -51,7 +51,7 @@ def user(make_user):
 def _routing_table(test_dsn):
     create_schema(test_dsn)
     yield
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         conn.execute("TRUNCATE capability_routing")
         conn.commit()
 

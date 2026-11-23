@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-import psycopg
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.scheduler.routines import (
     RoutineError,
     create_routine,
@@ -48,7 +48,7 @@ def _stub_loop(reply_text="Routine done."):
 
 
 def _trigger_row(test_dsn, trigger_id):
-    with psycopg.connect(test_dsn) as conn, conn.cursor() as cur:
+    with _db_connect(test_dsn) as conn, conn.cursor() as cur:
         cur.execute("SELECT next_trigger_at, active FROM triggers WHERE id = %s", (trigger_id,))
         return cur.fetchone()
 
@@ -184,7 +184,7 @@ def test_missed_routine_runs_once_on_wake(make_user, test_dsn):
         now=NOW,
     )
     # The host was down two days: move the fire time back.
-    with psycopg.connect(test_dsn) as conn, conn.cursor() as cur:
+    with _db_connect(test_dsn) as conn, conn.cursor() as cur:
         cur.execute(
             "UPDATE triggers SET next_trigger_at = %s WHERE id = %s",
             (datetime(2026, 11, 18, 7, 0, tzinfo=UTC), routine.id),

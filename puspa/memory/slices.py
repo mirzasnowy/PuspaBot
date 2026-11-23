@@ -16,8 +16,8 @@ untuk menautkan ke kejadian Buku Kerja begitu jenisnya ada.
 
 from __future__ import annotations
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from . import episodic, profile
 from .schema import resolve_dsn
@@ -27,7 +27,7 @@ ALLOWED_COLUMNS = frozenset({"profile", "episodic", "procedures"})
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def grant_slice(user_id, agent_id, subagent_id, query, columns, token_ref, dsn=None):

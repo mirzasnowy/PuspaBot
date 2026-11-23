@@ -19,10 +19,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import psycopg
-from psycopg.rows import dict_row
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 from puspa.migrations import apply_migrations
 from puspa.mockup.doc import DesignError, DesignSession, validate_doc
 
@@ -49,7 +48,7 @@ def create_schema(dsn=None):
 
 def reset_tables(dsn=None):
     """Empty the mockup tables (for tests)."""
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
+    with _db_connect(resolve_dsn(dsn)) as conn:
         conn.execute("TRUNCATE " + ", ".join(MOCKUP_TABLES) + " CASCADE")
         conn.commit()
 
@@ -71,7 +70,7 @@ class MockupStore:
     def create(self, user_id: str, doc: dict) -> dict:
         """Store a new validated doc; returns the stored doc."""
         validate_doc(doc)
-        with psycopg.connect(self.dsn) as conn:
+        with _db_connect(self.dsn) as conn:
             conn.execute(
                 "INSERT INTO mockups (id, user_id, title, template, doc) "
                 "VALUES (%s, %s, %s, %s, %s::jsonb)",
@@ -82,7 +81,7 @@ class MockupStore:
 
     def get(self, user_id: str, mockup_id: str) -> dict:
         """Load one mockup the user owns; KeyError when absent."""
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+        with _db_connect(self.dsn, row_factory=dict_row) as conn:
             row = conn.execute(
                 "SELECT doc FROM mockups WHERE id = %s AND user_id = %s",
                 (mockup_id, user_id),
@@ -93,7 +92,7 @@ class MockupStore:
 
     def list(self, user_id: str) -> list[dict]:
         """All of the user's mockups, newest first (summary shape)."""
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+        with _db_connect(self.dsn, row_factory=dict_row) as conn:
             rows = conn.execute(
                 "SELECT id, title, template, updated_at FROM mockups "
                 "WHERE user_id = %s ORDER BY updated_at DESC",
@@ -112,7 +111,7 @@ class MockupStore:
     def save(self, user_id: str, doc: dict) -> dict:
         """Overwrite a mockup's doc (validated first)."""
         validate_doc(doc)
-        with psycopg.connect(self.dsn) as conn:
+        with _db_connect(self.dsn) as conn:
             cursor = conn.execute(
                 "UPDATE mockups SET doc = %s::jsonb, title = %s, updated_at = now() "
                 "WHERE id = %s AND user_id = %s",
@@ -132,7 +131,7 @@ class MockupStore:
 
     def delete(self, user_id: str, mockup_id: str) -> None:
         """Delete a mockup; KeyError when it is not the user's."""
-        with psycopg.connect(self.dsn) as conn:
+        with _db_connect(self.dsn) as conn:
             cursor = conn.execute(
                 "DELETE FROM mockups WHERE id = %s AND user_id = %s", (mockup_id, user_id)
             )

@@ -196,7 +196,7 @@ ATTENTION_USER_BENEFIT_MAX = 0.5
 ATTENTION_PROACTIVE_MIN_OTHER_BENEFIT = 0.5
 
 #: DSN default (peer auth as the OS user, no password).
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 
 class UnresolvedConflictError(Exception):
@@ -451,7 +451,7 @@ def surface_text(conflict: Conflict) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_dsn(dsn: str | None) -> str:
+def _resolve_dsn(dsn: str | None) -> str | None:
     return dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
 
 
@@ -472,8 +472,8 @@ def load_conflicts(
     Newest first. ``status`` filters to one status when given.
     Returns [] when the table holds nothing for them.
     """
-    import psycopg
-    from psycopg.rows import dict_row
+    from puspa.db import connect as _db_connect
+    from puspa.db import dict_row
 
     query = (
         "SELECT id, kind, tool_name, description, beneficiary,"
@@ -488,7 +488,7 @@ def load_conflicts(
         query += " AND status = %s"
         params.append(status)
     query += " ORDER BY created_at DESC"
-    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn:
+    with _db_connect(_resolve_dsn(dsn), row_factory=dict_row) as conn:
         rows = conn.execute(query, params).fetchall()
     return [
         Conflict(
@@ -520,9 +520,9 @@ def delete_conflicts(user_id, agent_id, *, dsn: str | None = None) -> int:
     operator helper (and the user's own data-deletion path
     under K12): the agent itself never deletes records.
     """
-    import psycopg
+    from puspa.db import connect as _db_connect
 
-    with psycopg.connect(_resolve_dsn(dsn), autocommit=True) as conn, conn.cursor() as cur:
+    with _db_connect(_resolve_dsn(dsn), autocommit=True) as conn, conn.cursor() as cur:
         cur.execute(
             "DELETE FROM conflict_records WHERE user_id = %s AND agent_id = %s",
             (str(user_id), str(agent_id)),
@@ -645,9 +645,9 @@ class ConflictStore:
 
     # -- Postgres ------------------------------------------------------
     def _persist_insert(self, record: Conflict) -> None:
-        import psycopg
+        from puspa.db import connect as _db_connect
 
-        with psycopg.connect(_resolve_dsn(self.dsn), autocommit=True) as conn:
+        with _db_connect(_resolve_dsn(self.dsn), autocommit=True) as conn:
             conn.execute(
                 "INSERT INTO conflict_records"
                 " (id, user_id, agent_id, kind, tool_name, description,"
@@ -675,9 +675,9 @@ class ConflictStore:
             )
 
     def _persist_update(self, record: Conflict) -> None:
-        import psycopg
+        from puspa.db import connect as _db_connect
 
-        with psycopg.connect(_resolve_dsn(self.dsn), autocommit=True) as conn:
+        with _db_connect(_resolve_dsn(self.dsn), autocommit=True) as conn:
             conn.execute(
                 "UPDATE conflict_records SET status = %s, user_choice = %s,"
                 " resolved_at = %s WHERE id = %s",

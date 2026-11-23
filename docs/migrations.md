@@ -80,9 +80,11 @@ python -m puspa.migrations status
 
 DSN resolution, in order: the `--dsn` argument, env `PUSPA_DSN`,
 env `PUSPA_TEST_DSN`, else the peer-auth default
-`dbname=puspa_test user=root host=/var/run/postgresql`. The runner
-connects to an existing database — create the role and the database
-first (see "Database setup" in the README).
+`dbname=puspa_test user=root host=/var/run/postgresql` for a
+Postgres DSN, or `~/.puspa/puspa.db` for a SQLite DSN (see
+`docs/sqlite-backend.md`). The runner connects to an existing
+database — create the role and the database first (see
+"Database setup" in the README).
 
 Rules the runner enforces:
 
@@ -135,12 +137,14 @@ table any more, except two explicit exceptions:
 - `puspa/migrations/runner.py` — the single
   `schema_migrations` bootstrap statement.
 
-`tests/test_migrations.py` enforces this with a scanner: any
-`CREATE TABLE` / `CREATE INDEX` / `ALTER TABLE` / `DROP TABLE` /
-`CREATE POLICY` / `CREATE OR REPLACE FUNCTION` / `CREATE EXTENSION`
-in `puspa/**/*.py` (outside those two files) fails the suite, and
-so does reading a `.sql` file from anywhere except
-`puspa/migrations/`.
+`tests/test_migrations_runner.py` covers the runner (listing,
+applying, no-op re-runs); `tests/test_docs_drift.py` checks the
+event-type CHECK lists agree with `0001_core`; the
+expand-then-contract rule below is enforced by
+`tests/test_feature_flags.py`. There is no separate DDL scanner
+test: nothing in `puspa/` creates a table any more except the two
+exceptions above, and the migration tests below fail the suite
+when the schema drifts.
 
 ## Adding a migration
 
@@ -162,9 +166,46 @@ so does reading a `.sql` file from anywhere except
    forward again, and check the schema matches the snapshot.
 5. Regenerate the snapshot (below) and commit it in the same
    commit as the migration.
-6. Add or extend the tests in `tests/test_migrations.py` — at
-   minimum the loader-target test must see the new version, and
-   the snapshot test must pass.
+6. Add or extend the tests — at minimum the loader-target test
+   must see the new version, and the snapshot test must pass.
+7. If the migration touches the schema (not just data), regenerate
+   the SQLite set too (see "Two migration sets" below) and commit
+   it in the same commit.
+
+## Two migration sets (SQLite desktop backend, COW-10)
+
+The desktop app runs on SQLite, so the schema exists twice with
+the same version numbers (D-SQLite-6):
+
+- `puspa/migrations/versions/` — Postgres, for the hosted backend.
+- `puspa/migrations/versions_sqlite/` — SQLite, for the desktop
+  backend. Generated, never hand-edited: run
+  `python scripts/generate_sqlite_migrations.py` after any change
+  to `versions/` and commit the regenerated files.
+
+The generator translates each Postgres file with
+`puspa/db_translate.py`. Things with no SQLite equivalent are
+dropped in translation, by design:
+
+- RLS: `CREATE POLICY`, `GRANT` / `REVOKE`, `CREATE ROLE`,
+  `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` — ownership is
+  enforced in code instead (every query filters `user_id`).
+  See `docs/sqlite-backend.md`.
+- `CREATE EXTENSION vector` and HNSW indexes — vector search is
+  brute-force cosine in Python (`docs/sqlite-backend.md`).
+- `CREATE OR REPLACE FUNCTION` / `CREATE TRIGGER` for the
+  delete-guard — re-expressed as a native SQLite trigger
+  (`0003`), or dropped when the function only served RLS policies.
+- `ADD CONSTRAINT` CHECKs — enforced in Python instead (the
+  ledger validates event types against its closed set).
+
+Two tests keep the sets from drifting:
+`tests/test_sqlite_migrations.py::test_sqlite_set_matches_postgres_set`
+parses both sets and compares every table and column, and
+`tests/test_sqlite_differential.py::test_schema_matches_live_postgres`
+compares the SQLite file against a live Postgres database with
+both sets applied. A migration that changes the Postgres schema
+without regenerating the SQLite set fails the first test.
 
 ## The committed snapshot
 

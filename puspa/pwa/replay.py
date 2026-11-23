@@ -48,8 +48,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from ..evidence.proof import user_agent_ids
 from ..ledger import Ledger
@@ -72,7 +72,7 @@ __all__ = [
 ]
 
 #: Default DSN (peer auth as the OS user, no password).
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 #: A task with more steps than this cannot be replayed in one
 #: timeline: the GIF would be unusably long and the screen
@@ -110,7 +110,7 @@ class ReplayError(Exception):
         self.status = status
 
 
-def _require_owner(user_id: str, agent_id: str, *, dsn: str) -> None:
+def _require_owner(user_id: str, agent_id: str, *, dsn: str | None) -> None:
     """403 when ``agent_id`` is not one of ``user_id``'s agents."""
     if not isinstance(user_id, str) or not user_id:
         raise ValueError("user_id must be a non-empty string")
@@ -460,11 +460,13 @@ def list_tasks_for_agent(
     """
     resolved_dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
     _require_owner(user_id, agent_id, dsn=resolved_dsn)
-    with psycopg.connect(resolved_dsn, row_factory=dict_row) as conn, conn.cursor() as cur:
+    with _db_connect(resolved_dsn, row_factory=dict_row) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT task_id, COUNT(*) AS event_count, "
             "MIN(created_at) AS first_event_at, MAX(created_at) AS last_event_at, "
-            "(array_agg(type ORDER BY created_at DESC, id DESC))[1] AS last_type "
+            "(SELECT e2.type FROM events e2 "
+            "WHERE e2.task_id = events.task_id "
+            "ORDER BY e2.created_at DESC, e2.id DESC LIMIT 1) AS last_type "
             "FROM events WHERE agent_id = %s "
             "GROUP BY task_id ORDER BY MAX(created_at) DESC",
             (agent_id,),

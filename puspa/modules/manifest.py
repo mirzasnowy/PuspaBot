@@ -19,14 +19,13 @@ from __future__ import annotations
 import json
 import os
 
-import psycopg
-from psycopg.rows import dict_row
-
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 from puspa.workflow.blocks import validate_workflow
 from puspa.workflow.manifest import compute_manifest, subset_permission
 from puspa.workflow.triggers import validate_trigger
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 ALLOWED_COMPONENTS = ("card", "table", "items", "form", "number", "line_chart", "action_button")
 COLUMN_TYPES = ("text", "number", "Rupiah", "date", "choice")
@@ -60,9 +59,7 @@ class ModuleError(Exception):
 
 
 def _connect(dsn=None):
-    return psycopg.connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
-    )
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
 def _row(row: dict) -> dict:

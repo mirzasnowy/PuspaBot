@@ -12,18 +12,16 @@ from __future__ import annotations
 
 import os
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 TARGET_USER_ACTIVE = 5
 TARGET_RUNS_WITHOUT_INTERVENTION = 50.0
 
 
 def _connect(dsn=None):
-    return psycopg.connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
-    )
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
 def workflow_metrics(dsn=None) -> dict:

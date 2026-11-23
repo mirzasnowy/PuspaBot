@@ -2,9 +2,9 @@
 
 import uuid
 
-import psycopg
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.memory import consolidate, episodic, procedural, profile, slices
 
 
@@ -96,7 +96,7 @@ def test_consolidation_summarizes_and_points_to_source_event(make_user, test_dsn
             event_id=str(ev["id"]),
             dsn=test_dsn,
         )
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         conn.execute(
             "UPDATE episodic SET created_at = now() - interval '45 days' WHERE user_id = %s",
             (u["user_id"],),
@@ -124,7 +124,7 @@ def test_consolidation_does_not_repeat_already_summarized_episode(make_user, tes
         event_id=str(uuid.uuid4()),
         dsn=test_dsn,
     )
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         conn.execute(
             "UPDATE episodic SET created_at = now() - interval '45 days' WHERE user_id = %s",
             (u["user_id"],),

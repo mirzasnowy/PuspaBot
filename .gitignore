@@ -6,6 +6,9 @@ nanobot/
 *.egg-info/
 backups/
 
+# Rust (native desktop client, apps/desktop/)
+target/
+
 node_modules/
 dist/
 

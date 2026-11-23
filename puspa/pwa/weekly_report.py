@@ -47,7 +47,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, time, timedelta
 
-import psycopg
+from puspa.db import Error as _db_Error
 
 from ..billing.ports import format_idr, insights_for_user, validate_days
 from ..evidence.proof import event_belongs_to_user, user_agent_ids
@@ -187,6 +187,6 @@ def weekly_report_for_user(
     cost_idr: int | None
     try:
         cost_idr = insights_for_user(user_id, days=days, dsn=dsn, now=now)["cost"]["total_idr"]
-    except psycopg.Error:
+    except _db_Error:
         cost_idr = None
     return summarise_weekly(events, days=days, now=now, cost_idr=cost_idr)

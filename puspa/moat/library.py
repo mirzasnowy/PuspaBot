@@ -16,21 +16,19 @@ from __future__ import annotations
 
 import os
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 
 def _connect(dsn=None):
-    return psycopg.connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
-    )
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
 def record_workflow_success(*, user_id: str, name: str, block: list, dsn=None) -> dict:
     """Catat satu jalan sukses alur (blok yang dipakai tercatat)."""
-    from psycopg.types.json import Jsonb
+    from puspa.db import Jsonb
 
     with _connect(dsn) as conn:
         with conn.cursor() as cur:

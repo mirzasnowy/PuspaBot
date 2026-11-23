@@ -44,8 +44,7 @@ import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
-import psycopg
-
+from puspa.db import connect as _db_connect
 from puspa.migrations import apply_migrations
 
 from .hierarchy import SessionStore
@@ -57,13 +56,13 @@ __all__ = [
 ]
 
 #: DSN default (peer auth as the OS user, no password).
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 #: Migration that creates the Postgres session-state table.
 _SESSIONS_MIGRATION = "0028"
 
 
-def _resolve_dsn(dsn: str | None) -> str:
+def _resolve_dsn(dsn: str | None) -> str | None:
     return dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
 
 
@@ -98,7 +97,7 @@ class PostgresSessionStore(SessionStore):
     def save(
         self, session_id: str, snapshot: dict, *, user_id: str = "", app_name: str = "puspa"
     ) -> None:
-        with psycopg.connect(self.dsn) as conn:
+        with _db_connect(self.dsn) as conn:
             conn.execute(
                 "INSERT INTO runtime_session_states"
                 " (session_id, user_id, app_name, state)"
@@ -113,7 +112,7 @@ class PostgresSessionStore(SessionStore):
             conn.commit()
 
     def load(self, session_id: str) -> dict | None:
-        with psycopg.connect(self.dsn) as conn:
+        with _db_connect(self.dsn) as conn:
             row = conn.execute(
                 "SELECT state FROM runtime_session_states WHERE session_id = %s",
                 (str(session_id),),
@@ -121,7 +120,7 @@ class PostgresSessionStore(SessionStore):
         return _decode(row[0]) if row is not None else None
 
     def delete(self, session_id: str) -> None:
-        with psycopg.connect(self.dsn) as conn:
+        with _db_connect(self.dsn) as conn:
             conn.execute(
                 "DELETE FROM runtime_session_states WHERE session_id = %s",
                 (str(session_id),),

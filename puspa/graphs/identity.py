@@ -36,13 +36,11 @@ import os
 import re
 from datetime import UTC, datetime, timedelta
 
-import psycopg
-from psycopg.rows import dict_row
-from psycopg.types.json import Jsonb
-
+from puspa.db import Jsonb, dict_row
+from puspa.db import connect as _db_connect
 from puspa.memory.episodic import extract_concepts, extract_entities
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 CATEGORIES = (
     "phone",
@@ -64,9 +62,7 @@ class IdentityError(Exception):
 
 
 def _connect(dsn=None):
-    return psycopg.connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
-    )
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
 def normalize_model_number(model_number: str) -> str:
@@ -291,12 +287,19 @@ def current_prices(product_id: str, dsn=None) -> list[dict]:
     """Harga terkini tiap marketplace untuk satu produk kanonik."""
     with _connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT DISTINCT ON (t.marketplace) t.marketplace, t.listing_url,"
-            " t.status AS link_status, h.price, h.shipping, h.store_rating,"
-            " h.stock, h.evidence_id, h.created_at"
+            "SELECT marketplace, listing_url, link_status, price,"
+            " shipping, store_rating, stock, evidence_id, created_at"
+            " FROM (SELECT t.marketplace AS marketplace,"
+            " t.listing_url AS listing_url,"
+            " t.status AS link_status, h.price AS price,"
+            " h.shipping AS shipping, h.store_rating AS store_rating,"
+            " h.stock AS stock, h.evidence_id AS evidence_id,"
+            " h.created_at AS created_at,"
+            " ROW_NUMBER() OVER (PARTITION BY t.marketplace"
+            " ORDER BY h.created_at DESC) AS rn"
             " FROM listing_links t JOIN price_series h ON h.tautan_id = t.id"
             " WHERE t.product_id = %s AND t.status <> 'user_rejected'"
-            " ORDER BY t.marketplace, h.created_at DESC",
+            ") WHERE rn = 1",
             (product_id,),
         )
         return [

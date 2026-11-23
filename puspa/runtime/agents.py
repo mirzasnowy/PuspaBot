@@ -20,9 +20,9 @@ from __future__ import annotations
 
 import uuid
 
-import psycopg
-
 from puspa.accounts.ports import register_agent, resolve_dsn
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row as _db_dict_row
 
 MAX_AGENT = 3
 NAME_PUSPA = "Puspa"
@@ -33,7 +33,7 @@ class AgentError(Exception):
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn))
+    return _db_connect(resolve_dsn(dsn))
 
 
 def _agent_id_puspa(user_id: str) -> str:
@@ -107,7 +107,7 @@ def create_agent(user_id: str, name: str, role: str = "", purpose: str = "", dsn
 
 def list_agents(user_id: str, dsn=None) -> list[dict]:
     """Semua agen milik pengguna, Puspa wajib selalu pertama."""
-    with _connect(dsn) as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+    with _connect(dsn) as conn, conn.cursor(row_factory=_db_dict_row) as cur:
         cur.execute(
             "SELECT agent_id, name, peran AS role, purpose, required FROM agent_meta"
             " WHERE user_id = %s ORDER BY required DESC, created_at ASC",

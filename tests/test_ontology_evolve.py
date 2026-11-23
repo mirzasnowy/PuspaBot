@@ -16,9 +16,11 @@ import os
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import psycopg
 import pytest
 
+from puspa.db import Error as _db_Error
+from puspa.db import connect as _db_connect
+from puspa.db import is_sqlite_dsn as _db_is_sqlite_dsn
 from puspa.memory.ontology_evolve import (
     OP_NEEDS_EVIDENCE,
     OP_REJECT_STALE_PROPOSAL,
@@ -40,7 +42,7 @@ from puspa.memory.ontology_evolve import (
 
 NOW = datetime(2026, 11, 22, 12, 0, tzinfo=UTC)
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 _DB_TABLES = (
     "profile_facts",
@@ -344,17 +346,23 @@ def _dsn():
 
 def _db_ready(dsn):
     try:
-        with psycopg.connect(dsn, connect_timeout=5) as conn, conn.cursor() as cur:
+        with _db_connect(dsn, connect_timeout=5) as conn, conn.cursor() as cur:
             for table in _DB_TABLES:
-                cur.execute(
-                    "SELECT 1 FROM information_schema.tables "
-                    "WHERE table_schema = 'public' AND table_name = %s",
-                    (table,),
-                )
+                if _db_is_sqlite_dsn(dsn):
+                    cur.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = %s",
+                        (table,),
+                    )
+                else:
+                    cur.execute(
+                        "SELECT 1 FROM information_schema.tables "
+                        "WHERE table_schema = 'public' AND table_name = %s",
+                        (table,),
+                    )
                 if cur.fetchone() is None:
                     return False
         return True
-    except psycopg.Error:
+    except _db_Error:
         return False
 
 
@@ -370,7 +378,7 @@ class TestOntologyEvolveEndToEnd:
         self.user_id = str(uuid.uuid4())
         self.agent_id = f"agen-{uuid.uuid4().hex[:12]}"
         self.task_ids = []
-        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        with _db_connect(dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO users (id, email, password_hash) VALUES (%s, %s, 'k17-test-no-login')",
                 (self.user_id, f"k17-{uuid.uuid4().hex[:8]}@contoh.id"),
@@ -381,7 +389,7 @@ class TestOntologyEvolveEndToEnd:
             )
             conn.commit()
         yield
-        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        with _db_connect(dsn) as conn, conn.cursor() as cur:
             for table in ("profile_facts", "causal_hypotheses"):
                 cur.execute(f"DELETE FROM {table} WHERE user_id = %s", (self.user_id,))
             cur.execute("DELETE FROM agents WHERE user_id = %s", (self.user_id,))
@@ -397,7 +405,7 @@ class TestOntologyEvolveEndToEnd:
         from puspa.world.causal import CausalHypothesis, CausalLedger
         from puspa.world.store import save_causal_hypotheses
 
-        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+        with _db_connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO profile_facts (user_id, agent_id, key, value, source, status, created_at) "
                 "VALUES (%s, %s, 'city', 'Jakarta', 'user_stated', 'active', now() - INTERVAL '5 days') "
@@ -479,12 +487,19 @@ class TestOntologyEvolveEndToEnd:
         ids = self._seed_messy_ontology()
         task_id = f"k17-run-{uuid.uuid4().hex[:12]}"
         self.task_ids.append(task_id)
+        # The run evaluates "as of" now: the seeded rows carry the
+        # real current time (SQL now(), utcnow() defaults), so a
+        # fixed past NOW would retire a hypothesis to a valid_to
+        # before its valid_from and fail validation. Capture the
+        # run time after seeding instead; the pure-function tests
+        # below keep using the fixed NOW.
+        run_now = datetime.now(UTC)
         result = run_ontology_evolution(
             self.user_id,
             dsn=self.dsn,
             agent_id=self.agent_id,
             task_id=task_id,
-            now=NOW,
+            now=run_now,
         )
         assert result["status"] == "ok"
         assert result["counts"]["total"] == 4
@@ -529,7 +544,7 @@ class TestOntologyEvolveEndToEnd:
             dsn=self.dsn,
             agent_id=self.agent_id,
             task_id=task_id2,
-            now=NOW,
+            now=run_now,
         )
         assert again["applied"] == []
         assert again["counts"]["total"] == 0
@@ -546,7 +561,7 @@ class TestOntologyEvolveEndToEnd:
             dsn=self.dsn,
             agent_id=self.agent_id,
             task_id=undo_task,
-            now=NOW,
+            now=run_now,
         )
         assert undone["status"] == "ok"
         assert undone["restored"] == {"facts": 1, "hypotheses": 0}
@@ -582,7 +597,7 @@ class TestOntologyEvolveEndToEnd:
     def test_clean_ontology_records_a_no_op_run(self):
         from puspa.ledger.ledger import Ledger
 
-        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+        with _db_connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO profile_facts (user_id, agent_id, key, value, source, status) "
                 "VALUES (%s, %s, 'city', 'Jakarta', 'user_stated', 'active')",

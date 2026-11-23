@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import psycopg
 import pytest
 
 from puspa.check_before_buy import (
@@ -22,6 +21,7 @@ from puspa.check_before_buy import (
     load_cassette,
 )
 from puspa.check_before_buy.answer import mask_account_number
+from puspa.db import connect as _db_connect
 from puspa.turns.intercepts import INTERCEPTED_TOOLS, InterceptedTools
 
 LINK = "https://www.tokopedia.com/toko/galaxy-s24"
@@ -281,7 +281,7 @@ def test_outcome_writes_evidence_rows_and_ledger_event(make_user, test_dsn):
     assert result["recorded"] is True
     assert len(result["evidence_ids"]) == 2
     assert result["answer"]["advice"] == "act"
-    with psycopg.connect(test_dsn) as conn, conn.cursor() as cur:
+    with _db_connect(test_dsn) as conn, conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM evidence WHERE task_id = 'task-b1-1'")
         assert cur.fetchone()[0] == 2
         cur.execute("SELECT type, content FROM events WHERE task_id = 'task-b1-1'")

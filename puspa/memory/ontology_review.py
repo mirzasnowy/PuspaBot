@@ -32,7 +32,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import psycopg
+from puspa.db import connect as _db_connect
 
 from . import profile
 from .schema import resolve_dsn
@@ -265,7 +265,7 @@ def review_ontology(*, facts, hypotheses, now=None):
 
 def resolve_agent_id(user_id, *, dsn=None):
     """The agent id for a user, or None when the user has no agent row."""
-    with psycopg.connect(resolve_dsn(dsn)) as conn, conn.cursor() as cur:
+    with _db_connect(resolve_dsn(dsn)) as conn, conn.cursor() as cur:
         cur.execute("SELECT agent_id FROM agents WHERE user_id = %s LIMIT 1", (str(user_id),))
         row = cur.fetchone()
     return str(row[0]) if row and row[0] else None
@@ -296,7 +296,7 @@ def reviewed_this_month(user_id, *, dsn, now=None) -> bool:
     """True when an ontology review was already recorded this calendar month."""
     now = _require_aware(now, "now") or datetime.now(UTC)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    with psycopg.connect(resolve_dsn(dsn)) as conn, conn.cursor() as cur:
+    with _db_connect(resolve_dsn(dsn)) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT 1 FROM events WHERE type = 'task_completed' "
             "AND content ->> 'job' = 'ontology_review' "

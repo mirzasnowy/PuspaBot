@@ -24,10 +24,11 @@ import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import psycopg
 import pytest
 
 from puspa.cli import main as cli_main
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row as _db_dict_row
 from puspa.ledger import Ledger
 from puspa.memory import procedural
 from puspa.memory.self_evolution import (
@@ -52,7 +53,7 @@ def _episode(content, type="task_completed", minutes_ago=120, event_id=None, tas
 
 
 def _insert_episodes(user_id, episodes, test_dsn):
-    with psycopg.connect(test_dsn) as conn, conn.cursor() as cur:
+    with _db_connect(test_dsn) as conn, conn.cursor() as cur:
         for ep in episodes:
             cur.execute(
                 "INSERT INTO episodic (user_id, task_id, type, content, event_id, created_at) "
@@ -70,7 +71,7 @@ def _insert_episodes(user_id, episodes, test_dsn):
 
 
 def _insert_task(user_id, agent_id, task_id, purpose, days_ago, test_dsn):
-    with psycopg.connect(test_dsn) as conn, conn.cursor() as cur:
+    with _db_connect(test_dsn) as conn, conn.cursor() as cur:
         cur.execute(
             "INSERT INTO tasks (id, user_id, agent_id, purpose, status, created_at) "
             "VALUES (%s, %s, %s, %s, 'accepted', %s)",
@@ -80,7 +81,7 @@ def _insert_task(user_id, agent_id, task_id, purpose, days_ago, test_dsn):
 
 
 def _ledger_events(test_dsn, event_type=None):
-    with psycopg.connect(test_dsn, row_factory=psycopg.rows.dict_row) as conn, conn.cursor() as cur:
+    with _db_connect(test_dsn, row_factory=_db_dict_row) as conn, conn.cursor() as cur:
         if event_type is None:
             cur.execute("SELECT id, type, content FROM events ORDER BY created_at ASC")
         else:
@@ -297,7 +298,7 @@ def test_repeated_preference_becomes_a_memory_proposal(make_user, test_dsn):
     )
     result = run_review_pass(user_id, session_id=session_id, dsn=test_dsn, now=NOW)
     assert result["memories_proposed"] >= 1
-    with psycopg.connect(test_dsn, row_factory=psycopg.rows.dict_row) as conn, conn.cursor() as cur:
+    with _db_connect(test_dsn, row_factory=_db_dict_row) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT key, value, status FROM profile_facts WHERE user_id = %s",
             (user_id,),

@@ -15,7 +15,6 @@ Tests run against the Postgres test database named by the
 
 from datetime import UTC, datetime
 
-import psycopg
 import pytest
 
 from puspa.check_before_buy import (
@@ -25,6 +24,7 @@ from puspa.check_before_buy import (
     check_before_buy,
 )
 from puspa.check_before_buy.outcome import record_outcome
+from puspa.db import connect as _db_connect
 from puspa.evidence.outcomes import write_outcome
 from puspa.evidence.proof import (
     MAX_PAGE_SIZE,
@@ -127,7 +127,7 @@ def test_tampered_event_fails_verification(ledger, make_user, test_dsn):
     ok, _reasons = verify_receipt(ledger, receipt)
     assert ok is True
     # Tamper with the stored event after the receipt was built.
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         conn.execute(
             "UPDATE events SET content = %s WHERE id = %s",
             ('{"note": "tampered"}', event["id"]),

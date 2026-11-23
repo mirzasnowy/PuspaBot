@@ -43,10 +43,9 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import psycopg
-from psycopg.rows import dict_row
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 from puspa.persona.files import DEFAULT_NAME as DEFAULT_BOT_NAME
 from puspa.persona.files import load_persona_files
 
@@ -103,7 +102,7 @@ def validate_display_name(name) -> str:
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def create_schema(dsn=None):

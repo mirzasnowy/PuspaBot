@@ -12,7 +12,7 @@ intent advisor and the autonomy dial.
 
 from __future__ import annotations
 
-import psycopg
+import sqlite3
 
 from puspa.turns.config import TurnConfig
 from puspa.turns.loop import TurnLoop
@@ -119,7 +119,11 @@ def test_unheld_turn_runs_exactly_as_before():
 
 def test_broken_hold_check_fails_open():
     def failing_hold(agent_id):
-        raise psycopg.OperationalError("the hold store is down")
+        # The error aliases in puspa.db are (sqlite, psycopg)
+        # tuples so one except catches both backends; a tuple
+        # cannot be raised, so the fake raises the concrete
+        # SQLite error the hold store would really raise here.
+        raise sqlite3.OperationalError("the hold store is down")
 
     def model_call(entry, wire_messages, tools):
         return _text_reply("Still working.")

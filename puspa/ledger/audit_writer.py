@@ -20,7 +20,8 @@ from __future__ import annotations
 
 import os
 
-import psycopg
+from puspa.db import connect as _db_connect
+from puspa.db import errors as pg_errors
 
 from .ledger import APP_ROLE, DEFAULT_DSN, Ledger
 
@@ -34,7 +35,7 @@ def ensure_audit_role(dsn: str | None = None) -> None:
     Idempotent: a second call is a no-op.
     """
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    with psycopg.connect(dsn) as conn:
+    with _db_connect(dsn) as conn:
         conn.execute(
             "DO $$ BEGIN "
             "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'puspa_app') THEN "
@@ -96,12 +97,12 @@ class AuditWriter:
             ("delete_blocked", "DELETE FROM events WHERE id = %s"),
         )
         blocked: dict[str, bool] = {name: False for name, _ in attempts}
-        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+        with _db_connect(self.dsn) as conn, conn.cursor() as cur:
             for name, statement in attempts:
                 cur.execute(f"SET ROLE {self.role}")
                 try:
                     cur.execute(statement, (event_id,))
-                except psycopg.errors.InsufficientPrivilege:
+                except pg_errors.InsufficientPrivilege:
                     blocked[name] = True
                 finally:
                     conn.rollback()

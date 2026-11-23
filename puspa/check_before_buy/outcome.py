@@ -21,7 +21,7 @@ from puspa.ledger import Ledger
 
 from .answer import CheckAnswer
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 
 def record_outcome(

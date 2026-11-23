@@ -133,6 +133,67 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+    get:
+      tags: [chat]
+      summary: List chat messages
+      description: Returns the current chat thread (same in-memory thread the pages render and the bootstrap embeds). The native desktop app polls this for the agent reply after sending; the PWA has no equivalent read.
+      responses:
+        "200":
+          description: Current thread
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [messages]
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ChatMessage"
+        "401":
+          description: Not logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/desktop/session:
+    post:
+      tags: [auth]
+      summary: Exchange a desktop login code for a session token
+      description: Exchanges a one-time desktop login code (minted by the Google callback for a desktop login) for a session token. The code is single-use and lives 5 minutes; unknown or expired codes get 401.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: One-time desktop login code from the loopback redirect
+      responses:
+        "200":
+          description: Session token issued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, session_token, user_id]
+                properties:
+                  ok:
+                    type: boolean
+                  session_token:
+                    type: string
+                    description: Session token; send as the puspa_sesi cookie on later calls
+                  user_id:
+                    type: string
+        "401":
+          description: Unknown or expired code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/chat/attachments/{attachment_id}:
     get:
       tags: [chat]

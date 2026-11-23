@@ -76,9 +76,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
-import psycopg
-from psycopg.rows import dict_row
-
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 from puspa.diagnostics.redact import REDACTED, redact_diagnostics_value
 
 __all__ = [
@@ -101,7 +100,7 @@ DIAGNOSTICS_FORMAT = "puspa-diagnostics"
 DIAGNOSTICS_VERSION = 1
 
 #: Default DSN (peer auth as the OS user, no password).
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 #: Caps: a bundle stays small enough to paste into a bug
 #: report. Each section keeps the most recent rows and says
@@ -235,9 +234,7 @@ def build_diagnostics_bundle(
 
 
 def _connect(dsn: str | None):
-    return psycopg.connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
-    )
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
 def _agent_ids(user_id: str, conn) -> list[str]:

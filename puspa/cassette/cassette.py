@@ -74,12 +74,10 @@ def save_cassette(
     if dsn is not None and user_id and task_id:
         import os
 
-        import psycopg
+        from puspa.db import connect as _db_connect
 
-        dsn = dsn or os.environ.get(
-            "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql"
-        )
-        with psycopg.connect(dsn) as conn:
+        dsn = dsn or os.environ.get("PUSPA_TEST_DSN", None)
+        with _db_connect(dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "INSERT INTO cassettes (id, task_id, user_id, name, berkas)"
@@ -156,12 +154,10 @@ def delete_cassette_task(task_id: str, *, cassette_dir: Path | None = None, dsn=
     if dsn is not None:
         import os
 
-        import psycopg
+        from puspa.db import connect as _db_connect
 
-        dsn = dsn or os.environ.get(
-            "PUSPA_TEST_DSN", "dbname=puspa_test user=root host=/var/run/postgresql"
-        )
-        with psycopg.connect(dsn) as conn:
+        dsn = dsn or os.environ.get("PUSPA_TEST_DSN", None)
+        with _db_connect(dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT name, berkas FROM cassettes WHERE task_id = %s", (task_id,))
                 rows = cur.fetchall()

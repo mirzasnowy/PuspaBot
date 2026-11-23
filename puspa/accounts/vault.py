@@ -40,14 +40,15 @@ import base64
 import os
 import stat
 
-import psycopg
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
+from puspa.db import connect as _db_connect
+
 #: Fallback DSN when no DSN is passed and no env var is set (same
 #: convention as the rest of the codebase).
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 
 def _connect(dsn=None):
@@ -59,7 +60,7 @@ def _connect(dsn=None):
     then ``PUSPA_TEST_DSN``, then the local default.
     """
     resolved = dsn or os.environ.get("PUSPA_DSN") or os.environ.get("PUSPA_TEST_DSN") or DEFAULT_DSN
-    return psycopg.connect(resolved)
+    return _db_connect(resolved)
 
 
 __all__ = [

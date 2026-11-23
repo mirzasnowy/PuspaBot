@@ -24,13 +24,13 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import httpx
-import psycopg
 import pytest
 
 from puspa.channels.agent import TaskRunnerAgent
 from puspa.channels.authz import Allowlist
 from puspa.channels.config import ChannelConfig
 from puspa.channels.run import GatewayRunner
+from puspa.db import connect as _db_connect
 from puspa.proactivity.budget import (
     DEFAULT_DAILY_BUDGET,
     HIGH_VALUE_THRESHOLD,
@@ -302,7 +302,7 @@ def test_reset_day_restores_the_full_budget():
 
 
 def _trigger_rows(test_dsn, trigger_id):
-    with psycopg.connect(test_dsn) as conn, conn.cursor() as cur:
+    with _db_connect(test_dsn) as conn, conn.cursor() as cur:
         cur.execute("SELECT next_trigger_at FROM triggers WHERE id = %s", (trigger_id,))
         trigger_row = cur.fetchone()
         cur.execute("SELECT COUNT(*) FROM trigger_runs WHERE trigger_id = %s", (trigger_id,))

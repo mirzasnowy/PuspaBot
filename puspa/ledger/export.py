@@ -39,13 +39,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
-import psycopg
-from psycopg.rows import dict_row
-
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 from puspa.memory.trust import redact_secrets
 
 #: Default DSN (peer auth as the OS user, no password).
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 #: Format version of the export file. Bump when the sections change.
 EXPORT_VERSION = 1
@@ -98,9 +97,7 @@ def _jsonable(value):
 
 
 def _connect(dsn: str | None):
-    return psycopg.connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
-    )
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
 def _agent_ids(user_id: str, conn) -> list[str]:

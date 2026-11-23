@@ -60,10 +60,9 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import psycopg
-from psycopg.rows import dict_row
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 from puspa.migrations import apply_migrations
 
 if TYPE_CHECKING:
@@ -133,14 +132,14 @@ def create_schema(dsn=None):
 
 def reset_tables(dsn=None):
     """Empty the support table (for tests)."""
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
+    with _db_connect(resolve_dsn(dsn)) as conn:
         conn.execute("TRUNCATE " + ", ".join(SUPPORT_TABLES) + " CASCADE")
         conn.commit()
 
 
 def agent_id_for_user(dsn, user_id: str) -> str | None:
     """The Puspa agent id registered to a user, or None when they have none."""
-    with psycopg.connect(resolve_dsn(dsn)) as conn, conn.cursor() as cur:
+    with _db_connect(resolve_dsn(dsn)) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT agent_id FROM agents WHERE user_id = %s ORDER BY agent_id LIMIT 1",
             (user_id,),
@@ -241,7 +240,7 @@ class SupportStore:
                     "supporter has no registered Puspa agent; the ledger entry needs an agent id"
                 )
         support_id = f"sup-{uuid.uuid4().hex[:12]}"
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+        with _db_connect(self.dsn, row_factory=dict_row) as conn:
             work = conn.execute(
                 "SELECT id, owner_id, status FROM gallery_works WHERE id = %s",
                 (work_id,),
@@ -266,9 +265,18 @@ class SupportStore:
             if ledger is not None:
                 if agent_id is None:
                     raise RuntimeError("ledger given but no agent id resolved")
-                ledger.append_event(
+                # The ledger event joins THIS transaction: append_event
+                # would open a second connection and take BEGIN
+                # IMMEDIATE while this one still holds its write
+                # lock, which SQLite refuses (single writer). The
+                # shared-transaction insert below commits with the
+                # purchase row above, so the receipt and its ledger
+                # event land together or not at all.
+                ledger._insert_event_on(
+                    conn,
                     task_id=support_id,
                     agent_id=agent_id,
+                    subagent_id=None,
                     event_type="evidence_recorded",
                     content={
                         "kind": SUPPORT_EVENT_KIND,
@@ -282,6 +290,9 @@ class SupportStore:
                         "credit_value_idr": CREDIT_VALUE_IDR,
                         "status": "prepared",
                     },
+                    parent_id=None,
+                    valid_at=None,
+                    with_valid_at=None,
                 )
             conn.commit()
             row = conn.execute(
@@ -294,7 +305,7 @@ class SupportStore:
 
     def get(self, support_id: str) -> dict:
         """One purchase receipt by id; KeyError when unknown."""
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+        with _db_connect(self.dsn, row_factory=dict_row) as conn:
             row = conn.execute(
                 "SELECT * FROM creator_support_purchases WHERE id = %s",
                 (support_id,),
@@ -305,7 +316,7 @@ class SupportStore:
 
     def list_for_work(self, work_id: str) -> list[dict]:
         """Every support of one work, newest first."""
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+        with _db_connect(self.dsn, row_factory=dict_row) as conn:
             rows = conn.execute(
                 "SELECT * FROM creator_support_purchases WHERE work_id = %s "
                 "ORDER BY created_at DESC",
@@ -315,7 +326,7 @@ class SupportStore:
 
     def totals_for_work(self, work_id: str) -> dict:
         """Support totals for one work: count, amount, commission, credits."""
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+        with _db_connect(self.dsn, row_factory=dict_row) as conn:
             work = conn.execute(
                 "SELECT id FROM gallery_works WHERE id = %s",
                 (work_id,),
@@ -342,7 +353,7 @@ class SupportStore:
 
     def credits_for_creator(self, creator_id: str) -> dict:
         """Credits one creator has received from all supports of their works."""
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+        with _db_connect(self.dsn, row_factory=dict_row) as conn:
             totals = conn.execute(
                 "SELECT COUNT(*) AS supports_received, "
                 "COALESCE(SUM(credits_granted), 0) AS credits_received "

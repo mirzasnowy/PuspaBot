@@ -34,18 +34,17 @@ from __future__ import annotations
 import json
 import os
 
-import psycopg
-from psycopg.rows import dict_row
-
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 from puspa.migrations import apply_migrations
 
 from .learning_loop import LearningLoop
 
 #: DSN default (peer auth as the OS user, no password).
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 
-def _resolve_dsn(dsn: str | None) -> str:
+def _resolve_dsn(dsn: str | None) -> str | None:
     return dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
 
 
@@ -110,7 +109,7 @@ def save_loop_state(user_id, agent_id, loop, *, dsn=None) -> dict:
     state = serialize_loop(loop)
     corrections = state["corrections"]
     experiences = state["experiences"]
-    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn:
+    with _db_connect(_resolve_dsn(dsn), row_factory=dict_row) as conn:
         with conn.cursor() as cur:
             for task, correction in corrections.items():
                 cur.execute(
@@ -178,7 +177,7 @@ def save_loop_state(user_id, agent_id, loop, *, dsn=None) -> dict:
 
 def load_loop_state(user_id, agent_id, *, dsn=None) -> dict | None:
     """Load a saved loop state, or None when nothing was saved."""
-    with psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
+    with _db_connect(_resolve_dsn(dsn), row_factory=dict_row) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT task, predicted, observed, error, source,"
             " feedback_source, correction_count, experience_ids"
@@ -244,7 +243,7 @@ def load_learning_loop(user_id, agent_id, *, dsn=None) -> LearningLoop | None:
 
 def delete_loop_state(user_id, agent_id, *, dsn=None) -> bool:
     """Delete the saved rows for one (user, agent). Tests only."""
-    with psycopg.connect(_resolve_dsn(dsn)) as conn:
+    with _db_connect(_resolve_dsn(dsn)) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "DELETE FROM loop_experiences WHERE user_id = %s AND agent_id = %s",

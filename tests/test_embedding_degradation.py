@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
+from puspa.db import connect as _db_connect
 from puspa.ledger import Ledger
 from puspa.memory import episodic
 from puspa.memory.embeddings import FastEmbedEmbedding, HashEmbedding
@@ -90,12 +90,12 @@ def _clean_embedding_tables(test_dsn):
 
 
 def _truncate_embedding_tables(dsn):
-    with psycopg.connect(dsn, autocommit=True) as conn:
+    with _db_connect(dsn, autocommit=True) as conn:
         conn.execute("TRUNCATE embedding_state, embedding_reembed_jobs, embedding_canary_baselines")
 
 
 def _embedder_of_row(dsn, row_id):
-    with psycopg.connect(dsn) as conn:
+    with _db_connect(dsn) as conn:
         (embedder_id,) = conn.execute(
             "SELECT embedder_id FROM episodic WHERE id = %s", (row_id,)
         ).fetchone()
@@ -247,7 +247,7 @@ def test_rows_store_embedder_id_and_dimension(make_user, test_dsn):
     )
     assert episode["embedder_id"] == "hash"
     assert episode["dimension"] == 384
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
         row = conn.execute(
             "SELECT embedder_id, dimension FROM episodic WHERE id = %s",
             (episode["id"],),
@@ -381,7 +381,7 @@ def test_reembed_job_runs_tier_by_tier(make_user, test_dsn):
     old = episodic.record_episode(
         uid, "old bicycle polygon heist", "user_message", embedder=hash_emb, dsn=test_dsn
     )
-    with psycopg.connect(test_dsn, autocommit=True) as conn:
+    with _db_connect(test_dsn, autocommit=True) as conn:
         conn.execute(
             "UPDATE episodic SET created_at = %s WHERE id = %s",
             (now - timedelta(days=30), month_old["id"]),

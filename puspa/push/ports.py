@@ -22,9 +22,8 @@ from __future__ import annotations
 
 import uuid
 
-import psycopg
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import connect as _db_connect
 
 __all__ = ["save_subscription"]
 
@@ -37,7 +36,7 @@ def save_subscription(user_id: str, *, endpoint: str, p256dh: str, auth: str, ds
     caller must know about).
     """
     subscription_id = f"push-{uuid.uuid4().hex[:12]}"
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
+    with _db_connect(resolve_dsn(dsn)) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth)"

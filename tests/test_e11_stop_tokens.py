@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import time
 
-import psycopg
 import pytest
-from psycopg import errors as pg_errors
 
+from puspa.db import connect as _db_connect
+from puspa.db import errors as pg_errors
+from puspa.db import is_sqlite_dsn as _is_sqlite_dsn
 from puspa.ledger import Ledger
 from puspa.policy import (
     STOP_TARGET_SECONDS,
@@ -56,10 +57,10 @@ def revocations(test_dsn):
     """Durable revocation list on the test database, emptied per test."""
     store = RevocationList(test_dsn)
     store.create_schema()
-    with psycopg.connect(test_dsn, autocommit=True) as conn:
+    with _db_connect(test_dsn, autocommit=True) as conn:
         conn.execute("TRUNCATE token_revocations, agent_revocations")
     yield store
-    with psycopg.connect(test_dsn, autocommit=True) as conn:
+    with _db_connect(test_dsn, autocommit=True) as conn:
         conn.execute("TRUNCATE token_revocations, agent_revocations")
 
 
@@ -225,12 +226,16 @@ def test_revoke_jti_and_agent_cutoff(revocations):
 
 
 def test_revocation_tables_are_read_only_for_the_agent_role(revocations, test_dsn):
+    if _is_sqlite_dsn(test_dsn):
+        pytest.skip(
+            "Postgres role enforcement has no SQLite equivalent (D-SQLite-5: ownership is enforced in code, not by roles)"
+        )
     revocations.revoke_jti("d" * 32, AGENT_ID, reason="test")
     # The agent role can read the lists (the Gate does, on every call).
     reader = RevocationList(test_dsn, read_role="puspa_app")
     assert reader.is_revoked_jti("d" * 32) is True
     # ... but cannot write them: a stopped agent cannot un-stop itself.
-    conn = psycopg.connect(test_dsn, autocommit=True)
+    conn = _db_connect(test_dsn, autocommit=True)
     conn.execute("SET ROLE puspa_app")
     try:
         with pytest.raises(pg_errors.InsufficientPrivilege):

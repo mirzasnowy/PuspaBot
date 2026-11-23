@@ -1,6 +1,9 @@
 """Shared fixtures for all Puspa tests (unified layout).
 
-- `test_dsn`: Postgres test DSN (env PUSPA_TEST_DSN or default peer-auth).
+- `test_dsn`: test DSN (env PUSPA_TEST_DSN, else one SQLite file
+  per pytest-xdist worker or per solo run, copied from a migrated
+  template; a Postgres DSN in the env keeps the old per-worker
+  database cloning instead).
 - Autouse fixture: create all 7 schemas (accounts + ledger + agent +
   memory + runtime + graphs + workflow), then empty every table before
   and after each test.
@@ -23,16 +26,22 @@ import secrets
 import sys
 from pathlib import Path
 
-import psycopg
 import pytest
 from worker_db import (
+    DEFAULT_SQLITE_PATH,
+    create_sqlite_worker_db,
     create_worker_db,
+    drop_run_sqlite_worker_dbs,
     drop_run_worker_dbs,
+    drop_sqlite_worker_db,
     drop_worker_db,
+    ensure_sqlite_template_path,
     ensure_template_dsn,
     new_run_id,
 )
 
+from puspa.db import connect as _db_connect
+from puspa.db import is_sqlite_dsn
 from puspa.graphs import create_schema as create_graphs_schema
 from puspa.graphs import reset_tables as reset_graphs
 from puspa.ledger import Ledger
@@ -50,30 +59,38 @@ _NANOBOT_LOCAL = Path(__file__).resolve().parent.parent / "nanobot"
 if _NANOBOT_LOCAL.exists():
     sys.path.insert(0, str(_NANOBOT_LOCAL))
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = DEFAULT_SQLITE_PATH
 
-# Per-worker databases (E-17, plan section 9.1): one database per
-# pytest-xdist worker, cloned from a migrated template (see
-# tests/worker_db.py). The controller generates one run id per
-# invocation and hands it to every worker; each worker clones the
-# template into its own database before any fixture runs, and drops
-# it at session end. A SOLO run (no -n) never touches this: it
-# keeps using the base database directly, exactly as before.
+# Per-worker databases (E-17, plan section 9.1; SQLite files since
+# COW-10): one database per pytest-xdist worker, copied from a
+# migrated template file (see tests/worker_db.py). The controller
+# generates one run id per invocation and hands it to every worker;
+# each worker copies the template into its own file before any
+# fixture runs, and removes it at session end. A SOLO run (no -n)
+# gets its own copy too (built lazily by the `test_dsn` fixture),
+# so it never shares a file with another run. When PUSPA_TEST_DSN
+# names a Postgres database, the old per-worker database cloning
+# runs instead, exactly as before.
 _RUN_ID_KEY = pytest.StashKey[str]()
 _WORKER_DB_KEY = pytest.StashKey[tuple[str, str, str]]()
 _CONTROLLER_RUN_KEY = pytest.StashKey[tuple[str, str]]()
+_SOLO_DB_KEY = pytest.StashKey[str]()
 _NEEDS_DB_KEY = pytest.StashKey[bool]()
 
 
 def pytest_configure(config):
     """Set up per-worker databases for an xdist run (E-17)."""
     if hasattr(config, "workerinput"):
-        # xdist worker: clone the template into a private database
-        # and point this process at it before any fixture runs.
+        # xdist worker: copy the template into a private file (or
+        # clone the template database for a Postgres DSN) and point
+        # this process at it before any fixture runs.
         run_id = str(config.workerinput.get("puspa_run_id", ""))
         worker_id = str(config.workerinput["workerid"])
         base_dsn = os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-        worker_dsn = create_worker_db(base_dsn, worker_id, run_id)
+        if is_sqlite_dsn(base_dsn):
+            worker_dsn = create_sqlite_worker_db(base_dsn, worker_id, run_id)
+        else:
+            worker_dsn = create_worker_db(base_dsn, worker_id, run_id)
         os.environ["PUSPA_TEST_DSN"] = worker_dsn
         config.stash[_WORKER_DB_KEY] = (base_dsn, worker_id, run_id)
     elif getattr(config.option, "numprocesses", None):
@@ -83,7 +100,10 @@ def pytest_configure(config):
         base_dsn = os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
         config.stash[_RUN_ID_KEY] = run_id
         config.stash[_CONTROLLER_RUN_KEY] = (base_dsn, run_id)
-        ensure_template_dsn(base_dsn)
+        if is_sqlite_dsn(base_dsn):
+            ensure_sqlite_template_path()
+        else:
+            ensure_template_dsn(base_dsn)
 
 
 def pytest_configure_node(node):
@@ -98,19 +118,30 @@ def pytest_unconfigure(config):
     every database of the run, because a worker's own drop
     sometimes never runs (xdist may SIGTERM a slow worker before
     its session ends). The controller runs after xdist tore the
-    workers down, so no worker is alive to reconnect.
+    workers down, so no worker is alive to reconnect. A solo run
+    removes its own copy (built by the `test_dsn` fixture).
     """
     worker = config.stash.get(_WORKER_DB_KEY, None)
     if worker is not None:
         base_dsn, worker_id, run_id = worker
         # Teardown must never fail the run.
         with contextlib.suppress(Exception):
-            drop_worker_db(base_dsn, worker_id, run_id)
+            if is_sqlite_dsn(base_dsn):
+                drop_sqlite_worker_db(os.environ.get("PUSPA_TEST_DSN", ""))
+            else:
+                drop_worker_db(base_dsn, worker_id, run_id)
     run = config.stash.get(_CONTROLLER_RUN_KEY, None)
     if run is not None:
         base_dsn, run_id = run
         with contextlib.suppress(Exception):
-            drop_run_worker_dbs(base_dsn, run_id)
+            if is_sqlite_dsn(base_dsn):
+                drop_run_sqlite_worker_dbs(base_dsn, run_id)
+            else:
+                drop_run_worker_dbs(base_dsn, run_id)
+    solo = config.stash.get(_SOLO_DB_KEY, None)
+    if solo is not None:
+        with contextlib.suppress(Exception):
+            drop_sqlite_worker_db(solo)
 
 
 def _uses_test_dsn(item) -> bool:
@@ -127,7 +158,7 @@ def _uses_test_dsn(item) -> bool:
     the database (for example the team/room schema fixtures in
     tests/teams_helpers.py and tests/rooms_helpers.py) IS
     followed, so the tests that run under it classify correctly.
-    A test that touches Postgres without any fixture at all — a
+    A test that touches the database without any fixture at all — a
     library call that reads ``PUSPA_TEST_DSN`` from the
     environment, like the session single-writer lock — is still
     misclassified as unit and fails loudly instead of silently
@@ -160,7 +191,7 @@ def _uses_test_dsn(item) -> bool:
 
 
 def _test_needs_db(item) -> bool:
-    """True when this test needs a live Postgres database."""
+    """True when this test needs a live database."""
     if item.get_closest_marker("integration") is not None:
         return True
     if item.get_closest_marker("unit") is not None:
@@ -227,8 +258,28 @@ MEMORY_TABLES = (
 
 
 @pytest.fixture(scope="session")
-def test_dsn():
-    return os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
+def test_dsn(pytestconfig):
+    """The test DSN: env, worker file, or a fresh solo copy.
+
+    An explicit ``PUSPA_TEST_DSN`` (SQLite path or Postgres DSN)
+    always wins. Under xdist the worker file was already put in
+    the env by ``pytest_configure``. A solo run builds its own
+    copy from the migrated template here (lazily, so a
+    ``pytest -m unit`` run never creates a database file) and
+    removes it in ``pytest_unconfigure``.
+    """
+    dsn = os.environ.get("PUSPA_TEST_DSN")
+    if dsn:
+        return dsn
+    if not pytestconfig.stash.get(_NEEDS_DB_KEY, True):
+        return DEFAULT_DSN
+    dsn = create_sqlite_worker_db(None, "solo", new_run_id())
+    pytestconfig.stash[_SOLO_DB_KEY] = dsn
+    # Publish it: library calls and CLIs that read PUSPA_TEST_DSN
+    # from the environment (instead of taking the fixture) must
+    # land on this same file, never on the Postgres default.
+    os.environ["PUSPA_TEST_DSN"] = dsn
+    return dsn
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -248,11 +299,15 @@ def _ensure_app_role(test_dsn, pytestconfig):
     pre-check: under xdist, several workers create the role at the
     same time, and a check-then-create race would raise
     duplicate_object for the loser. Skipped entirely when no
-    collected test needs the database (``pytest -m unit``).
+    collected test needs the database (``pytest -m unit``), and
+    skipped on SQLite (no roles there: ownership is enforced in
+    code, D-SQLite-5).
     """
     if not pytestconfig.stash.get(_NEEDS_DB_KEY, True):
         return
-    with psycopg.connect(test_dsn) as conn:
+    if is_sqlite_dsn(test_dsn):
+        return
+    with _db_connect(test_dsn) as conn:
         conn.execute(
             "DO $$ BEGIN "
             "CREATE ROLE puspa_app NOLOGIN; "
@@ -268,7 +323,7 @@ def _reset_tables(request, test_dsn):
 
     Unit tests (marker ``unit``) never touch the database, so the
     whole setup is skipped for them: a ``pytest -m unit`` run
-    needs no Postgres at all. Every other test gets the schemas
+    needs no database at all. Every other test gets the schemas
     plus a clean slate, exactly as before.
     """
     if not _test_needs_db(request.node):
@@ -285,7 +340,17 @@ def _reset_tables(request, test_dsn):
     create_runtime_schema(test_dsn)
     create_graphs_schema(test_dsn)
     create_workflow_schema(test_dsn)
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
+        if is_sqlite_dsn(test_dsn):
+            # SQLite has no TRUNCATE: the translator turns it into
+            # DELETEs, and deleting `agents` cascades into
+            # `agent_meta`, which fires the delete-guard trigger on
+            # the mandatory Puspa row (Postgres TRUNCATE bypasses
+            # DELETE triggers, so the wipe never met the guard
+            # there). This reset is a test-only wipe, so it clears
+            # the guard flag first; the guard still blocks
+            # ordinary DELETEs of the Puspa row.
+            conn.execute("UPDATE agent_meta SET required = 0 WHERE required")
         conn.execute(
             "TRUNCATE users, sessions, vault, agents, events, "
             + ", ".join(MEMORY_TABLES)
@@ -296,7 +361,9 @@ def _reset_tables(request, test_dsn):
     reset_graphs(test_dsn)
     reset_workflow(test_dsn)
     yield
-    with psycopg.connect(test_dsn) as conn:
+    with _db_connect(test_dsn) as conn:
+        if is_sqlite_dsn(test_dsn):
+            conn.execute("UPDATE agent_meta SET required = 0 WHERE required")
         conn.execute(
             "TRUNCATE users, sessions, vault, agents, events, "
             + ", ".join(MEMORY_TABLES)

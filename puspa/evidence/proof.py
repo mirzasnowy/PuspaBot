@@ -34,9 +34,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-import psycopg
-from psycopg.rows import dict_row
-
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 from puspa.ledger import Ledger, compute_event_hash
 from puspa.ledger.audit import MAX_EXPORT_ROWS
 from puspa.memory.trust import redact_secrets
@@ -69,7 +68,7 @@ __all__ = [
 ]
 
 #: Default DSN (peer auth as the OS user, no password).
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 #: Format name + version of the audit-trail export document.
 AUDIT_TRAIL_FORMAT = "puspa-audit-trail"
@@ -148,12 +147,12 @@ def _jsonable(value):
     return value
 
 
-def _resolve_dsn(dsn: str | None) -> str:
+def _resolve_dsn(dsn: str | None) -> str | None:
     return dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
 
 
 def _connect(dsn: str | None):
-    return psycopg.connect(_resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(_resolve_dsn(dsn), row_factory=dict_row)
 
 
 def describe_event(event: dict) -> str:

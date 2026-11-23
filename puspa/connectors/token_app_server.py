@@ -56,10 +56,9 @@ import os
 import sys
 from typing import TextIO
 
-import psycopg
-
 from puspa.accounts.vault import VaultError
 from puspa.connectors.token_apps import VaultSealStore
+from puspa.db import Error as _db_Error
 
 __all__ = ["main", "serve_stdio"]
 
@@ -277,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     except VaultError as exc:
         print(f"puspa-token-app: the vault cannot be used: {exc}", file=sys.stderr)
         return 1
-    except psycopg.Error as exc:
+    except _db_Error as exc:
         print(f"puspa-token-app: the vault database cannot be used: {exc}", file=sys.stderr)
         return 1
     if not isinstance(token, str) or not token:

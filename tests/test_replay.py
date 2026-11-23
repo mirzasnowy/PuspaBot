@@ -19,10 +19,10 @@ from __future__ import annotations
 import io
 import uuid
 
-import psycopg
 import pytest
 from PIL import Image
 
+from puspa.db import connect as _db_connect
 from puspa.pwa.replay import (
     GIF_FRAME_DURATION_MS,
     GIF_FRAME_HEIGHT,
@@ -177,7 +177,7 @@ def test_replay_reports_a_broken_chain(make_user, test_dsn, ledger):
     _seed_task(ledger, agent_id, task_id)
     events = ledger.events(task_id)
     tampered_id = events[1]["id"]
-    with psycopg.connect(test_dsn, autocommit=True) as conn:
+    with _db_connect(test_dsn, autocommit=True) as conn:
         conn.execute(
             "UPDATE events SET content = %s::jsonb WHERE id = %s",
             ('{"tool": "tampered"}', tampered_id),

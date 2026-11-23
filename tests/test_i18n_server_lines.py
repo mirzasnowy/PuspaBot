@@ -43,7 +43,7 @@ def test_default_locale_is_indonesian_and_both_locales_ship():
 def test_catalog_has_every_key_the_code_renders():
     """The shipped catalog covers all keys the wired code asks for."""
     keys = all_keys()
-    assert len(keys) == 62
+    assert len(keys) == 63
     assert "error.not_logged_in" in keys
     assert "error.unknown_request" in keys
     assert "error.spending_limit_denied" in keys
@@ -191,7 +191,7 @@ def test_merged_catalog_fills_missing_keys_never_blank():
     assert merged == {"a": "A-en", "b": "B-id"}
     assert merged_catalog("xx", {"id": {"a": "A-id"}, "en": {"a": "A-en"}}) == {"a": "A-id"}
     full = catalog("en")
-    assert len(full) == 62
+    assert len(full) == 63
     assert all(full.values())
     assert full["error.not_logged_in"] == "not signed in"
     assert catalog("id")["error.not_logged_in"] == "belum masuk"

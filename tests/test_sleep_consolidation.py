@@ -17,9 +17,11 @@ import os
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import psycopg
 import pytest
 
+from puspa.db import Error as _db_Error
+from puspa.db import connect as _db_connect
+from puspa.db import is_sqlite_dsn as _db_is_sqlite_dsn
 from puspa.memory.ontology_review import (
     SAMPLING_MIN_FACTS,
     STALE_FACT_DAYS,
@@ -29,7 +31,7 @@ from puspa.memory.ontology_review import (
 
 NOW = datetime(2026, 11, 21, 12, 0, tzinfo=UTC)
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 _DB_TABLES = (
     "episodic",
@@ -263,17 +265,23 @@ def _dsn():
 
 def _db_ready(dsn):
     try:
-        with psycopg.connect(dsn, connect_timeout=5) as conn, conn.cursor() as cur:
+        with _db_connect(dsn, connect_timeout=5) as conn, conn.cursor() as cur:
             for table in _DB_TABLES:
-                cur.execute(
-                    "SELECT 1 FROM information_schema.tables "
-                    "WHERE table_schema = 'public' AND table_name = %s",
-                    (table,),
-                )
+                if _db_is_sqlite_dsn(dsn):
+                    cur.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = %s",
+                        (table,),
+                    )
+                else:
+                    cur.execute(
+                        "SELECT 1 FROM information_schema.tables "
+                        "WHERE table_schema = 'public' AND table_name = %s",
+                        (table,),
+                    )
                 if cur.fetchone() is None:
                     return False
         return True
-    except psycopg.Error:
+    except _db_Error:
         # No database, or the schema is missing: the cycle tests
         # skip. Anything else (a bug in the test itself) must
         # raise, not hide behind a skip.
@@ -292,7 +300,7 @@ class TestSleepConsolidationEndToEnd:
         self.user_id = str(uuid.uuid4())
         self.agent_id = f"agen-{uuid.uuid4().hex[:12]}"
         self.task_ids = []
-        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        with _db_connect(dsn) as conn, conn.cursor() as cur:
             # The agents row needs a users row first (foreign key).
             # A dummy password hash is fine: this user never logs in.
             cur.execute(
@@ -305,7 +313,7 @@ class TestSleepConsolidationEndToEnd:
             )
             conn.commit()
         yield
-        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        with _db_connect(dsn) as conn, conn.cursor() as cur:
             for table in (
                 "episodic",
                 "summaries",
@@ -358,7 +366,7 @@ class TestSleepConsolidationEndToEnd:
             event_id=str(uuid.uuid4()),
             dsn=self.dsn,
         )
-        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+        with _db_connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 "UPDATE episodic SET created_at = now() - INTERVAL '40 days' WHERE user_id = %s",
                 (self.user_id,),
@@ -381,7 +389,7 @@ class TestSleepConsolidationEndToEnd:
         assert content["user_id"] == self.user_id
         assert content["summaries_created"] == 1
 
-        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+        with _db_connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute("SELECT next_trigger_at FROM triggers WHERE id = %s", (trigger.id,))
             next_at = cur.fetchone()[0]
         assert next_at == trigger.next_trigger_at + timedelta(days=1)
@@ -400,7 +408,7 @@ class TestSleepConsolidationEndToEnd:
         from puspa.world.causal import CausalHypothesis, CausalLedger
         from puspa.world.store import save_causal_hypotheses
 
-        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+        with _db_connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO profile_facts (user_id, agent_id, key, value, source, status) "
                 "VALUES (%s, %s, 'city', 'Jakarta', 'user_stated', 'active')",
@@ -470,7 +478,7 @@ class TestSleepConsolidationEndToEnd:
 def _reload_trigger(trigger_id, dsn):
     from puspa.scheduler import scheduler
 
-    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+    with _db_connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT id, user_id, type, schedule, workflow, next_trigger_at, active "
             "FROM triggers WHERE id = %s",

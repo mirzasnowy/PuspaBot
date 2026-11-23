@@ -3,6 +3,7 @@
   "error.action_content_must_be_dict": "isi aksi harus dict",
   "error.action_not_approved": "aksi belum disetujui (status: {status})",
   "error.google_login_not_configured": "login Google belum dikonfigurasi (PUSPA_GOOGLE_CLIENT_ID kosong)",
+  "error.oauth_state_mismatch": "state login Google tidak cocok (coba login lagi)",
   "error.no_spending_enforcer": "tidak ada penegak batas belanja; pembayaran ditolak",
   "error.not_logged_in": "belum masuk",
   "error.only_owner_may_approve": "hanya pemilik user yang boleh menyetujui",

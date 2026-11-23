@@ -17,11 +17,19 @@ from __future__ import annotations
 
 import re
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import Connection as _db_Connection
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
+from puspa.db import errors as pg_errors
 
-from .embeddings import HashEmbedding, cosine_similarity
+from .embeddings import HashEmbedding, cosine_distance, cosine_similarity, parse_stored_vector
 from .schema import resolve_dsn
+
+#: Most candidates the SQLite brute-force search scores (D-SQLite-4):
+#: the newest rows for this user and embedder. The Postgres path
+#: has no cap (the index ranks everything); the cap keeps the
+#: single-user desktop exact in practice and bounded in theory.
+BRUTE_FORCE_CANDIDATES = 2000
 
 _ENTITY_TOKEN_RE = re.compile(r"\b[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*\b")
 _ENTITY_PHRASE_RE = re.compile(r"\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b")
@@ -294,7 +302,7 @@ def search_episodes_pipeline(
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def _vector_literal(vector):
@@ -342,7 +350,7 @@ def _check_active_embedder(embedder_id, dimension, dsn=None):
                     "finish a re-embed job before switching embedders"
                 )
             conn.commit()
-    except psycopg.errors.UndefinedTable:
+    except pg_errors.UndefinedTable:
         return
 
 
@@ -410,6 +418,63 @@ def record_episode(
     }
 
 
+def _search_episodes_sqlite(conn, user_id, agent_id, embedder_id, dimension, vector, limit):
+    """Brute-force cosine search (D-SQLite-4, no pgvector).
+
+    The newest candidate rows for this user and embedder are
+    scored in Python with :func:`cosine_distance` (exact, not
+    approximate) and the closest ``limit`` are returned in the
+    same shape as the pgvector path below.
+    """
+    with conn.cursor() as cur:
+        if agent_id is None:
+            cur.execute(
+                "SELECT id, user_id, agent_id, task_id, type, content, "
+                "embedder_id, dimension, event_id, created_at, embedding "
+                "FROM episodic "
+                "WHERE user_id = %s AND embedder_id = %s AND dimension = %s "
+                "ORDER BY created_at DESC LIMIT %s",
+                (user_id, embedder_id, dimension, BRUTE_FORCE_CANDIDATES),
+            )
+        else:
+            cur.execute(
+                "SELECT id, user_id, agent_id, task_id, type, content, "
+                "embedder_id, dimension, event_id, created_at, embedding "
+                "FROM episodic "
+                "WHERE user_id = %s AND (agent_id IS NULL OR agent_id = %s) "
+                "AND embedder_id = %s AND dimension = %s "
+                "ORDER BY created_at DESC LIMIT %s",
+                (user_id, agent_id, embedder_id, dimension, BRUTE_FORCE_CANDIDATES),
+            )
+        scored = []
+        for r in cur.fetchall():
+            stored = parse_stored_vector(r["embedding"])
+            if stored is None:
+                continue
+            distance = cosine_distance(vector, stored)
+            scored.append((distance, r))
+    scored.sort(key=lambda item: item[0])
+    out = []
+    for distance, r in scored[:limit]:
+        out.append(
+            {
+                "id": str(r["id"]),
+                "user_id": str(r["user_id"]),
+                "agent_id": str(r["agent_id"]) if r["agent_id"] else None,
+                "task_id": str(r["task_id"]) if r["task_id"] else None,
+                "type": r["type"],
+                "content": r["content"],
+                "embedder_id": r["embedder_id"],
+                "dimension": int(r["dimension"]),
+                "event_id": str(r["event_id"]) if r["event_id"] else None,
+                "created_at": r["created_at"],
+                "distance": float(distance),
+                "similarity": 1.0 - float(distance),
+            }
+        )
+    return out
+
+
 def search_episodes(user_id, query, limit=5, agent_id=None, embedder=None, dsn=None):
     """Cari episode paling mirip (cosine distance pgvector).
 
@@ -417,6 +482,8 @@ def search_episodes(user_id, query, limit=5, agent_id=None, embedder=None, dsn=N
     (1 - jarak), urut paling mirip dulu. Hanya episode milik user ini.
     Only rows from the query embedder are compared (E-14): vectors
     from another embedder never score, even when they share a table.
+    On SQLite the same ranking is computed by brute-force cosine in
+    Python (D-SQLite-4): exact, no pgvector, no new dependency.
     """
     if not isinstance(query, str) or query == "":
         raise ValueError("query harus string tak kosong")
@@ -427,8 +494,21 @@ def search_episodes(user_id, query, limit=5, agent_id=None, embedder=None, dsn=N
 
     embedder_id = embedder_id_of(embedder)
     dimension = dimension_of(embedder)
-    vector = _vector_literal(embedder.embed(query))
-    with _connect(dsn) as conn, conn.cursor() as cur:
+    vector = embedder.embed(query)
+    with _connect(dsn) as conn:
+        if isinstance(conn, _db_Connection):
+            return _search_episodes_sqlite(
+                conn, user_id, agent_id, embedder_id, dimension, vector, limit
+            )
+        return _search_episodes_pgvector(
+            conn, user_id, agent_id, embedder_id, dimension, vector, limit
+        )
+
+
+def _search_episodes_pgvector(conn, user_id, agent_id, embedder_id, dimension, vector, limit):
+    """The Postgres path: pgvector ``<=>`` ranks the rows."""
+    vector = _vector_literal(vector)
+    with conn.cursor() as cur:
         if agent_id is None:
             cur.execute(
                 "SELECT id, user_id, agent_id, task_id, type, content, "

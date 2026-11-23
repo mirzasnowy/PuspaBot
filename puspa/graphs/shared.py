@@ -49,11 +49,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
-import psycopg
-from psycopg.rows import dict_row
-from psycopg.types.json import Jsonb
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import Jsonb, dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import parse_timestamp as _db_parse_timestamp
 from puspa.migrations import apply_migrations
 
 #: Shared tables this module owns. The canonical DDL lives in
@@ -70,7 +69,7 @@ class SharedGraphError(ValueError):
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def create_shared_schema(dsn: str | None = None) -> None:
@@ -243,8 +242,11 @@ def _reputation_from_row(seller_key: str, row: dict | None) -> SellerReputation 
     return SellerReputation(
         seller_key=seller_key,
         flag_count=int(row["flag_count"]),
-        first_flagged_at=row["first_flagged_at"],
-        latest_flagged_at=row["latest_flagged_at"],
+        # MIN()/MAX() are expressions, so SQLite returns their values
+        # as raw text (no column type to convert from); normalise
+        # them back to datetimes, exactly as Postgres would return.
+        first_flagged_at=_db_parse_timestamp(row["first_flagged_at"]),
+        latest_flagged_at=_db_parse_timestamp(row["latest_flagged_at"]),
         flag_reason=row["flag_reason"] or "",
     )
 

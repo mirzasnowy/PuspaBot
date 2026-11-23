@@ -37,7 +37,7 @@ __all__ = [
     "resolve_dsn",
 ]
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 
 def resolve_dsn(dsn=None):
@@ -127,10 +127,10 @@ class PostgresStore:
         self.dsn = resolve_dsn(dsn)
 
     def _connect(self):
-        import psycopg
-        from psycopg.rows import dict_row
+        from puspa.db import connect as _db_connect
+        from puspa.db import dict_row
 
-        return psycopg.connect(self.dsn, row_factory=dict_row)
+        return _db_connect(self.dsn, row_factory=dict_row)
 
     # -- installs ------------------------------------------------------
     def record_install(self, record: dict) -> dict:

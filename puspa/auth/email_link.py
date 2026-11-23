@@ -15,7 +15,7 @@ import hmac
 import os
 import time
 
-import psycopg
+from puspa.db import connect as _db_connect
 
 from ..memory.schema import resolve_dsn
 
@@ -80,7 +80,7 @@ def verify_email_link(token, secret=None, dsn=None, now=None):
     if exp < int(now or time.time()):
         raise EmailLinkError("tautan kedaluwarsa")
     token_hash = hashlib.sha256(token.encode()).hexdigest()
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
+    with _db_connect(resolve_dsn(dsn)) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT 1 FROM used_email_links WHERE token_hash = %s",

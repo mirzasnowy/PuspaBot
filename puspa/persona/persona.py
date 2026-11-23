@@ -23,8 +23,8 @@ from __future__ import annotations
 
 import re
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from ..memory import profile
 from ..memory.schema import resolve_dsn
@@ -76,7 +76,7 @@ _KNOWN_CORRECTIONS = (
 
 
 def _connect(dsn=None):
-    return psycopg.connect(resolve_dsn(dsn), row_factory=dict_row)
+    return _db_connect(resolve_dsn(dsn), row_factory=dict_row)
 
 
 def choose_style(user_id, style, dsn=None):

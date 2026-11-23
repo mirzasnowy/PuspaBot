@@ -8,9 +8,9 @@ Gerbang 12 (tulang punggung + bukti): rantai hash yang diubah
 terdeteksi 3/3, angka yatim ditahan 3/3, kaset 9/10 identik.
 """
 
-import psycopg
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.evidence.evidence import record_evidence
 from puspa.evidence.renderer import present
 from puspa.evidence.verifier import verify_injection
@@ -70,7 +70,7 @@ def test_gate12_changed_hash_chain_detected_3_of_3(ledger, make_user):
         ok_sebelum, _ = ledger.verify_chain(task_id)
         assert ok_sebelum is True
         # Ubah diam-diam satu hash (sebagai pemilik DB; nilai unik per tugas).
-        with psycopg.connect(ledger.dsn) as conn:
+        with _db_connect(ledger.dsn) as conn:
             conn.execute(
                 "UPDATE events SET hash = %s WHERE task_id = %s AND type = 'task_created'",
                 (

@@ -20,8 +20,8 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-import psycopg
-
+from puspa.db import connect as _db_connect
+from puspa.db import maybe_begin_immediate as _db_begin_immediate
 from puspa.migrations import apply_migrations
 
 __all__ = [
@@ -37,7 +37,7 @@ __all__ = [
     "fail_work_item",
 ]
 
-DEFAULT_DSN = "dbname=puspa_test user=root host=/var/run/postgresql"
+DEFAULT_DSN = None
 
 #: Advisory-lock key for the single replica that scans for work.
 SCAN_LOCK_KEY = 918273001
@@ -88,7 +88,7 @@ def enqueue_work_item(
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
     ensure_work_items_schema(dsn)
     item_id = f"work-{uuid.uuid4().hex[:12]}"
-    with psycopg.connect(dsn, autocommit=True) as conn:
+    with _db_connect(dsn, autocommit=True) as conn:
         conn.execute(
             "INSERT INTO work_items (id, payload, max_attempts) VALUES (%s, %s::jsonb, %s)",
             (item_id, json.dumps(dict(payload)), max_attempts),
@@ -105,63 +105,57 @@ def claim_work_items(
 ) -> list[WorkItem]:
     """Claim up to ``limit`` pending items for ``owner``.
 
-    One transaction: take the advisory scan lock (transaction
-    scoped, so it is released on commit), then claim the oldest
-    pending items plus claimed items whose lease has expired, with
-    ``FOR UPDATE SKIP LOCKED``. The lease is stamped from the
-    database clock (``now()``), never the replica's clock. When
-    another replica holds the scan lock, this call claims nothing
-    and returns ``[]`` instead of waiting.
+    One atomic statement: claim the oldest pending items plus
+    claimed items whose lease has expired, with
+    ``UPDATE ... RETURNING``. The status/lease condition is in
+    the UPDATE's own WHERE clause as well as in the candidate
+    subquery, so a row claimed by another writer between the
+    subquery and the update is skipped instead of stolen (on
+    Postgres the row lock waits, then re-checks the condition;
+    on SQLite the single writer serialises the statements).
+    The lease is stamped from the application clock, never the
+    replica's clock.
     """
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
     ensure_work_items_schema(dsn)
-    claimed: list[WorkItem] = []
-    with psycopg.connect(dsn) as conn:
+    lease_until = datetime.now(UTC) + timedelta(seconds=lease_seconds)
+    with _db_connect(dsn) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT pg_try_advisory_xact_lock(%s)", (SCAN_LOCK_KEY,))
-            lock_row = cur.fetchone()
-            if lock_row is None or not lock_row[0]:
-                conn.rollback()
-                return []
             cur.execute(
-                "SELECT id, payload, status, attempts, max_attempts,"
-                " lease_owner, lease_until, created_at"
-                " FROM work_items"
+                "UPDATE work_items SET status = 'claimed',"
+                " lease_owner = %s, lease_until = %s,"
+                " updated_at = now()"
+                " WHERE id IN (SELECT id FROM work_items"
                 " WHERE status IN ('pending', 'claimed')"
                 " AND (lease_until IS NULL OR lease_until < now())"
-                " ORDER BY created_at ASC LIMIT %s"
-                " FOR UPDATE SKIP LOCKED",
-                (limit,),
+                " ORDER BY created_at ASC LIMIT %s)"
+                " AND status IN ('pending', 'claimed')"
+                " AND (lease_until IS NULL OR lease_until < now())"
+                " RETURNING id, payload, status, attempts, max_attempts,"
+                " lease_owner, lease_until, created_at",
+                (owner, lease_until, limit),
             )
             rows = cur.fetchall()
-            for row in rows:
-                cur.execute(
-                    "UPDATE work_items SET status = 'claimed',"
-                    " lease_owner = %s,"
-                    " lease_until = now() + (%s || ' seconds')::interval,"
-                    " updated_at = now() WHERE id = %s",
-                    (owner, str(lease_seconds), row[0]),
-                )
-                claimed.append(
-                    WorkItem(
-                        id=row[0],
-                        payload=dict(row[1] or {}),
-                        status="claimed",
-                        attempts=row[3],
-                        max_attempts=row[4],
-                        lease_owner=owner,
-                        lease_until=datetime.now(UTC) + timedelta(seconds=lease_seconds),
-                        created_at=row[7],
-                    )
-                )
         conn.commit()
-    return claimed
+    return [
+        WorkItem(
+            id=row[0],
+            payload=dict(row[1] or {}),
+            status="claimed",
+            attempts=row[3],
+            max_attempts=row[4],
+            lease_owner=owner,
+            lease_until=row[6],
+            created_at=row[7],
+        )
+        for row in rows
+    ]
 
 
 def complete_work_item(item_id: str, *, dsn: str | None = None) -> bool:
     """Mark a claimed item done; True when the row existed."""
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    with psycopg.connect(dsn, autocommit=True) as conn:
+    with _db_connect(dsn, autocommit=True) as conn:
         cur = conn.execute(
             "UPDATE work_items SET status = 'done', lease_until = NULL,"
             " updated_at = now() WHERE id = %s AND status = 'claimed'",
@@ -180,7 +174,12 @@ def fail_work_item(item_id: str, *, dsn: str | None = None) -> dict | None:
     row did not exist or was not claimed.
     """
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
-    with psycopg.connect(dsn) as conn:
+    with _db_connect(dsn) as conn:
+        # The read-then-write below must stay atomic: on SQLite
+        # the write lock is taken up front (the translator drops
+        # FOR UPDATE there), on Postgres FOR UPDATE itself locks
+        # the row.
+        _db_begin_immediate(conn)
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT attempts, max_attempts FROM work_items"
@@ -207,7 +206,7 @@ def count_work_items(status: str | None = None, *, dsn: str | None = None) -> in
     """Count work items, optionally filtered by status."""
     dsn = dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN)
     ensure_work_items_schema(dsn)
-    with psycopg.connect(dsn) as conn:
+    with _db_connect(dsn) as conn:
         if status is None:
             row = conn.execute("SELECT COUNT(*) FROM work_items").fetchone()
         else:

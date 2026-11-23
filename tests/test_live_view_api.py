@@ -16,9 +16,9 @@ the live PWA serves.
 
 from __future__ import annotations
 
-import psycopg
 from fastapi.testclient import TestClient
 
+from puspa.db import connect as _db_connect
 from puspa.pwa.app import create_app
 from puspa.pwa.live_view import TakeoverStore
 
@@ -28,7 +28,7 @@ def _build_app(test_user_id, test_dsn):
 
 
 def _truncate_holds(test_dsn):
-    with psycopg.connect(test_dsn, autocommit=True) as conn:
+    with _db_connect(test_dsn, autocommit=True) as conn:
         conn.execute("TRUNCATE takeover_holds")
 
 

@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import psycopg
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import connect as _db_connect
 from puspa.migrations import apply_migrations
 
 __all__ = ["DRAFTING_TABLES", "create_schema", "reset_tables", "schema_path"]
@@ -35,6 +34,6 @@ def create_schema(dsn=None):
 
 def reset_tables(dsn=None):
     """Empty all drafting tables (for tests)."""
-    with psycopg.connect(resolve_dsn(dsn)) as conn:
+    with _db_connect(resolve_dsn(dsn)) as conn:
         conn.execute("TRUNCATE " + ", ".join(DRAFTING_TABLES) + " CASCADE")
         conn.commit()

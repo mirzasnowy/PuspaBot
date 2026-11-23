@@ -42,9 +42,9 @@ def test_compose_block_not_yet_exists_records_block_request(make_user, test_dsn)
     assert "send_email" in draft["block_requests"]
     assert "belum ada" in draft["message"]
     # Tercatat di tabel permintaan_blok Fase 3 (bahan peta jalan).
-    import psycopg
+    from puspa.db import connect as _db_connect
 
-    with psycopg.connect(test_dsn) as conn, conn.cursor() as cur:
+    with _db_connect(test_dsn) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT COUNT(*) FROM block_requests WHERE user_id = %s AND block = 'send_email'",
             (user_id,),

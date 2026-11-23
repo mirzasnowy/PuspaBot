@@ -60,8 +60,8 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 
-import psycopg
-from psycopg.rows import dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 
 from . import consolidate, durable, episodic
 from . import facts as facts_module
@@ -455,7 +455,7 @@ class PostgresLongTermStore:
         self.dsn = resolve_dsn(dsn)
 
     def _connect(self):
-        return psycopg.connect(self.dsn, row_factory=dict_row)
+        return _db_connect(self.dsn, row_factory=dict_row)
 
     def upsert(self, item: MemoryItem) -> dict[str, Any]:
         record = _public_item(item)

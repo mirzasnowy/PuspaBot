@@ -336,6 +336,13 @@ class PostgresPolicyWatcher:
     Puspa does not own. ``connect`` is injectable for tests (a
     factory returning a connection-like object with ``cursor()`` /
     ``notifies()``); by default it connects with psycopg.
+
+    SQLite has no LISTEN/NOTIFY: on a SQLite connection
+    :meth:`wait_for_change` polls (sleeps) until the timeout and
+    reports no change, so the caller refreshes on its own
+    schedule. Nothing in production constructs this watcher
+    today; the polling shape is kept so a version-row poll can
+    replace the sleep without changing the interface.
     """
 
     def __init__(
@@ -352,9 +359,9 @@ class PostgresPolicyWatcher:
         if self._connect is not None:
             self._conn = self._connect()
         else:
-            import psycopg
+            from puspa.db import connect as _db_connect
 
-            self._conn = psycopg.connect(self.dsn or "", autocommit=True)
+            self._conn = _db_connect(self.dsn or "", autocommit=True)
         with self._conn.cursor() as cur:
             cur.execute(f'LISTEN "{self.channel}"')
         return self._conn
@@ -363,15 +370,24 @@ class PostgresPolicyWatcher:
         """Block up to ``timeout`` seconds for a notification.
         Returns True when one arrived, False on timeout."""
         import select
+        import time
 
         conn = self._ensure_connected()
-        if conn.notifies():
-            return True
-        ready, _, _ = select.select([conn], [], [], timeout)
-        if not ready:
-            return False
-        conn.poll()
-        return bool(conn.notifies())
+        notifies = getattr(conn, "notifies", None)
+        if callable(notifies):
+            if conn.notifies():
+                return True
+            ready, _, _ = select.select([conn], [], [], timeout)
+            if not ready:
+                return False
+            conn.poll()
+            return bool(conn.notifies())
+        deadline = time.monotonic() + max(0.0, timeout)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(0.05, remaining))
 
     def close(self) -> None:
         if self._conn is not None:
