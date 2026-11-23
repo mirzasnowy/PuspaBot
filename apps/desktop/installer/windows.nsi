@@ -15,7 +15,9 @@
 !define EXE "puspabot.exe"
 
 ; OUTDIR comes from the CI call (-DOUTDIR=...); the fallback keeps
-; a local makensis run working without the define.
+; a local makensis run working without the define. OutFile paths
+; resolve from the script's directory, so the fallback writes next
+; to the script (a ".." climb does not work here).
 !ifndef OUTDIR
   !define OUTDIR "installer-out"
 !endif
