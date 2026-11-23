@@ -43,10 +43,9 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from puspa.accounts.ports import resolve_dsn
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
-from puspa.accounts.ports import resolve_dsn
 from puspa.persona.files import DEFAULT_NAME as DEFAULT_BOT_NAME
 from puspa.persona.files import load_persona_files
 

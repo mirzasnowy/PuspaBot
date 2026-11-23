@@ -11,9 +11,9 @@ used are obviously fake and are only ever sent to a mock
 transport, never to a real host.
 """
 
-from puspa.db import connect as _db_connect
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.pwa.voice_settings import (
     VoiceSettings,
     create_schema,

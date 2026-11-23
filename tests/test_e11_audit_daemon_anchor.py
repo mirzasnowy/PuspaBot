@@ -26,10 +26,10 @@ import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from puspa.db import connect as _db_connect
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from puspa.db import connect as _db_connect
 from puspa.ledger import (
     AnchorConflict,
     AnchorRecord,

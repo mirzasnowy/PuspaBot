@@ -51,7 +51,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from puspa.db import Error as PsycopgError
-
 from puspa.observability import metrics as observability_metrics
 from puspa.observability import tracing as observability_tracing
 from puspa.router.fallback import AllTiersFailed, ProviderFailure

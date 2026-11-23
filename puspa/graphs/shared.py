@@ -49,12 +49,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
-from puspa.db import connect as _db_connect
-from puspa.db import dict_row
-from puspa.db import Jsonb
-from puspa.db import parse_timestamp as _db_parse_timestamp
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import Jsonb, dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import parse_timestamp as _db_parse_timestamp
 from puspa.migrations import apply_migrations
 
 #: Shared tables this module owns. The canonical DDL lives in

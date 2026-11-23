@@ -39,7 +39,6 @@ from worker_db import (
     migrations_fingerprint,
     parse_dsn,
     prune_stale_worker_dbs,
-    sqlite_db_dir,
     sqlite_migrations_fingerprint,
     sqlite_template_path,
     sqlite_worker_path,
@@ -69,9 +68,7 @@ BASE_DSN = os.environ.get(
 #: The name carries the process id, so two workers running this
 #: file at the same time never share a template or a worker
 #: database.
-POSTGRES_SCRATCH_BASE = (
-    f"dbname=puspa_test_e17_{os.getpid()} user=root host=/var/run/postgresql"
-)
+POSTGRES_SCRATCH_BASE = f"dbname=puspa_test_e17_{os.getpid()} user=root host=/var/run/postgresql"
 POSTGRES_MAINTENANCE = "dbname=postgres user=root host=/var/run/postgresql"
 
 
@@ -81,7 +78,7 @@ def _postgres_available() -> bool:
         with psycopg.connect(POSTGRES_MAINTENANCE, connect_timeout=3) as conn:
             conn.execute("SELECT 1")
         return True
-    except Exception:
+    except (psycopg.Error, OSError):
         return False
 
 
@@ -128,9 +125,7 @@ def _sqlite_versions(path: str) -> list[str]:
 
 def _sqlite_tables(path: str) -> set[str]:
     with _db_connect(path) as conn:
-        rows = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table'"
-        ).fetchall()
+        rows = conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
     return {str(row[0]) for row in rows}
 
 
@@ -175,9 +170,7 @@ def test_sqlite_worker_paths(sqlite_scratch_dir):
     assert sqlite_worker_path(None, "gw0", "abc123") == (
         sqlite_scratch_dir / "puspa_test_abc123_gw0.db"
     )
-    assert sqlite_worker_path(None, "gw2", "") == (
-        sqlite_scratch_dir / "puspa_test_gw2.db"
-    )
+    assert sqlite_worker_path(None, "gw2", "") == (sqlite_scratch_dir / "puspa_test_gw2.db")
     explicit = str(sqlite_scratch_dir / "mine.db")
     assert sqlite_worker_path(explicit, "gw0", "abc123") == (
         sqlite_scratch_dir / "mine_abc123_gw0.db"
@@ -193,9 +186,7 @@ def test_sqlite_migrations_fingerprint_changes_with_content(tmp_path):
 
 
 def test_sqlite_migrations_fingerprint_covers_the_sqlite_set():
-    assert sqlite_migrations_fingerprint() == sqlite_migrations_fingerprint(
-        MIGRATIONS_DIR_SQLITE
-    )
+    assert sqlite_migrations_fingerprint() == sqlite_migrations_fingerprint(MIGRATIONS_DIR_SQLITE)
     assert len(list(sqlite_template_path().parent.glob("*.db")) or []) >= 0
 
 
@@ -453,9 +444,7 @@ def test_xdist_run_gives_each_worker_its_own_database(tmp_path):
         probe.unlink(missing_ok=True)
 
 
-def test_xdist_run_gives_each_worker_its_own_postgres_database(
-    tmp_path, scratch_base
-):
+def test_xdist_run_gives_each_worker_its_own_postgres_database(tmp_path, scratch_base):
     """The same wiring on the Postgres lane (needs a live server)."""
     probe = BUILD_ROOT / "tests" / f"test_e17_pg_probe_{os.getpid()}.py"
     out_file = tmp_path / "worker_dsns.txt"

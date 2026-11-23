@@ -17,10 +17,10 @@ the only key value is obviously fake
 import base64
 
 import httpx
-from puspa.db import connect as _db_connect
 import pytest
 from fastapi.testclient import TestClient
 
+from puspa.db import connect as _db_connect
 from puspa.multimodal.attachments import AttachmentError, AttachmentStore
 from puspa.multimodal.generation import generate_image_attachment
 from puspa.multimodal.turns import (

@@ -42,10 +42,9 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
+from puspa.accounts.ports import resolve_dsn
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
-from puspa.accounts.ports import resolve_dsn
 from puspa.evidence.outcomes import write_outcome
 from puspa.ledger import Ledger
 from puspa.memory import facts as facts_module

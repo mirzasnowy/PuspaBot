@@ -40,9 +40,10 @@ import datetime
 from typing import Annotated
 
 import httpx
-from puspa.db import Error as _db_Error
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
+
+from puspa.db import Error as _db_Error
 
 from ..accounts.vault import VaultError
 from ..auth.google_oauth import load_tokens

@@ -36,7 +36,6 @@ import os
 
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
 from puspa.migrations import apply_migrations
 
 from .learning_loop import LearningLoop

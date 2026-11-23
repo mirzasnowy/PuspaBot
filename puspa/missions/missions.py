@@ -30,7 +30,8 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from puspa.db import connect as _db_connect, dict_row as _db_dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row as _db_dict_row
 
 DEFAULT_DSN = None
 

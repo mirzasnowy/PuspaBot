@@ -19,10 +19,10 @@ from __future__ import annotations
 import io
 import uuid
 
-from puspa.db import connect as _db_connect
 import pytest
 from PIL import Image
 
+from puspa.db import connect as _db_connect
 from puspa.pwa.replay import (
     GIF_FRAME_DURATION_MS,
     GIF_FRAME_HEIGHT,

@@ -42,10 +42,9 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from puspa.accounts.ports import resolve_dsn
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
-from puspa.accounts.ports import resolve_dsn
 from puspa.migrations import apply_migrations
 from puspa.mockup.doc import validate_doc
 
@@ -307,9 +306,7 @@ class GalleryStore:
                 # `now() - (%s || ' seconds')::interval` has no
                 # SQLite equivalent (the cast strips to a text
                 # subtraction), and no other product code uses it.
-                cooldown_since = datetime.now(UTC) - timedelta(
-                    seconds=per_work_cooldown_seconds
-                )
+                cooldown_since = datetime.now(UTC) - timedelta(seconds=per_work_cooldown_seconds)
                 cooling = conn.execute(
                     "SELECT COUNT(*) AS n FROM gallery_ratings WHERE work_id = %s "
                     "AND user_id = %s AND updated_at >= %s",

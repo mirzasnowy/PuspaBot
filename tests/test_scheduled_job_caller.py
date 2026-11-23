@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from puspa.db import connect as _db_connect
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.scheduler.routines import (
     RoutineError,
     create_routine,

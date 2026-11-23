@@ -24,13 +24,13 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from puspa.db import connect as _db_connect
 import pytest
 
 from puspa.channels.agent import TaskRunnerAgent
 from puspa.channels.authz import Allowlist
 from puspa.channels.config import ChannelConfig
 from puspa.channels.run import GatewayRunner
+from puspa.db import connect as _db_connect
 from puspa.proactivity.budget import (
     DEFAULT_DAILY_BUDGET,
     HIGH_VALUE_THRESHOLD,

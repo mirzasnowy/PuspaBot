@@ -18,8 +18,9 @@ from __future__ import annotations
 import re
 
 from puspa.db import Connection as _db_Connection
-from puspa.db import connect as _db_connect, errors as pg_errors
+from puspa.db import connect as _db_connect
 from puspa.db import dict_row
+from puspa.db import errors as pg_errors
 
 from .embeddings import HashEmbedding, cosine_distance, cosine_similarity, parse_stored_vector
 from .schema import resolve_dsn

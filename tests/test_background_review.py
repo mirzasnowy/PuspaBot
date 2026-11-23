@@ -163,7 +163,6 @@ def test_review_default_record_fact_writes_to_g7_store():
     import uuid
 
     from puspa.db import connect as _db_connect
-
     from puspa.memory import create_schema
     from puspa.memory.profile import list_facts
 

@@ -33,9 +33,10 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from puspa.db import Error as _db_Error
 from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import JSONResponse
+
+from puspa.db import Error as _db_Error
 
 from ..i18n.server_lines import render as render_server_line
 from ..knowledge.store import (

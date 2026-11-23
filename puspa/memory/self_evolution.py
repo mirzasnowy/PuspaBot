@@ -86,7 +86,6 @@ from datetime import UTC, datetime, timedelta
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
 from puspa.db import parse_timestamp as _db_parse_timestamp
-
 from puspa.ledger import Ledger
 
 from . import consolidate, procedural

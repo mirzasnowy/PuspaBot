@@ -21,7 +21,6 @@ import os
 
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
 from puspa.workflow.blocks import validate_workflow
 from puspa.workflow.manifest import compute_manifest, subset_permission
 from puspa.workflow.triggers import validate_trigger
@@ -60,9 +59,7 @@ class ModuleError(Exception):
 
 
 def _connect(dsn=None):
-    return _db_connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
-    )
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
 def _row(row: dict) -> dict:

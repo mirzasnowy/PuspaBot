@@ -1,7 +1,6 @@
 """Tes Skor Keandalan (§3.4) + Lapor Salah (§3.8 revisi 7)."""
 
 from puspa.db import connect as _db_connect
-
 from puspa.moat import reliability, report
 
 

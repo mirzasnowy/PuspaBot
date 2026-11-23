@@ -19,10 +19,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from puspa.accounts.ports import resolve_dsn
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
-from puspa.accounts.ports import resolve_dsn
 from puspa.migrations import apply_migrations
 from puspa.mockup.doc import DesignError, DesignSession, validate_doc
 

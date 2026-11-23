@@ -18,9 +18,9 @@ from __future__ import annotations
 
 import uuid
 
-from puspa.db import connect as _db_connect
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.pwa.live_view import (
     LedgerFrameSource,
     TakeoverError,

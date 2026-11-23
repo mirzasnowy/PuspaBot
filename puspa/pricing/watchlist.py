@@ -25,9 +25,7 @@ DAILY_READ_LIMIT = 20
 
 
 def _connect(dsn=None):
-    return _db_connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
-    )
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
 def add_watchlist(*, user_id: str, product_id: str, price_threshold=None, dsn=None) -> dict:

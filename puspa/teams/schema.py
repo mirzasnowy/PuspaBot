@@ -8,10 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from puspa.accounts.ports import resolve_dsn
 from puspa.db import Connection as _db_Connection
 from puspa.db import connect as _db_connect
-
-from puspa.accounts.ports import resolve_dsn
 from puspa.migrations import apply_migrations
 
 __all__ = ["TEAM_TABLES", "create_schema", "reset_tables", "schema_path"]
@@ -55,7 +54,7 @@ def reset_tables(dsn=None):
                 # holds the same existence check.
                 placeholders = ", ".join(["%s"] * len(TEAM_TABLES))
                 cur.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"  # nosec B608 - only the placeholder count is spliced in (len of a module constant); all table names are bound parameters
                     f" AND name IN ({placeholders})",
                     tuple(TEAM_TABLES),
                 )

@@ -42,9 +42,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from puspa.db import connect as _db_connect, errors as pg_errors
+from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
+from puspa.db import errors as pg_errors
 from puspa.memory.embeddings import (
     DEFAULT_FASTEMBED_MODEL,
     HashEmbedding,

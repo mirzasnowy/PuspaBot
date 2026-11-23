@@ -39,13 +39,11 @@ from uuid import UUID
 from puspa.db import (
     Connection as _db_Connection,
 )
-from puspa.db import Jsonb
+from puspa.db import Jsonb, dict_row
 from puspa.db import connect as _db_connect
-from puspa.db import dict_row
 from puspa.db import errors as pg_errors
 from puspa.db import maybe_begin_immediate as _db_begin_immediate
 from puspa.db import parse_timestamp as _db_parse_timestamp
-
 from puspa.migrations import apply_migrations
 
 from .errors import InvalidEventTypeError, LedgerError
@@ -453,12 +451,9 @@ class Ledger:
                     # follow the connection's row factory (dicts
                     # when dict_row was requested, tuples otherwise),
                     # so the name is read by key or by position.
-                    info = conn.execute(
-                        "PRAGMA table_info(events)"
-                    ).fetchall()
+                    info = conn.execute("PRAGMA table_info(events)").fetchall()
                     with_valid_at = any(
-                        (row["name"] if isinstance(row, dict) else row[1])
-                        == "valid_at"
+                        (row["name"] if isinstance(row, dict) else row[1]) == "valid_at"
                         for row in info
                     )
                 else:
@@ -473,13 +468,9 @@ class Ledger:
             if isinstance(conn, _db_Connection):
                 _db_begin_immediate(conn)
             else:
-                cur.execute(
-                    "SELECT pg_advisory_xact_lock(hashtext(%s))", (task_id,)
-                )
+                cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (task_id,))
             cur.execute("SELECT now() AS created_at")
-            created_at = _db_parse_timestamp(
-                cur.fetchone()["created_at"]
-            )
+            created_at = _db_parse_timestamp(cur.fetchone()["created_at"])
             cur.execute(
                 "SELECT hash FROM events WHERE task_id = %s "
                 "ORDER BY created_at DESC, id DESC LIMIT 1",

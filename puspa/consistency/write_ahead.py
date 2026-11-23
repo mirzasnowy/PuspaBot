@@ -31,7 +31,6 @@ from datetime import UTC, datetime
 
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
 from puspa.ledger import Ledger
 
 from .idempotency import args_hash, idempotency_key

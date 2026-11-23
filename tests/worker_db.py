@@ -484,9 +484,7 @@ def drop_sqlite_worker_db(path: str) -> None:
     _remove_sqlite_file(Path(path))
 
 
-def drop_run_sqlite_worker_dbs(
-    base_dsn: str | None = None, run_id: str = ""
-) -> list[str]:
+def drop_run_sqlite_worker_dbs(base_dsn: str | None = None, run_id: str = "") -> list[str]:
     """Remove every worker file of one run (controller cleanup)."""
     target = sqlite_worker_path(base_dsn, "gw*", run_id)
     dropped: list[str] = []

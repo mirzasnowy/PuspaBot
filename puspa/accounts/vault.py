@@ -40,10 +40,11 @@ import base64
 import os
 import stat
 
-from puspa.db import connect as _db_connect
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+from puspa.db import connect as _db_connect
 
 #: Fallback DSN when no DSN is passed and no env var is set (same
 #: convention as the rest of the codebase).

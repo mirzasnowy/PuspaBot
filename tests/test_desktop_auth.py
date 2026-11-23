@@ -69,9 +69,7 @@ def test_desktop_session_unknown_and_expired(app_client):
 
 def test_auth_google_redirect_sets_oauth_cookie(monkeypatch):
     monkeypatch.setenv("PUSPA_GOOGLE_CLIENT_ID", "client-123")
-    monkeypatch.setenv(
-        "PUSPA_GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback"
-    )
+    monkeypatch.setenv("PUSPA_GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
     app = create_app(test_user_id=None)
     with TestClient(app) as client:
         resp = client.get("/auth/google", follow_redirects=False)
@@ -91,19 +89,15 @@ def test_auth_google_without_client_id_is_503(monkeypatch):
 def test_auth_google_callback_state_mismatch():
     app = create_app(test_user_id=None)
     with TestClient(app) as client:
-        resp = client.get(
-            "/auth/google/callback?code=x&state=y", follow_redirects=False
-        )
+        resp = client.get("/auth/google/callback?code=x&state=y", follow_redirects=False)
         assert resp.status_code == 400
 
 
 def test_auth_google_callback_desktop_flow(app_client, monkeypatch, test_dsn):
-    app, client, user_id = app_client
+    _app, client, user_id = app_client
     monkeypatch.setenv("PUSPA_GOOGLE_CLIENT_ID", "client-123")
     monkeypatch.setenv("PUSPA_GOOGLE_CLIENT_SECRET", "secret-123")
-    monkeypatch.setenv(
-        "PUSPA_GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback"
-    )
+    monkeypatch.setenv("PUSPA_GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
 
     def fake_login(*args, **kwargs):
         return {
@@ -113,12 +107,8 @@ def test_auth_google_callback_desktop_flow(app_client, monkeypatch, test_dsn):
             "new": False,
         }
 
-    monkeypatch.setattr(
-        "puspa.auth.google_oauth.complete_google_login", fake_login
-    )
-    monkeypatch.setattr(
-        "puspa.auth.google_oauth.fetch_jwks", lambda http_client=None: {"keys": []}
-    )
+    monkeypatch.setattr("puspa.auth.google_oauth.complete_google_login", fake_login)
+    monkeypatch.setattr("puspa.auth.google_oauth.fetch_jwks", lambda http_client=None: {"keys": []})
     saved = {
         "state": "state-abc",
         "code_verifier": "verifier-abc",
@@ -135,17 +125,13 @@ def test_auth_google_callback_desktop_flow(app_client, monkeypatch, test_dsn):
     code = location.split("code=", 1)[1]
     exchanged = client.post("/api/desktop/session", json={"code": code})
     assert exchanged.status_code == 200
-    assert validate_session(
-        exchanged.json()["session_token"], dsn=test_dsn
-    ) == user_id
+    assert validate_session(exchanged.json()["session_token"], dsn=test_dsn) == user_id
 
 
 def test_auth_google_callback_browser_flow(monkeypatch):
     monkeypatch.setenv("PUSPA_GOOGLE_CLIENT_ID", "client-123")
     monkeypatch.setenv("PUSPA_GOOGLE_CLIENT_SECRET", "secret-123")
-    monkeypatch.setenv(
-        "PUSPA_GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback"
-    )
+    monkeypatch.setenv("PUSPA_GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
 
     def fake_login(*args, **kwargs):
         return {
@@ -155,12 +141,8 @@ def test_auth_google_callback_browser_flow(monkeypatch):
             "new": False,
         }
 
-    monkeypatch.setattr(
-        "puspa.auth.google_oauth.complete_google_login", fake_login
-    )
-    monkeypatch.setattr(
-        "puspa.auth.google_oauth.fetch_jwks", lambda http_client=None: {"keys": []}
-    )
+    monkeypatch.setattr("puspa.auth.google_oauth.complete_google_login", fake_login)
+    monkeypatch.setattr("puspa.auth.google_oauth.fetch_jwks", lambda http_client=None: {"keys": []})
     app = create_app(test_user_id=None)
     with TestClient(app) as client:
         saved = {"state": "state-abc", "code_verifier": "verifier-abc"}
@@ -190,9 +172,7 @@ def test_auth_google_redirect_uses_request_base_url_when_env_unset(monkeypatch):
         resp = client.get("/auth/google?desktop_port=9999", follow_redirects=False)
         assert resp.status_code in (302, 307)
         assert "accounts.google.com" in resp.headers["location"]
-        params = urllib.parse.parse_qs(
-            urllib.parse.urlparse(resp.headers["location"]).query
-        )
+        params = urllib.parse.parse_qs(urllib.parse.urlparse(resp.headers["location"]).query)
         # TestClient's actual base URL is http://testserver (no
         # port 8000 anywhere): the redirect must follow the request.
         assert params["redirect_uri"] == ["http://testserver/auth/google/callback"]
@@ -201,16 +181,12 @@ def test_auth_google_redirect_uses_request_base_url_when_env_unset(monkeypatch):
 def test_auth_google_redirect_env_override_wins(monkeypatch):
     """An explicit PUSPA_GOOGLE_REDIRECT_URI still overrides the base URL."""
     monkeypatch.setenv("PUSPA_GOOGLE_CLIENT_ID", "client-123")
-    monkeypatch.setenv(
-        "PUSPA_GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback"
-    )
+    monkeypatch.setenv("PUSPA_GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
     app = create_app(test_user_id=None)
     with TestClient(app) as client:
         resp = client.get("/auth/google", follow_redirects=False)
         assert resp.status_code in (302, 307)
-        params = urllib.parse.parse_qs(
-            urllib.parse.urlparse(resp.headers["location"]).query
-        )
+        params = urllib.parse.parse_qs(urllib.parse.urlparse(resp.headers["location"]).query)
         assert params["redirect_uri"] == ["http://localhost:8000/auth/google/callback"]
 
 
@@ -319,18 +295,12 @@ def test_auth_google_callback_desktop_flow_with_mocked_google(
     monkeypatch.setenv("PUSPA_GOOGLE_CLIENT_SECRET", "secret-123")
     monkeypatch.delenv("PUSPA_GOOGLE_REDIRECT_URI", raising=False)
     fake_google = _FakeGoogleHttpClient(client_id, email)
-    app = create_app(
-        test_user_id=None, google_http_client=fake_google, dsn=test_dsn
-    )
+    app = create_app(test_user_id=None, google_http_client=fake_google, dsn=test_dsn)
     with TestClient(app) as client:
         start = client.get("/auth/google?desktop_port=54321", follow_redirects=False)
         assert start.status_code in (302, 307)
-        start_params = urllib.parse.parse_qs(
-            urllib.parse.urlparse(start.headers["location"]).query
-        )
-        assert start_params["redirect_uri"] == [
-            "http://testserver/auth/google/callback"
-        ]
+        start_params = urllib.parse.parse_qs(urllib.parse.urlparse(start.headers["location"]).query)
+        assert start_params["redirect_uri"] == ["http://testserver/auth/google/callback"]
         state = start_params["state"][0]
         resp = client.get(
             f"/auth/google/callback?code=auth-code&state={state}",
@@ -341,9 +311,7 @@ def test_auth_google_callback_desktop_flow_with_mocked_google(
         assert location.startswith("http://127.0.0.1:54321/puspabot-callback?code=")
         token_posts = [data for url, data in fake_google.posts if url == TOKEN_URL]
         assert len(token_posts) == 1
-        assert token_posts[0]["redirect_uri"] == (
-            "http://testserver/auth/google/callback"
-        )
+        assert token_posts[0]["redirect_uri"] == ("http://testserver/auth/google/callback")
         code = location.split("code=", 1)[1]
         exchanged = client.post("/api/desktop/session", json={"code": code})
         assert exchanged.status_code == 200

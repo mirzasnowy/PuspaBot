@@ -42,7 +42,6 @@ from worker_db import (
 
 from puspa.db import connect as _db_connect
 from puspa.db import is_sqlite_dsn
-
 from puspa.graphs import create_schema as create_graphs_schema
 from puspa.graphs import reset_tables as reset_graphs
 from puspa.ledger import Ledger

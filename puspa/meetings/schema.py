@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from puspa.db import connect as _db_connect
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import connect as _db_connect
 from puspa.migrations import apply_migrations
 
 __all__ = ["MEETINGS_TABLES", "create_schema", "reset_tables", "schema_path"]

@@ -2,9 +2,9 @@
 
 from datetime import UTC
 
-from puspa.db import connect as _db_connect
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.graphs import service as graf
 from puspa.graphs.identity import add_product, link_listing
 from puspa.moat import library, metrics

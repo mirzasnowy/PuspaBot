@@ -21,9 +21,7 @@ TARGET_RUNS_WITHOUT_INTERVENTION = 50.0
 
 
 def _connect(dsn=None):
-    return _db_connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
-    )
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
 def workflow_metrics(dsn=None) -> dict:

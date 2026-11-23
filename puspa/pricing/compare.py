@@ -31,7 +31,6 @@ import uuid
 from typing import Protocol
 
 from puspa.db import connect as _db_connect
-
 from puspa.evidence.evidence import record_evidence
 from puspa.evidence.verifier import verify
 from puspa.graphs.identity import (

@@ -22,7 +22,6 @@ from datetime import UTC, datetime, timedelta
 
 from puspa.db import connect as _db_connect
 from puspa.db import maybe_begin_immediate as _db_begin_immediate
-
 from puspa.migrations import apply_migrations
 
 __all__ = [
@@ -138,7 +137,7 @@ def claim_work_items(
             )
             rows = cur.fetchall()
         conn.commit()
-    claimed = [
+    return [
         WorkItem(
             id=row[0],
             payload=dict(row[1] or {}),
@@ -151,7 +150,6 @@ def claim_work_items(
         )
         for row in rows
     ]
-    return claimed
 
 
 def complete_work_item(item_id: str, *, dsn: str | None = None) -> bool:

@@ -22,9 +22,8 @@ from __future__ import annotations
 
 import uuid
 
-from puspa.db import connect as _db_connect
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import connect as _db_connect
 
 __all__ = ["save_subscription"]
 

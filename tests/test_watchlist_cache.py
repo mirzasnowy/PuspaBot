@@ -1,7 +1,6 @@
 """Tes watchlist + sampler (§3.8) dan cache bukti bersama (§3.8)."""
 
 from puspa.db import connect as _db_connect
-
 from puspa.graphs.identity import add_product
 from puspa.pricing import cache as cache_evidence
 from puspa.pricing import watchlist

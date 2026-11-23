@@ -79,7 +79,6 @@ from typing import Any
 
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
 from puspa.ledger.ledger import GENESIS, canonical_json, compute_event_hash
 
 from . import durable

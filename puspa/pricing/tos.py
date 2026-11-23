@@ -86,9 +86,7 @@ LIVE_READ_ALLOWED = {"PLN", "PDAM", "airtime", "paket data"}
 
 
 def _connect(dsn=None):
-    return _db_connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
-    )
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
 def may_read(source: str, *, mode: str = "live") -> bool:

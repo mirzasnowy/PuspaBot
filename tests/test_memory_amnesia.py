@@ -240,7 +240,8 @@ def test_db_cold_check_passes_twenty_of_twenty(test_dsn, make_user):
 
 
 def _find_amnesia_event(test_dsn, user_id):
-    from puspa.db import connect as _db_connect, dict_row as _db_dict_row
+    from puspa.db import connect as _db_connect
+    from puspa.db import dict_row as _db_dict_row
 
     with _db_connect(test_dsn) as conn, conn.cursor(row_factory=_db_dict_row) as cur:
         cur.execute(

@@ -24,9 +24,9 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from puspa.db import connect as _db_connect, dict_row as _db_dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row as _db_dict_row
 from puspa.db import maybe_begin_immediate as _db_begin_immediate
-
 from puspa.ledger.kill_switch import is_kill_switch_active
 from puspa.proactivity.budget import Initiative, InterruptionBudget
 

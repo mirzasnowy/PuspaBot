@@ -50,7 +50,7 @@ def test_all_sqlite_migrations_apply(tmp_path):
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             ).fetchall()
         }
-    assert KEY_TABLES <= tables
+    assert tables >= KEY_TABLES
     assert "schema_migrations" in tables
 
 
@@ -59,9 +59,7 @@ def test_rollback_and_reapply_last_migration(tmp_path):
     apply_migrations(db_path)
     rolled_back = rollback_migrations(db_path, target="0044")
     assert rolled_back == ["0045"]
-    assert "0045" in {
-        row["version"] for row in migration_status(db_path) if not row["applied"]
-    }
+    assert "0045" in {row["version"] for row in migration_status(db_path) if not row["applied"]}
     assert apply_migrations(db_path) == ["0045"]
 
 
@@ -95,9 +93,7 @@ def _normalise_type(raw: str) -> str:
     text = re.sub(r"vector\(\d+\)", "blob", text)
     text = re.sub(r"\b(big)?serial\b", "integer", text)
     text = re.sub(r"timestamp with time zone", "timestamptz", text)
-    text = re.sub(r"timestamp without time zone", "timestamp", text)
-    text = re.sub(r"double precision", "double precision", text)
-    return text
+    return re.sub(r"timestamp without time zone", "timestamp", text)
 
 
 def _parse_schema(directory: Path) -> dict[str, list[tuple[str, str]]]:
@@ -152,9 +148,7 @@ def _parse_schema(directory: Path) -> dict[str, list[tuple[str, str]]]:
         ):
             table, name = match.group(1).lower(), match.group(2).lower()
             if table in schema:
-                schema[table] = [
-                    (col, typ) for col, typ in schema[table] if col != name
-                ]
+                schema[table] = [(col, typ) for col, typ in schema[table] if col != name]
     return schema
 
 
@@ -170,9 +164,7 @@ def test_sqlite_set_matches_postgres_set():
     mismatches = []
     for table in sorted(postgres):
         if sqlite[table] != postgres[table]:
-            mismatches.append(
-                f"{table}: Postgres {postgres[table]} vs SQLite {sqlite[table]}"
-            )
+            mismatches.append(f"{table}: Postgres {postgres[table]} vs SQLite {sqlite[table]}")
     assert not mismatches, "\n".join(mismatches)
 
 

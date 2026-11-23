@@ -11,7 +11,6 @@ import json
 import os
 import uuid
 
-from puspa.db import connect as _db_connect
 import pytest
 
 from puspa.computer.backend import FakeBackend
@@ -21,6 +20,7 @@ from puspa.computer.mcp import handle_tool
 from puspa.computer.safety import MASKED, ScreenTextSafety, ledger_event_log
 from puspa.computer.tree import node_to_dict, snapshot_to_dict
 from puspa.computer.vision import FakeOcrBackend, OcrWord
+from puspa.db import connect as _db_connect
 from puspa.ledger import Ledger
 from puspa.localexec import PermissionDecision
 

@@ -37,10 +37,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from puspa.accounts.ports import resolve_dsn
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
-from puspa.accounts.ports import resolve_dsn
 from puspa.rooms.errors import NotRoomMemberError
 from puspa.rooms.rooms import RoomStore, _validate_uuid
 from puspa.rooms.tasks import RoomTask, RoomTaskStore

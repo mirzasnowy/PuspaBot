@@ -20,16 +20,13 @@ from datetime import UTC, datetime
 
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
 from puspa.evidence.evidence import reliability_score
 
 DEFAULT_DSN = None
 
 
 def _connect(dsn=None):
-    return _db_connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
-    )
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
 def source_score(source: str, category: str = "", dsn=None) -> dict:

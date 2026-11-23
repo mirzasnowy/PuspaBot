@@ -24,9 +24,9 @@ import sys
 import types
 from pathlib import Path
 
-from puspa.db import connect as _db_connect
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.sessions import (
     SingleWriterError,
     open_persistence,

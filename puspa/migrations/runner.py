@@ -93,9 +93,7 @@ def resolve_dsn(dsn: str | None = None) -> str:
     return _port_resolve_dsn(dsn)
 
 
-def _resolve_directory(
-    directory: Path | None, dsn: str | None
-) -> Path:
+def _resolve_directory(directory: Path | None, dsn: str | None) -> Path:
     """The migration directory for this backend (D-SQLite-6).
 
     An explicit ``directory`` always wins (the hosted service keeps

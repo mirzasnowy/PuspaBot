@@ -33,7 +33,6 @@ from dataclasses import dataclass
 
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
 from puspa.migrations import apply_migrations
 
 from ..billing.config import TASK_COST_CEILING_IDR

@@ -9,7 +9,6 @@ from __future__ import annotations
 import os
 
 from puspa.db import connect as _db_connect
-
 from puspa.migrations import apply_migrations
 
 DEFAULT_DSN = None

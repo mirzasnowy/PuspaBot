@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from puspa.db import connect as _db_connect
 import pytest
 from fastapi.testclient import TestClient
 
+from puspa.db import connect as _db_connect
 from puspa.ledger import Ledger
 from puspa.memory import episodic
 from puspa.memory.embeddings import FastEmbedEmbedding, HashEmbedding

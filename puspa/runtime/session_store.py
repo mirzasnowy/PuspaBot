@@ -45,7 +45,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from puspa.db import connect as _db_connect
-
 from puspa.migrations import apply_migrations
 
 from .hierarchy import SessionStore

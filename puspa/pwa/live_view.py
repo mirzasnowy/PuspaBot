@@ -56,8 +56,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
-from puspa.db import connect as _db_connect, errors as pg_errors
 from puspa.db import IntegrityError as UniqueViolation
+from puspa.db import connect as _db_connect
 from puspa.db import dict_row
 
 from ..evidence.proof import user_agent_ids

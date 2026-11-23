@@ -56,10 +56,9 @@ import os
 import sys
 from typing import TextIO
 
-from puspa.db import Error as _db_Error
-
 from puspa.accounts.vault import VaultError
 from puspa.connectors.token_apps import VaultSealStore
+from puspa.db import Error as _db_Error
 
 __all__ = ["main", "serve_stdio"]
 

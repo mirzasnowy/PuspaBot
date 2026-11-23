@@ -15,7 +15,6 @@ Tests run against the Postgres test database named by the
 
 from datetime import UTC, datetime
 
-from puspa.db import connect as _db_connect
 import pytest
 
 from puspa.check_before_buy import (
@@ -25,6 +24,7 @@ from puspa.check_before_buy import (
     check_before_buy,
 )
 from puspa.check_before_buy.outcome import record_outcome
+from puspa.db import connect as _db_connect
 from puspa.evidence.outcomes import write_outcome
 from puspa.evidence.proof import (
     MAX_PAGE_SIZE,

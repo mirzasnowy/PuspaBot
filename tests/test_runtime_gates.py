@@ -8,9 +8,9 @@ Gerbang 12 (tulang punggung + bukti): rantai hash yang diubah
 terdeteksi 3/3, angka yatim ditahan 3/3, kaset 9/10 identik.
 """
 
-from puspa.db import connect as _db_connect
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.evidence.evidence import record_evidence
 from puspa.evidence.renderer import present
 from puspa.evidence.verifier import verify_injection

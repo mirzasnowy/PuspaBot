@@ -31,9 +31,9 @@ import json
 import os
 from pathlib import Path
 
-from puspa.db import connect as _db_connect
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.ledger import EVENT_TYPES
 from puspa.policy.conflicts import (
     CONFLICT_KINDS,

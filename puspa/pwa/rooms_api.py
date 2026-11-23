@@ -59,12 +59,12 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from puspa.db import connect as _db_connect
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from puspa.db import dict_row
 
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 from puspa.i18n.server_lines import render as render_server_line
 from puspa.pwa.memory_api import MemoryReadService
 from puspa.pwa.rooms_jobs import enqueue_job, get_job, job_to_dict, list_jobs, run_job

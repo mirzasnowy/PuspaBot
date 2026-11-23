@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import os
 
-from puspa.db import connect as _db_connect, dict_row as _db_dict_row
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row as _db_dict_row
 
 DEFAULT_DSN = None
 ALLOWED_CONNECTORS = ("gmail", "drive", "calendar")

@@ -40,13 +40,16 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from puspa.accounts.ports import resolve_dsn
 from puspa.db import Connection as _db_Connection
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-from puspa.memory.embeddings import cosine_distance, parse_stored_vector
-
-from puspa.accounts.ports import resolve_dsn
-from puspa.memory.embeddings import EMBEDDING_DIM, HashEmbedding
+from puspa.memory.embeddings import (
+    EMBEDDING_DIM,
+    HashEmbedding,
+    cosine_distance,
+    parse_stored_vector,
+)
 from puspa.migrations import apply_migrations
 from puspa.retrieval.embedding_health import MixedEmbedderError, dimension_of, embedder_id_of
 
@@ -441,13 +444,9 @@ def ask(
     vector = embedder.embed(question)
     with _connect(dsn) as conn:
         if isinstance(conn, _db_Connection):
-            rows = _ask_sqlite(
-                conn, user_id, embedder_id, dimension, vector, limit
-            )
+            rows = _ask_sqlite(conn, user_id, embedder_id, dimension, vector, limit)
         else:
-            rows = _ask_pgvector(
-                conn, user_id, embedder_id, dimension, vector, limit
-            )
+            rows = _ask_pgvector(conn, user_id, embedder_id, dimension, vector, limit)
     citations = [
         {
             "chunk_id": str(row["id"]),

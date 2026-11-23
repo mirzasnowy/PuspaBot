@@ -28,13 +28,13 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Annotated
 
-from puspa.db import Error as _db_Error
-from puspa.db import resolve_dsn as _resolve_dsn
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
 
+from puspa.db import Error as _db_Error
+from puspa.db import resolve_dsn as _resolve_dsn
 from puspa.i18n.server_lines import render as render_server_line
 
 # PWA asset locations (queue item 1.1, Nov 2026): the Jinja templates

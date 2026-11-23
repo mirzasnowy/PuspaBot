@@ -16,9 +16,9 @@ Covers, against the real `puspa_test` database:
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from puspa.db import connect as _db_connect
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.graphs.identity import (
     add_product,
     link_listing,

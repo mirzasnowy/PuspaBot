@@ -42,9 +42,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from puspa.db import Error as _db_Error
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+
+from puspa.db import Error as _db_Error
 
 from ..autonomy.controls import (
     AutonomyControls,

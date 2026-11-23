@@ -39,7 +39,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from puspa.db import Error as _db_Error
-
 from puspa.ledger import Ledger
 
 __all__ = [

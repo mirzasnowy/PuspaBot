@@ -82,7 +82,6 @@ from typing import Any, NoReturn
 
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
 from puspa.ledger import Ledger
 from puspa.migrations import apply_migrations
 

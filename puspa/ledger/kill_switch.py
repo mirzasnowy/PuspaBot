@@ -46,8 +46,9 @@ import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from puspa.db import connect as _db_connect, errors as pg_errors
+from puspa.db import connect as _db_connect
 from puspa.db import dict_row
+from puspa.db import errors as pg_errors
 
 if TYPE_CHECKING:
     from .ledger import Ledger

@@ -35,7 +35,7 @@ def _postgres_available() -> bool:
         with psycopg.connect(POSTGRES_MAINTENANCE, connect_timeout=3) as conn:
             conn.execute("SELECT 1")
         return True
-    except Exception:
+    except (psycopg.Error, OSError):
         return False
 
 
@@ -136,13 +136,9 @@ def test_schema_matches_live_postgres(postgres_dsn, sqlite_dsn):
         lite_columns = sqlite_schema[table]
         if len(pg_columns) != len(lite_columns) or any(
             pg_col != lite_col or not _types_equal(pg_type, lite_type)
-            for (pg_col, pg_type), (lite_col, lite_type) in zip(
-                pg_columns, lite_columns
-            )
+            for (pg_col, pg_type), (lite_col, lite_type) in zip(pg_columns, lite_columns)
         ):
-            mismatches.append(
-                f"{table}: Postgres {pg_columns} vs SQLite {lite_columns}"
-            )
+            mismatches.append(f"{table}: Postgres {pg_columns} vs SQLite {lite_columns}")
     assert not mismatches, "\n".join(mismatches)
 
 
@@ -180,12 +176,8 @@ def test_profile_facts_match(postgres_dsn, sqlite_dsn):
     """add_fact + list_facts return the same fact on both backends."""
     user_id = "11111111-1111-1111-1111-111111111111"
     for dsn in (sqlite_dsn, postgres_dsn):
-        profile.add_fact(
-            user_id, "likes", "kopi", "user_stated", dsn=dsn
-        )
-    rows = [
-        profile.list_facts(user_id, dsn=dsn) for dsn in (sqlite_dsn, postgres_dsn)
-    ]
+        profile.add_fact(user_id, "likes", "kopi", "user_stated", dsn=dsn)
+    rows = [profile.list_facts(user_id, dsn=dsn) for dsn in (sqlite_dsn, postgres_dsn)]
     assert len(rows[0]) == len(rows[1]) == 1
     for key in ("key", "value", "status"):
         assert rows[0][0][key] == rows[1][0][key]
@@ -203,27 +195,34 @@ def test_episodic_search_matches(postgres_dsn, sqlite_dsn):
     for dsn in (sqlite_dsn, postgres_dsn):
         for text in texts:
             episodic.record_episode(
-                user_id, text, "note", agent_id="puspa",
-                embedder=embedder, dsn=dsn,
+                user_id,
+                text,
+                "note",
+                agent_id="puspa",
+                embedder=embedder,
+                dsn=dsn,
             )
     results = [
         episodic.search_episodes(
-            user_id, "kopi warung karawang", limit=3,
-            embedder=embedder, dsn=dsn,
+            user_id,
+            "kopi warung karawang",
+            limit=3,
+            embedder=embedder,
+            dsn=dsn,
         )
         for dsn in (sqlite_dsn, postgres_dsn)
     ]
-    assert {row["content"] for row in results[0]} == {
-        row["content"] for row in results[1]
-    } == set(texts)
+    assert (
+        {row["content"] for row in results[0]}
+        == {row["content"] for row in results[1]}
+        == set(texts)
+    )
     assert results[0][0]["content"] == texts[0]
     assert results[1][0]["content"] == texts[0]
     # The two unrelated texts tie at distance 1.0 exactly (no
     # shared tokens), so their relative order is a tie-break, not
     # a ranking: compare distances per text, not per position.
-    by_content = [
-        {row["content"]: row["distance"] for row in rows} for rows in results
-    ]
+    by_content = [{row["content"]: row["distance"] for row in rows} for rows in results]
     for text in texts:
         assert abs(by_content[0][text] - by_content[1][text]) < 1e-3
 

@@ -30,9 +30,10 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-from puspa.db import connect as _db_connect, errors as pg_errors, Connection as _db_Connection
+from puspa.db import Connection as _db_Connection
+from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
+from puspa.db import errors as pg_errors
 from puspa.migrations import apply_migrations
 
 __all__ = ["RevocationError", "RevocationList"]

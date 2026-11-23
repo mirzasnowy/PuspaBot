@@ -1,9 +1,9 @@
 """Tes Episodik — lapis 2 memori + index pgvector (C54)."""
 
-from puspa.db import connect as _db_connect
-from puspa.db import is_sqlite_dsn as _db_is_sqlite_dsn
 import pytest
 
+from puspa.db import connect as _db_connect
+from puspa.db import is_sqlite_dsn as _db_is_sqlite_dsn
 from puspa.memory import episodic
 from puspa.memory.embeddings import HashEmbedding, cosine_similarity
 
@@ -58,8 +58,7 @@ def test_index_pgvector_exists(test_dsn):
     """Index HNSW episodik benar-benar terpasang di Postgres."""
     if _db_is_sqlite_dsn(test_dsn):
         pytest.skip(
-            "SQLite has no pgvector HNSW index by design "
-            "(D-SQLite-4: brute-force cosine in Python)"
+            "SQLite has no pgvector HNSW index by design (D-SQLite-4: brute-force cosine in Python)"
         )
 
     with _db_connect(test_dsn) as conn, conn.cursor() as cur:

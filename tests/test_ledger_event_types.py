@@ -15,10 +15,10 @@ import itertools
 import os
 import uuid
 
-from puspa.db import connect as _db_connect
 import pytest
-from puspa.db import errors as pg_errors
 
+from puspa.db import connect as _db_connect
+from puspa.db import errors as pg_errors
 from puspa.ledger import EVENT_TYPES, GENESIS, Ledger
 from puspa.ledger.errors import InvalidEventTypeError
 

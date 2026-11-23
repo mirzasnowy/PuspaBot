@@ -61,7 +61,6 @@ builds its server-rendered context from the same readers.
 
 from __future__ import annotations
 
-from puspa.db import Error as _db_Error
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -71,6 +70,7 @@ from puspa.accounts.ports import (
     revoke_all_sessions,
     revoke_session_by_id,
 )
+from puspa.db import Error as _db_Error
 from puspa.i18n.server_lines import render as render_server_line
 from puspa.marketplace.errors import MarketplaceError
 from puspa.pwa import admin_settings, hub_api, model_settings

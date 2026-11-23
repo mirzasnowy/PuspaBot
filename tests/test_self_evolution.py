@@ -24,10 +24,11 @@ import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from puspa.db import connect as _db_connect, dict_row as _db_dict_row
 import pytest
 
 from puspa.cli import main as cli_main
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row as _db_dict_row
 from puspa.ledger import Ledger
 from puspa.memory import procedural
 from puspa.memory.self_evolution import (

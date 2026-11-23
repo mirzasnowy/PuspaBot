@@ -36,7 +36,6 @@ from uuid import UUID
 
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
 from puspa.ledger import Ledger, compute_event_hash
 from puspa.ledger.audit import MAX_EXPORT_ROWS
 from puspa.memory.trust import redact_secrets

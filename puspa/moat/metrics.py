@@ -26,7 +26,6 @@ from datetime import UTC, datetime, timedelta
 
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
 from puspa.moat.reliability import source_score
 
 DEFAULT_DSN = None
@@ -36,9 +35,7 @@ TARGET_TOKEN_RATIO = 0.80
 
 
 def _connect(dsn=None):
-    return _db_connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
-    )
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
 def automatic_match_coverage(dsn=None) -> dict:

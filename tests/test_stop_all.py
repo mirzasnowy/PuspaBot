@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import uuid
 
-from puspa.db import connect as _db_connect
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.policy import RevocationList, StopError
 from puspa.pwa.stop_all import STOP_ALL_TARGET_SECONDS, stop_all_for_user
 from puspa.runtime.subagents import SubagentPool

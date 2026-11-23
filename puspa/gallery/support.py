@@ -60,10 +60,9 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from puspa.accounts.ports import resolve_dsn
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
-from puspa.accounts.ports import resolve_dsn
 from puspa.migrations import apply_migrations
 
 if TYPE_CHECKING:

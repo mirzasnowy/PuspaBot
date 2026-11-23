@@ -22,12 +22,12 @@ import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from puspa.db import connect as _db_connect
-from puspa.db import is_sqlite_dsn as _is_sqlite_dsn
 import pytest
-from puspa.db import errors as pg_errors
 
 from puspa.accounts.vault import put as vault_put
+from puspa.db import connect as _db_connect
+from puspa.db import errors as pg_errors
+from puspa.db import is_sqlite_dsn as _is_sqlite_dsn
 from puspa.harness import CodingHarness, CodingTask, LocalTestExecutor
 from puspa.harness.executor import ExecutionResult, Executor
 from puspa.harness.loop import STATUS_KILLED

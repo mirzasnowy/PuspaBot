@@ -14,11 +14,11 @@ import json
 import os
 import uuid
 
-from puspa.db import connect as _db_connect
-from puspa.db import is_sqlite_dsn as _is_sqlite_dsn
 import pytest
-from puspa.db import errors as pg_errors
 
+from puspa.db import connect as _db_connect
+from puspa.db import errors as pg_errors
+from puspa.db import is_sqlite_dsn as _is_sqlite_dsn
 from puspa.ledger import APP_ROLE, EVENT_TYPES, GENESIS, Ledger
 from puspa.ledger.errors import InvalidEventTypeError
 

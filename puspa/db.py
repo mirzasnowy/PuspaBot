@@ -48,7 +48,7 @@ import re
 import sqlite3
 import uuid
 from datetime import UTC, date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from .db_translate import split_statements, translate_sql
@@ -84,7 +84,7 @@ def is_sqlite_dsn(dsn) -> bool:
     if isinstance(dsn, Path):
         return True
     text = str(dsn)
-    if text in (":memory:",):
+    if text == ":memory:":
         return True
     if text.startswith(("sqlite://", "sqlite:")):
         return True
@@ -93,11 +93,9 @@ def is_sqlite_dsn(dsn) -> bool:
         return True
     if lowered.startswith(("postgres://", "postgresql://")):
         return False
-    if "=" in text:
-        # A keyword/value DSN (dbname=... user=... host=...) is
-        # Postgres; a bare file path never contains '='.
-        return False
-    return True
+    # A keyword/value DSN (dbname=... user=... host=...) is
+    # Postgres; a bare file path never contains '='.
+    return "=" not in text
 
 
 def resolve_dsn(dsn=None) -> str:
@@ -152,7 +150,7 @@ class Jsonb(_PgJsonb if _PgJsonb is not None else object):
     is not installed the class stands alone (SQLite-only install).
     """
 
-    __slots__ = ("value", "dumps")
+    __slots__ = ("dumps", "value")
 
     def __init__(self, value, dumps=None):
         if _PgJsonb is not None:
@@ -226,12 +224,8 @@ def _pg(name):
 Error = _both(sqlite3.Error, getattr(_psycopg, "Error", None))
 DatabaseError = _both(sqlite3.DatabaseError, getattr(_psycopg, "DatabaseError", None))
 InterfaceError = _both(sqlite3.InterfaceError, getattr(_psycopg, "InterfaceError", None))
-OperationalError = _both(
-    sqlite3.OperationalError, getattr(_psycopg, "OperationalError", None)
-)
-ProgrammingError = _both(
-    sqlite3.ProgrammingError, getattr(_psycopg, "ProgrammingError", None)
-)
+OperationalError = _both(sqlite3.OperationalError, getattr(_psycopg, "OperationalError", None))
+ProgrammingError = _both(sqlite3.ProgrammingError, getattr(_psycopg, "ProgrammingError", None))
 IntegrityError = _both(sqlite3.IntegrityError, getattr(_psycopg, "IntegrityError", None))
 
 
@@ -245,9 +239,7 @@ class _Errors:
     UndefinedTable = _both(sqlite3.OperationalError, _pg("UndefinedTable"))
     UndefinedColumn = _both(sqlite3.OperationalError, _pg("UndefinedColumn"))
     SyntaxError = _both(sqlite3.OperationalError, _pg("SyntaxError"))
-    InvalidTextRepresentation = _both(
-        sqlite3.OperationalError, _pg("InvalidTextRepresentation")
-    )
+    InvalidTextRepresentation = _both(sqlite3.OperationalError, _pg("InvalidTextRepresentation"))
     # SQLite has no role system, so a privilege error has no
     # direct equivalent; it surfaces as an operational error.
     InsufficientPrivilege = _both(sqlite3.OperationalError, _pg("InsufficientPrivilege"))
@@ -300,7 +292,7 @@ def _bool_converter(raw: bytes):
 def _decimal_converter(raw: bytes):
     try:
         return Decimal(raw.decode("utf-8"))
-    except Exception:
+    except (UnicodeDecodeError, InvalidOperation):
         return raw.decode("utf-8", "replace")
 
 
@@ -445,8 +437,7 @@ def _column_name(raw: str) -> str:
 class Cursor:
     """A psycopg-shaped cursor over one sqlite3 cursor."""
 
-    def __init__(self, raw: sqlite3.Cursor, connection: "Connection",
-                 row_factory=None):
+    def __init__(self, raw: sqlite3.Cursor, connection: Connection, row_factory=None):
         self._raw = raw
         self._connection = connection
         # Tuples by default, dicts when dict_row was requested,
@@ -459,9 +450,7 @@ class Cursor:
         if row is None or not self._dict_rows:
             return row
         names = [d[0] for d in self._raw.description]
-        return {
-            _column_name(name): value for name, value in zip(names, row)
-        }
+        return {_column_name(name): value for name, value in zip(names, row)}
 
     def _add_column_already_exists(self, statement: str) -> bool:
         """True when ``ADD COLUMN IF NOT EXISTS`` names a live column.
@@ -479,9 +468,7 @@ class Cursor:
         if not match:
             return False
         table, column = match.group(1).split(".")[-1], match.group(2)
-        info = self._connection._raw.execute(
-            f"PRAGMA table_info({table})"
-        ).fetchall()
+        info = self._connection._raw.execute(f"PRAGMA table_info({table})").fetchall()
         # PRAGMA rows are plain tuples: (cid, name, type, ...).
         return any(row[1] == column for row in info)
 
@@ -509,20 +496,18 @@ class Cursor:
                 "PRAGMA defer_foreign_keys=OFF",
             ]
         if len(statements) > 1 and new_params:
-            raise ValueError(
-                "parameters are not allowed with multi-statement SQL"
-            )
+            raise ValueError("parameters are not allowed with multi-statement SQL")
         adapted = tuple(_adapt_param(v) for v in new_params)
         for statement in statements:
             if self._add_column_already_exists(statement):
                 continue
-            statement = re.sub(
+            rewritten = re.sub(
                 r"ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\b",
                 "ADD COLUMN",
                 statement,
                 flags=re.IGNORECASE,
             )
-            self._raw.execute(statement, adapted if len(statements) == 1 else ())
+            self._raw.execute(rewritten, adapted if len(statements) == 1 else ())
         return self
 
     def executemany(self, sql, params_list):
@@ -660,7 +645,7 @@ def _sqlite_connect(path: str, autocommit: bool, row_factory=None) -> Connection
         path = path[len("sqlite://") :]
     elif path.startswith("sqlite:"):
         path = path[len("sqlite:") :]
-    if path not in (":memory:",):
+    if path != ":memory:":
         parent = Path(path).expanduser().parent
         parent.mkdir(parents=True, exist_ok=True)
     raw = sqlite3.connect(

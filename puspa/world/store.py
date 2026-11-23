@@ -70,7 +70,6 @@ from typing import Any
 
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
 from puspa.migrations import apply_migrations
 
 from .agents import AgentGoalModel, AgentGoalStore

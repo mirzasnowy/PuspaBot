@@ -60,10 +60,11 @@ import os
 import sys
 from pathlib import Path
 
-from puspa.db import connect as _db_connect, Error as _db_Error, Connection as _db_Connection
-from puspa.db import is_sqlite_dsn as _db_is_sqlite_dsn
-
 from puspa.accounts.ports import resolve_dsn as _port_resolve_dsn
+from puspa.db import Connection as _db_Connection
+from puspa.db import Error as _db_Error
+from puspa.db import connect as _db_connect
+from puspa.db import is_sqlite_dsn as _db_is_sqlite_dsn
 
 from .errors import SingleWriterError
 
@@ -338,9 +339,7 @@ class PostgresAdvisoryLock:
     @property
     def held(self) -> bool:
         """True while this object holds the advisory lock."""
-        return self._conn is not None or (
-            self._file_lock is not None and self._file_lock.held
-        )
+        return self._conn is not None or (self._file_lock is not None and self._file_lock.held)
 
     def __enter__(self) -> PostgresAdvisoryLock:
         self.acquire()

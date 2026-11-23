@@ -14,11 +14,11 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 
-from puspa.db import Connection as _db_Connection
-from puspa.db import connect as _db_connect, Error as _db_Error
-from puspa.db import dict_row
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import Connection as _db_Connection
+from puspa.db import Error as _db_Error
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 from puspa.rooms import RoomMemoryStore, RoomStore
 from puspa.rooms.errors import (
     GuestReadOnlyError,

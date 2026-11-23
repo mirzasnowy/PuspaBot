@@ -591,11 +591,10 @@ def claim_next_task(dsn: str, agent_id: str) -> dict | None:
     """
     import os
 
-    from puspa.db import connect as _db_connect, dict_row as _db_dict_row
+    from puspa.db import connect as _db_connect
+    from puspa.db import dict_row as _db_dict_row
 
-    dsn = dsn or os.environ.get(
-        "PUSPA_TEST_DSN", None
-    )
+    dsn = dsn or os.environ.get("PUSPA_TEST_DSN", None)
     with _db_connect(dsn, row_factory=_db_dict_row) as conn:
         with conn.cursor() as cur:
             cur.execute(

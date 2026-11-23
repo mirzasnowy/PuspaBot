@@ -36,10 +36,8 @@ import os
 import re
 from datetime import UTC, datetime, timedelta
 
+from puspa.db import Jsonb, dict_row
 from puspa.db import connect as _db_connect
-from puspa.db import dict_row
-from puspa.db import Jsonb
-
 from puspa.memory.episodic import extract_concepts, extract_entities
 
 DEFAULT_DSN = None
@@ -64,9 +62,7 @@ class IdentityError(Exception):
 
 
 def _connect(dsn=None):
-    return _db_connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
-    )
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
 def normalize_model_number(model_number: str) -> str:

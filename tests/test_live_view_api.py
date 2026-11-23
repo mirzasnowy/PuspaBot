@@ -16,9 +16,9 @@ the live PWA serves.
 
 from __future__ import annotations
 
-from puspa.db import connect as _db_connect
 from fastapi.testclient import TestClient
 
+from puspa.db import connect as _db_connect
 from puspa.pwa.app import create_app
 from puspa.pwa.live_view import TakeoverStore
 

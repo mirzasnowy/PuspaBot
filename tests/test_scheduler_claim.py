@@ -9,9 +9,9 @@ import os
 import time
 from datetime import UTC, datetime, timedelta
 
-from puspa.db import connect as _db_connect
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.scheduler.claim import (
     DEFAULT_DSN,
     InMemoryWorkQueue,

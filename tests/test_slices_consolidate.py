@@ -2,9 +2,9 @@
 
 import uuid
 
-from puspa.db import connect as _db_connect
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.memory import consolidate, episodic, procedural, profile, slices
 
 

@@ -48,11 +48,9 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, time, timedelta
 
-from puspa.db import connect as _db_connect
-from puspa.db import dict_row
-from puspa.db import Jsonb
-
 from puspa.accounts.ports import resolve_dsn
+from puspa.db import Jsonb, dict_row
+from puspa.db import connect as _db_connect
 
 from .config import TASK_COST_CEILING_IDR, BillingConfig, default_config
 

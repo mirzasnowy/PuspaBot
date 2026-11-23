@@ -38,11 +38,11 @@ Safety properties kept from the original implementation:
 from __future__ import annotations
 
 import hashlib
-import os
 import secrets
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHash, VerificationError, VerifyMismatchError
+
 from puspa import db
 from puspa.db import errors as pg_errors
 

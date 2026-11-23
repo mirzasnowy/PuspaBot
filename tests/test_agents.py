@@ -36,7 +36,8 @@ def test_delete_puspa_rejected(make_user, test_dsn):
         delete_agent(u["user_id"], u["agent_id"])
     assert len(list_agents(u["user_id"])) == 1
     # Penolakan di level DATABASE (bukan hanya API): DELETE langsung ditolak.
-    from puspa.db import connect as _db_connect, errors as pg_errors
+    from puspa.db import connect as _db_connect
+    from puspa.db import errors as pg_errors
 
     with pytest.raises(pg_errors.RaiseException), _db_connect(test_dsn) as conn:
         conn.execute("DELETE FROM agent_meta WHERE agent_id = %s", (u["agent_id"],))

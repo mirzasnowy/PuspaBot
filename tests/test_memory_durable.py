@@ -11,10 +11,10 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from puspa.db import connect as _db_connect
 import pytest
-from puspa.db import dict_row
 
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
 from puspa.memory import durable
 from puspa.memory.facts import MemoryFactStore, PostgresFactStore, record_fact
 

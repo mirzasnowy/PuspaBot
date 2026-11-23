@@ -20,9 +20,9 @@ from __future__ import annotations
 
 import uuid
 
-from puspa.db import connect as _db_connect, dict_row as _db_dict_row
-
 from puspa.accounts.ports import register_agent, resolve_dsn
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row as _db_dict_row
 
 MAX_AGENT = 3
 NAME_PUSPA = "Puspa"

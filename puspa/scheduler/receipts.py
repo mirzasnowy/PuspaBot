@@ -14,7 +14,6 @@ import os
 import threading
 
 from puspa.db import connect as _db_connect
-
 from puspa.migrations import apply_migrations
 
 __all__ = [

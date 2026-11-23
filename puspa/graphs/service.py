@@ -24,10 +24,8 @@ from __future__ import annotations
 import os
 import re
 
+from puspa.db import Jsonb, dict_row
 from puspa.db import connect as _db_connect
-from puspa.db import dict_row
-from puspa.db import Jsonb
-
 from puspa.memory import procedural as _prosedural
 
 DEFAULT_DSN = None
@@ -46,9 +44,7 @@ class ServiceError(Exception):
 
 
 def _connect(dsn=None):
-    return _db_connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
-    )
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
 def _has_private_data(step) -> bool:

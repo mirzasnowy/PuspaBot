@@ -78,7 +78,6 @@ from uuid import UUID
 
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
 from puspa.diagnostics.redact import REDACTED, redact_diagnostics_value
 
 __all__ = [
@@ -235,9 +234,7 @@ def build_diagnostics_bundle(
 
 
 def _connect(dsn: str | None):
-    return _db_connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
-    )
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
 def _agent_ids(user_id: str, conn) -> list[str]:

@@ -76,9 +76,7 @@ def save_cassette(
 
         from puspa.db import connect as _db_connect
 
-        dsn = dsn or os.environ.get(
-            "PUSPA_TEST_DSN", None
-        )
+        dsn = dsn or os.environ.get("PUSPA_TEST_DSN", None)
         with _db_connect(dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -158,9 +156,7 @@ def delete_cassette_task(task_id: str, *, cassette_dir: Path | None = None, dsn=
 
         from puspa.db import connect as _db_connect
 
-        dsn = dsn or os.environ.get(
-            "PUSPA_TEST_DSN", None
-        )
+        dsn = dsn or os.environ.get("PUSPA_TEST_DSN", None)
         with _db_connect(dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT name, berkas FROM cassettes WHERE task_id = %s", (task_id,))

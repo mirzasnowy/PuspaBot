@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import time
 
-from puspa.db import connect as _db_connect
-from puspa.db import is_sqlite_dsn as _is_sqlite_dsn
 import pytest
-from puspa.db import errors as pg_errors
 
+from puspa.db import connect as _db_connect
+from puspa.db import errors as pg_errors
+from puspa.db import is_sqlite_dsn as _is_sqlite_dsn
 from puspa.ledger import Ledger
 from puspa.policy import (
     STOP_TARGET_SECONDS,
@@ -227,7 +227,9 @@ def test_revoke_jti_and_agent_cutoff(revocations):
 
 def test_revocation_tables_are_read_only_for_the_agent_role(revocations, test_dsn):
     if _is_sqlite_dsn(test_dsn):
-        pytest.skip("Postgres role enforcement has no SQLite equivalent (D-SQLite-5: ownership is enforced in code, not by roles)")
+        pytest.skip(
+            "Postgres role enforcement has no SQLite equivalent (D-SQLite-5: ownership is enforced in code, not by roles)"
+        )
     revocations.revoke_jti("d" * 32, AGENT_ID, reason="test")
     # The agent role can read the lists (the Gate does, on every call).
     reader = RevocationList(test_dsn, read_role="puspa_app")

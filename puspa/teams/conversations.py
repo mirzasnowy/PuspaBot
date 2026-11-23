@@ -22,10 +22,9 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
+from puspa.accounts.ports import resolve_dsn
 from puspa.db import connect as _db_connect
 from puspa.db import dict_row
-
-from puspa.accounts.ports import resolve_dsn
 
 from .errors import TeamConversationNotFoundError
 

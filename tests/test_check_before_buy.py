@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from puspa.db import connect as _db_connect
 import pytest
 
 from puspa.check_before_buy import (
@@ -22,6 +21,7 @@ from puspa.check_before_buy import (
     load_cassette,
 )
 from puspa.check_before_buy.answer import mask_account_number
+from puspa.db import connect as _db_connect
 from puspa.turns.intercepts import INTERCEPTED_TOOLS, InterceptedTools
 
 LINK = "https://www.tokopedia.com/toko/galaxy-s24"

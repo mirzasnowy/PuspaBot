@@ -14,9 +14,11 @@ cross-user writes are refused one layer up, by the PWA API with
 403s) and is skipped there.
 """
 
-from puspa.db import connect as _db_connect, Error as _db_Error
-from puspa.db import is_sqlite_dsn as _is_sqlite_dsn
 import pytest
+
+from puspa.db import Error as _db_Error
+from puspa.db import connect as _db_connect
+from puspa.db import is_sqlite_dsn as _is_sqlite_dsn
 
 
 def _connect_as_app(test_dsn):
@@ -37,9 +39,7 @@ def test_rls_without_user_sees_nothing(make_user, test_dsn):
         other = make_user()
         assert profile.list_facts(other["user_id"], dsn=test_dsn) == []
         assert episodic.search_episodes(other["user_id"], "rahasia", dsn=test_dsn) == []
-        assert [f["value"] for f in profile.list_facts(u["user_id"], dsn=test_dsn)] == [
-            "Nero"
-        ]
+        assert [f["value"] for f in profile.list_facts(u["user_id"], dsn=test_dsn)] == ["Nero"]
         assert episodic.search_episodes(u["user_id"], "rahasia", dsn=test_dsn)
         return
     with _connect_as_app(test_dsn) as conn, conn.cursor() as cur:
@@ -57,15 +57,10 @@ def test_rls_only_own_rows(make_user, test_dsn):
     profile.add_fact(b["user_id"], "name", "Budi", "user_stated", dsn=test_dsn)
     episodic.record_episode(a["user_id"], "rahasia a", "user_message", dsn=test_dsn)
     if _is_sqlite_dsn(test_dsn):
-        assert [f["value"] for f in profile.list_facts(a["user_id"], dsn=test_dsn)] == [
-            "Nero"
-        ]
-        assert [f["value"] for f in profile.list_facts(b["user_id"], dsn=test_dsn)] == [
-            "Budi"
-        ]
+        assert [f["value"] for f in profile.list_facts(a["user_id"], dsn=test_dsn)] == ["Nero"]
+        assert [f["value"] for f in profile.list_facts(b["user_id"], dsn=test_dsn)] == ["Budi"]
         assert [
-            e["content"]
-            for e in episodic.search_episodes(a["user_id"], "rahasia a", dsn=test_dsn)
+            e["content"] for e in episodic.search_episodes(a["user_id"], "rahasia a", dsn=test_dsn)
         ] == ["rahasia a"]
         assert episodic.search_episodes(b["user_id"], "rahasia a", dsn=test_dsn) == []
         return

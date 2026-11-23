@@ -196,7 +196,6 @@ def test_pgvector_provider_round_trip():
     uses a fresh user id, and deletes its rows afterwards.
     """
     from puspa.db import connect as _db_connect
-
     from puspa.memory import create_schema
     from puspa.memory.provider import _shared_record  # noqa: F401  (shape check)
 

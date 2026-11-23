@@ -55,9 +55,8 @@ import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 
+from puspa.db import Jsonb, dict_row
 from puspa.db import connect as _db_connect
-from puspa.db import dict_row
-from puspa.db import Jsonb
 
 from .schema import resolve_dsn
 

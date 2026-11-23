@@ -14,9 +14,9 @@ only ever sent to the mock transport, never to a real host.
 """
 
 import httpx
-from puspa.db import connect as _db_connect
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.memory.embeddings import EmbeddingUnavailable, OpenAICompatibleEmbedding
 from puspa.pwa.capability_routing import (
     CAPABILITIES,

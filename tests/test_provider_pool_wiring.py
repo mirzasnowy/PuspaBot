@@ -14,10 +14,10 @@ sent to the mock transport, never to a real host.
 """
 
 import httpx
-from puspa.db import connect as _db_connect
 import pytest
 
 from puspa.accounts.vault import put as vault_put
+from puspa.db import connect as _db_connect
 from puspa.pwa.capability_routing import create_schema, save_route
 from puspa.pwa.model_settings import save_byok_key
 from puspa.router.complete import OPENROUTER_API_BASE

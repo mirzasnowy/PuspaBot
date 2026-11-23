@@ -34,7 +34,6 @@ import os
 
 from puspa.db import connect as _db_connect
 from puspa.db import is_sqlite_dsn as _db_is_sqlite_dsn
-
 from puspa.migrations import apply_migrations
 
 DEFAULT_DSN = None

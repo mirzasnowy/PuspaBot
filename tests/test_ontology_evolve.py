@@ -16,10 +16,11 @@ import os
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from puspa.db import connect as _db_connect, Error as _db_Error
-from puspa.db import is_sqlite_dsn as _db_is_sqlite_dsn
 import pytest
 
+from puspa.db import Error as _db_Error
+from puspa.db import connect as _db_connect
+from puspa.db import is_sqlite_dsn as _db_is_sqlite_dsn
 from puspa.memory.ontology_evolve import (
     OP_NEEDS_EVIDENCE,
     OP_REJECT_STALE_PROPOSAL,
@@ -349,8 +350,7 @@ def _db_ready(dsn):
             for table in _DB_TABLES:
                 if _db_is_sqlite_dsn(dsn):
                     cur.execute(
-                        "SELECT 1 FROM sqlite_master "
-                        "WHERE type = 'table' AND name = %s",
+                        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = %s",
                         (table,),
                     )
                 else:

@@ -7,9 +7,9 @@ one input to the effective switch — the ``PUSPA_TELEMETRY``
 environment flag wins when set (see tests/test_telemetry.py).
 """
 
-from puspa.db import connect as _db_connect
 import pytest
 
+from puspa.db import connect as _db_connect
 from puspa.telemetry.settings import (
     TelemetrySettings,
     create_schema,

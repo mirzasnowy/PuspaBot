@@ -79,9 +79,10 @@ import json
 from dataclasses import asdict
 from datetime import UTC, datetime
 
-from puspa.db import connect as _db_connect
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
+
+from puspa.db import connect as _db_connect
 from puspa.db import dict_row
 
 from ..i18n.server_lines import render as render_server_line

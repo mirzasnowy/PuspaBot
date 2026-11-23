@@ -48,7 +48,6 @@ executed, never at import time.
 from __future__ import annotations
 
 import re
-import uuid
 
 #: Canonical timestamp expression (D-SQLite-3): ISO-8601 UTC text
 #: with fractional seconds, the same shape ``datetime.now(UTC)``
@@ -61,10 +60,7 @@ _NOW_EXPR = "(strftime('%Y-%m-%dT%H:%M:%f+00:00','now'))"
 
 def _now_with_modifier(sign: str, amount: str) -> str:
     """``now() +/- interval`` as one strftime expression."""
-    return (
-        "(strftime('%Y-%m-%dT%H:%M:%f+00:00','now',"
-        f"'{sign}{amount}'))"
-    )
+    return f"(strftime('%Y-%m-%dT%H:%M:%f+00:00','now','{sign}{amount}'))"
 
 
 #: SQLite expression that builds a version-4 UUID string.
@@ -76,9 +72,7 @@ _UUID_EXPR = (
     " || '-' || lower(hex(randomblob(6))))"
 )
 
-_RE_NOW_INTERVAL = re.compile(
-    r"now\s*\(\s*\)\s*([+-])\s*interval\s*'([^']*)'", re.IGNORECASE
-)
+_RE_NOW_INTERVAL = re.compile(r"now\s*\(\s*\)\s*([+-])\s*interval\s*'([^']*)'", re.IGNORECASE)
 
 #: ``<expr> +/- INTERVAL 'N unit'`` with any left side (a column,
 #: a placeholder, ``now()``): SQLite has no INTERVAL, so the whole
@@ -122,21 +116,15 @@ _RE_CAST = re.compile(
     r"|[A-Za-z_][A-Za-z0-9_]*(\s*\([^)]*\))?(\s*\[\])?)",
     re.IGNORECASE,
 )
-_RE_ANY = re.compile(
-    r"ANY\s*\(\s*%s\s*(?:::[\w\[\]]+(\([^)]*\))?)?\s*\)", re.IGNORECASE
-)
+_RE_ANY = re.compile(r"ANY\s*\(\s*%s\s*(?:::[\w\[\]]+(\([^)]*\))?)?\s*\)", re.IGNORECASE)
 _RE_ADVISORY = re.compile(
     r"(?:pg_try_advisory_xact_lock|pg_advisory_xact_lock"
     r"|pg_try_advisory_lock|pg_advisory_lock"
     r"|pg_advisory_unlock_all|pg_advisory_unlock)\s*\(",
     re.IGNORECASE,
 )
-_RE_FOR_UPDATE = re.compile(
-    r"FOR\s+UPDATE(\s+SKIP\s+LOCKED|\s+NOWAIT)?", re.IGNORECASE
-)
-_RE_IS_DISTINCT = re.compile(
-    r"IS\s+(NOT\s+)?DISTINCT\s+FROM\b", re.IGNORECASE
-)
+_RE_FOR_UPDATE = re.compile(r"FOR\s+UPDATE(\s+SKIP\s+LOCKED|\s+NOWAIT)?", re.IGNORECASE)
+_RE_IS_DISTINCT = re.compile(r"IS\s+(NOT\s+)?DISTINCT\s+FROM\b", re.IGNORECASE)
 _RE_ARRAY_AGG = re.compile(r"array_agg\s*\(", re.IGNORECASE)
 _RE_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _RE_DOLLAR_TAG = re.compile(r"\$[A-Za-z_0-9]*\$")
@@ -178,9 +166,7 @@ def _drop_statement(sql: str) -> bool:
         # CREATE OR REPLACE FUNCTION ... (plpgsql / sql helpers that
         # only exist to serve RLS policies, which do not exist here).
         rest = re.sub(r"--[^\n]*", " ", sql)
-        if re.search(
-            r"CREATE\s+OR\s+REPLACE\s+FUNCTION\b", rest, re.IGNORECASE
-        ):
+        if re.search(r"CREATE\s+OR\s+REPLACE\s+FUNCTION\b", rest, re.IGNORECASE):
             return True
     upper = sql.upper()
     if re.search(
@@ -203,11 +189,9 @@ def _drop_statement(sql: str) -> bool:
         return True
     if re.match(r"\s*SET\s+", sql, re.IGNORECASE):
         return True
-    if re.match(r"\s*RESET\s+", sql, re.IGNORECASE):
-        # RESET ROLE / RESET ALL / RESET <var>: Postgres session
-        # commands, no SQLite meaning (same as SET above).
-        return True
-    return False
+    # RESET ROLE / RESET ALL / RESET <var>: Postgres session
+    # commands, no SQLite meaning (same as SET above).
+    return re.match(r"\s*RESET\s+", sql, re.IGNORECASE) is not None
 
 
 def _interval_replacement(match: re.Match) -> str:
@@ -226,10 +210,7 @@ def _interval_replacement(match: re.Match) -> str:
         return match.group(0)
     if left.strip().lower().startswith("now") or left.strip().lower() == "current_timestamp":
         return _now_with_modifier(sign, literal)
-    return (
-        "(strftime('%Y-%m-%dT%H:%M:%f+00:00', "
-        f"{left}, '{sign}{amount} {unit}'))"
-    )
+    return f"(strftime('%Y-%m-%dT%H:%M:%f+00:00', {left}, '{sign}{amount} {unit}'))"
 
 
 def _rewrite_statement_head(sql: str) -> str:
@@ -247,21 +228,18 @@ def _rewrite_statement_head(sql: str) -> str:
         sql,
         flags=re.IGNORECASE | re.DOTALL,
     )
-    sql = re.sub(
+    return re.sub(
         r"DROP\s+TRIGGER\s+IF\s+EXISTS\s+(\S+)\s+ON\s+\S+",
         r"DROP TRIGGER IF EXISTS \1",
         sql,
         flags=re.IGNORECASE,
     )
-    return sql
 
 
 def _truncate_to_deletes(sql: str) -> str | None:
     """``TRUNCATE t1, t2`` as DELETEs, else None."""
     text = sql.strip()
-    match = re.match(
-        r"TRUNCATE\s+(?:ONLY\s+)?(.+)$", text, re.IGNORECASE | re.DOTALL
-    )
+    match = re.match(r"TRUNCATE\s+(?:ONLY\s+)?(.+)$", text, re.IGNORECASE | re.DOTALL)
     if not match:
         return None
     rest = match.group(1)
@@ -291,7 +269,7 @@ def _drop_trailing_comparison(out: list[str]) -> str:
     """
     tail = "".join(out[-4:])
     stripped = tail.rstrip()
-    if stripped.endswith("<>") or stripped.endswith("!="):
+    if stripped.endswith(("<>", "!=")):
         _trim_output(out, 2)
         return "NOT "
     if stripped.endswith("="):
@@ -376,10 +354,7 @@ def translate_sql(
     translate (``ANY(%s)`` splicing, advisory-lock parameter
     dropping) raise instead of silently misaligning parameters.
     """
-    if params is None:
-        params = ()
-    else:
-        params = tuple(params)
+    params = () if params is None else tuple(params)
     if _drop_statement(sql):
         return "", ()
     sql = _rewrite_statement_head(sql)
@@ -396,9 +371,7 @@ def translate_sql(
     def take_param():
         nonlocal param_idx
         if param_idx >= len(params):
-            raise ValueError(
-                "not enough parameters for the SQL placeholders"
-            )
+            raise ValueError("not enough parameters for the SQL placeholders")
         value = params[param_idx]
         param_idx += 1
         return value
@@ -481,11 +454,7 @@ def translate_sql(
             if lower == "now":
                 interval = _RE_NOW_INTERVAL.match(sql, i)
                 if interval:
-                    out.append(
-                        _now_with_modifier(
-                            interval.group(1), interval.group(2)
-                        )
-                    )
+                    out.append(_now_with_modifier(interval.group(1), interval.group(2)))
                     i = interval.end()
                     continue
                 if _RE_NOW.match(sql, i):
@@ -495,11 +464,7 @@ def translate_sql(
             if lower == "current_timestamp":
                 interval = _RE_CURRENT_TS_INTERVAL.match(sql, i)
                 if interval:
-                    out.append(
-                        _now_with_modifier(
-                            interval.group(1), interval.group(2)
-                        )
-                    )
+                    out.append(_now_with_modifier(interval.group(1), interval.group(2)))
                     i = interval.end()
                     continue
                 match = _RE_CURRENT_TS.match(sql, i)
@@ -545,8 +510,7 @@ def translate_sql(
                 if match:
                     if placeholders_only:
                         raise ValueError(
-                            "ANY(%s) cannot be translated without its "
-                            "value (executemany)"
+                            "ANY(%s) cannot be translated without its value (executemany)"
                         )
                     value = take_param()
                     negated = _drop_trailing_comparison(out)
@@ -555,11 +519,7 @@ def translate_sql(
                         if not items:
                             out.append(f"{negated}IN (NULL)")
                         else:
-                            out.append(
-                                f"{negated}IN ("
-                                + ", ".join("?" for _ in items)
-                                + ")"
-                            )
+                            out.append(f"{negated}IN (" + ", ".join("?" for _ in items) + ")")
                             new_params.extend(items)
                     elif value is None:
                         out.append(f"{negated}IN (NULL)")
@@ -612,9 +572,7 @@ def translate_sql(
             translated,
         )
     if param_idx != len(params):
-        raise ValueError(
-            f"{len(params) - param_idx} unused parameter(s) for the SQL"
-        )
+        raise ValueError(f"{len(params) - param_idx} unused parameter(s) for the SQL")
     return translated, tuple(new_params)
 
 
@@ -689,9 +647,7 @@ def split_statements(sql: str) -> list[str]:
             word = word_match.group(0)
             lower = word.lower()
             current = "".join(buf)
-            if not in_trigger and re.match(
-                r"\s*CREATE\s+TRIGGER\b", current, re.IGNORECASE
-            ):
+            if not in_trigger and re.match(r"\s*CREATE\s+TRIGGER\b", current, re.IGNORECASE):
                 in_trigger = True
             if in_trigger and lower == "begin":
                 block_depth += 1

@@ -114,9 +114,7 @@ def save_evidence(dsn: str, evidence: EvidenceRecord, user_id: str, task_id: str
 
     from puspa.db import connect as _db_connect
 
-    dsn = dsn or os.environ.get(
-        "PUSPA_TEST_DSN", None
-    )
+    dsn = dsn or os.environ.get("PUSPA_TEST_DSN", None)
     with _db_connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(

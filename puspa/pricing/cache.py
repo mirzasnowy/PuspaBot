@@ -15,18 +15,15 @@ from __future__ import annotations
 import os
 from datetime import UTC, datetime, timedelta
 
+from puspa.db import Jsonb, dict_row
 from puspa.db import connect as _db_connect
-from puspa.db import dict_row
-from puspa.db import Jsonb
 
 DEFAULT_DSN = None
 TTL_MINUTES = 30
 
 
 def _connect(dsn=None):
-    return _db_connect(
-        dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row
-    )
+    return _db_connect(dsn or os.environ.get("PUSPA_TEST_DSN", DEFAULT_DSN), row_factory=dict_row)
 
 
 def save(key: str, *, source: str, value: dict, evidence_id: str, dsn=None) -> None:

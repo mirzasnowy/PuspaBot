@@ -20,7 +20,8 @@ from __future__ import annotations
 
 import os
 
-from puspa.db import connect as _db_connect, errors as pg_errors
+from puspa.db import connect as _db_connect
+from puspa.db import errors as pg_errors
 
 from .ledger import APP_ROLE, DEFAULT_DSN, Ledger
 

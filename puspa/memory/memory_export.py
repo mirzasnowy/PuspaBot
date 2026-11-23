@@ -71,12 +71,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from puspa.db import connect as _db_connect, errors as pg_errors
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from puspa.db import dict_row
 
+from puspa.db import connect as _db_connect
+from puspa.db import dict_row
+from puspa.db import errors as pg_errors
 from puspa.memory.schema import resolve_dsn
 from puspa.memory.trust import redact_secrets
 
