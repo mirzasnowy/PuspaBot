@@ -12,11 +12,13 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use iced::widget::{button, column, container, row, scrollable, text, text_input};
+use iced::alignment::{Horizontal, Vertical};
+use iced::widget::{button, column, container, image, row, scrollable, text, text_input};
 use iced::{Element, Length, Subscription, Task};
 use serde::Deserialize;
 
 use crate::api::{ApiClient, ApiError};
+use crate::theme;
 
 /// One message in the thread (`puspa/pwa/app.py`).
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -30,6 +32,7 @@ pub struct ChatMessage {
 }
 
 impl ChatMessage {
+    #[allow(dead_code)]
     fn sender_label(&self) -> &'static str {
         if self.sender == "users" {
             "Kamu"
@@ -239,69 +242,274 @@ impl State {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let mut content = column![text("Chat").size(24)].spacing(12);
+        let header = row![
+            mascot(40.0),
+            column![
+                text("Chat")
+                    .font(theme::font_bold())
+                    .size(22)
+                    .color(theme::CHARCOAL),
+                text("PuspaBot — asisten pribadimu")
+                    .font(theme::font_regular())
+                    .size(13)
+                    .color(theme::GRAY),
+            ]
+            .spacing(2),
+        ]
+        .spacing(12)
+        .align_y(Vertical::Center);
+
+        let mut content = column![header].spacing(16).padding(24).width(Length::Fill);
 
         if self.has_key == Some(false) {
             content = content.push(
-                column![
-                    text("Otak belum bisa menjawab: belum ada kunci model (BYOK).").size(14),
-                    text("Pesanmu tetap tersimpan, tapi Puspa tidak bisa membalas sampai ada kunci. Tambahkan di Saya → Pengaturan model.").size(14),
-                    button(text("Buka pengaturan model")).on_press(Message::GoToSettings),
-                ]
-                .spacing(6),
+                container(
+                    column![
+                        row![
+                            theme::icon("alert", theme::RED, 20.0),
+                            text("Otak belum bisa menjawab")
+                                .font(theme::font_semibold())
+                                .size(14)
+                                .color(theme::CHARCOAL),
+                        ]
+                        .spacing(8)
+                        .align_y(Vertical::Center),
+                        text("Belum ada kunci model (BYOK). Pesanmu tetap tersimpan, tapi Puspa tidak bisa membalas sampai ada kunci. Tambahkan di Saya → Pengaturan model.")
+                            .font(theme::font_regular())
+                            .size(14)
+                            .color(theme::CHARCOAL),
+                        button(
+                            text("Buka pengaturan model")
+                                .font(theme::font_semibold())
+                                .size(14),
+                        )
+                        .on_press(Message::GoToSettings)
+                        .style(theme::primary_button)
+                        .padding([8, 16]),
+                    ]
+                    .spacing(8),
+                )
+                .padding(16)
+                .style(|_| theme::tint_style(theme::RED_TINT))
+                .width(Length::Fill),
             );
         }
 
         if let Some(error) = &self.error {
             content = content.push(
-                column![
-                    text(error).size(14),
-                    button(text("Coba lagi")).on_press(Message::ReloadPressed),
-                ]
-                .spacing(6),
+                container(
+                    column![
+                        text(error)
+                            .font(theme::font_regular())
+                            .size(14)
+                            .color(theme::CHARCOAL),
+                        button(text("Coba lagi").font(theme::font_semibold()).size(14))
+                            .on_press(Message::ReloadPressed)
+                            .style(theme::outline_button)
+                            .padding([8, 16]),
+                    ]
+                    .spacing(8),
+                )
+                .padding(16)
+                .style(|_| theme::tint_style(theme::PEACH_TINT))
+                .width(Length::Fill),
             );
         }
 
         if !self.loaded && self.messages.is_empty() {
-            content = content.push(text("Memuat chat…").size(14));
-        } else if self.messages.is_empty() {
-            content = content.push(text("Belum ada pesan. Sapa Puspa dulu.").size(14));
-        } else {
-            let thread = column(
-                self.messages
-                    .iter()
-                    .map(|m| {
-                        text(format!("{}: {}", m.sender_label(), m.text))
+            content = content.push(
+                container(
+                    column![
+                        mascot(56.0),
+                        text("Memuat chat…")
+                            .font(theme::font_regular())
                             .size(14)
-                            .width(Length::Fill)
-                            .into()
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .spacing(8);
+                            .color(theme::GRAY),
+                    ]
+                    .spacing(12)
+                    .align_x(Horizontal::Center),
+                )
+                .padding(24)
+                .style(|_| theme::tint_style(theme::CREAM))
+                .width(Length::Fill),
+            );
+        } else if self.messages.is_empty() {
+            content = content.push(empty_state(
+                "Belum ada pesan.",
+                "Sapa Puspa dulu — tulis pesan di bawah dan tekan Kirim.",
+            ));
+        } else {
+            let mut thread = column![].spacing(12).width(Length::Fill);
+            let mut last_day: Option<String> = None;
+            for m in &self.messages {
+                let day = date_label(m.created_at);
+                if last_day.as_deref() != Some(day.as_str()) {
+                    thread = thread.push(date_pill(day.clone()));
+                    last_day = Some(day);
+                }
+                if m.sender == "users" {
+                    thread = thread.push(user_bubble(m));
+                } else {
+                    thread = thread.push(agent_bubble(m));
+                }
+            }
             content = content.push(scrollable(thread).width(Length::Fill).height(Length::Fill));
         }
 
-        let mut send_button = button(text(if self.sending { "Mengirim…" } else { "Kirim" }));
+        let mut send_button = button(
+            text(if self.sending { "Mengirim…" } else { "Kirim" })
+                .font(theme::font_semibold())
+                .size(14),
+        )
+        .style(theme::primary_button)
+        .padding([10, 20]);
         if !self.sending && !self.draft.trim().is_empty() {
             send_button = send_button.on_press(Message::SendPressed);
         }
-        let composer = row![
-            text_input("Tulis pesan…", &self.draft)
-                .on_input(Message::DraftChanged)
-                .on_submit(Message::SendPressed)
-                .width(Length::Fill),
-            send_button,
-        ]
-        .spacing(8);
+        let composer = container(
+            row![
+                text_input("Tulis pesan…", &self.draft)
+                    .on_input(Message::DraftChanged)
+                    .on_submit(Message::SendPressed)
+                    .font(theme::font_regular())
+                    .size(14)
+                    .style(theme::input_style)
+                    .padding(12)
+                    .width(Length::Fill),
+                send_button,
+            ]
+            .spacing(8)
+            .align_y(Vertical::Center),
+        )
+        .padding(12)
+        .style(|_| theme::card_style())
+        .width(Length::Fill);
         content = content.push(composer);
 
         container(content)
-            .padding(24)
+            .style(|_| theme::cream_style())
             .width(Length::Fill)
             .height(Length::Fill)
             .into()
     }
+}
+
+/// The Puspa flower mascot at a fixed size.
+fn mascot(size: f32) -> Element<'static, Message> {
+    image(image::Handle::from_bytes(theme::MASCOT))
+        .width(Length::Fixed(size))
+        .height(Length::Fixed(size))
+        .into()
+}
+
+/// Empty state: mascot + what is missing + the next step.
+fn empty_state<'a>(title: &'a str, next: &'a str) -> Element<'a, Message> {
+    container(
+        column![
+            mascot(64.0),
+            text(title)
+                .font(theme::font_semibold())
+                .size(16)
+                .color(theme::CHARCOAL),
+            text(next)
+                .font(theme::font_regular())
+                .size(14)
+                .color(theme::GRAY),
+        ]
+        .spacing(12)
+        .align_x(Horizontal::Center),
+    )
+    .padding(24)
+    .style(|_| theme::tint_style(theme::CREAM))
+    .width(Length::Fill)
+    .into()
+}
+
+/// Centered date separator pill between message days.
+fn date_pill(label: String) -> Element<'static, Message> {
+    container(
+        container(
+            text(label)
+                .font(theme::font_medium())
+                .size(12)
+                .color(theme::GRAY),
+        )
+        .padding([4, 12])
+        .style(|_| theme::tint_style(theme::WHITE)),
+    )
+    .width(Length::Fill)
+    .align_x(Horizontal::Center)
+    .into()
+}
+
+/// Agent message: mascot avatar + "PuspaBot" name above a white card bubble.
+fn agent_bubble(m: &ChatMessage) -> Element<'_, Message> {
+    row![
+        mascot(28.0),
+        column![
+            text("PuspaBot")
+                .font(theme::font_semibold())
+                .size(12)
+                .color(theme::GRAY),
+            container(
+                text(&m.text)
+                    .font(theme::font_regular())
+                    .size(14)
+                    .color(theme::CHARCOAL)
+                    .width(Length::Fill),
+            )
+            .padding(12)
+            .style(|_| theme::card_style())
+            .width(Length::Fill),
+        ]
+        .spacing(4)
+        .width(Length::Fill),
+    ]
+    .spacing(8)
+    .into()
+}
+
+/// User message: tinted bubble, right-aligned, at most two thirds wide.
+fn user_bubble(m: &ChatMessage) -> Element<'_, Message> {
+    let bubble = container(
+        column![
+            text("Kamu")
+                .font(theme::font_semibold())
+                .size(12)
+                .color(theme::GRAY),
+            text(&m.text)
+                .font(theme::font_regular())
+                .size(14)
+                .color(theme::CHARCOAL)
+                .width(Length::Fill),
+        ]
+        .spacing(4),
+    )
+    .padding(12)
+    .style(|_| theme::tint_style(theme::RED_TINT))
+    .width(Length::FillPortion(2));
+    row![container(text("")).width(Length::FillPortion(1)), bubble,]
+        .spacing(8)
+        .into()
+}
+
+/// Unix timestamp (seconds) as "23 Nov 2026" (civil-from-days, no extra dep).
+fn date_label(ts: f64) -> String {
+    let days = (ts as i64 / 86_400).max(0);
+    let z = days + 719_468;
+    let era = z / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    let months = [
+        "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
+    ];
+    format!("{} {} {}", d, months[(m - 1) as usize], y)
 }
 
 #[cfg(test)]

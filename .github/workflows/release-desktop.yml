@@ -1,0 +1,78 @@
+# Desktop release — tag `desktop-v*` -> a GitHub Release whose
+# asset is the pure .exe (no zip: GitHub Actions artifacts are
+# always zips, which is why Nero got a zip the first time).
+#
+#   1. Build the app (release) and the native installer (the app
+#      exe embedded as its payload).
+#   2. Run the installer self-test on the real runner.
+#   3. Sign the .exe when a code-signing certificate is configured
+#      (repo secret WINDOWS_PFX_BASE64 + WINDOWS_PFX_PASSWORD;
+#      see docs/desktop-code-signing.md). The step is skipped
+#      silently when the secret is absent: an unsigned release is
+#      still shippable, it just shows "Unknown publisher" in
+#      SmartScreen until reputation builds.
+#   4. Create the GitHub Release with PuspaBot-Setup.exe as the
+#      only asset: download it, double-click, it installs.
+#
+# Tag naming: desktop-v1, desktop-v1.1, ... (tags are releases
+# only; never tag a commit that is not a release).
+
+name: release-desktop
+
+on:
+  push:
+    tags: ["desktop-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: build + sign + release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            apps/desktop
+            apps/installer
+      - name: build app release
+        working-directory: apps/desktop
+        run: cargo build --release
+      - name: build installer release
+        working-directory: apps/installer
+        env:
+          PUSPA_APP_EXE: ${{ github.workspace }}\apps\desktop\target\release\puspabot.exe
+        run: cargo build --release
+      - name: installer self-test
+        run: |
+          .\apps\installer\target\release\puspabot-setup.exe --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: prepare release asset
+        run: Copy-Item apps\installer\target\release\puspabot-setup.exe PuspaBot-Setup.exe
+      - name: sign the installer (optional)
+        # Runs only when a certificate is configured. The PFX is
+        # decoded to a temp file, used once, then deleted; the
+        # password comes from a secret, never from the log.
+        if: ${{ secrets.WINDOWS_PFX_BASE64 != '' }}
+        env:
+          PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+        run: |
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) { Write-Error "signtool not found on the runner"; exit 1 }
+          $pfx = Join-Path $env:TEMP "puspabot-signing.pfx"
+          [System.IO.File]::WriteAllBytes($pfx, [System.Convert]::FromBase64String($env:PFX_BASE64))
+          try {
+            & $signtool sign /f $pfx /p $env:PFX_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 /d "PuspaBot" PuspaBot-Setup.exe
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
+          }
+      - name: create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create ${{ github.ref_name }} --title "PuspaBot Desktop ${{ github.ref_name }}" --notes "Desktop app v${{ github.ref_name }}: native installer (double-click PuspaBot-Setup.exe, it installs and launches PuspaBot). See docs/desktop-code-signing.md for the SmartScreen note." PuspaBot-Setup.exe

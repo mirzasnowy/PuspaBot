@@ -31,17 +31,32 @@ static INSTALL_LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// turns it into a [`BackendStatus::Downloading`] value.
 static DOWNLOAD_STEP: Mutex<Option<String>> = Mutex::new(None);
 
+/// First-run download progress in bytes: (downloaded, total).
+/// Set while the backend wheel streams down from PyPI, so the UI
+/// progress bar shows real bytes, not a spinner. `None` means no
+/// download is running (or the total is unknown).
+static DOWNLOAD_PROGRESS: Mutex<Option<(u64, u64)>> = Mutex::new(None);
+
 /// Maximum installer log lines kept in memory.
 const MAX_LOG_LINES: usize = 500;
 
 /// How many of the installer's last output lines a failure carries.
 const FAILURE_TAIL_LINES: usize = 10;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BackendStatus {
     Checking,
-    Downloading { step: String },
-    Ready { base_url: String },
+    /// A first-run download is running. `progress` is the fraction
+    /// downloaded (0.0..=1.0) when the total size is known (the
+    /// PyPI wheel download); `None` means the step has no byte
+    /// total (pip install phase, npm fallback, test installer).
+    Downloading {
+        step: String,
+        progress: Option<f32>,
+    },
+    Ready {
+        base_url: String,
+    },
     Unavailable(String),
     Failed(String),
 }
@@ -72,7 +87,25 @@ pub fn download_step() -> Option<String> {
 
 /// The live download state as a status value, if downloading.
 pub fn current_download_status() -> Option<BackendStatus> {
-    download_step().map(|step| BackendStatus::Downloading { step })
+    let step = download_step()?;
+    let progress = download_progress().and_then(|(downloaded, total)| {
+        if total > 0 {
+            Some((downloaded as f32 / total as f32).clamp(0.0, 1.0))
+        } else {
+            None
+        }
+    });
+    Some(BackendStatus::Downloading { step, progress })
+}
+
+/// Download progress in bytes (downloaded, total), if a download
+/// is running.
+pub fn download_progress() -> Option<(u64, u64)> {
+    *DOWNLOAD_PROGRESS.lock().expect("download progress lock")
+}
+
+fn set_download_progress(progress: Option<(u64, u64)>) {
+    *DOWNLOAD_PROGRESS.lock().expect("download progress lock") = progress;
 }
 
 /// Find a `puspa` backend binary on PATH (pip install) or, on
@@ -215,69 +248,27 @@ fn override_command() -> Option<Vec<String>> {
     }
 }
 
-/// True when an executable with this name exists on PATH.
-fn executable_in(name: &str, path_var: &OsStr) -> bool {
+/// The full path of an executable with this name on PATH, if
+/// any. The caller must spawn the full path: spawning the bare
+/// name would resolve it through the process PATH instead, which
+/// is not necessarily the PATH that was searched here.
+fn find_executable(name: &str, path_var: &OsStr) -> Option<PathBuf> {
     for dir in std::env::split_paths(path_var) {
-        if dir.join(name).is_file() {
-            return true;
+        let candidate = dir.join(name);
+        if candidate.is_file() {
+            return Some(candidate);
         }
         // Windows installers land as `python.exe` / `npm.cmd`.
         if cfg!(windows) {
             for ext in ["exe", "cmd", "bat"] {
-                if dir.join(format!("{name}.{ext}")).is_file() {
-                    return true;
+                let candidate = dir.join(format!("{name}.{ext}"));
+                if candidate.is_file() {
+                    return Some(candidate);
                 }
             }
         }
     }
-    false
-}
-
-/// The installer command for this machine: the
-/// `PUSPA_DESKTOP_INSTALL_CMD` override wins; otherwise `python3 -m
-/// pip install --user puspa` (`py -m pip install puspa` on
-/// Windows) when Python is present, else `npm install -g
-/// @puspaverse/puspa` when npm is present. `None` means no installer
-/// is available at all.
-pub fn install_command_in(path_var: &OsStr) -> Option<Vec<String>> {
-    if let Some(cmd) = override_command() {
-        return Some(cmd);
-    }
-    if cfg!(windows) {
-        if executable_in("py", path_var) {
-            return Some(
-                ["py", "-m", "pip", "install", "puspa"]
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect(),
-            );
-        }
-    } else if executable_in("python3", path_var) {
-        return Some(
-            ["python3", "-m", "pip", "install", "--user", "puspa"]
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-        );
-    }
-    if executable_in("npm", path_var) {
-        return Some(
-            ["npm", "install", "-g", "@puspaverse/puspa"]
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-        );
-    }
     None
-}
-
-/// The installer command for this machine, searching the real PATH.
-pub fn install_command() -> Option<Vec<String>> {
-    if let Some(cmd) = override_command() {
-        return Some(cmd);
-    }
-    let path_var = std::env::var_os("PATH").unwrap_or_default();
-    install_command_in(&path_var)
 }
 
 /// Run an installer command to completion, capturing its stdout and
@@ -331,22 +322,171 @@ pub fn install_backend_with(command: &[String], path_var: &OsStr) -> Result<Path
     })
 }
 
-/// Download the backend with an explicit installer choice
-/// (`None` = no installer available), then start it and wait for
-/// `/health` = ok. The download step is published through
-/// [`download_step`] while it runs, so the UI can show progress.
-/// No installer available means the backend is [`BackendStatus::Unavailable`],
-/// not a failure: nothing is installed and nothing went wrong.
+/// The PyPI index base URL. Overridable with
+/// `PUSPA_PYPI_BASE_URL` for tests (a stub server) and power
+/// users (a mirror). Defaults to https://pypi.org.
+fn pypi_base_url() -> String {
+    std::env::var("PUSPA_PYPI_BASE_URL")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "https://pypi.org".to_string())
+}
+
+/// Pick the installable file for the latest `puspa` release from a
+/// PyPI JSON `urls` list: a wheel first (fast, no build), else the
+/// sdist. Returns (filename, download URL).
+fn pick_release_file(urls: &[serde_json::Value]) -> Option<(String, String)> {
+    let mut sdist: Option<(String, String)> = None;
+    for entry in urls {
+        let filename = entry.get("filename")?.as_str()?.to_string();
+        let url = entry.get("url")?.as_str()?.to_string();
+        match entry.get("packagetype").and_then(|v| v.as_str()) {
+            Some("bdist_wheel") => return Some((filename, url)),
+            Some("sdist") if sdist.is_none() => sdist = Some((filename, url)),
+            _ => {}
+        }
+    }
+    sdist
+}
+
+/// Download the latest `puspa` release file from PyPI, streaming
+/// it to a temp file with real byte progress (see
+/// [`download_progress`]). Returns the downloaded file path.
+/// Blocking; runs on a worker thread.
+pub fn download_puspa_release(base_url: &str) -> Result<PathBuf, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("could not build HTTP client: {e}"))?;
+    let index_url = format!("{}/pypi/puspa/json", base_url.trim_end_matches('/'));
+    let index: serde_json::Value = client
+        .get(&index_url)
+        .send()
+        .and_then(|resp| resp.error_for_status())
+        .map_err(|e| format!("could not read PyPI index {index_url}: {e}"))?
+        .json()
+        .map_err(|e| format!("PyPI index is not valid JSON: {e}"))?;
+    let urls = index
+        .get("urls")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let (filename, url) = pick_release_file(&urls)
+        .ok_or_else(|| "PyPI has no installable file for the latest puspa release".to_string())?;
+    let mut response = client
+        .get(&url)
+        .send()
+        .and_then(|resp| resp.error_for_status())
+        .map_err(|e| format!("could not download {url}: {e}"))?;
+    let total = response.content_length().unwrap_or(0);
+    let path = std::env::temp_dir().join(format!("puspabot-backend-{filename}"));
+    let mut file = std::fs::File::create(&path)
+        .map_err(|e| format!("could not create download file {}: {e}", path.display()))?;
+    set_download_progress(Some((0, total)));
+    let mut downloaded: u64 = 0;
+    let mut chunk = [0u8; 65536];
+    loop {
+        use std::io::Read;
+        match response.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => {
+                use std::io::Write;
+                file.write_all(&chunk[..n]).map_err(|e| {
+                    format!("could not write download file {}: {e}", path.display())
+                })?;
+                downloaded += n as u64;
+                set_download_progress(Some((downloaded, total)));
+            }
+            Err(err) => {
+                return Err(format!(
+                    "download of {url} failed after {downloaded} bytes: {err}"
+                ))
+            }
+        }
+    }
+    set_download_progress(Some((downloaded, total)));
+    Ok(path)
+}
+
+/// The pip command that installs one local file: `py -m pip
+/// install <file>` on Windows, `python3 -m pip install --user
+/// <file>` elsewhere. `None` when no Python is on PATH. The
+/// Python path is absolute (see [`find_executable`]).
+fn pip_install_command(file: &Path, path_var: &OsStr) -> Option<Vec<String>> {
+    let python = if cfg!(windows) {
+        find_executable("py", path_var)?
+    } else {
+        find_executable("python3", path_var)?
+    };
+    let mut command = vec![
+        python.to_string_lossy().into_owned(),
+        "-m".to_string(),
+        "pip".to_string(),
+        "install".to_string(),
+    ];
+    if !cfg!(windows) {
+        command.push("--user".to_string());
+    }
+    command.push(file.to_string_lossy().into_owned());
+    Some(command)
+}
+
+/// Install a downloaded release file with pip, then look for the
+/// `puspa` binary on the given PATH. Returns the binary path.
+/// The wheel file is deleted after a successful install.
+///
+/// Debian/Ubuntu system Python refuses `pip install` with PEP 668
+/// (externally managed environment). The safe attempt runs first;
+/// only when pip itself refuses with that error does the install
+/// retry once with pip's own documented escape hatch
+/// (`--break-system-packages`). The install target is the user
+/// site, never the system site.
+pub fn install_downloaded_release(file: &Path, path_var: &OsStr) -> Result<PathBuf, String> {
+    let mut command = pip_install_command(file, path_var)
+        .ok_or_else(|| "no Python on PATH to install the downloaded backend".to_string())?;
+    set_download_step(Some("Memasang backend...".to_string()));
+    set_download_progress(None);
+    if let Err(reason) = run_installer(&command) {
+        if reason.contains("break-system-packages") {
+            match command.iter().position(|arg| arg == "install") {
+                Some(at) => {
+                    command.insert(at + 1, "--break-system-packages".to_string());
+                    run_installer(&command)?;
+                }
+                None => return Err(reason),
+            }
+        } else {
+            return Err(reason);
+        }
+    }
+    let found = find_backend_in(path_var).ok_or_else(|| {
+        "installer finished but no `puspa` binary was found on PATH afterwards".to_string()
+    })?;
+    let _ = std::fs::remove_file(file);
+    Ok(found)
+}
+
+/// Download the backend, then start it and wait for `/health` =
+/// ok. The download step and byte progress are published through
+/// [`download_step`] / [`download_progress`] while it runs, so the
+/// UI can show a real progress bar. No installer available means
+/// the backend is [`BackendStatus::Unavailable`], not a failure:
+/// nothing is installed and nothing went wrong.
+///
+/// `Some(command)` runs that installer command as-is (tests and
+/// the `PUSPA_DESKTOP_INSTALL_CMD` override). `None` means no
+/// explicit command: the latest `puspa` wheel streams down from
+/// PyPI with byte progress and pip installs the local file when
+/// Python is present; when Python is missing but npm is present,
+/// `npm install -g @puspaverse/puspa` runs instead (no byte total,
+/// step text only).
 pub fn download_backend_with(command: Option<Vec<String>>, path_var: &OsStr) -> BackendStatus {
     set_download_step(Some("Mengunduh backend Puspa...".to_string()));
+    set_download_progress(None);
     // The message names the launcher this machine actually looks
     // for (`py` on Windows, `python3` elsewhere).
     let python = if cfg!(windows) { "py" } else { "python3" };
     let status = match command {
-        None => BackendStatus::Unavailable(format!(
-            "Backend Puspa belum terinstal dan tidak ada installer di komputer ini: \
-                 butuh {python} dengan pip, atau npm, di PATH untuk mengunduhnya."
-        )),
         Some(command) => match install_backend_with(&command, path_var) {
             Ok(exe) => {
                 set_download_step(Some("Menyalakan backend...".to_string()));
@@ -354,8 +494,42 @@ pub fn download_backend_with(command: Option<Vec<String>>, path_var: &OsStr) -> 
             }
             Err(reason) => BackendStatus::Failed(reason),
         },
+        None => {
+            if find_executable(python, path_var).is_some() {
+                match download_puspa_release(&pypi_base_url()) {
+                    Ok(file) => match install_downloaded_release(&file, path_var) {
+                        Ok(exe) => {
+                            set_download_step(Some("Menyalakan backend...".to_string()));
+                            start_and_wait(&exe)
+                        }
+                        Err(reason) => BackendStatus::Failed(reason),
+                    },
+                    Err(reason) => BackendStatus::Failed(reason),
+                }
+            } else if let Some(npm) = find_executable("npm", path_var) {
+                let npm_command: Vec<String> = vec![
+                    npm.to_string_lossy().into_owned(),
+                    "install".to_string(),
+                    "-g".to_string(),
+                    "@puspaverse/puspa".to_string(),
+                ];
+                match install_backend_with(&npm_command, path_var) {
+                    Ok(exe) => {
+                        set_download_step(Some("Menyalakan backend...".to_string()));
+                        start_and_wait(&exe)
+                    }
+                    Err(reason) => BackendStatus::Failed(reason),
+                }
+            } else {
+                BackendStatus::Unavailable(format!(
+                    "Backend Puspa belum terinstal dan tidak ada installer di komputer ini: \
+                     butuh {python} dengan pip, atau npm, di PATH untuk mengunduhnya."
+                ))
+            }
+        }
     };
     set_download_step(None);
+    set_download_progress(None);
     status
 }
 
@@ -363,7 +537,7 @@ pub fn download_backend_with(command: Option<Vec<String>>, path_var: &OsStr) -> 
 /// and wait for `/health` = ok. Blocking (runs on a worker thread).
 pub fn download_backend() -> BackendStatus {
     let path_var = std::env::var_os("PATH").unwrap_or_default();
-    download_backend_with(install_command(), &path_var)
+    download_backend_with(override_command(), &path_var)
 }
 
 #[cfg(test)]
@@ -457,7 +631,6 @@ mod tests {
     #[test]
     fn no_installer_available_is_an_honest_failure() {
         let path_var = std::env::join_paths([Path::new("/nonexistent-dir-xyz")]).unwrap();
-        assert_eq!(install_command_in(&path_var), None);
         let status = download_backend_with(None, &path_var);
         assert!(
             matches!(status, BackendStatus::Unavailable(_)),
@@ -493,18 +666,183 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// A blocking stub PyPI server: serves `/pypi/puspa/json`
+    /// (one sdist + one wheel) and the wheel file itself. Returns
+    /// the base URL. Serves exactly the two requests the download
+    /// makes, then the thread exits.
+    fn stub_pypi_server(wheel_bytes: usize) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let mut served = 0;
+            for stream in listener.incoming().take(2) {
+                let mut stream = match stream {
+                    Ok(stream) => stream,
+                    Err(_) => break,
+                };
+                let mut buf = [0u8; 4096];
+                use std::io::Read;
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..n]);
+                let path = request.split_whitespace().nth(1).unwrap_or("");
+                let (status, content_type, body): (&str, &str, Vec<u8>) = if path
+                    == "/pypi/puspa/json"
+                {
+                    let index = serde_json::json!({
+                        "info": {"version": "0.1.2"},
+                        "urls": [
+                            {"filename": "puspa-0.1.2.tar.gz", "packagetype": "sdist",
+                             "url": format!("http://127.0.0.1:{port}/files/puspa-0.1.2.tar.gz")},
+                            {"filename": "puspa-0.1.2-py3-none-any.whl", "packagetype": "bdist_wheel",
+                             "url": format!("http://127.0.0.1:{port}/files/puspa-0.1.2-py3-none-any.whl")},
+                        ],
+                    });
+                    ("200 OK", "application/json", index.to_string().into_bytes())
+                } else if path == "/files/puspa-0.1.2-py3-none-any.whl" {
+                    (
+                        "200 OK",
+                        "application/octet-stream",
+                        vec![b'W'; wheel_bytes],
+                    )
+                } else {
+                    ("404 Not Found", "text/plain", b"nope".to_vec())
+                };
+                use std::io::Write;
+                let _ = stream.write_all(
+                    format!(
+                        "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    )
+                    .as_bytes(),
+                );
+                let _ = stream.write_all(&body);
+                let _ = stream.flush();
+                served += 1;
+                if served >= 2 {
+                    break;
+                }
+            }
+        });
+        format!("http://127.0.0.1:{port}")
+    }
+
     #[test]
-    fn install_command_detects_python_on_path() {
-        // Python is on PATH in this environment (`python3` on Unix,
-        // `py` on Windows); npm is only a fallback, so the detected
-        // command must start with it.
-        let path_var = std::env::var_os("PATH").unwrap_or_default();
-        let command = install_command_in(&path_var).unwrap();
-        if cfg!(windows) {
-            assert_eq!(command[0], "py", "{command:?}");
-        } else {
-            assert_eq!(command[0], "python3", "{command:?}");
-        }
-        assert!(command.contains(&"puspa".to_string()), "{command:?}");
+    fn pick_release_file_prefers_wheel_then_sdist() {
+        let urls = serde_json::json!([
+            {"filename": "puspa-0.1.2.tar.gz", "packagetype": "sdist", "url": "http://x/f.tar.gz"},
+            {"filename": "puspa-0.1.2-py3-none-any.whl", "packagetype": "bdist_wheel", "url": "http://x/f.whl"},
+        ]);
+        let picked = pick_release_file(urls.as_array().unwrap()).unwrap();
+        assert!(picked.0.ends_with(".whl"), "{picked:?}");
+        let sdist_only = serde_json::json!([
+            {"filename": "puspa-0.1.2.tar.gz", "packagetype": "sdist", "url": "http://x/f.tar.gz"},
+        ]);
+        let picked = pick_release_file(sdist_only.as_array().unwrap()).unwrap();
+        assert!(picked.0.ends_with(".tar.gz"), "{picked:?}");
+        assert_eq!(pick_release_file(&[]), None);
+    }
+
+    #[test]
+    fn pypi_download_picks_the_wheel_and_reports_real_progress() {
+        let base = stub_pypi_server(100_000);
+        let path = download_puspa_release(&base).unwrap();
+        assert!(
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .ends_with(".whl"),
+            "{path:?}"
+        );
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), 100_000);
+        assert_eq!(download_progress(), Some((100_000, 100_000)));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn install_downloaded_release_runs_pip_with_the_local_file() {
+        // A fake `python3` that records its args and drops a fake
+        // `puspa` binary into its own directory.
+        let dir = unique_temp_dir("pip-wheel");
+        let fake_py = dir.join("python3");
+        std::fs::write(
+            &fake_py,
+            format!(
+                "#!/bin/sh\n\
+                 echo \"$@\" > \"{dir}/pip-args.txt\"\n\
+                 printf '#!/bin/sh\\nexit 0\\n' > \"{dir}/puspa\"\n\
+                 chmod +x \"{dir}/puspa\"\n",
+                dir = dir.display()
+            ),
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fake_py, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let wheel = dir.join("puspa-0.1.2-py3-none-any.whl");
+        std::fs::write(&wheel, b"fake wheel").unwrap();
+        let path_var = std::env::join_paths([&dir]).unwrap();
+        let found = install_downloaded_release(&wheel, &path_var).unwrap();
+        assert_eq!(found, dir.join("puspa"));
+        let args = std::fs::read_to_string(dir.join("pip-args.txt")).unwrap();
+        assert!(args.contains("install"), "{args}");
+        assert!(args.contains("puspa-0.1.2-py3-none-any.whl"), "{args}");
+        assert!(
+            !wheel.exists(),
+            "the wheel must be deleted after a successful install"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn install_downloaded_release_retries_with_break_system_packages_on_pep_668() {
+        // A fake `python3` that refuses the first pip call the way
+        // Debian/Ubuntu system Python does (PEP 668), then
+        // succeeds. The install must retry once with pip's own
+        // escape hatch and succeed.
+        let dir = unique_temp_dir("pip-pep668");
+        let fake_py = dir.join("python3");
+        std::fs::write(
+            &fake_py,
+            format!(
+                "#!/bin/sh\n\
+                 count_file=\"{dir}/pip-calls.txt\"\n\
+                 n=$(cat \"$count_file\" 2>/dev/null || echo 0)\n\
+                 n=$((n + 1))\n\
+                 echo \"$n\" > \"$count_file\"\n\
+                 echo \"$@\" > \"{dir}/pip-args-$n.txt\"\n\
+                 if [ \"$n\" = \"1\" ]; then\n\
+                 echo \"error: externally-managed-environment\" >&2\n\
+                 echo \"by passing --break-system-packages\" >&2\n\
+                 exit 1\n\
+                 fi\n\
+                 printf '#!/bin/sh\\nexit 0\\n' > \"{dir}/puspa\"\n\
+                 chmod +x \"{dir}/puspa\"\n",
+                dir = dir.display()
+            ),
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fake_py, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let wheel = dir.join("puspa-0.1.2-py3-none-any.whl");
+        std::fs::write(&wheel, b"fake wheel").unwrap();
+        let path_var = std::env::join_paths([&dir]).unwrap();
+        let found = install_downloaded_release(&wheel, &path_var).unwrap();
+        assert_eq!(found, dir.join("puspa"));
+        let first = std::fs::read_to_string(dir.join("pip-args-1.txt")).unwrap();
+        assert!(
+            !first.contains("--break-system-packages"),
+            "the safe attempt must run first: {first}"
+        );
+        let second = std::fs::read_to_string(dir.join("pip-args-2.txt")).unwrap();
+        assert!(
+            second.contains("--break-system-packages"),
+            "the retry must carry the escape hatch: {second}"
+        );
+        assert!(
+            !wheel.exists(),
+            "the wheel must be deleted after a successful install"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

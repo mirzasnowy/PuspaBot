@@ -12,13 +12,3 @@ pub mod home;
 pub mod memory;
 pub mod profile;
 pub mod tasks;
-
-/// One short line of section heading, Puspa style (title only,
-/// no subtitle — the Muse/Cue list rule). The lifetime is the
-/// caller's: a borrowed title keeps the caller's lifetime, an
-/// owned `String` becomes `Cow::Owned`, so both work.
-pub fn section_title<'a>(
-    text: impl iced::widget::text::IntoFragment<'a>,
-) -> iced::widget::Text<'a, iced::Theme> {
-    iced::widget::text(text).size(16)
-}

@@ -40,7 +40,7 @@ class Budget:
 # One entry per line: this is a data table, not code to wrap.
 # fmt: off
 BUDGET: dict[str, Budget] = {
-    "docs/openapi-pwa.yaml": Budget(3106, "the main PWA API contract: every route plus $ref stubs to split-out contracts; +61 for GET /api/chat/messages and POST /api/desktop/session (COW-10), chat/auth routes that belong here"),
+    "docs/openapi-pwa.yaml": Budget(3150, "main PWA API contract: every route plus $ref stubs; +61 chat/auth routes (COW-10); +17 GET /api/desktop/config (M8-fix); +27 GET /api/me (PWA parity)"),
     "puspa/router/provider_login.py": Budget(1692, "subscription-provider login for Grok, Copilot and Codex in one place: OAuth device flow, token storage and the login CLI; a new provider is a new login handler"),
     "apps/pwa/src/api/client.ts": Budget(1376, "the typed fetch wrapper for every PWA screen plus its type aliases; split per feature area when it grows again, keeping the aliases here"),
     "puspa/memory/importer.py": Budget(1289, "memory import from Kosmos archives, exports and plain files into the durable layers; a new source format gets its own importer module"),
@@ -49,7 +49,7 @@ BUDGET: dict[str, Budget] = {
     "docs/reuse.md": Budget(1110, "the reuse audit: license plus scope notes per studied repo; grows by one entry per studied repo, old entries are archived, never deleted"),
     "puspa/world/model.py": Budget(1039, "the world model: prediction, planning and belief update in one module; the data holders already moved to beliefs.py and the causal path to causal.py"),
     "puspa/turns/loop.py": Budget(944, "the turn loop: runner, model calls, tool calls and per-turn state in one place; +2 for the hold check, whose db-error alias needs its own except clause; the model-call step is the seam"),
-    "puspa/pwa/app.py": Budget(1021, "the PWA app factory: screens, bootstrap, API route registration; +91 for the Google callback wiring, desktop session-code exchange and chat read (COW-10), auth/chat routes that belong here"),
+    "puspa/pwa/app.py": Budget(1046, "PWA app factory: screens, bootstrap, API routes; +91 Google callback, desktop session, chat read (COW-10); +14 OAuth error pages + /api/desktop/config (M8-fix); +11 /api/me (PWA parity)"),
     "puspa/cli.py": Budget(821, "the console entry point: `puspa` and `puspa web` plus the command groups behind them; a new top-level command is its own module"),
     "NOTICE.md": Budget(812, "license attributions for reused work, one entry per work; it grows only when new reused work lands"),
     "puspa/computer/cli.py": Budget(810, "`puspa computer` command group: snapshot, click, verify and the visual-fallback commands; a new command is its own handler module"),

@@ -8,25 +8,13 @@
 //! login the approvals section says so instead of guessing.
 //! Approve/reject go through the matching POST endpoints.
 
-use iced::widget::{button, column, row, scrollable, text};
-use iced::{Color, Element, Length, Task};
+use iced::alignment::{Horizontal, Vertical};
+use iced::widget::{button, column, container, image, row, scrollable, text};
+use iced::{Element, Length, Task};
 use serde::Deserialize;
 
-use super::section_title;
 use crate::api::{ApiClient, ApiError};
-
-const RED: Color = Color {
-    r: 0xD7 as f32 / 255.0,
-    g: 0x40 as f32 / 255.0,
-    b: 0x4D as f32 / 255.0,
-    a: 1.0,
-};
-const GRAY: Color = Color {
-    r: 0x8F as f32 / 255.0,
-    g: 0x8A as f32 / 255.0,
-    b: 0x8F as f32 / 255.0,
-    a: 1.0,
-};
+use crate::theme;
 
 /// `GET /api/operator/status` answer (only the fields shown).
 #[derive(Debug, Clone, Deserialize)]
@@ -318,84 +306,147 @@ impl State {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let mut content = column![].spacing(12).padding(16).width(Length::Fill);
+        let mut content = column![].spacing(16).padding(24).width(Length::Fill);
 
         content = content.push(
             row![
-                section_title("Beranda"),
-                button("Muat ulang").on_press(Message::ReloadPressed),
+                column![
+                    text("Beranda")
+                        .font(theme::font_bold())
+                        .size(22)
+                        .color(theme::CHARCOAL),
+                    text("Ringkasan agen, persetujuan, dan aktivitas terakhir")
+                        .font(theme::font_regular())
+                        .size(13)
+                        .color(theme::GRAY),
+                ]
+                .spacing(2)
+                .width(Length::Fill),
+                button(text("Muat ulang").font(theme::font_semibold()).size(14))
+                    .on_press(Message::ReloadPressed)
+                    .style(theme::outline_button)
+                    .padding([8, 16]),
             ]
-            .spacing(8),
+            .spacing(8)
+            .align_y(Vertical::Center),
         );
 
         if let Some(error) = &self.error {
-            content = content.push(text(error).size(13).color(RED));
+            content = content.push(
+                container(
+                    text(error)
+                        .font(theme::font_regular())
+                        .size(14)
+                        .color(theme::CHARCOAL),
+                )
+                .padding(16)
+                .style(|_| theme::tint_style(theme::PEACH_TINT))
+                .width(Length::Fill),
+            );
         }
         if !self.loaded {
-            return content.push(text("Memuat beranda...").size(14)).into();
+            content = content.push(loading_card("Memuat beranda…"));
+            return container(scrollable(content).width(Length::Fill).height(Length::Fill))
+                .style(|_| theme::cream_style())
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
         }
 
-        content = content.push(section_title("Status operator"));
+        // Status operator.
         let mode = if self.mode.is_empty() {
             "tidak diketahui".to_string()
         } else {
             self.mode.clone()
         };
-        content = content.push(text(format!("Mode: {mode}")).size(14));
-        content = content.push(
-            text(format!(
-                "Panel operator: {}",
-                if self.operator_panels {
-                    "aktif"
-                } else {
-                    "tidak aktif"
-                }
-            ))
-            .size(14),
-        );
-        content = content.push(
-            text(format!(
-                "Keputusan gateway: {} (dry run: {})",
-                self.gateway_decisions,
-                if self.gateway_dry_run { "ya" } else { "tidak" }
-            ))
-            .size(14),
-        );
+        content = content.push(card(
+            column![
+                section_header("chart", "Status operator"),
+                info_row("Mode", &mode,),
+                info_row(
+                    "Panel operator",
+                    if self.operator_panels {
+                        "aktif"
+                    } else {
+                        "tidak aktif"
+                    },
+                ),
+                info_row("Keputusan gateway", self.gateway_decisions.to_string()),
+                info_row("Dry run", if self.gateway_dry_run { "ya" } else { "tidak" },),
+            ]
+            .spacing(12),
+        ));
 
-        content = content.push(section_title(format!(
-            "Persetujuan menunggu ({})",
-            self.pending.len()
-        )));
+        // Persetujuan menunggu.
+        let mut approvals = column![section_header(
+            "bell",
+            format!("Persetujuan menunggu ({})", self.pending.len()),
+        )]
+        .spacing(12);
         if self.user_id.is_none() {
-            content = content.push(
-                text("Masuk dulu untuk melihat persetujuan yang menunggu keputusan.").size(14),
+            approvals = approvals.push(
+                text("Masuk dulu untuk melihat persetujuan yang menunggu keputusan.")
+                    .font(theme::font_regular())
+                    .size(14)
+                    .color(theme::GRAY),
             );
         } else if self.pending.is_empty() {
-            content = content.push(
-                text(format!(
-                    "Tidak ada persetujuan menunggu. {} permintaan sudah diputuskan.",
-                    self.decided_count
-                ))
-                .size(14),
+            approvals = approvals.push(
+                container(
+                    column![
+                        text("Tidak ada persetujuan menunggu.")
+                            .font(theme::font_semibold())
+                            .size(14)
+                            .color(theme::CHARCOAL),
+                        text(format!(
+                            "{} permintaan sudah diputuskan.",
+                            self.decided_count
+                        ))
+                        .font(theme::font_regular())
+                        .size(13)
+                        .color(theme::GRAY),
+                    ]
+                    .spacing(4),
+                )
+                .padding(12)
+                .style(|_| theme::tint_style(theme::GREEN_TINT))
+                .width(Length::Fill),
             );
         } else {
             for approval in &self.pending {
-                content = content.push(
+                approvals = approvals.push(
                     row![
-                        text(approval.label()).size(14).width(Length::Fill),
-                        button("Setujui")
-                            .on_press(Message::ApprovePressed(approval.request_id.clone())),
-                        button("Tolak")
-                            .on_press(Message::RejectPressed(approval.request_id.clone())),
+                        theme::icon("alert", theme::RED, 20.0),
+                        text(approval.label())
+                            .font(theme::font_regular())
+                            .size(14)
+                            .color(theme::CHARCOAL)
+                            .width(Length::Fill),
+                        button(text("Setujui").font(theme::font_semibold()).size(13))
+                            .on_press(Message::ApprovePressed(approval.request_id.clone()))
+                            .style(theme::primary_button)
+                            .padding([6, 14]),
+                        button(text("Tolak").font(theme::font_semibold()).size(13))
+                            .on_press(Message::RejectPressed(approval.request_id.clone()))
+                            .style(theme::outline_button)
+                            .padding([6, 14]),
                     ]
-                    .spacing(8),
+                    .spacing(8)
+                    .align_y(Vertical::Center),
                 );
             }
         }
+        content = content.push(card(approvals));
 
-        content = content.push(section_title("Dial otonomi"));
+        // Dial otonomi (5 area).
+        let mut dial = column![section_header("lightning", "Dial otonomi")].spacing(12);
         if self.areas.is_empty() {
-            content = content.push(text("Belum ada area otonomi.").size(14));
+            dial = dial.push(
+                text("Belum ada area otonomi.")
+                    .font(theme::font_regular())
+                    .size(14)
+                    .color(theme::GRAY),
+            );
         }
         for area in &self.areas {
             let stage = if area.effective_stage.is_empty() {
@@ -403,26 +454,169 @@ impl State {
             } else {
                 area.effective_stage.clone()
             };
-            let locked = if area.locked { " (terkunci)" } else { "" };
-            content = content.push(
-                column![
-                    text(format!("{} — {}{}", area.label, stage, locked)).size(14),
-                    text(&area.description).size(13).color(GRAY),
+            let stage_label = if area.locked {
+                format!("{stage} · terkunci")
+            } else {
+                stage
+            };
+            let stage_bg = if area.locked {
+                theme::PEACH_TINT
+            } else {
+                theme::GREEN_TINT
+            };
+            dial = dial.push(
+                row![
+                    theme::icon("lightning", theme::RED, 20.0),
+                    column![
+                        text(&area.label)
+                            .font(theme::font_semibold())
+                            .size(14)
+                            .color(theme::CHARCOAL),
+                        text(&area.description)
+                            .font(theme::font_regular())
+                            .size(13)
+                            .color(theme::GRAY),
+                    ]
+                    .spacing(2)
+                    .width(Length::Fill),
+                    chip(&stage_label, stage_bg),
                 ]
-                .spacing(2),
+                .spacing(12)
+                .align_y(Vertical::Center),
             );
         }
+        content = content.push(card(dial));
 
-        content = content.push(section_title("Aktivitas terakhir"));
+        // Aktivitas terakhir.
+        let mut activity = column![section_header("calendar", "Aktivitas terakhir")].spacing(12);
         if self.log.is_empty() {
-            content = content.push(text("Belum ada aktivitas.").size(14));
+            activity = activity.push(empty_state(
+                "Belum ada aktivitas.",
+                "Aktivitas agen akan muncul di sini begitu ada yang dikerjakan.",
+            ));
         }
         for entry in self.log.iter().rev().take(8) {
-            content = content.push(text(&entry.summary).size(13));
+            activity = activity.push(
+                row![
+                    theme::icon("info", theme::GRAY, 18.0),
+                    text(&entry.summary)
+                        .font(theme::font_regular())
+                        .size(13)
+                        .color(theme::CHARCOAL)
+                        .width(Length::Fill),
+                ]
+                .spacing(8)
+                .align_y(Vertical::Center),
+            );
         }
+        content = content.push(card(activity));
 
-        scrollable(content).into()
+        container(scrollable(content).width(Length::Fill).height(Length::Fill))
+            .style(|_| theme::cream_style())
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
     }
+}
+
+/// A white card with the standard Puspa radius, border, and shadow.
+fn card<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    container(content)
+        .padding(16)
+        .style(|_| theme::card_style())
+        .width(Length::Fill)
+        .into()
+}
+
+/// Section heading: one outline icon + semibold title, no subtitle.
+fn section_header<'a>(icon: &'a str, title: impl Into<String>) -> Element<'a, Message> {
+    row![
+        theme::icon(icon, theme::RED, 20.0),
+        text(title.into())
+            .font(theme::font_semibold())
+            .size(16)
+            .color(theme::CHARCOAL),
+    ]
+    .spacing(8)
+    .align_y(Vertical::Center)
+    .into()
+}
+
+/// Label (gray) on the left, value (semibold) on the right.
+fn info_row<'a>(label: &'a str, value: impl Into<String>) -> Element<'a, Message> {
+    row![
+        text(label)
+            .font(theme::font_regular())
+            .size(14)
+            .color(theme::GRAY)
+            .width(Length::Fill),
+        text(value.into())
+            .font(theme::font_semibold())
+            .size(14)
+            .color(theme::CHARCOAL),
+    ]
+    .spacing(8)
+    .align_y(Vertical::Center)
+    .into()
+}
+
+/// Small tinted status chip.
+fn chip<'a>(label: impl Into<String>, bg: iced::Color) -> Element<'a, Message> {
+    container(
+        text(label.into())
+            .font(theme::font_medium())
+            .size(12)
+            .color(theme::CHARCOAL),
+    )
+    .padding([4, 10])
+    .style(move |_| theme::tint_style(bg))
+    .into()
+}
+
+/// Loading placeholder: mascot + a line telling the user to wait.
+fn loading_card<'a>(label: &'a str) -> Element<'a, Message> {
+    container(
+        column![
+            image(image::Handle::from_bytes(theme::MASCOT))
+                .width(Length::Fixed(48.0))
+                .height(Length::Fixed(48.0)),
+            text(label)
+                .font(theme::font_regular())
+                .size(14)
+                .color(theme::GRAY),
+        ]
+        .spacing(12)
+        .align_x(Horizontal::Center),
+    )
+    .padding(24)
+    .style(|_| theme::tint_style(theme::CREAM))
+    .width(Length::Fill)
+    .into()
+}
+
+/// Empty state: mascot + what is missing + the next step.
+fn empty_state<'a>(title: &'a str, next: &'a str) -> Element<'a, Message> {
+    container(
+        column![
+            image(image::Handle::from_bytes(theme::MASCOT))
+                .width(Length::Fixed(48.0))
+                .height(Length::Fixed(48.0)),
+            text(title)
+                .font(theme::font_semibold())
+                .size(14)
+                .color(theme::CHARCOAL),
+            text(next)
+                .font(theme::font_regular())
+                .size(13)
+                .color(theme::GRAY),
+        ]
+        .spacing(8)
+        .align_x(Horizontal::Center),
+    )
+    .padding(16)
+    .style(|_| theme::tint_style(theme::CREAM))
+    .width(Length::Fill)
+    .into()
 }
 
 #[cfg(test)]

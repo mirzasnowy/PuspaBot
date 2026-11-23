@@ -1,0 +1,25 @@
+[package]
+name = "puspabot-installer"
+version = "0.1.0"
+edition = "2021"
+description = "PuspaBot native installer (Rust + iced, replaces the NSIS installer)"
+license = "Apache-2.0"
+
+[[bin]]
+name = "puspabot-setup"
+path = "src/main.rs"
+
+[dependencies]
+iced = { version = "0.13", features = ["tokio", "image", "svg"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+mslnk = "0.1"
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+
+[profile.release]
+lto = true
+codegen-units = 1

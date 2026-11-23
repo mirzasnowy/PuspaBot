@@ -404,17 +404,25 @@ def create_app(
         # G1: the login screen is part of the SPA; "masuk.html" never
         # existed (the old template is "login.html"), so the fallback
         # renders that name.
+        from puspa.auth.google_oauth import google_client_id
+
         return spa_or_template(
             "login",
             request,
-            {"client_id_ada": bool(os.environ.get("PUSPA_GOOGLE_CLIENT_ID", ""))},
+            {"client_id_ada": bool(google_client_id())},
         )
 
     @app.get("/auth/google")
     def auth_google(request: Request, desktop_port: int | None = None):
-        from puspa.auth.google_oauth import build_auth_url
+        from puspa.auth.google_oauth import build_auth_url, google_client_id
+        from puspa.pwa.oauth_pages import (
+            not_configured_page,
+            oauth_error_page,
+        )
 
-        client_id = os.environ.get("PUSPA_GOOGLE_CLIENT_ID", "")
+        # M8-fix: browser-facing route — a missing client must be a
+        # human page, never raw JSON in the browser.
+        client_id = google_client_id()
         # COW-10: no env override -> derive the redirect from the
         # request's own base URL, so a desktop backend on a random
         # free port gets its own loopback redirect (Google allows
@@ -423,12 +431,14 @@ def create_app(
             str(request.base_url).rstrip("/") + "/auth/google/callback"
         )
         if not client_id:
-            return JSONResponse(
-                {"error": render_server_line("error.google_login_not_configured")},
-                status_code=503,
-            )
+            return not_configured_page()
         if desktop_port is not None and not 1024 <= desktop_port <= 65535:
-            return JSONResponse({"error": "desktop_port tidak valid"}, status_code=400)
+            return oauth_error_page(
+                "Tautan tidak valid",
+                "Nomor port desktop di tautan login ini tidak valid.",
+                "Tutup tab ini dan tekan tombol Masuk dengan Google di aplikasi PuspaBot.",
+                status_code=400,
+            )
         auth = build_auth_url(client_id, redirect)
         # COW-10: the PKCE verifier + state ride in an httpOnly
         # cookie so the callback can verify the round trip; a
@@ -456,19 +466,24 @@ def create_app(
             OAuthError,
             complete_google_login,
             fetch_jwks,
+            google_client_id,
             google_client_secret,
+        )
+        from puspa.pwa.oauth_pages import (
+            not_configured_page,
+            oauth_failed_page,
+            state_mismatch_page,
         )
 
         try:
             saved = json.loads(request.cookies.get("puspa_oauth", "{}"))
         except json.JSONDecodeError:
             saved = {}
+        # M8-fix: browser-facing route — errors are human pages,
+        # never raw JSON in the browser.
         if not code or not state or saved.get("state") != state:
-            return JSONResponse(
-                {"error": render_server_line("error.oauth_state_mismatch")},
-                status_code=400,
-            )
-        client_id = os.environ.get("PUSPA_GOOGLE_CLIENT_ID", "")
+            return state_mismatch_page()
+        client_id = google_client_id()
         # COW-10: same rule as /auth/google above — the token
         # exchange must use the redirect URI the browser was sent
         # with, i.e. this backend's own base URL when no env
@@ -478,8 +493,8 @@ def create_app(
         )
         try:
             secret = google_client_secret()
-        except OAuthError as exc:
-            return JSONResponse({"error": str(exc)}, status_code=503)
+        except OAuthError:
+            return not_configured_page()
         try:
             jwks = fetch_jwks(app.state.google_http_client)
             login = complete_google_login(
@@ -494,7 +509,7 @@ def create_app(
                 dsn=app.state.dsn,
             )
         except OAuthError as exc:
-            return JSONResponse({"error": str(exc)}, status_code=400)
+            return oauth_failed_page(str(exc))
         desktop_port = saved.get("desktop_port")
         if desktop_port:
             # COW-10: desktop login — the browser never gets the
@@ -540,6 +555,36 @@ def create_app(
             return JSONResponse({"error": "kode kedaluwarsa"}, status_code=401)
         token = create_session(user_id, "desktop", dsn=app.state.dsn)
         return {"ok": True, "session_token": token, "user_id": user_id}
+
+    @app.get("/api/desktop/config")
+    def desktop_config():
+        # M8-fix: the native app checks this before opening the
+        # browser, so an unconfigured Google login shows a human
+        # message inside the app instead of raw JSON in a browser.
+        # No auth needed: the backend only runs on localhost and
+        # this reveals nothing but whether login can start.
+        from puspa.auth.google_oauth import google_oauth_configured
+
+        return {"google_configured": google_oauth_configured()}
+
+    @app.get("/api/me")
+    def me(request: Request):
+        # PWA parity (M8-fix): the native app shows the user's real
+        # name and credit allowance in the sidebar and on Saya. No
+        # demo data: the email comes from the session's user row and
+        # the allowance is the free tier's monthly credits from the
+        # billing config (15/month). Email is None only when the
+        # user row is missing (dev/test users).
+        user_id = need_user(request)
+        if user_id is None:
+            return JSONResponse({"error": "belum masuk"}, status_code=401)
+        from puspa.auth.google_oauth import find_email_by_id
+        from puspa.billing.config import FREE_CREDITS_PER_MONTH
+
+        return {
+            "email": find_email_by_id(user_id, dsn=app.state.dsn),
+            "credits_monthly": FREE_CREDITS_PER_MONTH,
+        }
 
     for screen in SCREENS:
 
