@@ -69,6 +69,12 @@ jobs:
         # no installer-out it fails with "Can't open output file".
         run: New-Item -ItemType Directory -Force -Path installer-out
 
+      - name: Add NSIS to PATH
+        # NSIS is preinstalled on the runner, but its directory is
+        # not on PATH in later steps (choco installs do not propagate
+        # PATH across steps), so `makensis` fails as not found.
+        run: Add-Content $env:GITHUB_PATH "C:\Program Files (x86)\NSIS"
+
       - name: NSIS installer
         run: makensis /DOUTDIR=${{ github.workspace }}\installer-out apps\desktop\installer\windows.nsi
       - name: upload installer
