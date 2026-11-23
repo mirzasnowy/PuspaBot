@@ -107,9 +107,7 @@ def test_desktop_config_endpoint_reports_status(no_oauth_env, monkeypatch, tmp_p
 def test_callback_state_mismatch_returns_human_page(no_oauth_env):
     app = create_app(test_user_id=None)
     with TestClient(app) as client:
-        resp = client.get(
-            "/auth/google/callback?code=abc&state=xyz", follow_redirects=False
-        )
+        resp = client.get("/auth/google/callback?code=abc&state=xyz", follow_redirects=False)
         assert resp.status_code == 400
         assert "text/html" in resp.headers["content-type"]
         assert "Login tidak cocok" in resp.text

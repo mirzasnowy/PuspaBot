@@ -434,4 +434,3 @@ def complete_google_login(
         "session_token": session_token,
         "new": new,
     }
-

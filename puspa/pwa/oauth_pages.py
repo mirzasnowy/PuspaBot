@@ -25,9 +25,7 @@ p{{line-height:1.6;margin:0 0 12px}}
 </main></body></html>"""
 
 
-def oauth_error_page(
-    title: str, message: str, hint: str, status_code: int = 503
-) -> HTMLResponse:
+def oauth_error_page(title: str, message: str, hint: str, status_code: int = 503) -> HTMLResponse:
     """One human error page. All three parts are escaped: the
     reason can carry text from Google's responses."""
     return HTMLResponse(
