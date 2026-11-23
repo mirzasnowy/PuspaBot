@@ -468,8 +468,13 @@ mod tests {
 
     #[test]
     fn session_file_path_in_uses_the_puspabot_dir() {
-        let path = session_file_path_in(Path::new("/data"));
-        assert_eq!(path, PathBuf::from("/data/puspabot/session.json"));
+        let base = Path::new("/data");
+        let path = session_file_path_in(base);
+        if cfg!(windows) {
+            assert_eq!(path, base.join("Puspa").join("session.json"));
+        } else {
+            assert_eq!(path, base.join("puspabot").join("session.json"));
+        }
     }
 
     #[test]

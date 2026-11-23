@@ -339,12 +339,14 @@ pub fn install_backend_with(command: &[String], path_var: &OsStr) -> Result<Path
 /// not a failure: nothing is installed and nothing went wrong.
 pub fn download_backend_with(command: Option<Vec<String>>, path_var: &OsStr) -> BackendStatus {
     set_download_step(Some("Mengunduh backend Puspa...".to_string()));
+    // The message names the launcher this machine actually looks
+    // for (`py` on Windows, `python3` elsewhere).
+    let python = if cfg!(windows) { "py" } else { "python3" };
     let status = match command {
-        None => BackendStatus::Unavailable(
+        None => BackendStatus::Unavailable(format!(
             "Backend Puspa belum terinstal dan tidak ada installer di komputer ini: \
-             butuh python3 dengan pip, atau npm, di PATH untuk mengunduhnya."
-                .to_string(),
-        ),
+                 butuh {python} dengan pip, atau npm, di PATH untuk mengunduhnya."
+        )),
         Some(command) => match install_backend_with(&command, path_var) {
             Ok(exe) => {
                 set_download_step(Some("Menyalakan backend...".to_string()));
@@ -462,7 +464,11 @@ mod tests {
             "expected Unavailable, got {status:?}"
         );
         if let BackendStatus::Unavailable(reason) = status {
-            assert!(reason.contains("python3"), "{reason}");
+            if cfg!(windows) {
+                assert!(reason.contains("py"), "{reason}");
+            } else {
+                assert!(reason.contains("python3"), "{reason}");
+            }
             assert!(reason.contains("npm"), "{reason}");
         }
     }
@@ -488,12 +494,17 @@ mod tests {
     }
 
     #[test]
-    fn install_command_detects_python3_on_path() {
-        // `python3` is on PATH in this environment; npm is only a
-        // fallback, so the detected command must start with it.
+    fn install_command_detects_python_on_path() {
+        // Python is on PATH in this environment (`python3` on Unix,
+        // `py` on Windows); npm is only a fallback, so the detected
+        // command must start with it.
         let path_var = std::env::var_os("PATH").unwrap_or_default();
         let command = install_command_in(&path_var).unwrap();
-        assert_eq!(command[0], "python3", "{command:?}");
+        if cfg!(windows) {
+            assert_eq!(command[0], "py", "{command:?}");
+        } else {
+            assert_eq!(command[0], "python3", "{command:?}");
+        }
         assert!(command.contains(&"puspa".to_string()), "{command:?}");
     }
 }
