@@ -14,43 +14,12 @@ use std::f32::consts::PI;
 
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::canvas::{self, Frame, Geometry, Path, Program, Stroke, Text};
-use iced::widget::{button, column, container, row, scrollable, text, text_input, Canvas};
+use iced::widget::{button, column, container, image, row, scrollable, text, text_input, Canvas};
 use iced::{Color, Element, Length, Pixels, Point, Rectangle, Task};
 use serde::Deserialize;
 
-use super::section_title;
 use crate::api::{ApiClient, ApiError};
-
-const RED: Color = Color {
-    r: 0xD7 as f32 / 255.0,
-    g: 0x40 as f32 / 255.0,
-    b: 0x4D as f32 / 255.0,
-    a: 1.0,
-};
-const GREEN: Color = Color {
-    r: 0x4C as f32 / 255.0,
-    g: 0xAF as f32 / 255.0,
-    b: 0x50 as f32 / 255.0,
-    a: 1.0,
-};
-const CHARCOAL: Color = Color {
-    r: 0x1C as f32 / 255.0,
-    g: 0x1C as f32 / 255.0,
-    b: 0x1C as f32 / 255.0,
-    a: 1.0,
-};
-const GRAY: Color = Color {
-    r: 0x8F as f32 / 255.0,
-    g: 0x8A as f32 / 255.0,
-    b: 0x8F as f32 / 255.0,
-    a: 1.0,
-};
-const PINK: Color = Color {
-    r: 0xF0 as f32 / 255.0,
-    g: 0x8B as f32 / 255.0,
-    b: 0xA0 as f32 / 255.0,
-    a: 1.0,
-};
+use crate::theme;
 
 /// One remembered fact (`puspa/pwa/memory_api.py`).
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -535,22 +504,60 @@ impl State {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let mut content = column![].spacing(12).padding(16).width(Length::Fill);
+        let mut content = column![].spacing(16).padding(24).width(Length::Fill);
 
-        let tabs = row![
-            button("Fakta").on_press(Message::ViewChanged(View::Facts)),
-            button("Graf").on_press(Message::ViewChanged(View::Graph)),
-            button("Persona").on_press(Message::ViewChanged(View::Personas)),
-            button("Muat ulang").on_press(Message::ReloadPressed),
-        ]
-        .spacing(8);
-        content = content.push(tabs);
+        content = content.push(
+            row![
+                column![
+                    text("Memori")
+                        .font(theme::font_bold())
+                        .size(22)
+                        .color(theme::CHARCOAL),
+                    text("Fakta, graf pengetahuan, dan persona")
+                        .font(theme::font_regular())
+                        .size(13)
+                        .color(theme::GRAY),
+                ]
+                .spacing(2)
+                .width(Length::Fill),
+                button(text("Muat ulang").font(theme::font_semibold()).size(14))
+                    .on_press(Message::ReloadPressed)
+                    .style(theme::outline_button)
+                    .padding([8, 16]),
+            ]
+            .spacing(8)
+            .align_y(Vertical::Center),
+        );
+
+        content = content.push(
+            row![
+                tab_button("Fakta", self.view == View::Facts, View::Facts),
+                tab_button("Graf", self.view == View::Graph, View::Graph),
+                tab_button("Persona", self.view == View::Personas, View::Personas),
+            ]
+            .spacing(8),
+        );
 
         if let Some(error) = &self.error {
-            content = content.push(text(error).size(13).color(RED));
+            content = content.push(
+                container(
+                    text(error)
+                        .font(theme::font_regular())
+                        .size(14)
+                        .color(theme::CHARCOAL),
+                )
+                .padding(16)
+                .style(|_| theme::tint_style(theme::PEACH_TINT))
+                .width(Length::Fill),
+            );
         }
         if !self.loaded {
-            return content.push(text("Memuat memori...").size(14)).into();
+            content = content.push(loading_card("Memuat memori…"));
+            return container(scrollable(content).width(Length::Fill).height(Length::Fill))
+                .style(|_| theme::cream_style())
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
         }
 
         content = match self.view {
@@ -559,169 +566,314 @@ impl State {
             View::Personas => content.push(self.personas_view()),
         };
 
-        scrollable(content).into()
+        container(scrollable(content).width(Length::Fill).height(Length::Fill))
+            .style(|_| theme::cream_style())
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
     }
 
     fn facts_view(&self) -> Element<'_, Message> {
-        let mut content = column![].spacing(12).width(Length::Fill);
+        let mut content = column![].spacing(16).width(Length::Fill);
 
         if !self.proposals.is_empty() {
-            content = content.push(section_title("Usulan baru"));
+            let mut proposals = column![section_header("bell", "Usulan baru")].spacing(12);
             for proposal in &self.proposals {
                 let label = if proposal.content.is_empty() {
                     proposal.key.clone()
                 } else {
                     format!("{}: {}", proposal.key, proposal.content)
                 };
-                content = content.push(
+                proposals = proposals.push(
                     row![
-                        text(label).size(14).width(Length::Fill),
-                        button("Terima").on_press(Message::ProposalConfirmed(proposal.id.clone())),
-                        button("Tolak").on_press(Message::ProposalRejected(proposal.id.clone())),
+                        theme::icon("info", theme::RED, 20.0),
+                        text(label)
+                            .font(theme::font_regular())
+                            .size(14)
+                            .color(theme::CHARCOAL)
+                            .width(Length::Fill),
+                        button(text("Terima").font(theme::font_semibold()).size(13))
+                            .on_press(Message::ProposalConfirmed(proposal.id.clone()))
+                            .style(theme::primary_button)
+                            .padding([6, 14]),
+                        button(text("Tolak").font(theme::font_semibold()).size(13))
+                            .on_press(Message::ProposalRejected(proposal.id.clone()))
+                            .style(theme::outline_button)
+                            .padding([6, 14]),
                     ]
-                    .spacing(8),
+                    .spacing(8)
+                    .align_y(Vertical::Center),
                 );
             }
+            content = content.push(card(proposals));
         }
 
-        content = content.push(section_title(format!(
-            "Fakta tersimpan ({})",
-            self.total_facts
-        )));
+        let mut facts = column![section_header(
+            "memory",
+            format!("Fakta tersimpan ({})", self.total_facts),
+        )]
+        .spacing(12);
         if self.facts.is_empty() {
-            content = content.push(
-                text("Belum ada fakta tersimpan. Agen akan mengingat hal penting dari percakapan.")
-                    .size(14),
-            );
+            facts = facts.push(empty_state(
+                "Belum ada fakta tersimpan.",
+                "Agen akan mengingat hal penting dari percakapan — mulai mengobrol di Chat.",
+            ));
         }
         for fact in &self.facts {
             let editing = self.editing.as_ref().filter(|(id, _)| *id == fact.id);
-            let mut fact_row = column![].spacing(4).width(Length::Fill);
-            fact_row = fact_row.push(text(&fact.key).size(14));
+            let mut fact_card = column![].spacing(8).width(Length::Fill);
+            fact_card = fact_card.push(
+                row![
+                    theme::icon("memory", theme::RED, 20.0),
+                    text(&fact.key)
+                        .font(theme::font_semibold())
+                        .size(14)
+                        .color(theme::CHARCOAL)
+                        .width(Length::Fill),
+                    chip(&fact.status, theme::GREEN_TINT),
+                ]
+                .spacing(8)
+                .align_y(Vertical::Center),
+            );
             if let Some((_, draft)) = editing {
-                fact_row =
-                    fact_row.push(text_input("Isi fakta", draft).on_input(Message::EditChanged));
-                fact_row = fact_row.push(
+                fact_card = fact_card.push(
+                    text_input("Isi fakta", draft)
+                        .on_input(Message::EditChanged)
+                        .font(theme::font_regular())
+                        .size(14)
+                        .style(theme::input_style)
+                        .padding(12)
+                        .width(Length::Fill),
+                );
+                fact_card = fact_card.push(
                     row![
-                        button("Simpan").on_press(Message::EditSaved(fact.id.clone())),
-                        button("Batal").on_press(Message::EditCancelled),
+                        button(text("Simpan").font(theme::font_semibold()).size(13))
+                            .on_press(Message::EditSaved(fact.id.clone()))
+                            .style(theme::primary_button)
+                            .padding([6, 14]),
+                        button(text("Batal").font(theme::font_semibold()).size(13))
+                            .on_press(Message::EditCancelled)
+                            .style(theme::outline_button)
+                            .padding([6, 14]),
                     ]
                     .spacing(8),
                 );
             } else {
-                fact_row = fact_row.push(text(&fact.content).size(14));
+                fact_card = fact_card.push(
+                    text(&fact.content)
+                        .font(theme::font_regular())
+                        .size(14)
+                        .color(theme::CHARCOAL),
+                );
                 let mut actions = row![
-                    button("Ubah").on_press(Message::EditStarted(fact.id.clone())),
-                    button("Lupakan").on_press(Message::FactForgotten(fact.id.clone())),
-                    button("Hapus").on_press(Message::FactDeleted(fact.id.clone())),
+                    button(text("Ubah").font(theme::font_semibold()).size(13))
+                        .on_press(Message::EditStarted(fact.id.clone()))
+                        .style(theme::outline_button)
+                        .padding([6, 14]),
+                    button(text("Lupakan").font(theme::font_semibold()).size(13))
+                        .on_press(Message::FactForgotten(fact.id.clone()))
+                        .style(theme::text_button)
+                        .padding([6, 8]),
+                    button(text("Hapus").font(theme::font_semibold()).size(13))
+                        .on_press(Message::FactDeleted(fact.id.clone()))
+                        .style(theme::text_button)
+                        .padding([6, 8]),
                 ]
                 .spacing(8);
                 if !fact.source_label.is_empty() {
-                    actions = actions.push(text(&fact.source_label).size(12).color(GRAY));
+                    actions = actions.push(
+                        text(&fact.source_label)
+                            .font(theme::font_regular())
+                            .size(12)
+                            .color(theme::GRAY),
+                    );
                 }
-                fact_row = fact_row.push(actions);
+                fact_card = fact_card.push(actions);
             }
-            content = content.push(fact_row);
+            facts = facts.push(card(fact_card));
         }
+        content = content.push(facts);
 
         let consent = if self.consent { "ya" } else { "tidak" };
         let guest = if self.guest_mode { " (mode tamu)" } else { "" };
         content = content.push(
             text(format!("Izin memori: {consent}{guest}"))
+                .font(theme::font_regular())
                 .size(12)
-                .color(GRAY),
+                .color(theme::GRAY),
         );
         content.into()
     }
 
     fn graph_view(&self) -> Element<'_, Message> {
-        let mut content = column![].spacing(12).width(Length::Fill);
-        content = content.push(section_title(format!(
-            "Graf pengetahuan ({} simpul, {} hubungan)",
-            self.nodes.len(),
-            self.edges.len()
-        )));
+        let mut content = column![].spacing(16).width(Length::Fill);
+
+        let mut graph = column![section_header(
+            "memory",
+            format!(
+                "Graf pengetahuan ({} simpul, {} hubungan)",
+                self.nodes.len(),
+                self.edges.len()
+            ),
+        )]
+        .spacing(12);
         if self.nodes.is_empty() {
-            content = content
-                .push(text("Graf masih kosong. Tambah simpul di bawah untuk mulai.").size(14));
+            graph = graph.push(empty_state(
+                "Graf masih kosong.",
+                "Tambah simpul di bawah untuk mulai — simpul pertama bisa berupa namamu.",
+            ));
         } else {
             let program = GraphProgram {
                 nodes: self.nodes.clone(),
                 edges: self.edges.clone(),
                 selected: self.selected_node,
             };
-            content = content.push(
+            graph = graph.push(
                 container(
                     Canvas::new(program)
                         .width(Length::Fill)
                         .height(Length::Fixed(320.0)),
                 )
+                .padding(8)
+                .style(|_| theme::tint_style(theme::CREAM))
                 .width(Length::Fill),
             );
         }
+        content = content.push(card(graph));
 
         if let Some(index) = self.selected_node {
             if let Some(node) = self.nodes.get(index) {
-                let detail = column![
-                    text(&node.name).size(15),
-                    text(format!("Jenis: {}", node.kind)).size(13).color(GRAY),
-                    text(&node.description).size(14),
-                    button("Hapus simpul").on_press(Message::NodeDeleted(node.name.clone())),
-                ]
-                .spacing(4);
-                content = content.push(detail);
+                content = content.push(card(
+                    column![
+                        row![
+                            theme::icon("memory", theme::RED, 20.0),
+                            text(&node.name)
+                                .font(theme::font_semibold())
+                                .size(15)
+                                .color(theme::CHARCOAL)
+                                .width(Length::Fill),
+                            chip(&node.kind, theme::PEACH_TINT),
+                        ]
+                        .spacing(8)
+                        .align_y(Vertical::Center),
+                        text(&node.description)
+                            .font(theme::font_regular())
+                            .size(14)
+                            .color(theme::CHARCOAL),
+                        button(text("Hapus simpul").font(theme::font_semibold()).size(13))
+                            .on_press(Message::NodeDeleted(node.name.clone()))
+                            .style(theme::outline_button)
+                            .padding([6, 14]),
+                    ]
+                    .spacing(8),
+                ));
             }
         }
 
-        content = content.push(section_title("Tambah simpul"));
-        content = content.push(
+        content = content.push(card(
             column![
-                text_input("Nama simpul", &self.new_node_name).on_input(Message::NodeNameChanged),
+                section_header("plus", "Tambah simpul"),
+                text_input("Nama simpul", &self.new_node_name)
+                    .on_input(Message::NodeNameChanged)
+                    .font(theme::font_regular())
+                    .size(14)
+                    .style(theme::input_style)
+                    .padding(12)
+                    .width(Length::Fill),
                 text_input("Jenis (mis. orang, tempat, topik)", &self.new_node_kind)
-                    .on_input(Message::NodeKindChanged),
-                text_input("Deskripsi", &self.new_node_desc).on_input(Message::NodeDescChanged),
-                button("Tambah simpul").on_press(Message::NodeAdded),
+                    .on_input(Message::NodeKindChanged)
+                    .font(theme::font_regular())
+                    .size(14)
+                    .style(theme::input_style)
+                    .padding(12)
+                    .width(Length::Fill),
+                text_input("Deskripsi", &self.new_node_desc)
+                    .on_input(Message::NodeDescChanged)
+                    .font(theme::font_regular())
+                    .size(14)
+                    .style(theme::input_style)
+                    .padding(12)
+                    .width(Length::Fill),
+                button(text("Tambah simpul").font(theme::font_semibold()).size(14))
+                    .on_press(Message::NodeAdded)
+                    .style(theme::primary_button)
+                    .padding([10, 20]),
             ]
             .spacing(8),
-        );
+        ));
 
-        content = content.push(section_title("Tambah hubungan"));
-        content = content.push(
+        content = content.push(card(
             column![
-                text_input("Dari", &self.new_edge_subject).on_input(Message::EdgeSubjectChanged),
+                section_header("link", "Tambah hubungan"),
+                text_input("Dari", &self.new_edge_subject)
+                    .on_input(Message::EdgeSubjectChanged)
+                    .font(theme::font_regular())
+                    .size(14)
+                    .style(theme::input_style)
+                    .padding(12)
+                    .width(Length::Fill),
                 text_input("Hubungan (mis. suka, bekerja di)", &self.new_edge_relation)
-                    .on_input(Message::EdgeRelationChanged),
-                text_input("Ke", &self.new_edge_object).on_input(Message::EdgeObjectChanged),
-                button("Tambah hubungan").on_press(Message::EdgeAdded),
+                    .on_input(Message::EdgeRelationChanged)
+                    .font(theme::font_regular())
+                    .size(14)
+                    .style(theme::input_style)
+                    .padding(12)
+                    .width(Length::Fill),
+                text_input("Ke", &self.new_edge_object)
+                    .on_input(Message::EdgeObjectChanged)
+                    .font(theme::font_regular())
+                    .size(14)
+                    .style(theme::input_style)
+                    .padding(12)
+                    .width(Length::Fill),
+                button(
+                    text("Tambah hubungan")
+                        .font(theme::font_semibold())
+                        .size(14)
+                )
+                .on_press(Message::EdgeAdded)
+                .style(theme::primary_button)
+                .padding([10, 20]),
             ]
             .spacing(8),
-        );
+        ));
 
         if !self.edges.is_empty() {
-            content = content.push(section_title("Hubungan"));
+            let mut edges = column![section_header("link", "Hubungan")].spacing(12);
             for (index, edge) in self.edges.iter().enumerate() {
-                content = content.push(
+                edges = edges.push(
                     row![
                         text(format!(
                             "{} — {} → {}",
                             edge.subject, edge.relation, edge.object
                         ))
+                        .font(theme::font_regular())
                         .size(14)
+                        .color(theme::CHARCOAL)
                         .width(Length::Fill),
-                        button("Hapus").on_press(Message::EdgeDeleted(index)),
+                        button(text("Hapus").font(theme::font_semibold()).size(13))
+                            .on_press(Message::EdgeDeleted(index))
+                            .style(theme::text_button)
+                            .padding([6, 8]),
                     ]
-                    .spacing(8),
+                    .spacing(8)
+                    .align_y(Vertical::Center),
                 );
             }
+            content = content.push(card(edges));
         }
         content.into()
     }
 
     fn personas_view(&self) -> Element<'_, Message> {
-        let mut content = column![].spacing(12).width(Length::Fill);
-        content = content.push(section_title("Persona"));
+        let mut content = column![section_header("profile", "Persona")]
+            .spacing(16)
+            .width(Length::Fill);
         if self.personas.is_empty() {
-            content = content.push(text("Belum ada persona.").size(14));
+            content = content.push(empty_state(
+                "Belum ada persona.",
+                "Persona akan muncul di sini setelah dibuat — sementara Puspa memakai persona bawaan.",
+            ));
         }
         for persona in &self.personas {
             let name = if persona.name.is_empty() {
@@ -729,21 +881,129 @@ impl State {
             } else {
                 persona.name.clone()
             };
-            let mut row_items = row![text(name).size(14).width(Length::Fill)].spacing(8);
-            if Some(&persona.slug) == self.active_persona.as_ref() {
-                row_items = row_items.push(text("Aktif").size(13).color(GREEN));
-            } else {
-                row_items = row_items.push(
-                    button("Aktifkan").on_press(Message::PersonaActivated(persona.slug.clone())),
+            let mut persona_card = column![row![
+                theme::icon("profile", theme::RED, 20.0),
+                text(name)
+                    .font(theme::font_semibold())
+                    .size(14)
+                    .color(theme::CHARCOAL)
+                    .width(Length::Fill),
+                if Some(&persona.slug) == self.active_persona.as_ref() {
+                    chip("Aktif", theme::GREEN_TINT)
+                } else {
+                    button(text("Aktifkan").font(theme::font_semibold()).size(13))
+                        .on_press(Message::PersonaActivated(persona.slug.clone()))
+                        .style(theme::outline_button)
+                        .padding([6, 14])
+                        .into()
+                },
+            ]
+            .spacing(8)
+            .align_y(Vertical::Center),]
+            .spacing(8);
+            if !persona.description.is_empty() {
+                persona_card = persona_card.push(
+                    text(&persona.description)
+                        .font(theme::font_regular())
+                        .size(13)
+                        .color(theme::GRAY),
                 );
             }
-            content = content.push(row_items);
-            if !persona.description.is_empty() {
-                content = content.push(text(&persona.description).size(13).color(GRAY));
-            }
+            content = content.push(card(persona_card));
         }
         content.into()
     }
+}
+
+/// A white card with the standard Puspa radius, border, and shadow.
+fn card<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    container(content)
+        .padding(16)
+        .style(|_| theme::card_style())
+        .width(Length::Fill)
+        .into()
+}
+
+/// Section heading: one outline icon + semibold title, no subtitle.
+fn section_header<'a>(icon: &'a str, title: impl Into<String>) -> Element<'a, Message> {
+    row![
+        theme::icon(icon, theme::RED, 20.0),
+        text(title.into())
+            .font(theme::font_semibold())
+            .size(16)
+            .color(theme::CHARCOAL),
+    ]
+    .spacing(8)
+    .align_y(Vertical::Center)
+    .into()
+}
+
+/// Pill tab: white card when active, plain text button when not.
+fn tab_button<'a>(label: impl Into<String>, active: bool, view: View) -> Element<'a, Message> {
+    button(text(label.into()).font(theme::font_semibold()).size(14))
+        .on_press(Message::ViewChanged(view))
+        .style(theme::tab_button(active))
+        .padding([8, 16])
+        .into()
+}
+
+/// Small tinted status chip.
+fn chip<'a>(label: impl Into<String>, bg: iced::Color) -> Element<'a, Message> {
+    container(
+        text(label.into())
+            .font(theme::font_medium())
+            .size(12)
+            .color(theme::CHARCOAL),
+    )
+    .padding([4, 10])
+    .style(move |_| theme::tint_style(bg))
+    .into()
+}
+
+/// Loading placeholder: mascot + a line telling the user to wait.
+fn loading_card<'a>(label: &'a str) -> Element<'a, Message> {
+    container(
+        column![
+            image(image::Handle::from_bytes(theme::MASCOT))
+                .width(Length::Fixed(48.0))
+                .height(Length::Fixed(48.0)),
+            text(label)
+                .font(theme::font_regular())
+                .size(14)
+                .color(theme::GRAY),
+        ]
+        .spacing(12)
+        .align_x(Horizontal::Center),
+    )
+    .padding(24)
+    .style(|_| theme::tint_style(theme::CREAM))
+    .width(Length::Fill)
+    .into()
+}
+
+/// Empty state: mascot + what is missing + the next step.
+fn empty_state<'a>(title: &'a str, next: &'a str) -> Element<'a, Message> {
+    container(
+        column![
+            image(image::Handle::from_bytes(theme::MASCOT))
+                .width(Length::Fixed(56.0))
+                .height(Length::Fixed(56.0)),
+            text(title)
+                .font(theme::font_semibold())
+                .size(16)
+                .color(theme::CHARCOAL),
+            text(next)
+                .font(theme::font_regular())
+                .size(14)
+                .color(theme::GRAY),
+        ]
+        .spacing(12)
+        .align_x(Horizontal::Center),
+    )
+    .padding(24)
+    .style(|_| theme::tint_style(theme::CREAM))
+    .width(Length::Fill)
+    .into()
 }
 
 /// Percent-encode one URL path segment / query value (keeps the
@@ -784,13 +1044,13 @@ fn node_positions(count: usize, width: f32, height: f32) -> Vec<Point> {
 fn node_color(kind: &str) -> Color {
     let kind = kind.to_lowercase();
     if kind.contains("person") || kind.contains("orang") {
-        RED
+        theme::RED
     } else if kind.contains("place") || kind.contains("tempat") {
-        GREEN
+        theme::GREEN
     } else if kind.contains("topic") || kind.contains("topik") {
-        PINK
+        theme::PINK
     } else {
-        GRAY
+        theme::GRAY
     }
 }
 
@@ -852,7 +1112,7 @@ impl Program<Message> for GraphProgram {
             if let (Some(a), Some(b)) = (from, to) {
                 frame.stroke(
                     &Path::line(positions[a], positions[b]),
-                    Stroke::default().with_color(GRAY).with_width(1.0),
+                    Stroke::default().with_color(theme::GRAY).with_width(1.0),
                 );
             }
         }
@@ -862,13 +1122,13 @@ impl Program<Message> for GraphProgram {
             if Some(index) == self.selected {
                 frame.stroke(
                     &Path::circle(point, 19.0),
-                    Stroke::default().with_color(RED).with_width(2.0),
+                    Stroke::default().with_color(theme::RED).with_width(2.0),
                 );
             }
             frame.fill_text(Text {
                 content: node.name.clone(),
                 position: Point::new(point.x, point.y + 22.0),
-                color: CHARCOAL,
+                color: theme::CHARCOAL,
                 size: Pixels(12.0),
                 horizontal_alignment: Horizontal::Center,
                 vertical_alignment: Vertical::Top,
@@ -907,10 +1167,10 @@ mod tests {
 
     #[test]
     fn node_color_by_kind() {
-        assert_eq!(node_color("person"), RED);
-        assert_eq!(node_color("tempat"), GREEN);
-        assert_eq!(node_color("topik"), PINK);
-        assert_eq!(node_color("other"), GRAY);
+        assert_eq!(node_color("person"), theme::RED);
+        assert_eq!(node_color("tempat"), theme::GREEN);
+        assert_eq!(node_color("topik"), theme::PINK);
+        assert_eq!(node_color("other"), theme::GRAY);
     }
 
     #[test]

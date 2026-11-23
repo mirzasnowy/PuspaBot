@@ -8,26 +8,14 @@
 //! credits/billing API, so there is no Keuangan section here —
 //! only features that genuinely work exist in this tab.
 
-use iced::widget::{button, column, row, scrollable, text, text_input};
-use iced::{Color, Element, Length, Task};
+use iced::alignment::{Horizontal, Vertical};
+use iced::widget::{button, column, container, image, row, scrollable, text, text_input};
+use iced::{Element, Length, Task};
 use serde::Deserialize;
 
-use super::section_title;
 use crate::api::{ApiClient, ApiError};
 use crate::screens::chat::ModelSettings;
-
-const RED: Color = Color {
-    r: 0xD7 as f32 / 255.0,
-    g: 0x40 as f32 / 255.0,
-    b: 0x4D as f32 / 255.0,
-    a: 1.0,
-};
-const GREEN: Color = Color {
-    r: 0x4C as f32 / 255.0,
-    g: 0xAF as f32 / 255.0,
-    b: 0x50 as f32 / 255.0,
-    a: 1.0,
-};
+use crate::theme;
 
 /// One provider (`puspa/pwa/app.py` — `GET /api/providers`).
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -341,114 +329,432 @@ impl State {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let mut content = column![].spacing(12).padding(16).width(Length::Fill);
+        let mut content = column![].spacing(16).padding(24).width(Length::Fill);
 
         content = content.push(
             row![
-                section_title("Saya"),
-                button("Muat ulang").on_press(Message::ReloadPressed),
+                column![
+                    text("Saya")
+                        .font(theme::font_bold())
+                        .size(22)
+                        .color(theme::CHARCOAL),
+                    text("Profil, model, provider, dan pengaturan aplikasi")
+                        .font(theme::font_regular())
+                        .size(13)
+                        .color(theme::GRAY),
+                ]
+                .spacing(2)
+                .width(Length::Fill),
+                button(text("Muat ulang").font(theme::font_semibold()).size(14))
+                    .on_press(Message::ReloadPressed)
+                    .style(theme::outline_button)
+                    .padding([8, 16]),
             ]
-            .spacing(8),
+            .spacing(8)
+            .align_y(Vertical::Center),
         );
 
         if let Some(error) = &self.error {
-            content = content.push(text(error).size(13).color(RED));
+            content = content.push(
+                container(
+                    text(error)
+                        .font(theme::font_regular())
+                        .size(14)
+                        .color(theme::CHARCOAL),
+                )
+                .padding(16)
+                .style(|_| theme::tint_style(theme::PEACH_TINT))
+                .width(Length::Fill),
+            );
         }
         if !self.loaded {
-            return content.push(text("Memuat profil...").size(14)).into();
+            content = content.push(loading_card("Memuat profil…"));
+            return container(scrollable(content).width(Length::Fill).height(Length::Fill))
+                .style(|_| theme::cream_style())
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
         }
 
-        content = content.push(section_title("Pengaturan model"));
+        // Profile card on top.
+        let model_line = match &self.model {
+            Some(model) => format!(
+                "{} · {}",
+                model.provider.clone().unwrap_or_else(|| "-".to_string()),
+                model.model.clone().unwrap_or_else(|| "-".to_string()),
+            ),
+            None => "Pengaturan model tidak tersedia.".to_string(),
+        };
+        content = content.push(card(
+            row![
+                image(image::Handle::from_bytes(theme::MASCOT))
+                    .width(Length::Fixed(56.0))
+                    .height(Length::Fixed(56.0)),
+                column![
+                    text("Saya")
+                        .font(theme::font_bold())
+                        .size(18)
+                        .color(theme::CHARCOAL),
+                    text("Akun PuspaBot di komputer ini — masuk dengan Google.")
+                        .font(theme::font_regular())
+                        .size(13)
+                        .color(theme::GRAY),
+                    text(format!("Model: {model_line}"))
+                        .font(theme::font_regular())
+                        .size(13)
+                        .color(theme::GRAY),
+                ]
+                .spacing(4)
+                .width(Length::Fill),
+            ]
+            .spacing(16)
+            .align_y(Vertical::Center),
+        ));
+
+        // Pengaturan model + BYOK.
+        let mut model_card = column![section_header("settings", "Pengaturan model")].spacing(12);
         match &self.model {
             Some(model) => {
                 let provider = model.provider.clone().unwrap_or_else(|| "-".to_string());
                 let model_name = model.model.clone().unwrap_or_else(|| "-".to_string());
-                content = content
-                    .push(text(format!("Provider: {provider} — Model: {model_name}")).size(14));
-                let key_state = if model.has_byok_key {
-                    "Kunci sendiri (BYOK) sudah disimpan."
+                model_card = model_card.push(setting_row("Provider", &provider));
+                model_card = model_card.push(setting_row("Model", &model_name));
+                let (key_label, key_bg) = if model.has_byok_key {
+                    ("Tersimpan", theme::GREEN_TINT)
                 } else {
-                    "Belum ada kunci sendiri. Tanpa kunci, agen tidak bisa menjawab."
+                    ("Belum ada", theme::RED_TINT)
                 };
-                let key_color = if model.has_byok_key { GREEN } else { RED };
-                content = content.push(text(key_state).size(14).color(key_color));
+                model_card = model_card.push(
+                    row![
+                        theme::icon("settings", theme::RED, 20.0),
+                        text("Kunci sendiri (BYOK)")
+                            .font(theme::font_regular())
+                            .size(14)
+                            .color(theme::CHARCOAL)
+                            .width(Length::Fill),
+                        chip(key_label, key_bg),
+                    ]
+                    .spacing(8)
+                    .align_y(Vertical::Center),
+                );
+                if !model.has_byok_key {
+                    model_card = model_card.push(
+                        text("Tanpa kunci, agen tidak bisa menjawab.")
+                            .font(theme::font_regular())
+                            .size(13)
+                            .color(theme::GRAY),
+                    );
+                }
                 if model.has_byok_key {
-                    content =
-                        content.push(button("Hapus kunci sendiri").on_press(Message::ByokDeleted));
+                    model_card = model_card.push(
+                        button(
+                            text("Hapus kunci sendiri")
+                                .font(theme::font_semibold())
+                                .size(13),
+                        )
+                        .on_press(Message::ByokDeleted)
+                        .style(theme::outline_button)
+                        .padding([6, 14]),
+                    );
                 }
             }
             None => {
-                content = content.push(text("Pengaturan model tidak tersedia.").size(14));
+                model_card = model_card.push(
+                    text("Pengaturan model tidak tersedia.")
+                        .font(theme::font_regular())
+                        .size(14)
+                        .color(theme::GRAY),
+                );
             }
         }
-        content = content.push(
+        model_card = model_card.push(
             column![
                 text_input("Provider (mis. openai, anthropic)", &self.byok_provider)
-                    .on_input(Message::ByokProviderChanged),
+                    .on_input(Message::ByokProviderChanged)
+                    .font(theme::font_regular())
+                    .size(14)
+                    .style(theme::input_style)
+                    .padding(12)
+                    .width(Length::Fill),
                 text_input("Kunci API sendiri", &self.byok_key)
                     .on_input(Message::ByokKeyChanged)
-                    .secure(true),
-                button("Simpan kunci sendiri").on_press(Message::ByokSaved),
+                    .secure(true)
+                    .font(theme::font_regular())
+                    .size(14)
+                    .style(theme::input_style)
+                    .padding(12)
+                    .width(Length::Fill),
+                button(
+                    text("Simpan kunci sendiri")
+                        .font(theme::font_semibold())
+                        .size(14)
+                )
+                .on_press(Message::ByokSaved)
+                .style(theme::primary_button)
+                .padding([10, 20]),
             ]
             .spacing(8),
         );
+        content = content.push(card(model_card));
 
-        content = content.push(section_title("Provider"));
+        // Providers (full live list).
+        let mut providers_card = column![section_header(
+            "box",
+            format!("Provider ({})", self.providers.len()),
+        )]
+        .spacing(12);
         if self.providers.is_empty() {
-            content = content.push(text("Belum ada provider.").size(14));
+            providers_card = providers_card.push(empty_state(
+                "Belum ada provider.",
+                "Provider akan muncul di sini setelah terhubung lewat Puspa.",
+            ));
         }
         for provider in &self.providers {
-            content =
-                content.push(text(format!("{} — {}", provider.provider, provider.state)).size(14));
+            let state_bg = if provider.state == "logged_in" || provider.state == "ready" {
+                theme::GREEN_TINT
+            } else {
+                theme::PEACH_TINT
+            };
+            providers_card = providers_card.push(
+                row![
+                    theme::icon("box", theme::RED, 20.0),
+                    text(&provider.provider)
+                        .font(theme::font_semibold())
+                        .size(14)
+                        .color(theme::CHARCOAL)
+                        .width(Length::Fill),
+                    chip(&provider.state, state_bg),
+                ]
+                .spacing(8)
+                .align_y(Vertical::Center),
+            );
         }
+        content = content.push(card(providers_card));
 
-        content = content.push(section_title("Skill terpasang"));
+        // Skills.
         let installed: Vec<&Skill> = self.skills.iter().filter(|skill| skill.installed).collect();
+        let mut skills_card = column![section_header("gift", "Skill terpasang")].spacing(12);
         if installed.is_empty() {
-            content = content.push(text("Belum ada skill terpasang.").size(14));
+            skills_card = skills_card.push(empty_state(
+                "Belum ada skill terpasang.",
+                "Skill dari hub akan muncul di sini setelah dipasang.",
+            ));
         }
         for skill in installed {
-            content = content.push(text(format!("{} (v{})", skill.name, skill.version)).size(14));
+            skills_card = skills_card.push(
+                row![
+                    theme::icon("gift", theme::RED, 20.0),
+                    text(&skill.name)
+                        .font(theme::font_semibold())
+                        .size(14)
+                        .color(theme::CHARCOAL)
+                        .width(Length::Fill),
+                    chip(format!("v{}", skill.version), theme::GREEN_TINT),
+                ]
+                .spacing(8)
+                .align_y(Vertical::Center),
+            );
         }
+        content = content.push(card(skills_card));
 
-        content = content.push(section_title("Bahasa"));
+        // Bahasa.
         let locales = if self.available_locales.is_empty() {
             vec!["id".to_string(), "en".to_string()]
         } else {
             self.available_locales.clone()
         };
-        let mut lang_row = row![text(format!("Bahasa aktif: {}", self.locale)).size(14)].spacing(8);
+        let mut lang_row = row![].spacing(8);
         for locale in locales {
-            lang_row = lang_row
-                .push(button(text(locale.clone())).on_press(Message::LanguageChanged(locale)));
+            let active = locale == self.locale;
+            lang_row = lang_row.push(
+                button(text(locale.clone()).font(theme::font_semibold()).size(14))
+                    .on_press(Message::LanguageChanged(locale))
+                    .style(theme::tab_button(active))
+                    .padding([8, 16]),
+            );
         }
-        content = content.push(lang_row);
-
-        content = content.push(section_title("Telemetri"));
-        content = content.push(
-            row![
-                text(if self.telemetry_enabled {
-                    "Telemetri aktif."
-                } else {
-                    "Telemetri tidak aktif."
-                })
-                .size(14)
-                .width(Length::Fill),
-                button(if self.telemetry_enabled {
-                    "Matikan"
-                } else {
-                    "Nyalakan"
-                })
-                .on_press(Message::TelemetryToggled),
+        content = content.push(card(
+            column![
+                section_header("chat", "Bahasa"),
+                row![
+                    text("Bahasa aktif")
+                        .font(theme::font_regular())
+                        .size(14)
+                        .color(theme::CHARCOAL)
+                        .width(Length::Fill),
+                    lang_row,
+                ]
+                .spacing(8)
+                .align_y(Vertical::Center),
             ]
-            .spacing(8),
-        );
+            .spacing(12),
+        ));
 
-        content = content.push(section_title("Akun"));
-        content = content.push(button("Keluar").on_press(Message::LogoutPressed));
+        // Telemetri.
+        let (telemetry_label, telemetry_bg) = if self.telemetry_enabled {
+            ("Aktif", theme::GREEN_TINT)
+        } else {
+            ("Tidak aktif", theme::PEACH_TINT)
+        };
+        content = content.push(card(
+            column![
+                section_header("info", "Telemetri"),
+                row![
+                    theme::icon("info", theme::RED, 20.0),
+                    text("Telemetri")
+                        .font(theme::font_regular())
+                        .size(14)
+                        .color(theme::CHARCOAL)
+                        .width(Length::Fill),
+                    chip(telemetry_label, telemetry_bg),
+                    button(
+                        text(if self.telemetry_enabled {
+                            "Matikan"
+                        } else {
+                            "Nyalakan"
+                        })
+                        .font(theme::font_semibold())
+                        .size(13),
+                    )
+                    .on_press(Message::TelemetryToggled)
+                    .style(theme::outline_button)
+                    .padding([6, 14]),
+                ]
+                .spacing(8)
+                .align_y(Vertical::Center),
+            ]
+            .spacing(12),
+        ));
 
-        scrollable(content).into()
+        // Akun.
+        content = content.push(card(
+            column![
+                section_header("profile", "Akun"),
+                row![
+                    theme::icon("profile", theme::RED, 20.0),
+                    text("Keluar dari PuspaBot di komputer ini")
+                        .font(theme::font_regular())
+                        .size(14)
+                        .color(theme::CHARCOAL)
+                        .width(Length::Fill),
+                    button(text("Keluar").font(theme::font_semibold()).size(13))
+                        .on_press(Message::LogoutPressed)
+                        .style(theme::outline_button)
+                        .padding([6, 14]),
+                ]
+                .spacing(8)
+                .align_y(Vertical::Center),
+            ]
+            .spacing(12),
+        ));
+
+        container(scrollable(content).width(Length::Fill).height(Length::Fill))
+            .style(|_| theme::cream_style())
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
     }
+}
+
+/// A white card with the standard Puspa radius, border, and shadow.
+fn card<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    container(content)
+        .padding(16)
+        .style(|_| theme::card_style())
+        .width(Length::Fill)
+        .into()
+}
+
+/// Section heading: one outline icon + semibold title, no subtitle.
+fn section_header<'a>(icon: &'a str, title: impl Into<String>) -> Element<'a, Message> {
+    row![
+        theme::icon(icon, theme::RED, 20.0),
+        text(title.into())
+            .font(theme::font_semibold())
+            .size(16)
+            .color(theme::CHARCOAL),
+    ]
+    .spacing(8)
+    .align_y(Vertical::Center)
+    .into()
+}
+
+/// Title-only settings row: icon + label on the left, value on the right.
+fn setting_row<'a>(label: &'a str, value: impl Into<String>) -> Element<'a, Message> {
+    row![
+        theme::icon("settings", theme::RED, 20.0),
+        text(label)
+            .font(theme::font_regular())
+            .size(14)
+            .color(theme::CHARCOAL)
+            .width(Length::Fill),
+        text(value.into())
+            .font(theme::font_semibold())
+            .size(14)
+            .color(theme::CHARCOAL),
+    ]
+    .spacing(8)
+    .align_y(Vertical::Center)
+    .into()
+}
+
+/// Small tinted status chip.
+fn chip<'a>(label: impl Into<String>, bg: iced::Color) -> Element<'a, Message> {
+    container(
+        text(label.into())
+            .font(theme::font_medium())
+            .size(12)
+            .color(theme::CHARCOAL),
+    )
+    .padding([4, 10])
+    .style(move |_| theme::tint_style(bg))
+    .into()
+}
+
+/// Loading placeholder: mascot + a line telling the user to wait.
+fn loading_card<'a>(label: &'a str) -> Element<'a, Message> {
+    container(
+        column![
+            image(image::Handle::from_bytes(theme::MASCOT))
+                .width(Length::Fixed(48.0))
+                .height(Length::Fixed(48.0)),
+            text(label)
+                .font(theme::font_regular())
+                .size(14)
+                .color(theme::GRAY),
+        ]
+        .spacing(12)
+        .align_x(Horizontal::Center),
+    )
+    .padding(24)
+    .style(|_| theme::tint_style(theme::CREAM))
+    .width(Length::Fill)
+    .into()
+}
+
+/// Empty state: mascot + what is missing + the next step.
+fn empty_state<'a>(title: &'a str, next: &'a str) -> Element<'a, Message> {
+    container(
+        column![
+            image(image::Handle::from_bytes(theme::MASCOT))
+                .width(Length::Fixed(56.0))
+                .height(Length::Fixed(56.0)),
+            text(title)
+                .font(theme::font_semibold())
+                .size(16)
+                .color(theme::CHARCOAL),
+            text(next)
+                .font(theme::font_regular())
+                .size(14)
+                .color(theme::GRAY),
+        ]
+        .spacing(12)
+        .align_x(Horizontal::Center),
+    )
+    .padding(24)
+    .style(|_| theme::tint_style(theme::CREAM))
+    .width(Length::Fill)
+    .into()
 }
 
 #[cfg(test)]
