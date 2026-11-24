@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Bootstrap } from "../api/client";
 import {
   addGraphEdge,
@@ -220,165 +221,171 @@ export function MemoryScreen({ bootstrap }: { bootstrap: Bootstrap }) {
             onFullscreen={() => setGraphFullscreen(true)}
             onExport={() => void exportObsidian()}
           />
-          {graphFullscreen ? (
-            <div
-              className="graph-note-overlay"
-              role="dialog"
-              aria-label={t("ui.memory.graph_fullscreen", "Graf pengetahuan fullscreen")}
-            >
-              <div className="graph-note" style={{ maxWidth: 900 }}>
-                <button
-                  type="button"
-                  className="btn ghost graph-note-close"
-                  onClick={() => setGraphFullscreen(false)}
+          {graphFullscreen
+            ? createPortal(
+                <div
+                  className="graph-note-overlay"
+                  role="dialog"
+                  aria-label={t("ui.memory.graph_fullscreen", "Graf pengetahuan fullscreen")}
                 >
-                  {t("ui.memory.back", "← Kembali")}
-                </button>
-                <GraphView
-                  nodes={page.nodes}
-                  edges={page.edges}
-                  selectedName={selectedName}
-                  onSelect={(name) => void selectNode(name)}
-                  onAddNode={() => {
-                    // Close fullscreen first so the form below is
-                    // actually visible when it gets focused.
-                    setGraphFullscreen(false);
-                    focusAddNode();
-                  }}
-                  onExport={() => void exportObsidian()}
-                />
-              </div>
-            </div>
-          ) : null}
+                  <div className="graph-note" style={{ maxWidth: 900 }}>
+                    <button
+                      type="button"
+                      className="btn ghost graph-note-close"
+                      onClick={() => setGraphFullscreen(false)}
+                    >
+                      {t("ui.memory.back", "← Kembali")}
+                    </button>
+                    <GraphView
+                      nodes={page.nodes}
+                      edges={page.edges}
+                      selectedName={selectedName}
+                      onSelect={(name) => void selectNode(name)}
+                      onAddNode={() => {
+                        // Close fullscreen first so the form below is
+                        // actually visible when it gets focused.
+                        setGraphFullscreen(false);
+                        focusAddNode();
+                      }}
+                      onExport={() => void exportObsidian()}
+                    />
+                  </div>
+                </div>,
+                document.body,
+              )
+            : null}
         </>
       ) : (
         <p className="muted">{t("ui.memory.loading", "Memuat graf…")}</p>
       )}
 
       {detailError ? <p role="alert">{detailError}</p> : null}
-      {detail ? (
-        <div
-          className="graph-note-overlay"
-          role="dialog"
-          aria-label={t("ui.memory.note_title", "Catatan {name}", { name: detail.name })}
-        >
-          <div className="graph-note">
-            <button
-              type="button"
-              className="btn ghost graph-note-close"
-              onClick={() => {
-                setSelectedName(null);
-                setDetail(null);
-              }}
+      {detail
+        ? createPortal(
+            <div
+              className="graph-note-overlay"
+              role="dialog"
+              aria-label={t("ui.memory.note_title", "Catatan {name}", { name: detail.name })}
             >
-              {t("ui.memory.close_note", "← Tutup catatan")}
-            </button>
-            <div className="card">
-          <h3>{detail.name}</h3>
-          <p className="muted">
-            {detail.kind ? `${t("ui.memory.kind_label", "Jenis:")} ${detail.kind} · ` : ""}
-            {t("ui.memory.facts_count", "{count} fakta", { count: detail.fact_count })}
-            {detail.is_code_node ? ` · ${t("ui.memory.code_node", "simpul kode, hanya bisa dibaca")}` : ""}
-          </p>
-          <h4>{t("ui.memory.facts", "Fakta")}</h4>
-          {detail.facts.length === 0 ? (
-            <p className="muted">{t("ui.memory.facts_empty", "Belum ada fakta untuk simpul ini.")}</p>
-          ) : (
-            <ul>
-              {detail.facts.map((fact) => (
-                <li key={`${fact.subject}|${fact.relation}|${fact.object}`}>
-                  {fact.subject} — {fact.relation} — {fact.object}
-                  {!detail.is_code_node ? (
-                    <>
-                      {" "}
-                      <label>
-                        {t("ui.memory.correct_to", "Koreksi jadi")}{" "}
-                        <input
-                          type="text"
-                          defaultValue={fact.object}
-                          aria-label={t("ui.memory.correct_object", "Koreksi objek untuk {subject} {relation} {object}", { subject: fact.subject, relation: fact.relation, object: fact.object })}
-                          onKeyDown={(event) => {
-                            if (event.key !== "Enter") return;
-                            const value = (
-                              event.target as HTMLInputElement
-                            ).value.trim();
-                            if (value && value !== fact.object) void correctFact(fact, value);
-                          }}
-                        />
-                      </label>{" "}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void runEdit(
-                            () =>
-                              deleteGraphEdge({
-                                subject: fact.subject,
-                                relation: fact.relation,
-                                object: fact.object,
-                              }),
-                            t("ui.memory.edge_deleted", "Sisi dihapus dan tercatat di buku kerja."),
-                          )
-                        }
-                      >
-                        {t("ui.memory.delete_edge", "Hapus sisi")}
-                      </button>
-                    </>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-          <h4>{t("ui.memory.sources", "Sumber")}</h4>
-          {detail.provenance.length === 0 ? (
-            <p className="muted">{t("ui.memory.sources_empty", "Tidak ada sumber tercatat.")}</p>
-          ) : (
-            <ul>
-              {detail.provenance.map((source) => (
-                <li key={source.passage_id}>
-                  <code>{source.passage_id}</code>: {source.text}
-                </li>
-              ))}
-            </ul>
-          )}
-          {!detail.is_code_node ? (
-            <>
-              <h4>{t("ui.memory.rename_node", "Ubah nama simpul")}</h4>
-              <label>
-                {t("ui.memory.new_name", "Nama baru")}{" "}
-                <input
-                  type="text"
-                  value={renameTo}
-                  onChange={(event) => setRenameTo(event.target.value)}
-                />
-              </label>{" "}
-              <button
-                type="button"
-                onClick={() =>
-                  void runEdit(
-                    () => renameGraphNode(detail.name, renameTo.trim()),
-                    t("ui.memory.node_renamed", "Simpul diubah namanya dan tercatat di buku kerja."),
-                  )
-                }
-              >
-                {t("ui.memory.rename", "Ubah nama")}
-              </button>{" "}
-              <button
-                type="button"
-                onClick={() =>
-                  void runEdit(
-                    () => deleteGraphNode(detail.name),
-                    t("ui.memory.node_deleted", "Simpul dihapus dan tercatat di buku kerja."),
-                  )
-                }
-              >
-                {t("ui.memory.delete_node", "Hapus simpul")}
-              </button>
-            </>
-          ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
+              <div className="graph-note">
+                <button
+                  type="button"
+                  className="btn ghost graph-note-close"
+                  onClick={() => {
+                    setSelectedName(null);
+                    setDetail(null);
+                  }}
+                >
+                  {t("ui.memory.close_note", "← Tutup catatan")}
+                </button>
+                <div className="card">
+              <h3>{detail.name}</h3>
+              <p className="muted">
+                {detail.kind ? `${t("ui.memory.kind_label", "Jenis:")} ${detail.kind} · ` : ""}
+                {t("ui.memory.facts_count", "{count} fakta", { count: detail.fact_count })}
+                {detail.is_code_node ? ` · ${t("ui.memory.code_node", "simpul kode, hanya bisa dibaca")}` : ""}
+              </p>
+              <h4>{t("ui.memory.facts", "Fakta")}</h4>
+              {detail.facts.length === 0 ? (
+                <p className="muted">{t("ui.memory.facts_empty", "Belum ada fakta untuk simpul ini.")}</p>
+              ) : (
+                <ul>
+                  {detail.facts.map((fact) => (
+                    <li key={`${fact.subject}|${fact.relation}|${fact.object}`}>
+                      {fact.subject} — {fact.relation} — {fact.object}
+                      {!detail.is_code_node ? (
+                        <>
+                          {" "}
+                          <label>
+                            {t("ui.memory.correct_to", "Koreksi jadi")}{" "}
+                            <input
+                              type="text"
+                              defaultValue={fact.object}
+                              aria-label={t("ui.memory.correct_object", "Koreksi objek untuk {subject} {relation} {object}", { subject: fact.subject, relation: fact.relation, object: fact.object })}
+                              onKeyDown={(event) => {
+                                if (event.key !== "Enter") return;
+                                const value = (
+                                  event.target as HTMLInputElement
+                                ).value.trim();
+                                if (value && value !== fact.object) void correctFact(fact, value);
+                              }}
+                            />
+                          </label>{" "}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void runEdit(
+                                () =>
+                                  deleteGraphEdge({
+                                    subject: fact.subject,
+                                    relation: fact.relation,
+                                    object: fact.object,
+                                  }),
+                                t("ui.memory.edge_deleted", "Sisi dihapus dan tercatat di buku kerja."),
+                              )
+                            }
+                          >
+                            {t("ui.memory.delete_edge", "Hapus sisi")}
+                          </button>
+                        </>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <h4>{t("ui.memory.sources", "Sumber")}</h4>
+              {detail.provenance.length === 0 ? (
+                <p className="muted">{t("ui.memory.sources_empty", "Tidak ada sumber tercatat.")}</p>
+              ) : (
+                <ul>
+                  {detail.provenance.map((source) => (
+                    <li key={source.passage_id}>
+                      <code>{source.passage_id}</code>: {source.text}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!detail.is_code_node ? (
+                <>
+                  <h4>{t("ui.memory.rename_node", "Ubah nama simpul")}</h4>
+                  <label>
+                    {t("ui.memory.new_name", "Nama baru")}{" "}
+                    <input
+                      type="text"
+                      value={renameTo}
+                      onChange={(event) => setRenameTo(event.target.value)}
+                    />
+                  </label>{" "}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void runEdit(
+                        () => renameGraphNode(detail.name, renameTo.trim()),
+                        t("ui.memory.node_renamed", "Simpul diubah namanya dan tercatat di buku kerja."),
+                      )
+                    }
+                  >
+                    {t("ui.memory.rename", "Ubah nama")}
+                  </button>{" "}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void runEdit(
+                        () => deleteGraphNode(detail.name),
+                        t("ui.memory.node_deleted", "Simpul dihapus dan tercatat di buku kerja."),
+                      )
+                    }
+                  >
+                    {t("ui.memory.delete_node", "Hapus simpul")}
+                  </button>
+                </>
+              ) : null}
+                </div>
+              </div>
+        </div>,
+            document.body,
+          )
+        : null}
 
       <h3>{t("ui.memory.add_node", "Tambah simpul")}</h3>
       <div className="card stacked-form">
