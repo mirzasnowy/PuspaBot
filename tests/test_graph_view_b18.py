@@ -336,3 +336,38 @@ def test_code_graph_nodes_are_not_editable(make_user, test_dsn):
             == 403
         )
     assert _corrections(test_dsn, user_id) == []
+
+
+def test_obsidian_export_is_markdown_with_wikilinks(make_user, test_dsn):
+    user_id = make_user()["user_id"]
+    _seed_episodes(user_id, test_dsn)
+    client, _ = _client(user_id, test_dsn)
+    with client:
+        resp = client.get("/api/graph/export/obsidian")
+    assert resp.status_code == 200
+    assert "text/markdown" in resp.headers["content-type"]
+    assert "puspa-graph.md" in resp.headers["content-disposition"]
+    text = resp.text
+    assert text.startswith("# Puspa knowledge graph")
+    # One section per node, with the other end as a wikilink.
+    assert "## [[samsung galaxy s24]]" in text
+    assert "## [[tokopedia]]" in text
+    assert "- samsung galaxy s24 — sells — [[tokopedia]]" in text
+    assert "- [[samsung galaxy s24]] — sells — tokopedia" in text
+    assert "## [[xiaomi redmi note]]" in text
+    assert "- xiaomi redmi note — sells — [[shopee]]" in text
+
+
+def test_obsidian_export_empty_graph(make_user, test_dsn):
+    user_id = make_user()["user_id"]
+    client, _ = _client(user_id, test_dsn)
+    with client:
+        resp = client.get("/api/graph/export/obsidian")
+    assert resp.status_code == 200
+    assert "Graf masih kosong." in resp.text
+
+
+def test_obsidian_export_requires_login(make_user, test_dsn):
+    anon = create_app(test_user_id=None, dsn=test_dsn)
+    with TestClient(anon) as client:
+        assert client.get("/api/graph/export/obsidian").status_code == 401

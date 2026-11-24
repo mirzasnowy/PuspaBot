@@ -15,16 +15,17 @@ import {
   deleteAgentPhoto,
   fetchAgentAvatar,
   uploadAgentPhoto,
-  type AvatarStatus,
+  type AvatarStatusWithSource,
 } from "../api/client";
 import { avatarPhotoSrc, DEFAULT_AVATAR_SRC } from "../state/avatar";
 import { AgentAvatar } from "./AgentAvatar";
+import { AgentAvatarChoices } from "./AgentAvatarChoices";
 
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
 const ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
 
 export function AgentPhotoPicker() {
-  const [status, setStatus] = useState<AvatarStatus | null>(null);
+  const [status, setStatus] = useState<AvatarStatusWithSource | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -75,6 +76,7 @@ export function AgentPhotoPicker() {
         photo_url: null,
         updated_at: null,
         mime_type: null,
+        source: "default",
       });
       setMessage("Foto agen dihapus; logo default dipakai lagi.");
     } catch (err) {
@@ -112,6 +114,11 @@ export function AgentPhotoPicker() {
           {busy ? "Menghapus…" : "Hapus foto, pakai logo default"}
         </button>
       ) : null}
+      <h3 style={{ margin: "16px 0 4px" }}>Atau pilih avatar bunga</h3>
+      <p className="muted" style={{ margin: "0 0 6px" }}>
+        Empat bunga Puspa — tanpa unggah file.
+      </p>
+      <AgentAvatarChoices onStatusChange={setStatus} />
       {message ? (
         <p className="muted" role="status">
           {message}

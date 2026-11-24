@@ -15,8 +15,70 @@
  * animation needs a visible pause control; the reduced-motion
  * setting alone is not the control).
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AgentAvatarState } from "../state/avatar";
+import { fetchAgentAvatar, type AvatarStatusWithSource } from "../api/client";
+
+/**
+ * The agent's photo alone (compact): the same <img> the full
+ * avatar uses, with the same idle/working animation, but no
+ * status text and no pause button — for the chat island, the
+ * chat bubbles, and the conversation list, where the avatar
+ * must be the SAME photo everywhere (Nero, 24 Nov). The
+ * `size` is the photo's diameter in px.
+ */
+export function AgentAvatarPhoto({
+  state,
+  photoSrc,
+  size = 56,
+  alt = "Foto agen Puspa",
+}: {
+  state: AgentAvatarState;
+  photoSrc: string;
+  size?: number;
+  alt?: string;
+}) {
+  return (
+    <span
+      className={`agent-avatar--${state}`}
+      data-state={state}
+      style={{ display: "inline-block", lineHeight: 0 }}
+    >
+      <span
+        className="agent-avatar-frame"
+        style={{ width: size, height: size }}
+      >
+        <img
+          className="agent-avatar-photo"
+          src={photoSrc}
+          alt={alt}
+          width={size}
+          height={size}
+          style={{ width: size, height: size }}
+        />
+      </span>
+    </span>
+  );
+}
+
+/** Load the avatar photo status once (shared by chat, island, and lists). */
+export function useAvatarStatus(): AvatarStatusWithSource | null {
+  const [status, setStatus] = useState<AvatarStatusWithSource | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchAgentAvatar()
+      .then((loaded) => {
+        if (!cancelled) setStatus(loaded);
+      })
+      .catch(() => {
+        if (!cancelled) setStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return status;
+}
 
 export function AgentAvatar({
   state,

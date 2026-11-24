@@ -381,7 +381,7 @@ export function MockupScreen() {
 
   return (
     <div>
-      <h1>Mockup</h1>
+      <h1>Kanvas Desain</h1>
       <p>Deskripsikan yang kamu mau, Puspa buatkan mockupnya. Seret elemen untuk menata ulang.</p>
       {error && <p role="alert">{error}</p>}
       {status && <p>{status}</p>}

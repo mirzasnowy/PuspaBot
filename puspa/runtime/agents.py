@@ -78,10 +78,20 @@ def ensure_puspa_agent(user_id: str, dsn=None) -> str:
     return agent_id
 
 
-def create_agent(user_id: str, name: str, role: str = "", purpose: str = "", dsn=None) -> dict:
+#: Icon ids a user may pick for a custom agent (Nero, 24 Nov):
+#: the four built-in flower avatars plus "default" (the Puspa
+#: flower logo). The ids match ``BUILTIN_AVATARS`` in
+#: ``apps/pwa/src/state/avatar.ts`` and the files in
+#: ``puspa/pwa/static/avatars/``.
+AGENT_AVATARS = ("default", "tulip", "sunflower", "rose", "sakura")
+
+
+def create_agent(user_id: str, name: str, role: str = "", purpose: str = "", avatar: str = "default", dsn=None) -> dict:
     """Buat agen baru milik pengguna. Agen ke-4 ditolak (maks 3)."""
     if not name or not name.strip():
         raise AgentError("nama agen tidak boleh kosong")
+    if avatar not in AGENT_AVATARS:
+        raise AgentError(f"avatar tidak dikenal: {avatar!r}")
     with _connect(dsn) as conn, conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM agent_meta WHERE user_id = %s", (user_id,))
         if cur.fetchone()[0] >= MAX_AGENT:
@@ -91,9 +101,9 @@ def create_agent(user_id: str, name: str, role: str = "", purpose: str = "", dsn
     with _connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO agent_meta (agent_id, user_id, name, peran, purpose, required)"
-                " VALUES (%s, %s, %s, %s, %s, FALSE)",
-                (agent_id, user_id, name.strip(), role, purpose),
+                "INSERT INTO agent_meta (agent_id, user_id, name, peran, purpose, required, avatar)"
+                " VALUES (%s, %s, %s, %s, %s, FALSE, %s)",
+                (agent_id, user_id, name.strip(), role, purpose, avatar),
             )
         conn.commit()
     return {
@@ -102,6 +112,7 @@ def create_agent(user_id: str, name: str, role: str = "", purpose: str = "", dsn
         "role": role,
         "purpose": purpose,
         "required": False,
+        "avatar": avatar,
     }
 
 
@@ -109,7 +120,7 @@ def list_agents(user_id: str, dsn=None) -> list[dict]:
     """Semua agen milik pengguna, Puspa wajib selalu pertama."""
     with _connect(dsn) as conn, conn.cursor(row_factory=_db_dict_row) as cur:
         cur.execute(
-            "SELECT agent_id, name, peran AS role, purpose, required FROM agent_meta"
+            "SELECT agent_id, name, peran AS role, purpose, required, avatar FROM agent_meta"
             " WHERE user_id = %s ORDER BY required DESC, created_at ASC",
             (user_id,),
         )

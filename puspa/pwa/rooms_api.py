@@ -28,9 +28,15 @@ own login resolver, passed in like every other PWA API module):
 - ``POST /api/rooms/join`` (JSON ``{"token"}`` or ``{"code"}``)
   -> ``{"room_id", "invite_id", "role", "already_member"}``.
 - ``GET /api/rooms/{room_id}`` -> the room with its members
-  (display names resolved) plus ``names`` / ``bot_names`` maps.
+  (display names resolved) and its invited agents (``agents``:
+  agent id + name), plus ``names`` / ``bot_names`` maps.
   403 for a non-member, 404 for an unknown room.
 - ``DELETE /api/rooms/{room_id}`` -> owner only.
+- ``POST /api/rooms/{room_id}/agents`` (JSON ``{"agent_id"}``)
+  -> invite one of the caller's own agents into the room;
+  ``DELETE .../agents/{agent_id}`` removes one. Owner-only;
+  the agent must belong to the caller (checked against
+  ``agent_meta``); re-inviting is a no-op; at most 6 agents.
 - ``GET /api/rooms/{room_id}/tasks`` -> the shared board:
   ``{"room_id", "room_name", "tasks": [...]}``, each task with
   ``delegation`` null and ``pending_steps`` 0 (no hosted
@@ -87,6 +93,7 @@ from puspa.rooms.errors import (
 from puspa.rooms.rooms import MAX_ROOM_SIZE, ROLE_GUEST, ROLE_MEMBER, _validate_uuid
 
 __all__ = [
+    "agent_to_dict",
     "board_task_to_dict",
     "invite_to_dict",
     "member_to_dict",
@@ -137,6 +144,35 @@ def member_to_dict(member, *, display_name: str | None = None) -> dict:
     if display_name is not None:
         row["display_name"] = display_name
     return row
+
+
+def agent_to_dict(agent, *, name: str | None = None) -> dict:
+    """One invited agent in a room, with its display name when known."""
+    row = {
+        "agent_id": agent.agent_id,
+        "added_by": agent.added_by,
+        "added_at": _iso(agent.added_at),
+    }
+    if name is not None:
+        row["name"] = name
+    return row
+
+
+def _agent_names(dsn, agent_ids: list[str]) -> dict[str, str]:
+    """Display names for agent ids (``agent_meta``), missing ones omitted."""
+    names: dict[str, str] = {}
+    if not agent_ids:
+        return names
+    with _connect(dsn) as conn, conn.cursor() as cur:
+        for agent_id in agent_ids:
+            cur.execute(
+                "SELECT name FROM agent_meta WHERE agent_id = %s",
+                (agent_id,),
+            )
+            row = cur.fetchone()
+            if row is not None:
+                names[agent_id] = row["name"]
+    return names
 
 
 def board_task_to_dict(task) -> dict:
@@ -470,6 +506,10 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             _require_member(store, room_id, user_id)
             room = store.require_room(room_id)
             names = resolve_room_names(room_id, request.app.state.dsn, room_store=store)
+            agent_names = _agent_names(
+                request.app.state.dsn,
+                [a.agent_id for a in store.list_agents(room_id)],
+            )
         except RoomNotFoundError as exc:
             return JSONResponse({"error": str(exc)}, status_code=404)
         except NotRoomMemberError as exc:
@@ -480,6 +520,10 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             **room_to_dict(room, role=store.role_of(room_id, user_id)),
             "members": [
                 member_to_dict(m, display_name=names.names.get(m.user_id)) for m in names.members
+            ],
+            "agents": [
+                agent_to_dict(a, name=agent_names.get(a.agent_id))
+                for a in store.list_agents(room_id)
             ],
             "names": names.names,
             "bot_names": names.bot_names,
@@ -643,6 +687,48 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
             return JSONResponse({"error": str(exc)}, status_code=400)
         _emit_activity(request, room_id, "member_removed", user_id, "a member was removed")
         return {"removed": True, "room_id": room_id, "user_id": member_id}
+
+    @app.post("/api/rooms/{room_id}/agents")
+    async def add_agent_endpoint(request: Request, room_id: str):
+        """Invite one of the caller's own agents into the room
+        (PWA inbox create-group flow). Owner-only; the agent must
+        belong to the caller. Re-inviting is a no-op."""
+        user_id = need_user(request)
+        if user_id is None:
+            return _unauthorized()
+        try:
+            data = await request.json()
+            if not isinstance(data, dict):
+                raise ValueError("agent body must be a JSON object")
+            agent = _rooms(request).add_agent(
+                room_id, str(data.get("agent_id") or ""), added_by=user_id
+            )
+        except RoomNotFoundError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=404)
+        except (NotRoomMemberError, NotRoomOwnerError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=403)
+        except (RoomFullError, ValueError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        names = _agent_names(request.app.state.dsn, [agent.agent_id])
+        _emit_activity(request, room_id, "agent_invited", user_id, "an agent was invited")
+        return agent_to_dict(agent, name=names.get(agent.agent_id))
+
+    @app.delete("/api/rooms/{room_id}/agents/{agent_id}")
+    def remove_agent_endpoint(request: Request, room_id: str, agent_id: str):
+        """Remove an invited agent from the room (owner-only)."""
+        user_id = need_user(request)
+        if user_id is None:
+            return _unauthorized()
+        try:
+            _rooms(request).remove_agent(room_id, agent_id, removed_by=user_id)
+        except RoomNotFoundError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=404)
+        except (NotRoomMemberError, NotRoomOwnerError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=403)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        _emit_activity(request, room_id, "agent_removed", user_id, "an agent was removed")
+        return {"removed": True, "room_id": room_id, "agent_id": agent_id}
 
     @app.get("/api/rooms/{room_id}/memory")
     def list_memory_endpoint(request: Request, room_id: str, kind: str | None = None):

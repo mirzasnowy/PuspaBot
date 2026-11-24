@@ -2485,6 +2485,9 @@ components:
         required:
           type: boolean
           description: True for the mandatory PuspaBot agent
+        avatar:
+          type: string
+          description: Icon id picked for a custom agent in the Tambah Agent form — one of the built-in flower avatars (tulip, sunflower, rose, sakura) or "default" (the Puspa flower logo). The Puspa agent is always "default"; its photo lives in the user's avatar dir, not here.
     TaskOutcome:
       type: object
       required: [task_id, status]

@@ -14,14 +14,23 @@ const screen = currentScreen(bootstrap);
 // language in the background; screens render their hardcoded
 // Indonesian copy until it arrives, then re-render translated.
 void loadCatalog();
+// Space port: the shell hides on pre-auth screens and the
+// canvas workspace (the Nav component also returns children
+// only there); the body class is belt-and-braces for the Space
+// CSS, which hides shell chrome under body.pre-auth /
+// body.workspace.
+document.body.classList.toggle(
+  "pre-auth",
+  screen === "onboarding" || screen === "login",
+);
+document.body.classList.toggle("workspace", screen === "studio");
 const root = document.getElementById("root");
 if (root) {
   createRoot(root).render(
     <StrictMode>
-      <Nav current={screen} botName={requiredAgentName(bootstrap.agents ?? [])} />
-      <main>
+      <Nav current={screen} botName={requiredAgentName(bootstrap.agents ?? [])}>
         <App bootstrap={bootstrap} screen={screen} />
-      </main>
+      </Nav>
     </StrictMode>,
   );
 }

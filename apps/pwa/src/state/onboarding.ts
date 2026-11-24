@@ -190,3 +190,57 @@ export function markHintSeen(
 ): Promise<{ user_id: string; flag: string; seen: boolean }> {
   return postJson(`/api/onboarding/hints/${encodeURIComponent(flag)}/seen`, {}, fetchFn);
 }
+
+/**
+ * Onboarding phase A (Space port, Nero 23 Nov): what Puspa is
+ * used for. Mirrors `PURPOSES` in `puspa/pwa/onboarding_api.py`
+ * (same ids, same labels) — the ids are what the generated
+ * agent file records.
+ */
+export const ONBOARDING_PURPOSES: { id: string; label: string; description: string }[] = [
+  { id: "price_compare", label: "Bandingkan harga", description: "Cari harga termurah di Tokopedia, Shopee, dan Blibli." },
+  { id: "pay_bills", label: "Bayar tagihan", description: "Bayar PLN, PDAM, pulsa, dan paket data tepat waktu." },
+  { id: "research", label: "Riset & belajar", description: "Kumpulkan sumber dan susun ringkasan untuk skripsi atau kerja." },
+  { id: "organize", label: "Atur jadwal & tugas", description: "Ingatkan deadline dan rapikan daftar tugas harian." },
+  { id: "create", label: "Bikin konten & desain", description: "Susun draf tulisan dan mockup desain bersama tim agen." },
+];
+
+/**
+ * What the agent uses and accesses (transparency list). Mirrors
+ * `DATA_SOURCES` in `puspa/pwa/onboarding_api.py`. Passwords and
+ * OTPs are never on this list.
+ */
+export const ONBOARDING_DATA_SOURCES: { id: string; label: string; description: string }[] = [
+  { id: "chat", label: "Pesan chat", description: "Apa yang kamu tulis ke Puspa di chat." },
+  { id: "memory", label: "Memori & fakta", description: "Fakta yang kamu simpan atau Puspa pelajari; bisa diedit di Edit Pengetahuan." },
+  { id: "connectors", label: "Konektor yang kamu sambungkan", description: "Gmail, Drive, atau Kalender — hanya yang kamu pilih di onboarding atau di layar Konektor." },
+  { id: "receipts", label: "Struk & tagihan", description: "Foto struk dan tagihan yang kamu minta dicek atau dibayar." },
+];
+
+/** Personalization needs the user can pick (free text also allowed). */
+export const ONBOARDING_NEEDS: string[] = [
+  "Skripsi",
+  "Kerja remote",
+  "Keuangan",
+  "Belanja",
+  "Belajar",
+];
+
+/** Local marker that phase A (purpose → agent file) is done. */
+const PHASE_A_KEY = "puspa-onboarding-phase-a";
+
+export function isPhaseADone(): boolean {
+  try {
+    return localStorage.getItem(PHASE_A_KEY) === "done";
+  } catch {
+    return false;
+  }
+}
+
+export function markPhaseADone(): void {
+  try {
+    localStorage.setItem(PHASE_A_KEY, "done");
+  } catch {
+    // Private mode: phase A just runs again next visit.
+  }
+}

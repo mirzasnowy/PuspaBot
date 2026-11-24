@@ -30,6 +30,22 @@ def test_max_three_agents(make_user):
         create_agent(u["user_id"], "Agen Keempat")
 
 
+def test_agent_avatar_choice(make_user):
+    """Avatar choice (Nero, 24 Nov): a custom agent stores the
+    picked flower icon; the default is the Puspa logo; an
+    unknown id is rejected."""
+    u = make_user()
+    agent = create_agent(u["user_id"], "Agen Riset", "riset", "mencari artikel", avatar="rose")
+    assert agent["avatar"] == "rose"
+    listed = {a["agent_id"]: a for a in list_agents(u["user_id"])}
+    assert listed[agent["agent_id"]]["avatar"] == "rose"
+    assert listed[u["agent_id"]]["avatar"] == "default"
+    plain = create_agent(u["user_id"], "Agen Belanja")
+    assert plain["avatar"] == "default"
+    with pytest.raises(AgentError):
+        create_agent(u["user_id"], "Agen Kucing", avatar="cat")
+
+
 def test_delete_puspa_rejected(make_user, test_dsn):
     u = make_user()
     with pytest.raises(AgentError, match="tidak bisa dihapus"):

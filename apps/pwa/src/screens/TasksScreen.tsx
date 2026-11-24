@@ -23,8 +23,12 @@ import {
 } from "../state/approvals";
 import { ApprovalCard } from "../components/ApprovalCard";
 import { MissionsSection } from "../components/MissionsSection";
+import { PageHead } from "./space/shared";
+import { Icon } from "../components/icons";
+import { useLanguage } from "../state/language";
 
 export function TasksScreen({ bootstrap }: { bootstrap: Bootstrap }) {
+  const { t: tr } = useLanguage();
   const [tasks, setTasks] = useState(initialTasksState);
   const [approvals, setApprovals] = useState(() =>
     initialApprovalsState(bootstrap.approvals ?? []),
@@ -44,7 +48,7 @@ export function TasksScreen({ bootstrap }: { bootstrap: Bootstrap }) {
         if (!cancelled) setBoards(loaded);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setBoardsError(err instanceof Error ? err.message : "Gagal memuat papan tugas.");
+        if (!cancelled) setBoardsError(err instanceof Error ? err.message : tr("ui.tasks.load_failed", "Gagal memuat papan tugas."));
       });
     return () => {
       cancelled = true;
@@ -64,7 +68,7 @@ export function TasksScreen({ bootstrap }: { bootstrap: Bootstrap }) {
       setTasks((prev) => ({
         ...prev,
         creating: false,
-        error: err instanceof Error ? err.message : "Gagal membuat tugas.",
+        error: err instanceof Error ? err.message : tr("ui.tasks.create_failed", "Gagal membuat tugas."),
       }));
     }
   }
@@ -76,7 +80,7 @@ export function TasksScreen({ bootstrap }: { bootstrap: Bootstrap }) {
     } catch (err) {
       setTasks((prev) => ({
         ...prev,
-        error: err instanceof Error ? err.message : "Gagal menghentikan tugas.",
+        error: err instanceof Error ? err.message : tr("ui.tasks.stop_failed", "Gagal menghentikan tugas."),
       }));
     }
   }
@@ -90,7 +94,7 @@ export function TasksScreen({ bootstrap }: { bootstrap: Bootstrap }) {
       setApprovals((prev) => ({
         ...prev,
         deciding: { ...prev.deciding, [requestId]: false },
-        error: err instanceof Error ? err.message : "Gagal menyimpan keputusan.",
+        error: err instanceof Error ? err.message : tr("ui.tasks.decide_failed", "Gagal menyimpan keputusan."),
       }));
     }
   }
@@ -100,76 +104,99 @@ export function TasksScreen({ bootstrap }: { bootstrap: Bootstrap }) {
   const running = runningTasks(tasks);
 
   return (
-    <div>
-      <h1>Tugas</h1>
-      <h2>Buat tugas baru</h2>
-      <form onSubmit={onCreate} className="composer">
+    <div className="page">
+      <PageHead title={tr("ui.tasks.title", "Tugas")} />
+      <form onSubmit={onCreate} className="askbar">
         <input
           value={purpose}
           onChange={(e) => setPurpose(e.target.value)}
-          placeholder="Contoh: bandingkan harga laptop..."
-          aria-label="Tujuan tugas"
+          placeholder={tr("ui.tasks.purpose_placeholder", "Contoh: bandingkan harga laptop...")}
+          aria-label={tr("ui.tasks.purpose_label", "Tujuan tugas")}
           disabled={tasks.creating}
         />
-        <button type="submit" disabled={tasks.creating || purpose.trim().length === 0}>
-          {tasks.creating ? "Menjalankan…" : "Jalankan"}
+        <button
+          type="submit"
+          className="send-fab"
+          disabled={tasks.creating || purpose.trim().length === 0}
+          aria-label={tr("ui.tasks.run", "Jalankan tugas")}
+        >
+          <Icon name="send" size={20} />
         </button>
       </form>
       {tasks.error ? <p role="alert" className="error">{tasks.error}</p> : null}
 
-      <h2>Tugas sesi ini</h2>
+      <h2>{tr("ui.tasks.session", "Tugas sesi ini")}</h2>
       {tasks.tasks.length === 0 ? (
-        <p className="muted">Belum ada tugas dibuat di sesi ini.</p>
+        <p className="muted">{tr("ui.tasks.session_empty", "Belum ada tugas dibuat di sesi ini.")}</p>
       ) : (
-        tasks.tasks.map((t) => (
-          <div key={t.taskId} className="card">
-            <strong>{t.purpose}</strong>
-            <p className="muted">
-              Status: {t.status}
-              {t.stage ? ` · tahap: ${t.stage}` : ""}
-            </p>
-            {t.question ? <p>Pertanyaan: {t.question}</p> : null}
-            {!t.stopped && t.status !== "completed" ? (
-              <button type="button" onClick={() => onStop(t.taskId)}>
-                Hentikan
-              </button>
-            ) : null}
-          </div>
-        ))
+        <div className="card">
+          {tasks.tasks.map((t) => (
+            <div
+              key={t.taskId}
+              className={`task${t.status === "completed" ? " done" : ""}`}
+            >
+              <span className="check" aria-hidden="true">
+                {t.status === "completed" ? "✓" : ""}
+              </span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span className="tt">{t.purpose}</span>
+                <span
+                  style={{
+                    display: "block",
+                    color: "var(--ink-2)",
+                    fontSize: 13,
+                  }}
+                >
+                  Status: {t.status}
+                  {t.stage ? ` · ${tr("ui.tasks.stage", "tahap:")} ${t.stage}` : ""}
+                </span>
+                {t.question ? <span>{tr("ui.tasks.question", "Pertanyaan:")} {t.question}</span> : null}
+              </span>
+              {!t.stopped && t.status !== "completed" ? (
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  onClick={() => onStop(t.taskId)}
+                >
+                  {tr("ui.tasks.stop", "Hentikan")}
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
       )}
-      {running.length > 0 ? <p className="muted">{running.length} tugas berjalan.</p> : null}
+      {running.length > 0 ? <p className="muted">{tr("ui.tasks.running_count", "{count} tugas berjalan.", { count: running.length })}</p> : null}
 
-      <h2>Papan tugas bersama</h2>
+      <h2>{tr("ui.tasks.board", "Papan tugas bersama")}</h2>
       <p className="muted">
-        Tugas yang dibagikan di grup: pemilik, tenggat, status, dan siapa yang mengerjakannya.
-        Langkah yang tidak bisa dibatalkan menunggu persetujuan pemilik tugas.
+        {tr("ui.tasks.board_note", "Tugas yang dibagikan di grup: pemilik, tenggat, status, dan siapa yang mengerjakannya. Langkah yang tidak bisa dibatalkan menunggu persetujuan pemilik tugas.")}
       </p>
       {boardsError ? <p role="alert" className="error">{boardsError}</p> : null}
       {boards.length === 0 && !boardsError ? (
-        <p className="muted">Belum ada grup yang kamu ikuti.</p>
+        <p className="muted">{tr("ui.tasks.no_groups", "Belum ada grup yang kamu ikuti.")}</p>
       ) : (
         boards.map((board) => (
           <div key={board.room_id}>
             <h3>{board.room_name}</h3>
             {board.tasks.length === 0 ? (
-              <p className="muted">Belum ada tugas di papan ini.</p>
+              <p className="muted">{tr("ui.tasks.board_empty", "Belum ada tugas di papan ini.")}</p>
             ) : (
               board.tasks.map((task) => (
                 <div key={task.id} className="card">
                   <strong>{task.title}</strong>
                   <p className="muted">
                     Status: {task.status}
-                    {task.due_at ? ` · tenggat: ${task.due_at}` : " · tanpa tenggat"}
+                    {task.due_at ? ` · ${tr("ui.tasks.due", "tenggat:")} ${task.due_at}` : ` · ${tr("ui.tasks.no_due", "tanpa tenggat")}`}
                     {task.delegation
-                      ? ` · dikerjakan ${task.delegation.delegate_kind === "agent" ? "agen" : "rekan"} (${task.delegation.status})`
+                      ? ` · ${tr(task.delegation.delegate_kind === "agent" ? "ui.tasks.delegated_by_agent" : "ui.tasks.delegated_by_peer", task.delegation.delegate_kind === "agent" ? "dikerjakan agen" : "dikerjakan rekan")} (${task.delegation.status})`
                       : ""}
                   </p>
-                  {task.delegation?.last_report ? <p>Laporan: {task.delegation.last_report}</p> : null}
+                  {task.delegation?.last_report ? <p>{tr("ui.tasks.report", "Laporan:")} {task.delegation.last_report}</p> : null}
                   {task.delegation?.blocked_reason ? (
-                    <p>Terhambat: {task.delegation.blocked_reason}</p>
+                    <p>{tr("ui.tasks.blocked", "Terhambat:")} {task.delegation.blocked_reason}</p>
                   ) : null}
                   {task.pending_steps > 0 ? (
-                    <p>{task.pending_steps} langkah menunggu persetujuan atau eksekusi.</p>
+                    <p>{tr("ui.tasks.pending_steps", "{count} langkah menunggu persetujuan atau eksekusi.", { count: task.pending_steps })}</p>
                   ) : null}
                 </div>
               ))
@@ -178,14 +205,13 @@ export function TasksScreen({ bootstrap }: { bootstrap: Bootstrap }) {
         ))
       )}
 
-      <h2>Antrean persetujuan</h2>
+      <h2>{tr("ui.tasks.approvals", "Antrean persetujuan")}</h2>
       <p className="muted">
-        Semua tindakan keluar menunggu di sini. Persetujuan terikat isi: kalau isi berubah setelah
-        disetujui, persetujuan batal dan diminta ulang.
+        {tr("ui.tasks.approvals_note", "Semua tindakan keluar menunggu di sini. Persetujuan terikat isi: kalau isi berubah setelah disetujui, persetujuan batal dan diminta ulang.")}
       </p>
       {approvals.error ? <p role="alert" className="error">{approvals.error}</p> : null}
       {pending.length === 0 ? (
-        <p className="muted">Tidak ada persetujuan menunggu.</p>
+        <p className="muted">{tr("ui.tasks.approvals_empty", "Tidak ada persetujuan menunggu.")}</p>
       ) : (
         pending.map((item) => (
           <ApprovalCard
@@ -198,21 +224,25 @@ export function TasksScreen({ bootstrap }: { bootstrap: Bootstrap }) {
       )}
       {decided.length > 0 ? (
         <>
-          <h3>Sudah diputuskan</h3>
+          <h3>{tr("ui.tasks.decided", "Sudah diputuskan")}</h3>
           {decided.map((item) => (
             <ApprovalCard key={item.request_id} item={item} deciding={false} onDecide={onDecide} />
           ))}
         </>
       ) : null}
 
-      <h2>Jadwal otomatis</h2>
-      <p className="muted">
-        Penjadwal berjalan di server dan memicu tugas dari pemicu terjadwal. Daftar jadwal belum
-        punya endpoint baca di API ini, jadi jadwal hanya terlihat di layar Kantor saat tugasnya
-        berjalan — endpoint baca jadwal adalah follow-up.
-      </p>
-
       <MissionsSection />
+      <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+        <a className="btn ghost sm" href="/misi">
+          {tr("ui.tasks.missions", "Misi")}
+        </a>
+        <a className="btn ghost sm" href="/delegasi">
+          {tr("ui.tasks.delegation", "Tugas Delegasi")}
+        </a>
+        <a className="btn ghost sm" href="/progres">
+          {tr("ui.tasks.progress", "Progres Tugas")}
+        </a>
+      </div>
     </div>
   );
 }

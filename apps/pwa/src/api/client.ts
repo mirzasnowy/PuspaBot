@@ -547,8 +547,24 @@ export function receiptStatus(fetchFn: FetchFn = fetch): Promise<ReceiptStatus> 
  * null while no photo is set; the caller then shows the default
  * Puspa logo.
  */
-export function fetchAgentAvatar(fetchFn: FetchFn = fetch): Promise<AvatarStatus> {
-  return getJson<AvatarStatus>("/api/agent/avatar", fetchFn);
+/**
+ * Agent avatar status (V2-26): whether the user set a custom
+ * photo for the agent, and which one. The generated
+ * `AvatarStatus` type predates the `source` field (the spec
+ * generator is broken on main for pre-existing reasons — a bad
+ * indentation in openapi-voice.yaml and a missing
+ * openapi-rooms.yaml — so the generated file cannot be
+ * regenerated right now); this extension carries the field the
+ * server already returns until generation is fixed.
+ */
+export type AvatarStatusWithSource = AvatarStatus & {
+  source?: string;
+};
+
+export function fetchAgentAvatar(
+  fetchFn: FetchFn = fetch,
+): Promise<AvatarStatusWithSource> {
+  return getJson<AvatarStatusWithSource>("/api/agent/avatar", fetchFn);
 }
 
 /**
@@ -559,15 +575,32 @@ export function fetchAgentAvatar(fetchFn: FetchFn = fetch): Promise<AvatarStatus
 export function uploadAgentPhoto(
   photo: Blob,
   fetchFn: FetchFn = fetch,
-): Promise<AvatarStatus> {
+): Promise<AvatarStatusWithSource> {
   const form = new FormData();
   form.append("photo", photo, "avatar.png");
-  return postMultipart<AvatarStatus>("/api/agent/avatar/photo", form, fetchFn);
+  return postMultipart<AvatarStatusWithSource>("/api/agent/avatar/photo", form, fetchFn);
 }
 
 /** Delete the agent avatar photo; the default logo applies again. */
 export function deleteAgentPhoto(fetchFn: FetchFn = fetch): Promise<AvatarDeleted> {
   return deleteJson<AvatarDeleted>("/api/agent/avatar/photo", fetchFn);
+}
+
+/**
+ * Pick a built-in flower avatar (Nero, 24 Nov): tulip,
+ * sunflower, rose, or sakura. The server copies the shipped
+ * flower file into the user's avatar dir, so the photo pipeline
+ * (and every avatar in the app) picks it up at once.
+ */
+export function setBuiltinAvatar(
+  name: string,
+  fetchFn: FetchFn = fetch,
+): Promise<AvatarStatusWithSource> {
+  return postJson<AvatarStatusWithSource>(
+    "/api/agent/avatar/builtin",
+    { name },
+    fetchFn,
+  );
 }
 
 /** Create and run a task synchronously. Returns the outcome. */
@@ -939,12 +972,17 @@ export function decideApproval(
 
 /** Create an agent (max 3 per user: Puspa + 2 user agents). */
 export function createAgent(
-  input: { name: string; role?: string; purpose?: string },
+  input: { name: string; role?: string; purpose?: string; avatar?: string },
   fetchFn: FetchFn = fetch,
 ): Promise<Agent> {
   return postForm(
     "/api/agen",
-    { name: input.name, role: input.role ?? "", purpose: input.purpose ?? "" },
+    {
+      name: input.name,
+      role: input.role ?? "",
+      purpose: input.purpose ?? "",
+      avatar: input.avatar ?? "default",
+    },
     fetchFn,
   );
 }
@@ -1408,8 +1446,17 @@ export interface RoomDetail {
   created_at: string;
   role: string;
   members: RoomMember[];
+  agents?: RoomAgent[];
   names?: Record<string, string>;
   bot_names?: Record<string, string>;
+}
+
+/** One agent invited into a room (PWA inbox, 24 Nov 2026). */
+export interface RoomAgent {
+  agent_id: string;
+  name?: string;
+  added_by: string;
+  added_at: string;
 }
 
 /** One room invitation as listed: never carries the secret (P-05). */
@@ -1482,6 +1529,24 @@ export function deleteRoom(
   fetchFn: FetchFn = fetch,
 ): Promise<{ deleted: boolean; room_id: string }> {
   return deleteJson(`/api/rooms/${encodeURIComponent(roomId)}`, fetchFn);
+}
+
+/** The user's agents, Puspa first (inbox agent picker). */
+export function fetchAgents(fetchFn: FetchFn = fetch): Promise<{ agents: Agent[] }> {
+  return getJson<{ agents: Agent[] }>("/api/agen", fetchFn);
+}
+
+/** Invite one of the caller's own agents into a room (owner only). */
+export function addRoomAgent(
+  roomId: string,
+  agentId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<RoomAgent> {
+  return postJson<RoomAgent>(
+    `/api/rooms/${encodeURIComponent(roomId)}/agents`,
+    { agent_id: agentId },
+    fetchFn,
+  );
 }
 
 /** Issue an invite: a link (7 days) or a one-time code (24 hours, P-05). */
@@ -1658,6 +1723,169 @@ export function fetchMemoryFacts(
   fetchFn: FetchFn = fetch,
 ): Promise<{ facts: MemoryFactItem[]; total_facts: number }> {
   return getJson<{ facts: MemoryFactItem[]; total_facts: number }>("/api/memory", fetchFn);
+}
+
+/** Edit one personal memory fact's content (Space port: Edit Pengetahuan). */
+export function updateMemoryFact(
+  factId: string,
+  content: string,
+  fetchFn: FetchFn = fetch,
+): Promise<MemoryFactItem> {
+  return patchJson<MemoryFactItem>(
+    `/api/memory/facts/${encodeURIComponent(factId)}`,
+    { content },
+    fetchFn,
+  );
+}
+
+/** Delete one personal memory fact (Space port: Edit Pengetahuan). */
+export function deleteMemoryFact(
+  factId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ forgotten_ids: string[]; key: string; forgotten: number }> {
+  return deleteJson<{ forgotten_ids: string[]; key: string; forgotten: number }>(
+    `/api/memory/facts/${encodeURIComponent(factId)}`,
+    fetchFn,
+  );
+}
+
+/** Forget one personal memory fact (Space port: Kontrol Data reset). */
+export function forgetMemoryFact(
+  factId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ forgotten_ids: string[]; key: string; forgotten: number }> {
+  return postJson<{ forgotten_ids: string[]; key: string; forgotten: number }>(
+    `/api/memory/facts/${encodeURIComponent(factId)}/forget`,
+    {},
+    fetchFn,
+  );
+}
+
+/** One chat message as GET /api/chat/messages returns it. */
+export function fetchChatMessages(
+  fetchFn: FetchFn = fetch,
+): Promise<{ messages: ChatMessage[] }> {
+  return getJson<{ messages: ChatMessage[] }>("/api/chat/messages", fetchFn);
+}
+
+/** Confirmed receipt expenses (Space port: Keuangan, Foto Struk). */
+export function fetchReceiptExpenses(
+  fetchFn: FetchFn = fetch,
+): Promise<{ expenses: ReceiptExpense[] }> {
+  return getJson<{ expenses: ReceiptExpense[] }>("/api/receipts/expenses", fetchFn);
+}
+
+/** One published gallery work (B16). */
+export interface GalleryWork {
+  id: string;
+  owner_id: string;
+  mockup_id: string;
+  title: string;
+  template: string;
+  version: number;
+  status: string;
+  published_at: string;
+  average_rating: number | null;
+  rating_count: number;
+}
+
+/** List published gallery works, newest first (B16). */
+export function fetchGallery(
+  fetchFn: FetchFn = fetch,
+): Promise<{ works: GalleryWork[] }> {
+  return getJson<{ works: GalleryWork[] }>("/api/gallery", fetchFn);
+}
+
+/** Rate one gallery work, one rating per user (B16). */
+export function rateGalleryWork(
+  workId: string,
+  rating: number,
+  fetchFn: FetchFn = fetch,
+): Promise<{ work_id: string; rating: number }> {
+  return postJson<{ work_id: string; rating: number }>(
+    `/api/gallery/${encodeURIComponent(workId)}/rate`,
+    { rating },
+    fetchFn,
+  );
+}
+
+/** Publish a mockup to the gallery (B16; canvas Publikasikan). */
+export function publishGalleryWork(
+  mockupId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<GalleryWork> {
+  return postJson<GalleryWork>("/api/gallery/publish", { mockup_id: mockupId }, fetchFn);
+}
+
+/** Usage insights for the Insights screen (GET /api/insights). */
+export function fetchInsights(
+  fetchFn: FetchFn = fetch,
+): Promise<Record<string, unknown>> {
+  return getJson<Record<string, unknown>>("/api/insights", fetchFn);
+}
+
+/** Billing tiers from the real billing config (Space port: Paket). */
+export interface BillingTier {
+  id: string;
+  price_idr_per_month: number;
+  monthly_credits: number;
+}
+
+export function fetchBillingPlan(
+  fetchFn: FetchFn = fetch,
+): Promise<{ billing_model: string; tiers: BillingTier[] }> {
+  return getJson<{ billing_model: string; tiers: BillingTier[] }>(
+    "/api/billing/plan",
+    fetchFn,
+  );
+}
+
+/** Trial state as JSON (Space port: Trial screen). */
+export interface TrialStatus {
+  status: "active" | "grace" | "expired" | "none";
+  is_trial: boolean;
+  tier: string;
+  expires_at: string | null;
+  days_left: number | null;
+}
+
+export function fetchTrialStatus(
+  fetchFn: FetchFn = fetch,
+): Promise<TrialStatus> {
+  return getJson<TrialStatus>("/api/trial/status", fetchFn);
+}
+
+/** Onboarding answers for the auto-written agent file. */
+export interface AgentFileInput {
+  agent_name: string;
+  user_name: string;
+  style: string;
+  purposes: string[];
+  needs: string;
+  data_sources: string[];
+}
+
+/** The generated agent files, as the server wrote them. */
+export interface AgentFileResult extends AgentFileInput {
+  slug: string;
+  name: string;
+  soul: string;
+  identity: string;
+  user: string;
+}
+
+/**
+ * Auto-write the agent Markdown files from the onboarding
+ * answers (POST /api/onboarding/agent-file). The server writes
+ * SOUL.md / IDENTITY.md / USER.md via the persona mechanism and
+ * activates the persona; the returned texts are exactly what
+ * was written.
+ */
+export function createAgentFile(
+  input: AgentFileInput,
+  fetchFn: FetchFn = fetch,
+): Promise<AgentFileResult> {
+  return postJson<AgentFileResult>("/api/onboarding/agent-file", input, fetchFn);
 }
 
 /** Read one bounded page of the user's knowledge graph (B18). */

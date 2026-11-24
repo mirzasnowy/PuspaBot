@@ -1,14 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  fetchAgentAvatar,
   parseSseEvent,
   sendChat,
-  type AvatarStatus,
   type Bootstrap,
 } from "../api/client";
-import { avatarPhotoSrc, avatarStatus } from "../state/avatar";
-import { useLanguage } from "../state/language";
-import { requiredAgentName, resolveSenderName } from "../state/names";
+import { resolveSenderName, requiredAgentName } from "../state/names";
 import {
   appendMessage,
   applySseEvent,
@@ -22,10 +18,18 @@ import { TaskProgressRail } from "../components/TaskProgressRail";
 import { WorkStrip } from "../components/WorkStrip";
 import { ChatCard } from "../components/ChatCard";
 import { ChatWidget } from "../components/ChatWidget";
-import { AgentAvatar } from "../components/AgentAvatar";
+import { AgentAvatarPhoto, useAvatarStatus } from "../components/AgentAvatar";
+import { DynamicIsland } from "../components/DynamicIsland";
+import { ScrollToBottomButton } from "../components/ScrollToBottom";
+import { avatarPhotoSrc } from "../state/avatar";
+import { RowItem } from "./space/shared";
+import { Icon } from "../components/icons";
+import { officeAgents } from "../state/office";
 import { speakReply } from "../state/speech";
+import { useLanguage } from "../state/language";
 
 export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
+  const { t, locale } = useLanguage();
   const [state, setState] = useState(() => initialChatState(bootstrap.messages ?? []));
   // P-03: text shared into the PWA from another app arrives via the
   // bootstrap as shared_text; it prefills the draft so the user can
@@ -36,14 +40,10 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
   // (the required agent), never a hardcoded string, so a renamed
   // bot is called by its own name on every message.
   const botName = requiredAgentName(bootstrap.agents ?? []);
-  // COW-18: the screen's user-facing strings come from the loaded
-  // catalog; the fallbacks are the Indonesian copy this screen
-  // rendered before the language switch existed.
-  const { t } = useLanguage();
-  // V2-26: the agent's photo (default logo while none is set).
-  // Loaded once; the photo only changes from Settings, so no
-  // polling is needed here.
-  const [avatar, setAvatar] = useState<AvatarStatus | null>(null);
+  // The avatar photo (Nero, 24 Nov): the island and the bubbles
+  // show the SAME photo — the uploaded photo, a built-in flower,
+  // or the default Puspa logo — fetched once here.
+  const avatar = useAvatarStatus();
   // V2-30: per-message speak status for the "Dengarkan" button
   // on assistant replies (Edge TTS by default, browser voice as
   // fallback). Speaking is always a tap, never automatic:
@@ -52,32 +52,18 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
   const [speakStatus, setSpeakStatus] = useState<Record<string, string>>({});
 
   async function speakMessage(key: string, text: string) {
-    setSpeakStatus((prev) => ({ ...prev, [key]: "Membacakan…" }));
+    setSpeakStatus((prev) => ({ ...prev, [key]: t("ui.chat.reading_aloud", "Membacakan…") }));
     const result = await speakReply(text, { speechSynthesis: window.speechSynthesis });
     setSpeakStatus((prev) => ({
       ...prev,
       [key]:
         result.engine === "none"
-          ? (result.error ?? "Gagal membacakan.")
+          ? (result.error ?? t("ui.chat.read_failed", "Gagal membacakan."))
           : result.fallback
-            ? "Dibacakan dengan suara browser."
-            : "Dibacakan.",
+            ? t("ui.chat.read_browser", "Dibacakan dengan suara browser.")
+            : t("ui.chat.read_done", "Dibacakan."),
     }));
   }
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchAgentAvatar()
-      .then((loaded) => {
-        if (!cancelled) setAvatar(loaded);
-      })
-      .catch(() => {
-        // No photo info: the default logo applies.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     const source = new EventSource("/sse");
@@ -107,7 +93,7 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
       setState((prev) => ({
         ...prev,
         sending: false,
-        error: err instanceof Error ? err.message : "Gagal mengirim pesan.",
+        error: err instanceof Error ? err.message : t("ui.chat.send_failed", "Gagal mengirim pesan."),
       }));
     }
   }
@@ -120,79 +106,179 @@ export function ChatScreen({ bootstrap }: { bootstrap: Bootstrap }) {
     await sendText(text);
   }
 
+  // The island's live activity line: sending -> typing; a
+  // working agent in the live office projection -> its current
+  // task; otherwise idle (no activity line at all).
+  const workingAgent = officeAgents(state.liveOffice).find(
+    (agent) => agent.status === "working",
+  );
+  const working = state.sending || Boolean(workingAgent);
+  const activity = state.sending
+    ? t("ui.chat.typing", "Mengetik…")
+    : (workingAgent?.last_task ?? t("ui.island.working", "Bekerja…"));
+
+  function dayLabel(createdAt: string | number): string {
+    const date = new Date(createdAt);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleDateString(locale === "en" ? "en-US" : "id-ID", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  }
+
+  const pendingApprovals = (bootstrap.approvals ?? []).filter(
+    (approval) => approval.status === "pending",
+  ).length;
+
   return (
-    <div>
-      <h1>{t("ui.nav.chat", "Chat")}</h1>
-      <AgentAvatar
-        state={avatarStatus(state.sending, state.liveOffice)}
-        photoSrc={avatarPhotoSrc(avatar)}
+    <div className="page">
+      <DynamicIsland
+        name={botName}
+        working={working}
+        activity={working ? activity : null}
+        avatar={avatar}
+        office={state.liveOffice}
       />
-      <p className="muted">
-        Group chat: kamu, {botName}, dan agenmu di satu thread. Sub-agen terlipat secara default;
-        pesanmu selalu menyela tugas yang berjalan.
-      </p>
+      {/* Approvals reach the user through chat, not a bell (Nero,
+          23 Nov): this pill appears in the thread itself when
+          something waits, and the agent also asks inside the
+          thread via approval cards. */}
+      {pendingApprovals > 0 && (
+        <div style={{ marginTop: 4 }}>
+          <RowItem
+            href="/antrean"
+            icon="alert"
+            title={t("ui.chat.approvals_pending", "{count} persetujuan menunggu", { count: pendingApprovals })}
+            meta={<span className="muted">{t("ui.chat.approvals_note", "Puspa minta persetujuanmu")}</span>}
+          />
+        </div>
+      )}
       <WorkStrip office={state.liveOffice} connected={state.liveConnected} />
       <div className="chat-layout">
-        <div className="chat-thread" aria-live="polite">
+        <div className="chat-thread thread" aria-live="polite">
           {state.messages.length === 0 ? (
-            <p className="muted">Belum ada pesan. Sapa {botName} dulu.</p>
+            <p className="muted">{t("ui.chat.empty", "Belum ada pesan. Sapa {bot} dulu.", { bot: botName })}</p>
           ) : (
-            state.messages.map((m, i) => (
-              <div key={`${m.created_at}-${i}`} className="card">
-                <strong>{resolveSenderName(m.sender, { botName })}</strong>: {m.text}
-                {m.sender !== "users" ? (
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => void speakMessage(`${m.created_at}-${i}`, m.text)}
-                    >
-                      Dengarkan
-                    </button>
-                    {speakStatus[`${m.created_at}-${i}`] ? (
-                      <span role="status" className="muted">
-                        {" "}
-                        {speakStatus[`${m.created_at}-${i}`]}
+            state.messages.map((m, i) => {
+              const isMe = m.sender === "users";
+              const prev = state.messages[i - 1];
+              const showDate =
+                !prev || dayLabel(prev.created_at) !== dayLabel(m.created_at);
+              return (
+                <div key={`${m.created_at}-${i}`}>
+                  {showDate && dayLabel(m.created_at) && (
+                    <div className="date-sep">{dayLabel(m.created_at)}</div>
+                  )}
+                  <div className={`msg${isMe ? " me" : ""}`}>
+                    <div className="msg-head">
+                      {!isMe && (
+                        <span className="mav">
+                          <AgentAvatarPhoto
+                            state={working ? "working" : "idle"}
+                            photoSrc={avatarPhotoSrc(avatar)}
+                            size={30}
+                          />
+                        </span>
+                      )}
+                      <span className="who">
+                        {resolveSenderName(m.sender, { botName })}
                       </span>
+                    </div>
+                    <div className="bubble">
+                      {m.text}
+                      {!isMe ? (
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void speakMessage(`${m.created_at}-${i}`, m.text)
+                            }
+                          >
+                            {t("ui.chat.listen", "Dengarkan")}
+                          </button>
+                          {speakStatus[`${m.created_at}-${i}`] ? (
+                            <span role="status" className="muted">
+                              {" "}
+                              {speakStatus[`${m.created_at}-${i}`]}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                    {m.card ? (
+                      <ChatCard
+                        card={m.card}
+                        onPickOption={(option) => void sendText(option.label)}
+                      />
+                    ) : null}
+                    {m.widget ? (
+                      <ChatWidget
+                        widget={m.widget}
+                        onNewMessage={(message) =>
+                          setState((prev) => appendMessage(prev, message))
+                        }
+                      />
                     ) : null}
                   </div>
-                ) : null}
-                {m.card ? (
-                  <ChatCard card={m.card} onPickOption={(option) => void sendText(option.label)} />
-                ) : null}
-                {m.widget ? (
-                  <ChatWidget
-                    widget={m.widget}
-                    onNewMessage={(message) =>
-                      setState((prev) => appendMessage(prev, message))
-                    }
+                </div>
+              );
+            })
+          )}
+          {state.sending && (
+            <div className="msg">
+              <div className="msg-head">
+                <span className="mav">
+                  <AgentAvatarPhoto
+                    state="working"
+                    photoSrc={avatarPhotoSrc(avatar)}
+                    size={30}
                   />
-                ) : null}
+                </span>
+                <span className="who">{botName}</span>
               </div>
-            ))
+              <div className="bubble">
+                <span className="typing" aria-label={t("ui.chat.typing_label", "Mengetik")}>
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              </div>
+            </div>
           )}
           <div ref={bottomRef} />
         </div>
         <TaskProgressRail office={state.liveOffice} connected={state.liveConnected} />
       </div>
+      <ScrollToBottomButton />
       {state.error ? <p role="alert" className="error">{state.error}</p> : null}
       <form onSubmit={onSend} className="composer">
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={t("ui.chat.input_placeholder", "Tulis pesan ke {bot}...", {
-            bot: botName,
-          })}
-          aria-label={`Pesan ke ${botName}`}
-          disabled={state.sending}
-        />
-        <button type="submit" disabled={state.sending || draft.trim().length === 0}>
-          {state.sending ? "Mengirim…" : "Kirim"}
-        </button>
+        <div className="bar">
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={t("ui.chat.composer_placeholder", "Tahan untuk bicara, ketuk untuk mengetik")}
+            aria-label={t("ui.chat.composer_label", "Pesan ke {bot}", { bot: botName })}
+            disabled={state.sending}
+          />
+          <button
+            type="submit"
+            className="send-fab"
+            disabled={state.sending || draft.trim().length === 0}
+            aria-label={t("ui.chat.send", "Kirim")}
+          >
+            <Icon name="send" size={20} />
+          </button>
+        </div>
       </form>
       <VoiceRecorder onSent={(message) => setState((prev) => appendMessage(prev, message))} />
       <ReceiptUpload onRecorded={(message) => setState((prev) => appendMessage(prev, message))} />
       <p className="muted">
-        Kirim foto untuk cek harga (fase 3). Angka bermakna punya tombol Bukti di panelnya.
+        Kirim foto struk untuk dicatat sebagai pengeluaran. Angka bermakna punya tombol Bukti di
+        panelnya.{" "}
+        <a href="/studio" target="_blank" rel="noreferrer">
+          Buat Desain di Kanvas
+        </a>
       </p>
     </div>
   );

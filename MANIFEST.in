@@ -3,5 +3,5 @@
 # pyproject.toml; the sdist needs them listed here too, or a build
 # from the sdist would miss them.
 recursive-include puspa *.sql *.json *.yaml *.md
-recursive-include puspa *.html *.js *.png
+recursive-include puspa *.html *.js *.png *.webp
 include puspa/py.typed

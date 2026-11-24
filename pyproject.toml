@@ -93,7 +93,7 @@ include = ["puspa*"]
 # tests/test_packaging_pwa.py fails if a shipped PWA copy drifts
 # from its editable source under apps/pwa/.
 [tool.setuptools.package-data]
-"*" = ["*.sql", "*.json", "*.yaml", "*.md", "py.typed", "*.html", "*.js", "*.png"]
+"*" = ["*.sql", "*.json", "*.yaml", "*.md", "py.typed", "*.html", "*.js", "*.png", "*.webp"]
 
 [tool.ruff]
 # The codebase's natural width is around 100 columns (only 180 lines

@@ -19,9 +19,19 @@ Contract (all routes require login):
   wholesale on every new upload, so an old extension never
   lingers next to the new one.
 - ``GET /api/agent/avatar`` -> ``{ok, has_photo, photo_url,
-  updated_at, mime_type}``. ``photo_url`` is null and
+  updated_at, mime_type, source}``. ``photo_url`` is null and
   ``updated_at`` is null while no photo is set; the PWA then
-  shows the default Puspa logo instead.
+  shows the default Puspa logo instead. ``source`` is
+  ``"default"`` (no photo), ``"upload"`` (user-uploaded photo),
+  or ``"builtin:<name>"`` (one of the built-in flower avatars
+  below).
+- ``POST /api/agent/avatar/builtin`` (JSON ``{"name": ...}``) ->
+  the avatar status. Copies one of the built-in flower avatars
+  shipped with the PWA (``tulip``, ``sunflower``, ``rose``,
+  ``sakura``) into the user's avatar dir as the profile photo,
+  replacing any upload. 400 for an unknown name. The built-in
+  files are repo assets, so no upload validation runs on them
+  beyond the file existing and decoding as an image.
 - ``GET /api/agent/avatar/photo`` -> the stored photo bytes
   with the right media type. 404 (``{ok: false, has_photo:
   false}``) while no photo is set, so the caller can fall back
@@ -40,6 +50,7 @@ no document classification runs here.
 from __future__ import annotations
 
 import contextlib
+import json
 import time
 from io import BytesIO
 from pathlib import Path
@@ -51,7 +62,28 @@ from fastapi.responses import FileResponse, JSONResponse
 from ..i18n.server_lines import render as render_server_line
 from .share_api import DEFAULT_INBOX_DIR
 
-__all__ = ["MAX_AVATAR_BYTES", "register_routes"]
+__all__ = ["BUILTIN_AVATARS", "MAX_AVATAR_BYTES", "register_routes"]
+
+#: Built-in flower avatars (Nero, 24 Nov — flowers only, no
+#: animals): name -> file shipped in the PWA static dir
+#: (``puspa/pwa/static/avatars/``, synced from
+#: ``apps/pwa/static/avatars/`` by the packaging test). The
+#: default avatar stays the Puspa flower logo; these are choices
+#: the user picks in onboarding or the agent edit screen.
+BUILTIN_AVATARS = {
+    "tulip": "agent-flower-tulip-nobg.png",
+    "sunflower": "agent-flower-sunflower-nobg.png",
+    "rose": "agent-flower-rose-nobg.png",
+    "sakura": "agent-flower-sakura-nobg.png",
+}
+
+#: Directory holding the built-in avatar files (inside this package).
+_BUILTIN_DIR = Path(__file__).resolve().parent / "static" / "avatars"
+
+#: Marker file recording which avatar is active: {"source":
+#: "upload"} or {"source": "builtin:<name>"}. Absent while no
+#: photo is set; absent with a photo means a legacy upload.
+_SOURCE_FILE = "avatar-source.json"
 
 #: Largest avatar photo the endpoint accepts (2 MiB: a profile
 #: photo is small; phone photos fit after the gallery downscales
@@ -131,6 +163,37 @@ def _stored_photo(avatar_dir: Path) -> Path | None:
     return None
 
 
+def _read_source(avatar_dir: Path) -> str:
+    """Which avatar is active: "default", "upload", or "builtin:<name>"."""
+    marker = avatar_dir / _SOURCE_FILE
+    try:
+        raw = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "upload" if _stored_photo(avatar_dir) is not None else "default"
+    source = raw.get("source") if isinstance(raw, dict) else None
+    if source == "default" or (
+        isinstance(source, str)
+        and (source == "upload" or source.startswith("builtin:"))
+    ):
+        return source
+    return "upload" if _stored_photo(avatar_dir) is not None else "default"
+
+
+def _write_source(avatar_dir: Path, source: str) -> None:
+    avatar_dir.mkdir(parents=True, exist_ok=True)
+    (avatar_dir / _SOURCE_FILE).write_text(
+        json.dumps({"source": source}), encoding="utf-8"
+    )
+
+
+def _clear_photo_files(avatar_dir: Path) -> None:
+    for old in avatar_dir.glob("avatar.*"):
+        with contextlib.suppress(OSError):
+            old.unlink()
+    with contextlib.suppress(OSError):
+        (avatar_dir / _SOURCE_FILE).unlink()
+
+
 def _photo_response(avatar_dir: Path) -> dict:
     stored = _stored_photo(avatar_dir)
     if stored is None:
@@ -140,6 +203,7 @@ def _photo_response(avatar_dir: Path) -> dict:
             "photo_url": None,
             "updated_at": None,
             "mime_type": None,
+            "source": "default",
         }
     mime = next(
         (mime for mime, suffix in _MIME_SUFFIX.items() if suffix == stored.suffix),
@@ -151,6 +215,7 @@ def _photo_response(avatar_dir: Path) -> dict:
         "photo_url": "/api/agent/avatar/photo",
         "updated_at": stored.stat().st_mtime,
         "mime_type": mime,
+        "source": _read_source(avatar_dir),
     }
 
 
@@ -175,11 +240,49 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
         suffix = _MIME_SUFFIX[photo.content_type or "image/png"]
         # One photo per user: drop any previous extension first so
         # a .png upload after a .jpg one leaves no stale file behind.
-        for old in avatar_dir.glob("avatar.*"):
-            with contextlib.suppress(OSError):
-                old.unlink()
+        _clear_photo_files(avatar_dir)
         stored_path = avatar_dir / f"avatar{suffix}"
         stored_path.write_bytes(content)
+        _write_source(avatar_dir, "upload")
+        body = _photo_response(avatar_dir)
+        body["updated_at"] = time.time()
+        return body
+
+    @app.post("/api/agent/avatar/builtin")
+    async def set_builtin_avatar(request: Request):
+        user_id = need_user(request)
+        if user_id is None:
+            return _not_logged_in()
+        try:
+            body = await request.json()
+        except Exception:
+            body = None
+        name = body.get("name") if isinstance(body, dict) else None
+        if not isinstance(name, str) or name not in BUILTIN_AVATARS:
+            return JSONResponse(
+                {
+                    "error": "unknown builtin avatar {!r}; choose one of {}".format(
+                        name, ", ".join(sorted(BUILTIN_AVATARS))
+                    )
+                },
+                status_code=400,
+            )
+        source_file = _BUILTIN_DIR / BUILTIN_AVATARS[name]
+        if not source_file.is_file():
+            return JSONResponse(
+                {"error": f"builtin avatar {name!r} is missing from the server"},
+                status_code=500,
+            )
+        content = source_file.read_bytes()
+        try:
+            validate_avatar_photo(content, "image/png")
+        except AvatarPhotoError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=500)
+        avatar_dir = _avatar_dir(request, user_id)
+        avatar_dir.mkdir(parents=True, exist_ok=True)
+        _clear_photo_files(avatar_dir)
+        (avatar_dir / "avatar.png").write_bytes(content)
+        _write_source(avatar_dir, f"builtin:{name}")
         body = _photo_response(avatar_dir)
         body["updated_at"] = time.time()
         return body
@@ -214,9 +317,7 @@ def register_routes(app: FastAPI, need_user) -> FastAPI:
         if user_id is None:
             return _not_logged_in()
         avatar_dir = _avatar_dir(request, user_id)
-        for old in avatar_dir.glob("avatar.*"):
-            with contextlib.suppress(OSError):
-                old.unlink()
-        return {"ok": True, "has_photo": False}
+        _clear_photo_files(avatar_dir)
+        return {"ok": True, "has_photo": False, "source": "default"}
 
     return app

@@ -9123,6 +9123,13 @@ export interface components {
             purpose?: string;
             /** @description True for the mandatory Puspa agent */
             required?: boolean;
+            /**
+             * Icon id picked for a custom agent (tulip, sunflower,
+             * rose, sakura, or "default"). Hand-added to mirror
+             * docs/openapi-pwa.yaml: `npm run generate` is broken
+             * on main (see AvatarStatusWithSource in client.ts).
+             */
+            avatar?: string;
         };
         TaskOutcome: {
             task_id: string;
